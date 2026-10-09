@@ -1,0 +1,166 @@
+/* ============================================
+   VESTORA — Interactive Shop Map Stylesheet
+   Extracted from Figma "VESTORA — Bản Đồ Shop.png"
+   ============================================ */
+
+.shop-map-container {
+  background: var(--color-bg-page);
+  min-height: 100vh;
+  font-family: var(--font-body);
+}
+
+.map-header-hero {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 48px 16px 48px;
+}
+
+.map-gps-filter-bar {
+  max-width: 1280px;
+  margin: 16px auto 0 auto;
+  padding: 20px 48px;
+  background: #FFFFFF;
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gps-location-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.radius-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.radius-pill {
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: #FFFFFF;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.radius-pill.active {
+  background: var(--color-black);
+  color: #FFFFFF;
+  border-color: var(--color-black);
+}
+
+/* Split View Main Layout */
+.map-split-grid {
+  max-width: 1280px;
+  margin: 24px auto 80px auto;
+  padding: 0 48px;
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 32px;
+}
+
+.store-list-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.store-map-card {
+  background: #FFFFFF;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--color-border-light);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.store-map-card:hover {
+  border-color: var(--color-gold);
+  transform: translateY(-2px);
+}
+
+.store-tag-pill {
+  background: #F5F3EF;
+  color: var(--color-text-primary);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  letter-spacing: 0.5px;
+}
+
+.store-previews-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.store-previews-grid img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+/* Map Canvas Container */
+.map-canvas-card {
+  background: #E5E7EB;
+  border-radius: 24px;
+  position: sticky;
+  top: 100px;
+  height: calc(100vh - 140px);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+}
+
+.map-mock-bg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.map-marker-pin {
+  position: absolute;
+  background: var(--color-black);
+  color: #FFFFFF;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.map-marker-pin:hover {
+  transform: scale(1.1);
+  background: var(--color-gold-deep);
+}
+
+@media (max-width: 992px) {
+  .map-split-grid {
+    grid-template-columns: 1fr;
+    padding: 0 20px;
+  }
+  .map-canvas-card {
+    height: 400px;
+    position: relative;
+    top: 0;
+  }
+}

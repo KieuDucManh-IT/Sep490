@@ -1,0 +1,272 @@
+/* ============================================
+   VESTORA — Shop Merchant Dashboard Styles
+   Extracted from Figma "VESTORA Shop — Tổng Quan Gian Hàng.png"
+   ============================================ */
+
+.shop-dashboard-layout {
+  display: flex;
+  min-height: 100vh;
+  background: #F8F7F4;
+  color: #1F2937;
+  font-family: var(--font-body);
+  align-items: stretch;
+}
+
+/* Sidebar */
+.shop-sidebar {
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
+  background: #171717;
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 24px 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.shop-brand-badge {
+  padding: 16px 12px 24px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 16px;
+}
+
+.shop-brand-badge h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.4rem;
+  color: #d4af37;
+  margin: 0 0 4px 0;
+  letter-spacing: 1px;
+}
+
+.shop-brand-badge span {
+  font-size: 0.75rem;
+  color: #a3a3a3;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.shop-nav-menu,
+.sidebar-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #737373;
+  padding: 12px 12px 4px 12px;
+}
+
+.shop-nav-item,
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  color: #d1d5db;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.shop-nav-item:hover,
+.sidebar-nav-item:hover {
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  font-weight: 600;
+}
+
+.shop-nav-item.active,
+.sidebar-nav-item.active {
+  border-left: 3px solid #d4af37;
+  background: rgba(212, 175, 55, 0.2);
+  color: #d4af37;
+  font-weight: 600;
+}
+
+/* Main Content Area */
+.shop-main-content,
+.shop-main-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 40px;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  background: #fbf9f5;
+}
+
+.shop-header,
+.shop-top-navbar {
+  background: #FFFFFF;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+  padding: 20px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.shop-content-scroll {
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* Card Styling */
+.dashboard-card {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #E5E7EB;
+}
+
+/* Stat Cards */
+.stats-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.stat-card-white {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #E5E7EB;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card-white:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.stat-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #6B7280;
+  margin-bottom: 8px;
+}
+
+.stat-card-value {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+}
+
+/* Table */
+.shop-table,
+.urgent-orders-table,
+.custom-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.shop-table th,
+.urgent-orders-table th,
+.custom-table th {
+  text-align: left;
+  padding: 14px 18px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #6B7280;
+  background: #F9FAFB;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.shop-table td,
+.urgent-orders-table td,
+.custom-table td {
+  padding: 16px 18px;
+  border-bottom: 1px solid #F3F4F6;
+  vertical-align: middle;
+}
+
+.status-badge,
+.status-chip,
+.status-tag {
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.status-pending { background: #FEF3C7; color: #D97706; }
+.status-shipping { background: #E0E7FF; color: #4338CA; }
+.status-return { background: #FEE2E2; color: #DC2626; }
+.status-completed { background: #D1FAE5; color: #059669; }
+.status-deposited { background: #FEF3C7; color: #D97706; }
+
+/* General Buttons */
+.btn-vestora {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.btn-vestora-primary,
+.btn-primary {
+  background: #171717;
+  color: #FFFFFF;
+  border: 1px solid #171717;
+}
+
+.btn-vestora-primary:hover,
+.btn-primary:hover {
+  background: #d4af37;
+  color: #171717;
+  border-color: #d4af37;
+}
+
+.btn-vestora-secondary,
+.btn-secondary {
+  background: #F3F4F6;
+  color: #374151;
+  border: 1px solid #E5E7EB;
+}
+
+.btn-vestora-secondary:hover,
+.btn-secondary:hover {
+  background: #E5E7EB;
+  color: #111827;
+}
+
+@media (max-width: 1100px) {
+  .stats-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

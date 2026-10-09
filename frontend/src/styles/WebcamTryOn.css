@@ -1,0 +1,362 @@
+/* VESTORA - Live Webcam AR Try-On Styling */
+.webcam-page-container {
+  min-height: calc(100vh - 80px);
+  background: #0d0d0d;
+  color: #f3f4f6;
+  padding: 30px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.webcam-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+  padding-bottom: 20px;
+}
+
+.webcam-title-group h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 2rem;
+  color: #fff;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.webcam-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(220, 38, 38, 0.2);
+  border: 1px solid #dc2626;
+  color: #f87171;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.webcam-live-dot {
+  width: 8px;
+  height: 8px;
+  background: #dc2626;
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.2); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.webcam-subtitle {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.webcam-specs-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.spec-badge {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #d1d5db;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spec-badge.gold {
+  border-color: #d4af37;
+  color: #d4af37;
+}
+
+/* Main Grid Layout */
+.webcam-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 30px;
+}
+
+/* AR Viewport Frame */
+.webcam-viewport-card {
+  background: #171717;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.webcam-canvas-area {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  background: #050505;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.webcam-feed-mock {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.95) contrast(1.05);
+}
+
+/* AR Overlay Layer */
+.ar-overlay-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.ar-mesh-grid {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 50% 40%, rgba(212, 175, 55, 0.15) 0%, transparent 60%),
+    linear-gradient(rgba(212, 175, 55, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(212, 175, 55, 0.05) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+}
+
+.ar-keypoint {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d4af37;
+  box-shadow: 0 0 10px #d4af37;
+  transform: translate(-50%, -50%);
+}
+
+.ar-keypoint::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  border-radius: 50%;
+  animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.ar-status-tag {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  padding: 8px 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+
+.ar-fit-badge {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid #059669;
+  padding: 8px 16px;
+  border-radius: 8px;
+  color: #34d399;
+  font-weight: 600;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Viewport Controls Bar */
+.webcam-controls-bar {
+  padding: 16px 24px;
+  background: #111827;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.webcam-actions-group {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-ar-action {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.btn-ar-action:hover {
+  background: rgba(212, 175, 55, 0.15);
+  border-color: #d4af37;
+  color: #d4af37;
+}
+
+.btn-ar-primary {
+  background: linear-gradient(135deg, #d4af37 0%, #725b38 100%);
+  border: none;
+  color: #171717;
+  padding: 10px 22px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-ar-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+}
+
+/* Sidebar Product TryOn Panel */
+.webcam-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar-card {
+  background: #171717;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 24px;
+}
+
+.sidebar-card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.25rem;
+  color: #d4af37;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.garment-preview-item {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.garment-thumb {
+  width: 90px;
+  height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.garment-info h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.garment-brand {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.garment-price {
+  color: #d4af37;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.ar-option-group {
+  margin-top: 16px;
+}
+
+.ar-option-label {
+  font-size: 0.82rem;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.color-dots {
+  display: flex;
+  gap: 10px;
+}
+
+.color-dot-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.color-dot-btn.active {
+  border-color: #d4af37;
+  transform: scale(1.15);
+}
+
+.size-pills {
+  display: flex;
+  gap: 10px;
+}
+
+.size-pill-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #d1d5db;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.size-pill-btn.active {
+  background: #d4af37;
+  border-color: #d4af37;
+  color: #171717;
+  font-weight: 700;
+}

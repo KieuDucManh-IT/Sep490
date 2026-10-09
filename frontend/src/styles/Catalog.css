@@ -1,0 +1,224 @@
+/* ============================================
+   VESTORA — Catalog & Filters Stylesheet
+   Extracted from Figma "VESTORA — Danh Mục & Bộ Lọc Sản Phẩm Cho Thuê.png"
+   ============================================ */
+
+.catalog-page-container {
+  background: var(--color-bg-page);
+  min-height: 100vh;
+  font-family: var(--font-body);
+}
+
+.catalog-header-hero {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 48px 24px 48px;
+}
+
+.catalog-breadcrumb-bar {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+
+.escrow-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(52, 199, 89, 0.1);
+  color: #059669;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.catalog-title {
+  font-family: var(--font-title);
+  font-size: 40px;
+  font-weight: 500;
+  color: var(--color-black);
+  margin-bottom: 12px;
+}
+
+.catalog-subtitle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+/* Control Search & Filter Bar */
+.control-filter-bar {
+  max-width: 1280px;
+  margin: 24px auto 0 auto;
+  padding: 0 48px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.search-input-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: #FFFFFF;
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 8px 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.search-input-box input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  width: 100%;
+}
+
+.active-filter-tags-bar {
+  max-width: 1280px;
+  margin: 16px auto 0 auto;
+  padding: 0 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.filter-tag-pill {
+  background: #EAE8E4;
+  color: var(--color-text-primary);
+  padding: 4px 12px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filter-tag-pill:hover {
+  background: var(--color-black);
+  color: #FFF;
+}
+
+/* Main Catalog Content Grid */
+.catalog-main-grid {
+  max-width: 1280px;
+  margin: 24px auto 80px auto;
+  padding: 0 48px;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 32px;
+}
+
+/* Sidebar Filters Panel */
+.sidebar-filter-panel {
+  background: #F5F3EF;
+  border-radius: 24px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  height: fit-content;
+}
+
+.filter-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--color-black);
+  margin-bottom: 12px;
+}
+
+.category-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.category-filter-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 0.2s ease;
+}
+
+.category-filter-item.active,
+.category-filter-item:hover {
+  color: var(--color-black);
+  font-weight: 600;
+}
+
+.category-count {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.range-slider-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.price-inputs-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Pagination Bar */
+.pagination-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 48px;
+}
+
+.page-num-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.page-num-btn.active {
+  background: var(--color-black);
+  color: #FFFFFF;
+  border-color: var(--color-black);
+}
+
+@media (max-width: 992px) {
+  .catalog-main-grid {
+    grid-template-columns: 1fr;
+    padding: 0 20px;
+  }
+}

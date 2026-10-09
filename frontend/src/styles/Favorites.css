@@ -1,0 +1,32 @@
+/* ============================================
+   VESTORA — Saved Favorites & Wishlist Stylesheet
+   Extracted from Figma "VESTORA — Sản Phẩm Yêu Thích.png"
+   ============================================ */
+
+.favorites-page-container {
+  background: var(--color-bg-page);
+  min-height: 100vh;
+  font-family: var(--font-body);
+}
+
+.fav-header-hero {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 48px 24px 48px;
+}
+
+.fav-grid-container {
+  max-width: 1280px;
+  margin: 24px auto 80px auto;
+  padding: 0 48px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+@media (max-width: 992px) {
+  .fav-grid-container {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 0 20px;
+  }
+}

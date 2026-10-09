@@ -1,0 +1,699 @@
+/* ============================================
+   VESTORA — Product Detail & Rental Booking Styles
+   Extracted from Figma Design Tokens
+   ============================================ */
+
+.product-detail-page {
+  background: var(--color-bg-page);
+  min-height: 100vh;
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+}
+
+/* Metadata / Breadcrumb Bar */
+.breadcrumb-bar {
+  background: rgba(245, 243, 239, 0.85);
+  border-bottom: 1px solid var(--color-border-light);
+  padding: 12px 0;
+  font-size: 13px;
+}
+
+.breadcrumb-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.breadcrumb-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-secondary);
+}
+
+.breadcrumb-nav a {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.breadcrumb-nav a:hover {
+  color: var(--color-gold-deep);
+}
+
+.breadcrumb-separator {
+  color: #C4C7C7;
+  font-size: 10px;
+}
+
+.breadcrumb-current {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.product-availability-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--color-gold-deep);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-success);
+  display: inline-block;
+}
+
+/* Main Layout Grid */
+.product-main-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 40px 80px 40px;
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 48px;
+}
+
+@media (max-width: 992px) {
+  .product-main-container {
+    grid-template-columns: 1fr;
+    padding: 24px 20px;
+    gap: 32px;
+  }
+}
+
+/* LEFT COLUMN: Gallery & Atelier Specs */
+.gallery-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.master-stage-gallery {
+  position: relative;
+  background: var(--color-bg-card);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  aspect-ratio: 1 / 1;
+}
+
+.master-stage-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.master-stage-gallery:hover .master-stage-image {
+  transform: scale(1.02);
+}
+
+.stage-badge-top-left {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(236, 253, 245, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--color-success);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.ai-fitting-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ai-fitting-btn:hover {
+  background: var(--color-black);
+  color: var(--color-gold);
+  border-color: var(--color-gold);
+}
+
+.stage-caption-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 20px 24px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 100%);
+  color: #FFFFFF;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.stage-caption-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* Thumbnail Reel */
+.thumbnail-reel {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.thumb-item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  background: #EAE8E4;
+}
+
+.thumb-item.active {
+  border-color: var(--color-black);
+  box-shadow: 0 0 0 2px var(--color-black);
+}
+
+.thumb-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-overlay-tag {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #FFF;
+  font-size: 9px;
+  text-align: center;
+  padding: 2px 0;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Haute Trust Bar */
+.trust-bar {
+  background: var(--color-bg-card);
+  border-radius: 20px;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.trust-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trust-icon-box {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  color: var(--color-gold-deep);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.trust-text-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 2px;
+}
+
+.trust-text-desc {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+/* Atelier Notes Banner */
+.atelier-notes-card {
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid var(--color-gold);
+}
+
+.atelier-notes-title {
+  font-family: var(--font-title);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.atelier-notes-desc {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.btn-atelier-consult {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  padding: 8px 18px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.btn-atelier-consult:hover {
+  background: var(--color-black);
+  color: #FFF;
+}
+
+/* RIGHT COLUMN: Sticky Booking Module */
+.booking-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+
+}
+
+.sticky-booking-card {
+  position: sticky;
+  top: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Atelier Brand Card */
+.atelier-brand-header {
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow-sm);
+}
+
+.atelier-logo-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #EFEEEA;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-title);
+  font-weight: 700;
+  color: var(--color-gold-deep);
+  font-size: 20px;
+}
+
+.atelier-name-info {
+  flex: 1;
+  margin-left: 12px;
+}
+
+.atelier-name {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.verified-icon {
+  color: var(--color-success);
+  font-size: 14px;
+}
+
+.atelier-meta {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.btn-follow-shop {
+  background: var(--color-bg-card);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+/* Product Header */
+.product-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.product-tag-sku {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tag-haute-couture {
+  background: #FEDEB2;
+  color: #78603E;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.sku-text {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.product-main-title {
+  font-family: var(--font-title);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--color-black);
+}
+
+/* Pricing Card */
+.pricing-card {
+  background: var(--color-bg-card);
+  border-radius: 20px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.rental-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.rental-price-main {
+  font-family: var(--font-title);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-black);
+}
+
+.rental-duration-label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin-left: 6px;
+}
+
+.deposit-badge {
+  background: #E4E2DE;
+  color: var(--color-gold-deep);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.deposit-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+/* Size Selection */
+.size-selection-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.size-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.size-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.size-guide-btn {
+  background: none;
+  border: none;
+  color: var(--color-gold-deep);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.size-guide-btn:hover {
+  text-decoration: underline;
+}
+
+.size-options-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.size-btn {
+  height: 44px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.size-btn.disabled {
+  background: rgba(234, 232, 228, 0.6);
+  color: #C4C7C7;
+  text-decoration: line-through;
+  cursor: not-allowed;
+  border-color: transparent;
+}
+
+.size-btn.active {
+  background: var(--color-black);
+  color: #FFFFFF;
+  border-color: var(--color-black);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.size-btn:hover:not(.disabled):not(.active) {
+  border-color: var(--color-gold);
+}
+
+/* Active Size Specs Bar */
+.size-specs-bar {
+  background: var(--color-bg-card);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.size-specs-bar strong {
+  color: var(--color-text-primary);
+}
+
+/* Rental Duration Picker */
+.rental-date-picker {
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.date-picker-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+
+}
+
+.duration-pills {
+  display: flex;
+  gap: 8px;
+}
+
+.duration-pill {
+  flex: 1;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: #FFFFFF;
+  text-align: center;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.duration-pill.active {
+  background: var(--color-gold-deep);
+  color: #FFFFFF;
+  border-color: var(--color-gold-deep);
+}
+
+.date-inputs-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.date-input-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.date-input-field label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--color-text-secondary);
+}
+
+.date-input-field input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  font-family: var(--font-body);
+  font-size: 13px;
+  outline: none;
+}
+
+.date-input-field input:focus {
+  border-color: var(--color-gold);
+}
+
+/* CTA Action Buttons */
+.action-buttons-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn-book-now {
+  background: var(--color-black);
+  color: #FFFFFF;
+  border: none;
+  padding: 16px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  text-align: center;
+}
+
+.btn-book-now:hover {
+  background: var(--color-gold-deep);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(114, 91, 56, 0.3);
+}
+
+.btn-add-cart {
+  background: #FFFFFF;
+  color: var(--color-black);
+  border: 1px solid var(--color-black);
+  padding: 14px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.btn-add-cart:hover {
+  background: var(--color-bg-card);
+}

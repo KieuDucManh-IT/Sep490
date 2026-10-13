@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import AdminSidebar from '../../components/AdminSidebar';
+import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
 
 export default function AdminShopsPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const stores = [
     {
@@ -63,158 +65,148 @@ export default function AdminShopsPage() {
     },
   ];
 
+  const filteredStores = stores.filter(s => 
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.owner.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="admin-layout">
-      {/* Sidebar */}
-      <AdminSidebar />
+      {/* 1. Sidebar */}
+      <AdminSidebar 
+        isCollapsed={isSidebarCollapsed} 
+        onToggle={() => setIsSidebarCollapsed(prev => !prev)} 
+      />
 
-      {/* Main Area */}
+      {/* 2. Main Viewport with Top Header */}
       <div className="admin-main-viewport">
-        {/* Top Header */}
-        <header className="admin-top-header">
-          <div style={{ fontSize: '13px', fontWeight: 600 }}>
-            VESTORA | <span style={{ color: '#8B5CF6' }}>Admin Console</span>
-          </div>
+        <AdminTopHeader 
+          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)} 
+          breadcrumb="Quản Lý Gian Hàng Đối Tác"
+        />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <span style={{ fontSize: '11px', background: '#ECFDF5', color: '#059669', padding: '4px 12px', borderRadius: '9999px', fontWeight: 600 }}>
-              ● HOẠT ĐỘNG
-            </span>
-            <span style={{ fontSize: '18px', cursor: 'pointer' }}>🔔</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img
-                src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80"
-                alt="Admin Avatar"
-                style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
-              />
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>Lê Hoàng Long</div>
-                <div style={{ fontSize: '10px', color: '#6B7280' }}>Quản Trị Viên</div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Content */}
-        <div className="admin-scroll-content">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* 3. Content Body */}
+        <div className="admin-content-body">
+          {/* Page Hero */}
+          <div className="admin-page-hero">
             <div>
-              <div style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600 }}>Trang Chủ Admin &gt; Quản Lý Gian Hàng</div>
-              <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '32px', margin: '4px 0 4px 0' }}>
-                Quản Lý Gian Hàng
-              </h1>
-              <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+              <h1 className="admin-page-title">Quản Lý Gian Hàng Đối Tác VESTORA</h1>
+              <p className="admin-page-desc">
                 Giám sát hoạt động kinh doanh và trạng thái các đối tác mở gian hàng trên VESTORA.
               </p>
             </div>
-
-            <button className="btn-secondary" style={{ fontSize: '11px' }}>KỲ BÁO CÁO: THÁNG 05/2024</button>
+            <button className="btn-tail-outline">
+              Kỳ báo cáo: Tháng 10/2026
+            </button>
           </div>
 
           {/* 4 Metrics Grid */}
-          <div className="admin-metrics-grid">
-            <div className="admin-card-metric">
-              <div style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600 }}>TỔNG GIAN HÀNG</div>
-              <div style={{ fontFamily: 'var(--font-title)', fontSize: '32px', fontWeight: 700, margin: '8px 0 4px 0' }}>148</div>
-              <div style={{ fontSize: '11px', color: '#6B7280' }}>Toàn bộ đối tác</div>
+          <div className="admin-kpi-grid">
+            <div className="admin-kpi-card">
+              <span className="admin-kpi-title">TỔNG GIAN HÀNG</span>
+              <div className="admin-kpi-value" style={{ margin: '8px 0' }}>148</div>
+              <span className="admin-kpi-trend neutral">Toàn bộ đối tác</span>
             </div>
 
-            <div className="admin-card-metric">
-              <div style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600 }}>ĐANG HOẠT ĐỘNG</div>
-              <div style={{ fontFamily: 'var(--font-title)', fontSize: '32px', fontWeight: 700, color: '#059669', margin: '8px 0 4px 0' }}>139</div>
-              <div style={{ fontSize: '11px', color: '#059669' }}>↗ Tỷ lệ 93.9%</div>
+            <div className="admin-kpi-card">
+              <span className="admin-kpi-title">ĐANG HOẠT ĐỘNG</span>
+              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#10B981' }}>139</div>
+              <span className="admin-kpi-trend positive">↗ Tỷ lệ 93.9%</span>
             </div>
 
-            <div className="admin-card-metric">
-              <div style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600 }}>TẠM NGƯNG</div>
-              <div style={{ fontFamily: 'var(--font-title)', fontSize: '32px', fontWeight: 700, color: '#D97706', margin: '8px 0 4px 0' }}>6</div>
-              <div style={{ fontSize: '11px', color: '#D97706' }}>Cần rà soát</div>
+            <div className="admin-kpi-card">
+              <span className="admin-kpi-title">TẠM NGƯNG</span>
+              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#D97706' }}>6</div>
+              <span className="admin-kpi-trend neutral">Cần rà soát hợp đồng</span>
             </div>
 
-            <div className="admin-card-metric">
-              <div style={{ fontSize: '11px', color: '#6B7280', fontWeight: 600 }}>ĐÃ ĐÓNG</div>
-              <div style={{ fontFamily: 'var(--font-title)', fontSize: '32px', fontWeight: 700, color: '#DC2626', margin: '8px 0 4px 0' }}>3</div>
-              <div style={{ fontSize: '11px', color: '#DC2626' }}>Hủy tư cách</div>
+            <div className="admin-kpi-card">
+              <span className="admin-kpi-title">ĐÃ ĐÓNG</span>
+              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#EF4444' }}>3</div>
+              <span className="admin-kpi-trend neutral">Hủy tư cách</span>
             </div>
           </div>
 
           {/* Table Card */}
-          <div className="admin-panel-card">
-            {/* Search & Action Bar */}
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-                <div className="search-input-box" style={{ width: '280px' }}>
-                  <span>🔍</span>
+          <div className="admin-card-table-wrapper">
+            <div className="admin-card-table-header">
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div className="admin-search-wrapper" style={{ width: '260px' }}>
+                  <span className="admin-search-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </span>
                   <input
                     type="text"
+                    className="admin-search-input"
                     placeholder="Tìm theo tên shop..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <select style={{ padding: '8px 16px', borderRadius: '9999px', border: '1px solid #E5E7EB', fontSize: '12px' }}>
-                  <option>Trạng thái: Tất cả</option>
-                </select>
-                <select style={{ padding: '8px 16px', borderRadius: '9999px', border: '1px solid #E5E7EB', fontSize: '12px' }}>
-                  <option>Phân loại: Tất cả</option>
-                </select>
               </div>
 
-              <button className="btn-secondary" style={{ fontSize: '12px' }}>📤 Xuất Báo Cáo Gian Hàng</button>
+              <button className="btn-tail-gold">
+                📤 Xuất Báo Cáo Gian Hàng
+              </button>
             </div>
 
-            {/* Stores Table */}
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  <th>LOGO & TÊN SHOP</th>
-                  <th>CHỦ SHOP</th>
-                  <th>SỐ SP</th>
-                  <th>DOANH THU THÁNG</th>
-                  <th>ĐÁNH GIÁ TB</th>
-                  <th>TRẠNG THÁI</th>
-                  <th>HÀNH ĐỘNG</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stores.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                        <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#F3F4F6', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>
-                          {s.logo}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: '14px' }}>{s.name}</div>
-                          <div style={{ fontSize: '10px', color: '#9CA3AF' }}>Mã: {s.id}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td><strong>{s.owner}</strong></td>
-                    <td>{s.productsCount}</td>
-                    <td><strong style={{ color: 'var(--color-black)' }}>{s.monthlyRevenue}</strong></td>
-                    <td>★ {s.rating}</td>
-                    <td>
-                      <span className={`status-chip status-${s.statusType}`}>
-                        ● {s.status}
-                      </span>
-                    </td>
-                    <td>
-                      <button className="btn-secondary" style={{ fontSize: '11px', padding: '4px 10px', marginRight: '6px' }}>
-                        Xem Chi Tiết
-                      </button>
-                      <button style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>
-                        {s.status === 'Tạm Ngưng' ? 'Kích Hoạt' : 'Tạm Ngưng'}
-                      </button>
-                    </td>
+            <div className="tailadmin-table-container">
+              <table className="tailadmin-table">
+                <thead>
+                  <tr>
+                    <th>LOGO & TÊN SHOP</th>
+                    <th>CHỦ SHOP</th>
+                    <th>SỐ SP</th>
+                    <th>DOANH THU THÁNG</th>
+                    <th>ĐÁNH GIÁ TB</th>
+                    <th>TRẠNG THÁI</th>
+                    <th>HÀNH ĐỘNG</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredStores.map((s) => (
+                    <tr key={s.id}>
+                      <td>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#F1F5F9', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: '#C5A880', border: '1px solid #E2E8F0' }}>
+                            {s.logo}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: '13px', color: '#171717' }}>{s.name}</div>
+                            <div style={{ fontSize: '11px', color: '#94A3B8' }}>Mã: {s.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td><strong>{s.owner}</strong></td>
+                      <td>{s.productsCount}</td>
+                      <td><strong style={{ color: '#171717' }}>{s.monthlyRevenue}</strong></td>
+                      <td><span style={{ color: '#F59E0B' }}>★</span> {s.rating}</td>
+                      <td>
+                        <span className={`status-pill ${s.status === 'Đang Hoạt Động' ? 'instock' : 'pending'}`}>
+                          ● {s.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button className="btn-tail-outline" style={{ padding: '6px 10px', fontSize: '11px' }}>
+                            Xem Chi Tiết
+                          </button>
+                          <button className="btn-tail-outline" style={{ padding: '6px 10px', fontSize: '11px', color: '#EF4444', borderColor: '#FECACA' }}>
+                            {s.status === 'Tạm Ngưng' ? 'Kích Hoạt' : 'Tạm Ngưng'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

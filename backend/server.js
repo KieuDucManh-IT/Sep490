@@ -1,58 +1,105 @@
-require("dotenv").config();
+import "dotenv/config";
 
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
+import express from "express";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import http from "node:http";
 
-const authRoutes = require("./src/routes/authRoutes");
-const User = require("./src/models/User");
+import connectDB from "./src/config/db.js";
+import User from "./src/models/User.js";
+import authRoutes from "./src/routes/authRoutes.js";
+
+import {
+  notFound,
+  errorHandler,
+} from "./src/middleware/errorMiddleware.js";
+
+import {
+  verifyEmailConnection,
+} from "./src/utils/sendEmail.js";
 
 const app = express();
+const httpServer = http.createServer(app);
 
-const allowedOrigins = (
-  process.env.CLIENT_URL ||
-  "http://localhost:3000,http://127.0.0.1:3000"
-)
-  .split(",")
-  .map((origin) => origin.trim());
+const PORT = Number(process.env.PORT || 5000);
 
+const CLIENT_URL =
+  process.env.CLIENT_URL || "http://localhost:3000";
+
+// Cho phép frontend gửi và nhận cookie đăng nhập.
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: CLIENT_URL,
+    credentials: true,
   })
 );
 
-app.use(express.json());
+// Đọc JSON từ frontend.
+app.use(express.json({ limit: "20kb" }));
 
+// Đọc cookie và đưa vào req.cookies.
+// Phải đặt trước các routes.
+app.use(cookieParser());
+
+app.get("/", (req, res) => {
+  res.json({
+    message: "VESTORA API đang hoạt động",
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    success: true,
+    service: "backend",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Đăng ký, đăng nhập, lấy tài khoản, đăng xuất.
 app.use("/api/auth", authRoutes);
 
-app.use((error, req, res, next) => {
-  console.error("Lỗi API:", error.name, error.code || "");
+// Sau tất cả routes.
+app.use(notFound);
+app.use(errorHandler);
 
-  res.status(error.status || 500).json({
-    message: error.status
-      ? error.message
-      : "Có lỗi phía server. Vui lòng thử lại",
-  });
+httpServer.on("error", (error) => {
+  console.error(
+    "Lỗi HTTP server:",
+    error.code === "EADDRINUSE"
+      ? `Cổng ${PORT} đang được sử dụng`
+      : error.message
+  );
+
+  process.exit(1);
 });
 
 async function startServer() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    if (!process.env.JWT_SECRET?.trim()) {
+      throw new Error("Thiếu JWT_SECRET trong backend/.env");
+    }
 
-    // Đợi tạo index để kiểm tra email trùng.
+    await connectDB();
     await User.init();
+    await verifyEmailConnection();
 
-    console.log("Đã kết nối database:", mongoose.connection.name);
-    console.log("Collection tài khoản:", User.collection.name);
+    console.log(
+      "Collection tài khoản:",
+      User.collection.name
+    );
 
-    const port = process.env.PORT || 5000;
-
-    app.listen(port, () => {
-      console.log(`Backend đang chạy tại http://localhost:${port}`);
+    httpServer.listen(PORT, () => {
+      console.log(
+        `Backend đang chạy tại http://localhost:${PORT}`
+      );
     });
   } catch (error) {
-    console.error("Lỗi khởi động backend:", error.message);
+    console.error("Không thể khởi động backend:", {
+      name: error.name,
+      code: error.code,
+      message: error.message,
+    });
+
     process.exit(1);
   }
 }

@@ -2,20 +2,25 @@ const API_URL = (
   process.env.REACT_APP_API_URL || "http://localhost:5000/api"
 ).replace(/\/$/, "");
 
-async function post(path, body) {
+async function request(path, { method = "GET", body } = {}) {
   let response;
 
   try {
     response = await fetch(`${API_URL}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+      method,
+      credentials: "include",
+      cache: "no-store",
+      headers:
+        body === undefined
+          ? {}
+          : { "Content-Type": "application/json" },
+      ...(body === undefined
+        ? {}
+        : { body: JSON.stringify(body) }),
     });
   } catch {
     throw new Error(
-      "Không kết nối được backend. Kiểm tra backend đang chạy và cấu hình CORS."
+      "Không kết nối được backend. Kiểm tra server và cấu hình CORS."
     );
   }
 
@@ -30,17 +35,32 @@ async function post(path, body) {
   }
 
   if (!response.ok) {
-    throw new Error(data.message || "Yêu cầu không thành công");
+    const error = new Error(
+      data.message || "Yêu cầu không thành công"
+    );
+
+    error.status = response.status;
+    throw error;
   }
 
   return data;
 }
 
+function post(path, body) {
+  return request(path, {
+    method: "POST",
+    body,
+  });
+}
+
+// Giữ chức năng đăng ký.
 export async function requestRegisterOtp(formData) {
   const data = await post("/auth/register", formData);
 
   if (!data.email || !data.challengeId) {
-    throw new Error("Backend chưa trả về thông tin xác minh OTP");
+    throw new Error(
+      "Backend chưa trả về thông tin xác minh OTP"
+    );
   }
 
   return data;
@@ -50,8 +70,34 @@ export async function verifyRegisterOtp(payload) {
   const data = await post("/auth/register/verify-otp", payload);
 
   if (!data.user?.id) {
-    throw new Error("Chưa nhận được xác nhận tạo tài khoản từ backend");
+    throw new Error(
+      "Chưa nhận được xác nhận tạo tài khoản từ backend"
+    );
   }
 
   return data;
+}
+
+// Đăng nhập không OTP.
+export async function loginApi(email, password) {
+  const data = await post("/auth/login", {
+    email,
+    password,
+  });
+
+  if (!data.user?.id) {
+    throw new Error(
+      "Backend chưa trả về thông tin tài khoản"
+    );
+  }
+
+  return data;
+}
+
+export function getMeApi() {
+  return request("/auth/me");
+}
+
+export function logoutApi() {
+  return post("/auth/logout", {});
 }

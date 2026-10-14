@@ -93,14 +93,23 @@ export default function RegisterPage() {
 
     const newErrors = {};
 
-    const fullName = formData.fullName.trim();
+    const fullName = formData.fullName
+      .normalize("NFC")
+      .trim()
+      .replace(/ +/g, " ");
     const email = formData.email.trim().toLowerCase();
     const phone = formData.phone.replace(/\s/g, "");
 
+    const fullNameRegex =
+      /^[A-Za-zÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐĨŨƠƯàáâãèéêìíòóôõùúýăđĩũơưẠ-ỹ ]+$/u;
+
     if (!fullName) {
       newErrors.fullName = "Vui lòng nhập họ và tên";
-    } else if (fullName.length > 100) {
-      newErrors.fullName = "Họ tên không được vượt quá 100 ký tự";
+    } else if ([...fullName].length > 12) {
+      newErrors.fullName = "Họ tên tối đa 12 ký tự, tính cả khoảng trắng";
+    } else if (!fullNameRegex.test(fullName)) {
+      newErrors.fullName =
+        "Họ tên chỉ được chứa chữ cái tiếng Việt và khoảng trắng";
     }
 
     if (!email) {
@@ -118,12 +127,25 @@ export default function RegisterPage() {
       newErrors.phone = "Số điện thoại không hợp lệ";
     }
 
-    if (!formData.password) {
+    const password = formData.password;
+
+    if (!password) {
       newErrors.password = "Vui lòng nhập mật khẩu";
-    } else if (formData.password.length < 8) {
-      newErrors.password = "Mật khẩu phải có ít nhất 8 ký tự";
-    } else if (new TextEncoder().encode(formData.password).length > 72) {
-      newErrors.password = "Mật khẩu không được vượt quá 72 byte";
+    } else if (
+      [...password].length < 9 ||
+      [...password].length > 16
+    ) {
+      newErrors.password = "Mật khẩu phải có từ 9 đến 16 ký tự";
+    } else if (/\s/u.test(password)) {
+      newErrors.password = "Mật khẩu không được chứa khoảng trắng";
+    } else if (
+      !/\p{Lu}/u.test(password) ||
+      !/\p{Ll}/u.test(password) ||
+      !/[0-9]/.test(password) ||
+      !/[!-/:-@[-`{-~]/.test(password)
+    ) {
+      newErrors.password =
+        "Mật khẩu phải có chữ hoa, chữ thường, số và dấu câu, ví dụ ! @ # ?";
     }
 
     if (!formData.confirmPassword) {
@@ -264,18 +286,19 @@ export default function RegisterPage() {
       </label>
 
       <div
-        className={`register-input-box ${
-          errors[name] ? "has-error" : ""
-        }`}
+        className={`register-input-box ${errors[name] ? "has-error" : ""
+          }`}
       >
         <input
           id={name}
           name={name}
           type={visible ? "text" : "password"}
           autoComplete="new-password"
+          minLength={9}
+          maxLength={16}
           placeholder={
             name === "password"
-              ? "Ít nhất 8 ký tự"
+              ? "Từ 9–16 ký tự"
               : "Nhập lại mật khẩu"
           }
           value={formData[name]}
@@ -291,9 +314,8 @@ export default function RegisterPage() {
           className="register-toggle"
           onClick={() => setVisible((prev) => !prev)}
           disabled={busy}
-          aria-label={`${visible ? "Ẩn" : "Hiện"} ${
-            name === "password" ? "mật khẩu" : "mật khẩu xác nhận"
-          }`}
+          aria-label={`${visible ? "Ẩn" : "Hiện"} ${name === "password" ? "mật khẩu" : "mật khẩu xác nhận"
+            }`}
           aria-pressed={visible}
         >
           <svg
@@ -629,13 +651,13 @@ export default function RegisterPage() {
               </label>
 
               <div
-                className={`register-input-box ${
-                  errors[field.name] ? "has-error" : ""
-                }`}
+                className={`register-input-box ${errors[field.name] ? "has-error" : ""
+                  }`}
               >
                 <input
                   id={field.name}
                   name={field.name}
+                  maxLength={field.name === "fullName" ? 12 : undefined}
                   type={field.type}
                   autoComplete={field.autoComplete}
                   placeholder={field.placeholder}

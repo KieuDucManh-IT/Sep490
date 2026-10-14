@@ -1,11 +1,18 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-export const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/vestora');
-    console.log(`🍃 [VESTORA DB] MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.warn(`⚠️ [VESTORA DB] MongoDB Connection Warning: ${error.message}`);
-    console.log(`💡 Running backend in API Mock & In-Memory Mode.`);
+export default async function connectDB() {
+  if (!process.env.MONGODB_URI) {
+    throw new Error("Thiếu MONGODB_URI trong backend/.env");
   }
-};
+
+  const connection = await mongoose.connect(
+    process.env.MONGODB_URI
+  );
+
+  console.log(
+    "Đã kết nối MongoDB:",
+    connection.connection.name
+  );
+
+  return connection;
+}

@@ -1,6 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+
 // Auth Pages Domain
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
@@ -43,53 +46,62 @@ import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        {/* Customer Portal Routes */}
-        <Route path="/" element={<HomePage />} />
-        <Route path="/catalog" element={<CatalogPage />} />
-        <Route path="/product" element={<ProductDetailPage />} />
-        <Route path="/product/:id" element={<ProductDetailPage />} />
-        <Route path="/cart" element={<CartPage />} />
-        <Route path="/favorites" element={<FavoritesPage />} />
-        <Route path="/map" element={<ShopMapPage />} />
-        <Route path="/profile" element={<UserProfilePage />} />
-        <Route path="/register-shop" element={<RegisterShopPage />} />
-        <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
-        <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
+    <AuthProvider>
+      <Router>
+        <Routes>
+          {/* Customer Portal Routes */}
+          <Route path="/" element={<HomePage />} />
+          <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/product" element={<ProductDetailPage />} />
+          <Route path="/product/:id" element={<ProductDetailPage />} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="/map" element={<ShopMapPage />} />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <UserProfilePage />
+              </ProtectedRoute>
+            }
+          />          
+          <Route path="/register-shop" element={<RegisterShopPage />} />
+          <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
+          <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
-        {/* Auth Routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* Auth Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Shop Merchant Routes */}
-        <Route path="/shop/dashboard" element={<ShopDashboardPage />} />
-        <Route path="/shop/analytics" element={<ShopAnalyticsPage />} />
-        <Route path="/shop/products" element={<ShopProductsPage />} />
-        <Route path="/shop/products/new" element={<ShopAddProductPage />} />
-        <Route path="/shop/rental-orders" element={<ShopRentalOrdersPage />} />
-        <Route path="/shop/sale-orders" element={<ShopSaleOrdersPage />} />
-        <Route path="/shop/inventory" element={<ShopInventoryPage />} />
-        <Route path="/shop/returns" element={<ShopReturnsPage />} />
-        <Route path="/shop/pricing" element={<ShopPricingPage />} />
-        <Route path="/shop/reviews" element={<ShopReviewsPage />} />
-        <Route path="/shop/settings" element={<ShopSettingsPage />} />
-        <Route path="/shop/branches" element={<ShopBranchesPage />} />
+          {/* Shop Merchant Routes */}
+          <Route path="/shop/dashboard" element={<ShopDashboardPage />} />
+          <Route path="/shop/analytics" element={<ShopAnalyticsPage />} />
+          <Route path="/shop/products" element={<ShopProductsPage />} />
+          <Route path="/shop/products/new" element={<ShopAddProductPage />} />
+          <Route path="/shop/rental-orders" element={<ShopRentalOrdersPage />} />
+          <Route path="/shop/sale-orders" element={<ShopSaleOrdersPage />} />
+          <Route path="/shop/inventory" element={<ShopInventoryPage />} />
+          <Route path="/shop/returns" element={<ShopReturnsPage />} />
+          <Route path="/shop/pricing" element={<ShopPricingPage />} />
+          <Route path="/shop/reviews" element={<ShopReviewsPage />} />
+          <Route path="/shop/settings" element={<ShopSettingsPage />} />
+          <Route path="/shop/branches" element={<ShopBranchesPage />} />
 
-        {/* Admin System Routes */}
-        <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-        <Route path="/admin/shops" element={<AdminShopsPage />} />
-        <Route path="/admin/accounts" element={<AdminAccountsPage />} />
-        <Route path="/admin/moderation" element={<AdminModerationPage />} />
-        <Route path="/admin/disputes" element={<AdminDisputesPage />} />
-        <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+          {/* Admin System Routes */}
+          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+          <Route path="/admin/shops" element={<AdminShopsPage />} />
+          <Route path="/admin/accounts" element={<AdminAccountsPage />} />
+          <Route path="/admin/moderation" element={<AdminModerationPage />} />
+          <Route path="/admin/disputes" element={<AdminDisputesPage />} />
+          <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
 
-        {/* Fallback Catch-All */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+          {/* Fallback Catch-All */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 

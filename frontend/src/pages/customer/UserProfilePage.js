@@ -1,276 +1,611 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
-import '../../styles/UserProfile.css';
+import React, { useEffect, useState } from "react";
+import {
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
+import Navbar from "../../components/Navbar";
+import Footer from "../../components/Footer";
+import { useAuth } from "../../context/AuthContext";
+
+import "../../styles/UserProfile.css";
+
+const ROLE_LABELS = {
+  customer: "Khách hàng",
+  shop_owner: "Chủ cửa hàng",
+  admin: "Quản trị viên",
+  operation_staff: "Nhân viên vận hành",
+};
+
+function getProfile(user) {
+  return {
+    fullName: user?.fullName || "",
+    email: user?.email || "",
+    phone: user?.information?.[0]?.Phone || "",
+    address: user?.information?.[0]?.Address || "",
+  };
+}
 
 export default function UserProfilePage() {
   const navigate = useNavigate();
-  const [isEditing, setIsEditing] = useState(false);
-  const [userInfo, setUserInfo] = useState({
-    fullName: 'Nguyễn Minh Anh',
-    email: 'minhanh@email.com',
-    phone: '0912 345 678',
-    address: '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
-  });
+  const location = useLocation();
 
-  const handleSave = (e) => {
-    e.preventDefault();
+  const {
+    user,
+    loading,
+    authError,
+    refreshUser,
+    logout,
+  } = useAuth();
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [failedAvatar, setFailedAvatar] = useState("");
+
+  const [userInfo, setUserInfo] = useState(() =>
+    getProfile(user)
+  );
+
+  // User được lấy bất đồng bộ khi reload trang.
+  // Cập nhật form sau khi AuthContext nhận được dữ liệu.
+  useEffect(() => {
+    setUserInfo(getProfile(user));
     setIsEditing(false);
-    alert('Cập nhật thông tin hồ sơ cá nhân thành công!');
+    setNotice("");
+  }, [user]);
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+
+    setUserInfo((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+
+    setNotice("");
   };
+
+  const handleToggleEdit = () => {
+    // Khi mở hoặc hủy chỉnh sửa, lấy lại dữ liệu đã lưu.
+    setUserInfo(getProfile(user));
+    setIsEditing((previous) => !previous);
+    setNotice("");
+  };
+
+  const handleSave = (event) => {
+    event.preventDefault();
+
+    // Chưa có API cập nhật hồ sơ trong phần login.
+    // Không thay dữ liệu tài khoản hoặc báo lưu thành công giả.
+    setNotice(
+      "Chưa lưu thay đổi: chức năng cập nhật hồ sơ chưa được kết nối với backend."
+    );
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    setLogoutError("");
+
+    try {
+      await logout();
+
+      navigate("/login", {
+        replace: true,
+      });
+    } catch (error) {
+      setLogoutError(
+        error.message || "Đăng xuất thất bại. Vui lòng thử lại."
+      );
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  // Chờ /auth/me hoàn tất trước khi quyết định chuyển về login.
+  if (loading) {
+    return (
+      <div className="profile-page-container">
+        <Navbar />
+
+        <div
+          role="status"
+          style={{
+            padding: "60px 20px",
+            textAlign: "center",
+          }}
+        >
+          Đang tải thông tin tài khoản...
+        </div>
+
+        <Footer />
+      </div>
+    );
+  }
+
+  // Lỗi mạng không đồng nghĩa với đã đăng xuất.
+  if (!user && authError) {
+    return (
+      <div className="profile-page-container">
+        <Navbar />
+
+        <div
+          role="alert"
+          style={{
+            padding: "60px 20px",
+            textAlign: "center",
+          }}
+        >
+          <p>{authError}</p>
+
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={refreshUser}
+          >
+            Thử lại
+          </button>
+        </div>
+
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname }}
+      />
+    );
+  }
+
+  const profile = getProfile(user);
+  const roleLabel = ROLE_LABELS[user.role] || user.role;
+
+  const avatarInitial =
+    user.fullName?.trim().charAt(0).toUpperCase() || "U";
+
+  const showAvatar =
+    Boolean(user.avatar) && failedAvatar !== user.avatar;
 
   return (
     <div className="profile-page-container">
       <Navbar />
 
-      {/* Header Banner */}
+      {/* Header */}
       <div className="profile-header-hero">
-        <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '1px', color: '#666', marginBottom: '8px' }}>
+        <div
+          style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            letterSpacing: "1px",
+            color: "#666",
+            marginBottom: "8px",
+          }}
+        >
           TRANG CHỦ &gt; TÀI KHOẢN &gt; THÔNG TIN CÁ NHÂN
         </div>
-        <div style={{ fontSize: '10px', color: 'var(--color-gold-deep)', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '4px' }}>
-          🏛️ HỒ SƠ DANH GIÁ
+
+        <div
+          style={{
+            fontSize: "10px",
+            color: "var(--color-gold-deep)",
+            fontWeight: 700,
+            letterSpacing: "1.5px",
+            marginBottom: "4px",
+          }}
+        >
+          HỒ SƠ TÀI KHOẢN
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+            gap: "16px",
+          }}
+        >
           <div>
-            <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '40px', margin: '0 0 6px 0' }}>
+            <h1
+              style={{
+                fontFamily: "var(--font-title)",
+                fontSize: "40px",
+                margin: "0 0 6px",
+              }}
+            >
               Thông Tin Cá Nhân
             </h1>
-            <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
-              Quản lý danh tính hồ sơ, chuẩn mực đo lường trang phục và đặc quyền bảo chứng lưu trữ VESTORA Privé.
+
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#666",
+                margin: 0,
+              }}
+            >
+              Thông tin tài khoản của bạn trên VESTORA.
             </p>
           </div>
 
           <button
+            type="button"
             className="btn-primary"
-            style={{ fontSize: '12px' }}
-            onClick={() => setIsEditing(!isEditing)}
+            style={{ fontSize: "12px" }}
+            onClick={handleToggleEdit}
           >
-            {isEditing ? '✕ HỦY CHỈNH SỬA' : '✎ CHỈNH SỬA THÔNG TIN'}
+            {isEditing
+              ? "✕ HỦY CHỈNH SỬA"
+              : "✎ CHỈNH SỬA THÔNG TIN"}
           </button>
         </div>
       </div>
 
-      {/* Main Grid */}
       <div className="profile-main-grid">
-        {/* Left Sidebar User Card */}
+        {/* Sidebar */}
         <aside className="user-sidebar-card">
           <div className="user-avatar-wrapper">
-            <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80"
-              alt="Avatar"
-              className="user-avatar-img"
-            />
-            <button className="camera-edit-btn" title="Đổi ảnh đại diện">📷</button>
+            {showAvatar ? (
+              <img
+                src={user.avatar}
+                alt={`Ảnh đại diện của ${profile.fullName}`}
+                className="user-avatar-img"
+                onError={() => setFailedAvatar(user.avatar)}
+              />
+            ) : (
+              <div
+                className="user-avatar-img"
+                aria-label="Ảnh đại diện mặc định"
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  background: "#eee7dc",
+                  color: "#96723d",
+                  fontSize: "42px",
+                  fontWeight: 700,
+                }}
+              >
+                {avatarInitial}
+              </div>
+            )}
           </div>
 
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '22px', margin: '0 0 4px 0' }}>
-            {userInfo.fullName}
+          <h2
+            style={{
+              fontFamily: "var(--font-title)",
+              fontSize: "22px",
+              margin: "0 0 4px",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {profile.fullName}
           </h2>
-          <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>
-            Hội viên VIP Privé <strong>#VST-8899</strong>
+
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#666",
+              marginBottom: "12px",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {profile.email}
           </div>
-          <span style={{ background: '#ECFDF5', color: '#059669', fontSize: '10px', fontWeight: 700, padding: '4px 12px', borderRadius: '9999px' }}>
-            🛡️ KHÁCH HÀNG TINH HOA
+
+          <span
+            style={{
+              background: "#ECFDF5",
+              color: "#059669",
+              fontSize: "11px",
+              fontWeight: 700,
+              padding: "4px 12px",
+              borderRadius: "9999px",
+            }}
+          >
+            {roleLabel}
           </span>
 
           <div className="profile-nav-menu">
-            <button className="profile-nav-btn active">
+            <button
+              type="button"
+              className="profile-nav-btn active"
+              onClick={() => {
+                setIsEditing(false);
+                setUserInfo(getProfile(user));
+                setNotice("");
+              }}
+            >
               <span>👤 Thông Tin Cá Nhân</span>
               <span>›</span>
             </button>
-            <button className="profile-nav-btn" onClick={() => alert('Chuyển hướng Đổi Mật Khẩu')}>
-              <span>🔒 Đổi Mật Khẩu & Bảo Mật</span>
-              <span>›</span>
-            </button>
-            <button className="profile-nav-btn" onClick={() => navigate('/cart')}>
-              <span>🛍️ Đơn Thuê Của Tôi</span>
-              <span style={{ background: '#F3F4F6', padding: '2px 8px', borderRadius: '9999px', fontSize: '10px' }}>3</span>
-            </button>
-            <button className="profile-nav-btn" onClick={() => navigate('/favorites')}>
-              <span>♡ Sản Phẩm Yêu Thích</span>
-              <span style={{ background: '#F3F4F6', padding: '2px 8px', borderRadius: '9999px', fontSize: '10px' }}>12</span>
-            </button>
-            <button className="profile-nav-btn" onClick={() => navigate('/try-on-photo')}>
-              <span>👗 Tủ Đồ Lưu Trữ AI</span>
-              <span>›</span>
-            </button>
-            <button className="profile-nav-btn" onClick={() => alert('Cơ chế ký quỹ Escrow PayOS chuẩn A+')}>
-              <span>🛡️ Bảo Chứng Ký Quỹ</span>
-              <span>›</span>
-            </button>
+
             <button
+              type="button"
               className="profile-nav-btn"
-              style={{ color: '#DC2626', marginTop: '16px', borderTop: '1px solid #F3F4F6', paddingTop: '12px' }}
-              onClick={() => navigate('/login')}
+              onClick={() => navigate("/cart")}
             >
-              <span>🚪 Đăng Xuất Tài Khoản</span>
+              <span>🛍️ Giỏ Hàng Của Tôi</span>
+              <span>›</span>
             </button>
+
+            <button
+              type="button"
+              className="profile-nav-btn"
+              onClick={() => navigate("/favorites")}
+            >
+              <span>♡ Sản Phẩm Yêu Thích</span>
+              <span>›</span>
+            </button>
+
+            <button
+              type="button"
+              className="profile-nav-btn"
+              onClick={() => navigate("/try-on-photo")}
+            >
+              <span>👗 Thử Đồ Với Ảnh</span>
+              <span>›</span>
+            </button>
+
+            <button
+              type="button"
+              className="profile-nav-btn"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              style={{
+                color: "#DC2626",
+                marginTop: "16px",
+                borderTop: "1px solid #F3F4F6",
+                paddingTop: "12px",
+                opacity: loggingOut ? 0.6 : 1,
+              }}
+            >
+              <span>
+                {loggingOut
+                  ? "Đang đăng xuất..."
+                  : "🚪 Đăng Xuất Tài Khoản"}
+              </span>
+            </button>
+
+            {logoutError && (
+              <p
+                role="alert"
+                style={{
+                  color: "#DC2626",
+                  fontSize: "13px",
+                  padding: "0 12px",
+                }}
+              >
+                {logoutError}
+              </p>
+            )}
           </div>
         </aside>
 
-        {/* Right Details Panel */}
+        {/* Chi tiết hồ sơ */}
         <div className="profile-details-panel">
           <div className="info-card-white">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid #F3F4F6', paddingBottom: '16px' }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "12px",
+                marginBottom: "24px",
+                borderBottom: "1px solid #F3F4F6",
+                paddingBottom: "16px",
+              }}
+            >
               <div>
-                <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '20px', margin: 0 }}>Hồ Sơ Thành Viên</h3>
-                <div style={{ fontSize: '12px', color: '#666' }}>Thông tin chính thức được lưu trữ bảo mật dưới giao thức mã hóa dữ liệu cao cấp</div>
+                <h3
+                  style={{
+                    fontFamily: "var(--font-title)",
+                    fontSize: "20px",
+                    margin: 0,
+                  }}
+                >
+                  Hồ Sơ Thành Viên
+                </h3>
+
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#666",
+                    margin: "6px 0 0",
+                  }}
+                >
+                  Thông tin được lấy từ tài khoản đang đăng nhập.
+                </p>
               </div>
-              <span style={{ background: '#ECFDF5', color: '#059669', fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '9999px' }}>
-                🛡️ ĐÃ XÁC THỰC ESCROW 100%
+
+              <span
+                style={{
+                  background: "#ECFDF5",
+                  color: "#059669",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  padding: "4px 12px",
+                  borderRadius: "9999px",
+                }}
+              >
+                {user.status === "active"
+                  ? "ĐANG HOẠT ĐỘNG"
+                  : "KHÔNG HOẠT ĐỘNG"}
               </span>
             </div>
 
             {!isEditing ? (
               <div>
                 <div className="profile-table-row">
-                  <span style={{ color: '#666' }}>Họ và tên</span>
-                  <strong>{userInfo.fullName}</strong>
-                  <span style={{ fontSize: '10px', color: '#9CA3AF', textAlign: 'right' }}>ĐỊNH DANH CHÍNH CHỦ</span>
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: '#666' }}>Địa chỉ Email</span>
-                  <div>
-                    <strong>{userInfo.email}</strong>{' '}
-                    <span style={{ background: '#ECFDF5', color: '#059669', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>✓ Đã xác thực</span>
-                  </div>
-                  <span />
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: '#666' }}>Số điện thoại liên lạc</span>
-                  <strong>{userInfo.phone}</strong>
-                  <span style={{ fontSize: '10px', color: '#9CA3AF', textAlign: 'right' }}>🔒 ĐƯỜNG DÂY MÃ HÓA</span>
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: '#666' }}>Địa chỉ nhận trang phục mặc định</span>
-                  <div>
-                    <strong>{userInfo.address}</strong>
-                    <span style={{ fontSize: '10px', background: '#F3F4F6', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }}>MẶC ĐỊNH</span>
-                  </div>
-                  <span />
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: '#666' }}>Phân hạng tài khoản</span>
-                  <span style={{ background: '#FEF3C7', color: '#78350F', fontSize: '11px', fontWeight: 700, padding: '4px 12px', borderRadius: '9999px', display: 'inline-block' }}>
-                    💎 Khách Hàng Thượng Lưu (Privé Member)
+                  <span style={{ color: "#666" }}>
+                    Họ và tên
                   </span>
+
+                  <strong>{profile.fullName}</strong>
+
                   <span />
                 </div>
 
                 <div className="profile-table-row">
-                  <span style={{ color: '#666' }}>Thời gian đồng hành</span>
-                  <strong>15/03/2025</strong>
-                  <span style={{ fontSize: '11px', color: '#666', textAlign: 'right' }}>Hội viên năm thứ nhất</span>
+                  <span style={{ color: "#666" }}>
+                    Địa chỉ email
+                  </span>
+
+                  <strong
+                    style={{ overflowWrap: "anywhere" }}
+                  >
+                    {profile.email}
+                  </strong>
+
+                  <span />
                 </div>
 
                 <div className="profile-table-row">
-                  <span style={{ color: '#666' }}>Điểm tích lũy VESTORA</span>
-                  <div>
-                    <strong style={{ fontSize: '18px', color: 'var(--color-gold-deep)' }}>2.450 điểm</strong>{' '}
-                    <span style={{ background: '#FEF3C7', color: '#B45309', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>Hạng Hoàng Kim</span>
-                  </div>
-                  <button className="btn-secondary" style={{ fontSize: '10px', padding: '4px 10px', textAlign: 'right' }}>ĐỔI ĐẶC QUYỀN</button>
+                  <span style={{ color: "#666" }}>
+                    Số điện thoại liên lạc
+                  </span>
+
+                  <strong>
+                    {profile.phone || "Chưa cập nhật"}
+                  </strong>
+
+                  <span />
+                </div>
+
+                <div className="profile-table-row">
+                  <span style={{ color: "#666" }}>
+                    Địa chỉ liên hệ
+                  </span>
+
+                  <strong
+                    style={{ overflowWrap: "anywhere" }}
+                  >
+                    {profile.address || "Chưa cập nhật"}
+                  </strong>
+
+                  <span />
+                </div>
+
+                <div className="profile-table-row">
+                  <span style={{ color: "#666" }}>
+                    Vai trò tài khoản
+                  </span>
+
+                  <strong>{roleLabel}</strong>
+
+                  <span />
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSave} className="auth-form">
+              <form
+                onSubmit={handleSave}
+                className="auth-form"
+              >
+                <p
+                  style={{
+                    fontSize: "13px",
+                    color: "#666",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  Form chỉnh sửa chưa kết nối API lưu hồ sơ.
+                  Thông tin tài khoản chưa thay đổi khi bạn nhập
+                  vào các ô bên dưới.
+                </p>
+
                 <div className="form-group">
-                  <label>HỌ VÀ TÊN</label>
+                  <label htmlFor="profile-fullName">
+                    HỌ VÀ TÊN
+                  </label>
+
                   <input
+                    id="profile-fullName"
+                    name="fullName"
                     type="text"
+                    autoComplete="name"
                     value={userInfo.fullName}
-                    onChange={(e) => setUserInfo({ ...userInfo, fullName: e.target.value })}
+                    onChange={handleChange}
                   />
                 </div>
+
                 <div className="form-group">
-                  <label>ĐỊA CHỈ EMAIL</label>
+                  <label htmlFor="profile-email">
+                    ĐỊA CHỈ EMAIL
+                  </label>
+
                   <input
+                    id="profile-email"
+                    name="email"
                     type="email"
+                    autoComplete="email"
                     value={userInfo.email}
-                    onChange={(e) => setUserInfo({ ...userInfo, email: e.target.value })}
+                    readOnly
                   />
                 </div>
+
                 <div className="form-group">
-                  <label>SỐ ĐIỆN THOẠI</label>
+                  <label htmlFor="profile-phone">
+                    SỐ ĐIỆN THOẠI
+                  </label>
+
                   <input
-                    type="text"
+                    id="profile-phone"
+                    name="phone"
+                    type="tel"
+                    autoComplete="tel"
                     value={userInfo.phone}
-                    onChange={(e) => setUserInfo({ ...userInfo, phone: e.target.value })}
+                    onChange={handleChange}
                   />
                 </div>
+
                 <div className="form-group">
-                  <label>ĐỊA CHỈ NHẬN TRANG PHỤC MẶC ĐỊNH</label>
+                  <label htmlFor="profile-address">
+                    ĐỊA CHỈ LIÊN HỆ
+                  </label>
+
                   <input
+                    id="profile-address"
+                    name="address"
                     type="text"
+                    autoComplete="street-address"
                     value={userInfo.address}
-                    onChange={(e) => setUserInfo({ ...userInfo, address: e.target.value })}
+                    onChange={handleChange}
                   />
                 </div>
-                <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '12px' }}>
+
+                {notice && (
+                  <p
+                    role="status"
+                    style={{
+                      fontSize: "13px",
+                      color: "#B45309",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {notice}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{
+                    width: "100%",
+                    marginTop: "12px",
+                  }}
+                >
                   LƯU THAY ĐỔI HỒ SƠ
                 </button>
               </form>
             )}
-
-            {/* Stylist Concierge info banner */}
-            <div style={{ background: '#F5F3EF', borderRadius: '16px', padding: '16px 20px', marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '12px', color: '#666', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>ℹ️</span>
-                <span>Để thay đổi số đo cơ thể chuyên sâu cho trang phục may đo Haute Couture, vui lòng liên hệ trực tiếp Stylist Concierge.</span>
-              </div>
-              <button className="btn-primary" style={{ fontSize: '11px', padding: '6px 14px' }} onClick={() => alert('Liên hệ Stylist Privé Concierge: 1800 8899')}>
-                HẸN STYLIST 📞
-              </button>
-            </div>
-          </div>
-
-          {/* Activity Summary & Credit Rating */}
-          <div className="info-card-white">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '20px', margin: 0 }}>Tóm Tắt Hoạt Động & Độ Tin Cậy</h3>
-              <span style={{ fontSize: '11px', color: '#059669', fontWeight: 600 }}>● TÍN NHIỆM TUYỆT ĐỐI 100/100</span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-              <div style={{ background: '#F5F3EF', borderRadius: '16px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#666' }}>Đơn đang thuê</div>
-                  <div style={{ fontSize: '24px', fontWeight: 700 }}>03</div>
-                  <div style={{ fontSize: '10px', color: '#9CA3AF' }}>2 DẠ TIỆC • 1 THẢM ĐỎ</div>
-                </div>
-                <span style={{ fontSize: '24px' }}>🛍️</span>
-              </div>
-
-              <div style={{ background: '#F5F3EF', borderRadius: '16px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#666' }}>Món trong tủ đồ</div>
-                  <div style={{ fontSize: '24px', fontWeight: 700 }}>12</div>
-                  <div style={{ fontSize: '10px', color: '#9CA3AF' }}>KIỆT TÁC LƯU TRỮ CÁ NHÂN</div>
-                </div>
-                <span style={{ fontSize: '24px' }}>👗</span>
-              </div>
-
-              <div style={{ background: '#F5F3EF', borderRadius: '16px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#666' }}>Sự cố giao dịch</div>
-                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#059669' }}>00</div>
-                  <div style={{ fontSize: '10px', color: '#9CA3AF' }}>CHUẨN MỰC HOÀN HẢO</div>
-                </div>
-                <span style={{ fontSize: '24px' }}>🛡️</span>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-              <span style={{ color: '#666' }}>Chỉ số tin cậy ký quỹ bảo vệ hiện vật (Escrow Security Rating):</span>
-              <strong style={{ color: '#059669' }}>Cấp A+ (Ưu tiên bàn giao không cọc phụ)</strong>
-            </div>
           </div>
         </div>
       </div>
@@ -279,4 +614,3 @@ export default function UserProfilePage() {
     </div>
   );
 }
-

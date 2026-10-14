@@ -1,0 +1,181 @@
+.register-otp-modal {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid #eee5d6;
+  border-radius: 20px;
+  background: #fffdf9;
+  color: #28251f;
+  box-shadow: 0 24px 100px rgba(33, 27, 37, 0.2);
+}
+
+.register-otp-modal::backdrop {
+  background: rgba(27, 24, 20, 0.48);
+  backdrop-filter: blur(4px);
+}
+
+.register-otp-modal * {
+  box-sizing: border-box;
+}
+
+.register-otp-modal .otp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid #eee5d6;
+  color: #96723d;
+  font-size: 12px;
+  letter-spacing: 3px;
+}
+
+.register-otp-modal .otp-close {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #f0ebe3;
+  color: #514b41;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.register-otp-modal .otp-content {
+  padding: 28px;
+  text-align: center;
+}
+
+.register-otp-modal .otp-symbol {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #f4ebdc;
+  color: #96723d;
+  font-size: 30px;
+}
+
+.register-otp-modal h2 {
+  margin: 0 0 12px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 30px;
+  font-weight: 400;
+}
+
+.register-otp-modal p {
+  color: #827c72;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.register-otp-modal strong {
+  color: #514b41;
+}
+
+.register-otp-modal form {
+  margin-top: 24px;
+}
+
+.register-otp-modal label {
+  display: block;
+  margin-bottom: 10px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+}
+
+.register-otp-modal input {
+  width: 100%;
+  height: 62px;
+  padding: 8px 12px 8px 22px;
+  border: 1px solid #d9c9ad;
+  border-radius: 12px;
+  background: white;
+  color: #28251f;
+  font-size: 28px;
+  text-align: center;
+  letter-spacing: 10px;
+}
+
+.register-otp-modal input:focus {
+  outline: 2px solid #96723d;
+  outline-offset: 2px;
+}
+
+.register-otp-modal .otp-primary {
+  width: 100%;
+  min-height: 50px;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: #96723d;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.register-otp-modal .otp-primary:hover {
+  background: #805f31;
+}
+
+.register-otp-modal button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.register-otp-modal button:focus-visible {
+  outline: 2px solid #96723d;
+  outline-offset: 3px;
+}
+
+.register-otp-modal .otp-error {
+  color: #b54747;
+  margin-bottom: 8px;
+}
+
+.register-otp-modal .otp-notice {
+  font-size: 12px;
+}
+
+.register-otp-modal .otp-resend {
+  margin-top: 22px;
+  color: #827c72;
+  font-size: 13px;
+}
+
+.register-otp-modal .otp-resend button,
+.register-otp-modal .otp-back {
+  border: none;
+  background: transparent;
+  color: #96723d;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.register-otp-modal .otp-back {
+  margin-top: 18px;
+  color: #827c72;
+  font-size: 12px;
+}
+
+.vestora-register .register-submit:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+@media (max-width: 480px) {
+  .register-otp-modal .otp-content {
+    padding: 24px 18px;
+  }
+}

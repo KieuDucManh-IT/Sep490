@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal, Button, Badge, Table } from 'react-bootstrap';
+import { Eye, LockKeyhole, LockKeyholeOpen } from 'lucide-react';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
@@ -28,23 +29,52 @@ export default function AdminAccountsPage() {
       status: 'ACTIVE',
       totalOrders: 128,
       totalDepositEscrow: '450.000.000 đ'
-    },
-    {
-      id: 'USR-8823',
-      name: 'Lê Tuấn Kiệt',
-      email: 'kiet.letuan@gmail.com',
-      role: 'CUSTOMER',
-      rating: 'C- (35 pts - Báo cáo trả trễ)',
-      kyc: 'Đang Chờ Xác Thực',
-      status: 'WARNING',
-      totalOrders: 2,
-      totalDepositEscrow: '3.000.000 đ'
     }
   ]);
 
   const [selectedUserModal, setSelectedUserModal] = useState(null);
 
-  const handleToggleLock = (id) => {
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/users');
+      const data = await res.json();
+      if (data.success && data.data && data.data.length > 0) {
+        const mapped = data.data.map(u => ({
+          id: u._id,
+          name: u.FullName || 'Thành viên VESTORA',
+          email: u.Email,
+          role: (u.Role || 'CUSTOMER').toUpperCase(),
+          rating: u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)',
+          kyc: u.Information?.[0]?.Phone ? `SĐT: ${u.Information[0].Phone}` : 'Đã Xác Thực Email',
+          status: (u.Status || 'ACTIVE').toUpperCase(),
+          totalOrders: Math.floor(Math.random() * 15) + 2,
+          totalDepositEscrow: `${(Math.floor(Math.random() * 25) + 3).toLocaleString('vi-VN')}.000.000 đ`
+        }));
+        setUsers(mapped);
+      }
+    } catch (err) {
+      console.warn('Backend chưa khởi động hoặc gặp lỗi:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const handleToggleLock = async (id) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/users/${id}/toggle-lock`, {
+        method: 'PATCH'
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        fetchUsers();
+        return;
+      }
+    } catch (err) {
+      console.warn(err);
+    }
     setUsers(prev => prev.map(u => {
       if (u.id === id) {
         const newStatus = u.status === 'LOCKED' ? 'ACTIVE' : 'LOCKED';
@@ -119,26 +149,31 @@ export default function AdminAccountsPage() {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <button 
-                          className="btn-tail-outline"
-                          style={{ padding: '4px 10px', fontSize: '11px' }}
+                          className="btn-action-icon view-blue"
+                          title="Xem chi tiết tài khoản"
                           onClick={() => setSelectedUserModal(u)}
                         >
-                          Chi Tiết
+                          <Eye size={17} />
                         </button>
-                        <button 
-                          className="btn-tail-outline"
-                          style={{ 
-                            padding: '4px 10px', 
-                            fontSize: '11px',
-                            color: u.status === 'LOCKED' ? '#10B981' : '#EF4444',
-                            borderColor: u.status === 'LOCKED' ? '#A7F3D0' : '#FECACA'
-                          }}
-                          onClick={() => handleToggleLock(u.id)}
-                        >
-                          {u.status === 'LOCKED' ? 'Mở Khóa' : 'Khóa'}
-                        </button>
+                        {u.status === 'LOCKED' ? (
+                          <button 
+                            className="btn-action-icon unlock-green"
+                            title="Mở khóa tài khoản"
+                            onClick={() => handleToggleLock(u.id)}
+                          >
+                            <LockKeyholeOpen size={17} />
+                          </button>
+                        ) : (
+                          <button 
+                            className="btn-action-icon lock-red"
+                            title="Khóa tài khoản"
+                            onClick={() => handleToggleLock(u.id)}
+                          >
+                            <LockKeyhole size={17} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

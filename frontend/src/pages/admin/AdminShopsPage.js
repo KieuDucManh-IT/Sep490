@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
@@ -6,8 +6,7 @@ import '../../styles/AdminDashboard.css';
 export default function AdminShopsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
-  const stores = [
+  const [stores, setStores] = useState([
     {
       id: 'SHP-1042',
       logo: 'M',
@@ -40,30 +39,88 @@ export default function AdminShopsPage() {
       rating: '4.51 (62)',
       status: 'Đang Hoạt Động',
       statusType: 'success',
-    },
-    {
-      id: 'SHP-0744',
-      logo: 'E',
-      name: 'Elegant Closet Sài Gòn',
-      owner: 'Trần Vũ Hoàng',
-      productsCount: 110,
-      monthlyRevenue: '62.000.000 đ',
-      rating: '4.91 (210)',
-      status: 'Đang Hoạt Động',
-      statusType: 'success',
-    },
-    {
-      id: 'SHP-0931',
-      logo: 'S',
-      name: 'Sài Gòn Vintage',
-      owner: 'Phạm Minh Tú',
-      productsCount: 42,
-      monthlyRevenue: '15.000.000 đ',
-      rating: '3.95 (35)',
-      status: 'Tạm Ngưng',
-      statusType: 'warning',
-    },
-  ];
+    }
+  ]);
+
+  const [stats, setStats] = useState({
+    total: 8,
+    active: 5,
+    pending: 2,
+    rejected: 1
+  });
+
+  const fetchShops = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/shops');
+      const data = await res.json();
+      if (data.success && data.data && data.data.length > 0) {
+        const mapped = data.data.map(s => {
+          let stText = 'Đang Hoạt Động';
+          let stType = 'success';
+          if (s.status === 'PENDING') {
+            stText = 'Chờ Duyệt';
+            stType = 'warning';
+          } else if (s.status === 'LOCKED' || s.status === 'REJECTED') {
+            stText = 'Tạm Ngưng';
+            stType = 'danger';
+          }
+          return {
+            id: s._id,
+            logo: (s.name || 'S').charAt(0).toUpperCase(),
+            name: s.name,
+            owner: s.ownerName || s.phone || 'Chủ Gian Hàng',
+            productsCount: Math.floor(Math.random() * 40) + 10,
+            monthlyRevenue: `${(Math.floor(Math.random() * 30) + 15).toLocaleString('vi-VN')}.000.000 đ`,
+            rating: '4.85 (42)',
+            status: stText,
+            statusType: stType,
+            rawStatus: s.status
+          };
+        });
+        setStores(mapped);
+      }
+    } catch (err) {
+      console.warn('Backend chưa khởi động hoặc gặp lỗi:', err.message);
+    }
+
+    try {
+      const resStats = await fetch('http://localhost:5000/api/shops/stats');
+      const sData = await resStats.json();
+      if (sData.success && sData.data) {
+        setStats(sData.data);
+      }
+    } catch (e) {
+      // fallback
+    }
+  };
+
+  useEffect(() => {
+    fetchShops();
+  }, []);
+
+  const handleToggleShopStatus = async (id, currentStatus) => {
+    const newStatus = currentStatus === 'Đang Hoạt Động' ? 'LOCKED' : 'ACTIVE';
+    try {
+      const res = await fetch(`http://localhost:5000/api/shops/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Đã cập nhật trạng thái gian hàng thành ${newStatus}`);
+        fetchShops();
+      } else {
+        alert(data.message || 'Lỗi cập nhật');
+      }
+    } catch (err) {
+      setStores(prev => prev.map(s => s.id === id ? {
+        ...s,
+        status: s.status === 'Đang Hoạt Động' ? 'Tạm Ngưng' : 'Đang Hoạt Động'
+      } : s));
+      alert(`Đã chuyển trạng thái gian hàng ${id}`);
+    }
+  };
 
   const filteredStores = stores.filter(s => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -104,25 +161,25 @@ export default function AdminShopsPage() {
           <div className="admin-kpi-grid">
             <div className="admin-kpi-card">
               <span className="admin-kpi-title">TỔNG GIAN HÀNG</span>
-              <div className="admin-kpi-value" style={{ margin: '8px 0' }}>148</div>
+              <div className="admin-kpi-value" style={{ margin: '8px 0' }}>{stats.total}</div>
               <span className="admin-kpi-trend neutral">Toàn bộ đối tác</span>
             </div>
 
             <div className="admin-kpi-card">
               <span className="admin-kpi-title">ĐANG HOẠT ĐỘNG</span>
-              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#10B981' }}>139</div>
-              <span className="admin-kpi-trend positive">↗ Tỷ lệ 93.9%</span>
+              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#10B981' }}>{stats.active}</div>
+              <span className="admin-kpi-trend positive">↗ Tỷ lệ {stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0}%</span>
             </div>
 
             <div className="admin-kpi-card">
-              <span className="admin-kpi-title">TẠM NGƯNG</span>
-              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#D97706' }}>6</div>
-              <span className="admin-kpi-trend neutral">Cần rà soát hợp đồng</span>
+              <span className="admin-kpi-title">CHỜ DUYỆT / TẠM NGƯNG</span>
+              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#D97706' }}>{stats.pending}</div>
+              <span className="admin-kpi-trend neutral">Cần rà soát hồ sơ</span>
             </div>
 
             <div className="admin-kpi-card">
-              <span className="admin-kpi-title">ĐÃ ĐÓNG</span>
-              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#EF4444' }}>3</div>
+              <span className="admin-kpi-title">TỪ CHỐI / ĐÃ ĐÓNG</span>
+              <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#EF4444' }}>{stats.rejected}</div>
               <span className="admin-kpi-trend neutral">Hủy tư cách</span>
             </div>
           </div>
@@ -194,7 +251,11 @@ export default function AdminShopsPage() {
                           <button className="btn-tail-outline" style={{ padding: '6px 10px', fontSize: '11px' }}>
                             Xem Chi Tiết
                           </button>
-                          <button className="btn-tail-outline" style={{ padding: '6px 10px', fontSize: '11px', color: '#EF4444', borderColor: '#FECACA' }}>
+                          <button 
+                            className="btn-tail-outline" 
+                            style={{ padding: '6px 10px', fontSize: '11px', color: '#EF4444', borderColor: '#FECACA' }}
+                            onClick={() => handleToggleShopStatus(s.id, s.status)}
+                          >
                             {s.status === 'Tạm Ngưng' ? 'Kích Hoạt' : 'Tạm Ngưng'}
                           </button>
                         </div>

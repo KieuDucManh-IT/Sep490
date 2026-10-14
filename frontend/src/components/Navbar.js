@@ -11,12 +11,10 @@ export default function Navbar() {
 
   return (
     <header className="vestora-navbar">
-      {/* Brand Logo */}
       <Link to="/" className="navbar-brand-logo">
         VESTORA
       </Link>
 
-      {/* Main Navigation Links */}
       <nav className="navbar-menu-links">
         <Link to="/" className={`navbar-link ${isActive('/')}`}>
           TRANG CHỦ
@@ -33,29 +31,28 @@ export default function Navbar() {
         <Link to="/map" className={`navbar-link ${isActive('/map')}`}>
           RADAR SHOWROOM
         </Link>
-        <Link to="/shop/dashboard" className="navbar-link" style={{ color: 'var(--color-gold-deep)', fontWeight: '600' }}>
-          KÊNH CHỦ SHOP
+        <Link to="/register-shop" className={`navbar-link ${isActive('/register-shop')}`} style={{ color: 'var(--color-gold-deep)', fontWeight: '600' }}>
+          ĐĂNG KÝ SHOP
         </Link>
-        <Link to="/admin/dashboard" className="navbar-link" style={{ color: '#4b5563', fontWeight: '600' }}>
-          ADMIN HỆ THỐNG
+        <Link to="/admin/shops" className={`navbar-link ${isActive('/admin/shops')}`} style={{ color: '#4b5563', fontWeight: '600' }}>
+          DUYỆT SHOP
+        </Link>
+        <Link to="/shop/dashboard" className="navbar-link" style={{ color: '#6b7280', fontWeight: '500' }}>
+          KÊNH CHỦ SHOP
         </Link>
       </nav>
 
-      {/* Right Actions */}
       <div className="navbar-actions">
-        {/* Wishlist Favorites */}
         <Link to="/favorites" className="navbar-icon-btn" title="Danh sách yêu thích">
-          ♡
+          Yêu thích
           <span className="icon-badge-count">2</span>
         </Link>
 
-        {/* Shopping Cart */}
         <Link to="/cart" className="navbar-icon-btn" title="Giỏ hàng">
-          🛒
+          Giỏ hàng
           <span className="icon-badge-count">1</span>
         </Link>
 
-        {/* User Profile */}
         <Link to="/profile" className="user-profile-pill" title="Hồ sơ cá nhân">
           <img
             src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80"

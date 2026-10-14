@@ -1,20 +1,23 @@
 import express from "express";
+import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB } from "./src/config/db.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import orderRoutes from "./src/routes/orderRoutes.js";
+import shopRoutes from "./src/routes/shopRoutes.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Middlewares
+app.use(cors());
 app.use(express.json());
 
-// Domain API Routes
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/shops", shopRoutes);
+app.use("/api/admin/shops", shopRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
@@ -24,7 +27,6 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Connect DB & Start Server
 connectDB();
 
 app.listen(PORT, () => {

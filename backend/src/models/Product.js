@@ -1,21 +1,29 @@
 import mongoose from 'mongoose';
 
 const productSchema = new mongoose.Schema({
-  sku: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  category: { type: String, required: true },
-  retailValue: { type: String, required: true },
-  rental3DaysPrice: { type: Number, required: true },
-  resalePrice: { type: Number, required: true },
-  escrowDeposit: { type: Number, required: true },
-  sizeStock: {
-    S: { type: Number, default: 0 },
-    M: { type: Number, default: 0 },
-    L: { type: Number, default: 0 },
-    XL: { type: Number, default: 0 }
-  },
+  shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
+
+  sku: { type: String, required: true, unique: true, trim: true },
+  name: { type: String, required: true, trim: true },
   images: [{ type: String }],
-  isApproved: { type: Boolean, default: true }
+  brand: { type: String, trim: true },
+    material: { type: String, trim: true },
+
+  category: [{ type: String}],
+  tag: {type: String, required: true, default: "sale",
+      enum: ["sale", "rental", "both"],
+    },
+
+  rentalPricePerDay: { type: Number, min: 0},
+  deposit: { type: Number, min: 0, default: 0},
+  salePrice: { type: Number, min: 0},
+  discount: { type: Number, min: 0, max: 100, default: 0},
+  
+  isDeleted: { type: Boolean, default: false },
+  status: { type: String, default: "pending",
+    enum: ["pending", "active", "inactive", "rejected"]
+  }
+
 }, { timestamps: true });
 
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);

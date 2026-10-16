@@ -55,7 +55,6 @@ export default function Navbar() {
         <Link
           to="/register-shop"
           className={`navbar-link ${isActive("/register-shop") || isActive("/customer/register-shop") ? "active" : ""}`}
-          style={{ color: "#8C6D3F", fontWeight: 600 }}
         >
           ĐĂNG KÝ SHOP
         </Link>

@@ -2,11 +2,11 @@ import express from 'express';
 import {
   applyShop,
   getShopApplications,
-  getShopById,
   approveShop,
   rejectShop,
   toggleSuspendShop,
   getShopStats,
+  getShopById,
 } from '../controllers/shopController.js';
 
 const router = express.Router();

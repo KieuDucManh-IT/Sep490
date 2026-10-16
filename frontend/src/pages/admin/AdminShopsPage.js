@@ -1,33 +1,80 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
-import '../../styles/AdminDashboard.css';
+import apiClient from '../../services/api';
+import '../../styles/AdminShops.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-const ADMIN_ID = process.env.REACT_APP_ADMIN_ID || 'ADMIN-PLACEHOLDER';
+const getAdminId = () => {
+  try {
+    const raw = localStorage.getItem('user');
+    if (raw) {
+      const u = JSON.parse(raw);
+      if (u._id || u.UserId || u.id) return String(u._id || u.UserId || u.id);
+    }
+  } catch (_) {}
+  return process.env.REACT_APP_ADMIN_ID || null;
+};
 
 const STATUS_TABS = [
-  { key: 'PENDING',  label: 'Cho Duyet' },
-  { key: 'ACTIVE',   label: 'Da Duyet' },
-  { key: 'REJECTED', label: 'Tu Choi' },
+  { key: 'PENDING',  label: 'Chờ Duyệt' },
+  { key: 'ACTIVE',   label: 'Đã Duyệt' },
+  { key: 'REJECTED', label: 'Từ Chối' },
 ];
 
-function StatusBadge({ status }) {
-  const map = {
-    PENDING:   { label: 'Dang ky moi',    bg: '#E8F5E9', color: '#2E7D32' },
-    ACTIVE:    { label: 'Da duyet',        bg: '#E3F2FD', color: '#1565C0' },
-    REJECTED:  { label: 'Tu choi',         bg: '#FFEBEE', color: '#C62828' },
-    SUSPENDED: { label: 'Tam ngung',       bg: '#FFF3E0', color: '#E65100' },
-  };
-  const cfg = map[status] || { label: status, bg: '#F5F5F5', color: '#555' };
+function DocPreviewModal({ doc, onClose }) {
+  if (!doc) return null;
+
   return (
-    <span style={{
-      background: cfg.bg, color: cfg.color,
-      borderRadius: '20px', padding: '3px 10px',
-      fontSize: '11px', fontWeight: 600, display: 'inline-block',
-    }}>
-      {cfg.label}
-    </span>
+    <div className="admin-modal-overlay admin-doc-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="admin-modal-box admin-doc-modal">
+        <div className="admin-modal-header">
+          <div>
+            <div className="admin-modal-header-tag" style={{ color: '#059669' }}>XEM TÀI LIỆU THẨM ĐỊNH</div>
+            <h5 className="admin-modal-header-title">{doc.label} — {doc.shopName}</h5>
+          </div>
+          <button className="admin-modal-close-btn" onClick={onClose} title="Đóng">✕</button>
+        </div>
+
+        <div className="admin-modal-body">
+          <div className="admin-doc-file-meta">
+            <span>Tên tệp: <strong>{doc.filename || 'Tài liệu thẩm định'}</strong></span>
+            <span style={{ color: '#059669', fontWeight: 600 }}>Tài liệu xác thực gian hàng</span>
+          </div>
+
+          <div className="admin-doc-preview-area">
+            {doc.url ? (
+              doc.url.startsWith('data:application/pdf') ? (
+                <iframe src={doc.url} title="PDF Viewer" width="100%" height="450px" style={{ border: 'none' }} />
+              ) : (
+                <img src={doc.url} alt={doc.label} className="admin-doc-preview-img" />
+              )
+            ) : (
+              <div style={{ textAlign: 'center', color: '#737373', padding: '40px 20px' }}>
+                <div style={{ fontSize: '32px', marginBottom: '8px' }}>📄</div>
+                <div>Chưa có file hoặc tài liệu đang ở dạng liên kết nội bộ.</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="admin-modal-footer">
+          {doc.url && (
+            <a
+              href={doc.url}
+              download={doc.filename || 'tai-lieu.pdf'}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-modal-cancel"
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              Tải tệp xuống
+            </a>
+          )}
+          <button className="btn-modal-cancel" onClick={onClose}>Đóng</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -37,186 +84,529 @@ function RejectModal({ app, onClose, onConfirm }) {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!reason.trim()) return;
+    if (!reason.trim() || reason.trim().length < 5) return;
     setLoading(true);
-    await onConfirm(app._id, reason, notes);
+    await onConfirm(app._id, reason.trim(), notes.trim());
     setLoading(false);
   };
 
   return (
-    <div style={ms.overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ ...ms.modal, maxWidth: '500px' }}>
-        <div style={ms.mHeader}>
+    <div className="admin-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="admin-modal-box">
+        <div className="admin-modal-header">
           <div>
-            <div style={ms.mTag}>TU CHOI HO SO</div>
-            <h5 style={ms.mTitle}>{app.name}</h5>
+            <div className="admin-modal-header-tag">TỪ CHỐI HỒ SƠ GIAN HÀNG</div>
+            <h5 className="admin-modal-header-title">{app.name}</h5>
           </div>
-          <button onClick={onClose} style={ms.closeBtn}>x</button>
+          <button className="admin-modal-close-btn" onClick={onClose} title="Đóng">✕</button>
         </div>
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+        <div className="admin-modal-body">
           <div>
-            <label style={ms.label}>Ly do tu choi <span style={{ color: '#C62828' }}>*</span></label>
+            <label className="admin-modal-label">
+              Lý do từ chối <span className="req">*</span>
+            </label>
             <textarea
-              className="form-control mt-1"
+              className={`admin-modal-textarea ${(!reason.trim() || reason.trim().length < 5) ? 'error' : ''}`}
               rows={3}
-              placeholder="Mo ta cu the ly do tu choi de gui cho nguoi dang ky..."
+              placeholder="Mô tả cụ thể lý do từ chối để gửi thông báo cho chủ gian hàng..."
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              style={{ fontSize: '13px', borderColor: reason.trim() ? '#dee2e6' : '#f87171', resize: 'vertical' }}
             />
-            {!reason.trim() && (
-              <div style={{ color: '#C62828', fontSize: '11px', marginTop: '4px' }}>
-                Ly do tu choi la bat buoc.
+            {(!reason.trim() || reason.trim().length < 5) && (
+              <div className="admin-modal-error-text">
+                Vui lòng nhập lý do từ chối cụ thể (tối thiểu 5 ký tự) để thông báo đến chủ gian hàng.
               </div>
             )}
           </div>
+
           <div>
-            <label style={ms.label}>Ghi chu noi bo (khong hien thi cho shop)</label>
+            <label className="admin-modal-label">Ghi chú nội bộ thẩm định</label>
             <textarea
-              className="form-control mt-1"
+              className="admin-modal-textarea"
               rows={2}
-              placeholder="Ghi chu them..."
+              placeholder="Ghi chú thêm cho kiểm duyệt viên hoặc quản trị hệ thống..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              style={{ fontSize: '13px', resize: 'vertical' }}
             />
           </div>
-          <div className="d-flex gap-2 justify-content-end pt-1">
-            <button className="btn btn-light" onClick={onClose} disabled={loading}>Huy</button>
-            <button
-              className="btn btn-danger"
-              onClick={handleSubmit}
-              disabled={loading || !reason.trim()}
-              style={{ opacity: reason.trim() ? 1 : 0.5 }}
-            >
-              {loading ? 'Dang xu ly...' : 'Xac Nhan Tu Choi'}
-            </button>
-          </div>
+        </div>
+
+        <div className="admin-modal-footer">
+          <button className="btn-modal-cancel" onClick={onClose} disabled={loading}>Hủy</button>
+          <button
+            className="btn-modal-danger"
+            onClick={handleSubmit}
+            disabled={loading || !reason.trim() || reason.trim().length < 5}
+          >
+            {loading ? 'Đang xử lý...' : 'Xác Nhận Từ Chối'}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function DocCard({ label, filename }) {
-  return (
-    <div style={{
-      border: '1px solid #E8E8E8', borderRadius: '8px',
-      padding: '10px 14px', display: 'flex', alignItems: 'center',
-      gap: '10px', background: '#FAFAFA', flex: 1,
-    }}>
-      <div style={{
-        width: '32px', height: '32px', background: '#FFEBEE',
-        borderRadius: '6px', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', flexShrink: 0,
-      }}>
-        <span style={{ fontSize: '14px', color: '#C62828' }}>PDF</span>
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '12px', fontWeight: 600, color: '#1A1A1A' }}>{label}</div>
-        <div style={{ fontSize: '10px', color: '#888', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {filename || 'Da tai len'}
-        </div>
-        <div style={{ fontSize: '10px', color: '#1565C0', marginTop: '2px' }}>Da tai len</div>
-      </div>
-      <button style={{ border: 'none', background: 'none', color: '#888', fontSize: '12px', cursor: 'pointer', padding: '4px' }}>
-        Xem
-      </button>
-    </div>
-  );
-}
-
-function ShopCard({ app, onApprove, onReject }) {
+function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) {
+  const [copiedId, setCopiedId] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [approvalNotes, setApprovalNotes] = useState('');
+
+  if (!app) return null;
+
+  const owner = app.ownerId || {};
+  const ownerName = owner.FullName || owner.fullName || app.ownerName || 'Chưa cập nhật';
+  const ownerEmail = owner.Email || owner.email || app.ownerEmail || '—';
+  const ownerPhone = app.phone || owner.Information?.[0]?.Phone || owner.phone || '—';
+  const ownerIdString = owner._id || owner.UserId || owner.userId || (typeof app.ownerId === 'string' ? app.ownerId : '—');
+  const ownerRole = owner.Role || owner.role || 'CUSTOMER';
+  const ownerStatus = owner.Status || owner.status || 'ACTIVE';
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=141414&color=fff&size=128`;
+
+  const formatTime = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = d.toLocaleDateString('vi-VN');
+    return `${timeStr} — ${dateStr}`;
+  };
+
+  const copyUserId = () => {
+    if (ownerIdString && ownerIdString !== '—') {
+      navigator.clipboard?.writeText(String(ownerIdString));
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    }
+  };
 
   const handleApprove = async () => {
     setApproving(true);
-    await onApprove(app._id, '');
+    await onApprove(app, approvalNotes);
     setApproving(false);
+    onClose();
   };
 
-  const formatDateTime = (iso) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return `${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} — ${d.toLocaleDateString('vi-VN')}`;
+  const handleReject = () => {
+    onClose();
+    onReject(app);
   };
 
-  const docFilename = (url) => {
-    if (!url) return '';
-    return url.split('/').pop() || 'tai-lieu.pdf';
+  const fullAddress = [app.address, app.ward, app.district, app.city].filter(Boolean).join(', ') || 'Chưa cập nhật';
+  const hasGps = app.latitude != null && app.longitude != null && !isNaN(Number(app.latitude)) && !isNaN(Number(app.longitude));
+
+  const statusMap = {
+    PENDING: { label: 'Chờ thẩm định', dot: '#059669' },
+    ACTIVE: { label: 'Đã phê duyệt', dot: '#2563EB' },
+    REJECTED: { label: 'Đã từ chối', dot: '#DC2626' },
+    SUSPENDED: { label: 'Tạm ngưng', dot: '#D97706' },
   };
+  const currentStatus = statusMap[app.status] || { label: app.status, dot: '#737373' };
 
   return (
-    <div style={{
-      border: '1px solid #EBEBEB', borderRadius: '12px',
-      padding: '20px 24px', background: '#fff', marginBottom: '12px',
-    }}>
-      <div className="row g-0">
-        <div className="col-lg-7" style={{ paddingRight: '24px', borderRight: '1px solid #F0F0F0' }}>
-          <div className="d-flex align-items-center gap-2 mb-2">
-            <span style={{ fontSize: '12px', color: '#888' }}>{formatDateTime(app.createdAt)}</span>
-            <StatusBadge status={app.status} />
+    <div className="admin-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="admin-modal-box admin-applicant-modal">
+        <div className="admin-modal-header">
+          <div>
+            <div className="admin-modal-header-tag" style={{ color: '#A6865A' }}>
+              THẨM ĐỊNH LÝ LỊCH ỨNG VIÊN SHOP OWNER
+            </div>
+            <h5 className="admin-modal-header-title">
+              {ownerName} — {app.name}
+            </h5>
+          </div>
+          <button className="admin-modal-close-btn" onClick={onClose} title="Đóng">✕</button>
+        </div>
+
+        <div className="admin-modal-body">
+          <div className="admin-applicant-card">
+            <div className="admin-applicant-card__header">
+              <img src={avatarUrl} alt={ownerName} className="admin-applicant-avatar-lg" />
+              <div className="admin-applicant-name-wrap">
+                <h3 className="admin-applicant-name">{ownerName}</h3>
+                <div className="admin-applicant-badges">
+                  <span className="admin-applicant-badge role">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    {ownerRole === 'SHOP_OWNER' ? 'Chủ Gian Hàng (SHOP_OWNER)' : 'Khách Hàng (CUSTOMER)'}
+                  </span>
+
+                  <span className="admin-applicant-badge status-active">
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669', display: 'inline-block' }} />
+                    {ownerStatus === 'ACTIVE' ? 'Tài khoản Đã Kích Hoạt' : ownerStatus}
+                  </span>
+
+                  <span className="admin-applicant-badge" style={{ background: '#F5F3EF', color: '#525252' }}>
+                    Đơn: {currentStatus.label}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="admin-applicant-grid">
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">HỌ VÀ TÊN ỨNG VIÊN</span>
+                <span className="admin-applicant-field__val">{ownerName}</span>
+              </div>
+
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">EMAIL XÁC THỰC</span>
+                <span className="admin-applicant-field__val" title={ownerEmail}>{ownerEmail}</span>
+              </div>
+
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">SỐ ĐIỆN THOẠI ĐĂNG KÝ</span>
+                <span className="admin-applicant-field__val">{ownerPhone}</span>
+              </div>
+
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">MÃ ĐỊNH DANH TÀI KHOẢN (UID)</span>
+                <span className="admin-applicant-field__val" style={{ fontFamily: 'monospace', fontSize: '11.5px' }}>
+                  <span>{ownerIdString && ownerIdString !== '—' ? `${String(ownerIdString).slice(0, 10)}...` : '—'}</span>
+                  {ownerIdString && ownerIdString !== '—' && (
+                    <button
+                      type="button"
+                      className="admin-copy-uid-btn"
+                      onClick={copyUserId}
+                      title="Sao chép toàn bộ ID người dùng"
+                    >
+                      {copiedId ? 'Đã chép ✓' : 'Sao chép'}
+                    </button>
+                  )}
+                </span>
+              </div>
+
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">NGÀY THAM GIA NỀN TẢNG</span>
+                <span className="admin-applicant-field__val">{formatTime(owner.createdAt)}</span>
+              </div>
+
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">THỜI ĐIỂM NỘP HỒ SƠ</span>
+                <span className="admin-applicant-field__val">{formatTime(app.createdAt)}</span>
+              </div>
+            </div>
           </div>
 
-          <h5 style={{ fontWeight: 700, fontSize: '18px', color: '#111', marginBottom: '2px' }}>{app.name}</h5>
-          <div style={{ fontSize: '13px', color: '#666', marginBottom: '14px' }}>
-            Nganh hang: {app.description?.slice(0, 60) || '—'}
+          <div>
+            <div className="admin-applicant-section-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+              THÔNG TIN GIAN HÀNG ĐĂNG KÝ
+            </div>
+
+            <div className="admin-applicant-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">TÊN GIAN HÀNG</span>
+                <span className="admin-applicant-field__val" style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {app.imageUrl && (
+                    <img
+                      src={app.imageUrl}
+                      alt={app.name}
+                      style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #D4D4D4' }}
+                    />
+                  )}
+                  <span>{app.name}</span>
+                </span>
+              </div>
+
+              <div className="admin-applicant-field">
+                <span className="admin-applicant-field__label">NGÀNH HÀNG / MÔ TẢ</span>
+                <span className="admin-applicant-field__val" style={{ fontWeight: 400 }}>
+                  {app.description || 'Chưa cập nhật'}
+                </span>
+              </div>
+
+              <div className="admin-applicant-field" style={{ gridColumn: 'span 2' }}>
+                <span className="admin-applicant-field__label">ĐỊA CHỈ SHOWROOM / KHO HÀNG</span>
+                <span className="admin-applicant-field__val" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
+                  <span style={{ fontWeight: 600 }}>{fullAddress}</span>
+                  {hasGps && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#059669', background: '#ECFDF5', padding: '3px 8px', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669', display: 'inline-block' }} />
+                      <span>Định vị GPS chính xác: <strong>{Number(app.latitude).toFixed(5)}°B, {Number(app.longitude).toFixed(5)}°Đ</strong></span>
+                    </div>
+                  )}
+                  {(app.address || hasGps) && (
+                    <a
+                      href={hasGps ? `https://www.google.com/maps?q=${app.latitude},${app.longitude}&z=17` : `https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        color: '#8C6D3F',
+                        textDecoration: 'none',
+                        fontWeight: 600,
+                        marginTop: '2px',
+                      }}
+                    >
+                      <span>📍 Xem vị trí showroom trên Google Maps (Ghim đỏ chính xác) ↗</span>
+                    </a>
+                  )}
+                  {(hasGps || app.address) && (
+                    <div style={{ width: '100%', height: '220px', marginTop: '6px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #E5E5E5', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                      <iframe
+                        title="Bản đồ vị trí showroom"
+                        src={hasGps
+                          ? `https://maps.google.com/maps?q=${app.latitude},${app.longitude}&hl=vi&z=17&output=embed`
+                          : `https://maps.google.com/maps?q=${encodeURIComponent(fullAddress)}&hl=vi&z=14&output=embed`}
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div style={{
-            background: '#F8F8F8', borderRadius: '8px', padding: '12px 16px',
-            display: 'flex', gap: '24px', flexWrap: 'wrap',
-          }}>
-            <div>
-              <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '3px' }}>Chu So Huu</div>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#1A1A1A' }}>{app.ownerId?.fullName || '—'}</div>
+          <div>
+            <div className="admin-applicant-section-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <circle cx="8" cy="10" r="2" />
+                <line x1="14" y1="10" x2="18" y2="10" />
+                <line x1="14" y1="14" x2="18" y2="14" />
+              </svg>
+              HỒ SƠ ĐỊNH DANH NHÂN THÂN & PHÁP LÝ (KYC)
             </div>
-            <div>
-              <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '3px' }}>Email</div>
-              <div style={{ fontSize: '13px', color: '#1A1A1A' }}>{app.ownerId?.email || '—'}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '3px' }}>Dien Thoai</div>
-              <div style={{ fontSize: '13px', color: '#1A1A1A' }}>{app.phone}</div>
+
+            <div className="admin-applicant-docs-grid">
+              <div className="admin-applicant-doc-card">
+                <div
+                  className="admin-applicant-doc-thumb"
+                  onClick={() => app.idCardFrontUrl && onViewDoc({
+                    label: 'Căn Cước Công Dân (CCCD) — Mặt Trước',
+                    filename: 'CCCD_Mat_Truoc.jpg',
+                    url: app.idCardFrontUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  {app.idCardFrontUrl ? (
+                    <>
+                      <img src={app.idCardFrontUrl} alt="CCCD Mặt Trước" />
+                      <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                    </>
+                  ) : (
+                    <div style={{ color: '#737373', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
+                      Chưa có ảnh mặt trước
+                    </div>
+                  )}
+                </div>
+                <div className="admin-applicant-doc-body">
+                  <div className="admin-applicant-doc-title">CCCD Mặt Trước</div>
+                  <div className="admin-applicant-doc-status">
+                    {app.idCardFrontUrl ? 'Đã tải lên ✓' : 'Chưa cung cấp'}
+                  </div>
+                  {app.idCardFrontUrl && (
+                    <button
+                      type="button"
+                      className="admin-applicant-doc-btn"
+                      onClick={() => onViewDoc({
+                        label: 'Căn Cước Công Dân (CCCD) — Mặt Trước',
+                        filename: 'CCCD_Mat_Truoc.jpg',
+                        url: app.idCardFrontUrl,
+                        shopName: app.name,
+                      })}
+                    >
+                      Xem chi tiết
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="admin-applicant-doc-card">
+                <div
+                  className="admin-applicant-doc-thumb"
+                  onClick={() => (app.idCardBackUrl || app.idCardFrontUrl) && onViewDoc({
+                    label: app.idCardBackUrl ? 'Căn Cước Công Dân (CCCD) — Mặt Sau' : 'Căn Cước Công Dân (CCCD) 2 Mặt',
+                    filename: 'CCCD_Mat_Sau.jpg',
+                    url: app.idCardBackUrl || app.idCardFrontUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  {app.idCardBackUrl ? (
+                    <>
+                      <img src={app.idCardBackUrl} alt="CCCD Mặt Sau" />
+                      <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                    </>
+                  ) : app.idCardFrontUrl ? (
+                    <div style={{ color: '#525252', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
+                      <div style={{ fontSize: '20px', marginBottom: '4px' }}>🪪</div>
+                      Đã đính kèm chung trong tệp CCCD
+                    </div>
+                  ) : (
+                    <div style={{ color: '#737373', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
+                      Chưa có ảnh mặt sau
+                    </div>
+                  )}
+                </div>
+                <div className="admin-applicant-doc-body">
+                  <div className="admin-applicant-doc-title">CCCD Mặt Sau</div>
+                  <div className="admin-applicant-doc-status">
+                    {app.idCardBackUrl ? 'Đã tải lên ✓' : app.idCardFrontUrl ? 'Đính kèm chung ✓' : 'Chưa cung cấp'}
+                  </div>
+                  {(app.idCardBackUrl || app.idCardFrontUrl) && (
+                    <button
+                      type="button"
+                      className="admin-applicant-doc-btn"
+                      onClick={() => onViewDoc({
+                        label: app.idCardBackUrl ? 'Căn Cước Công Dân (CCCD) — Mặt Sau' : 'Căn Cước Công Dân (CCCD) 2 Mặt',
+                        filename: 'CCCD_Mat_Sau.jpg',
+                        url: app.idCardBackUrl || app.idCardFrontUrl,
+                        shopName: app.name,
+                      })}
+                    >
+                      Xem chi tiết
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="admin-applicant-doc-card">
+                <div
+                  className="admin-applicant-doc-thumb"
+                  onClick={() => app.businessLicenseUrl && onViewDoc({
+                    label: 'Giấy Phép Đăng Ký Kinh Doanh (ĐKKD)',
+                    filename: 'GPKD_Document.pdf',
+                    url: app.businessLicenseUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  {app.businessLicenseUrl ? (
+                    app.businessLicenseUrl.startsWith('data:application/pdf') ? (
+                      <div style={{ color: '#DC2626', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
+                        <div style={{ fontSize: '28px', marginBottom: '4px' }}>📄</div>
+                        Tài liệu PDF ĐKKD
+                      </div>
+                    ) : (
+                      <>
+                        <img src={app.businessLicenseUrl} alt="Giấy ĐKKD" />
+                        <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                      </>
+                    )
+                  ) : (
+                    <div style={{ color: '#737373', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
+                      Chưa tải lên Giấy ĐKKD
+                    </div>
+                  )}
+                </div>
+                <div className="admin-applicant-doc-body">
+                  <div className="admin-applicant-doc-title">Giấy Phép ĐKKD</div>
+                  <div className="admin-applicant-doc-status">
+                    {app.businessLicenseUrl ? 'Đã tải lên ✓' : 'Chưa cung cấp'}
+                  </div>
+                  {app.businessLicenseUrl && (
+                    <button
+                      type="button"
+                      className="admin-applicant-doc-btn"
+                      onClick={() => onViewDoc({
+                        label: 'Giấy Phép Đăng Ký Kinh Doanh (ĐKKD)',
+                        filename: 'GPKD_Document.pdf',
+                        url: app.businessLicenseUrl,
+                        shopName: app.name,
+                      })}
+                    >
+                      Xem tài liệu
+                    </button>
+                  )}
+                </div>
+              </div>
+              {app.imageUrl && (
+                <div className="admin-applicant-doc-card">
+                  <div
+                    className="admin-applicant-doc-thumb"
+                    onClick={() => onViewDoc({
+                      label: 'Ảnh Đại Diện / Logo Gian Hàng',
+                      filename: 'Logo_Showroom.png',
+                      url: app.imageUrl,
+                      shopName: app.name,
+                    })}
+                  >
+                    <img src={app.imageUrl} alt="Logo Showroom" />
+                    <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                  </div>
+                  <div className="admin-applicant-doc-body">
+                    <div className="admin-applicant-doc-title">Logo / Showroom</div>
+                    <div className="admin-applicant-doc-status">Đã tải lên ✓</div>
+                    <button
+                      type="button"
+                      className="admin-applicant-doc-btn"
+                      onClick={() => onViewDoc({
+                        label: 'Ảnh Đại Diện / Logo Gian Hàng',
+                        filename: 'Logo_Showroom.png',
+                        url: app.imageUrl,
+                        shopName: app.name,
+                      })}
+                    >
+                      Xem chi tiết
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+
+          {app.status === 'REJECTED' && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', padding: '14px 18px', color: '#991B1B' }}>
+              <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>LÝ DO TỪ CHỐI HỒ SƠ:</div>
+              <div style={{ fontSize: '13px' }}>{app.rejectionReason || 'Không có lý do chi tiết'}</div>
+            </div>
+          )}
 
           {app.notes && (
-            <div style={{ marginTop: '12px', fontSize: '12px', color: '#555', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-              <span style={{ color: '#888' }}>i</span>
-              <span>{app.notes}</span>
+            <div style={{ background: '#F5F3EF', border: '1px solid #E5E3DC', borderRadius: '12px', padding: '12px 18px', color: '#525252', fontSize: '12.5px' }}>
+              <strong>Ghi chú nội bộ:</strong> {app.notes}
+            </div>
+          )}
+
+          {app.status === 'PENDING' && (
+            <div style={{ marginTop: '16px' }}>
+              <label className="admin-modal-label">Ghi chú thẩm định phê duyệt (Tùy chọn)</label>
+              <textarea
+                className="admin-modal-textarea"
+                rows={2}
+                placeholder="Nhập ghi chú nội bộ thẩm định trước khi phê duyệt (nếu có)..."
+                value={approvalNotes}
+                onChange={(e) => setApprovalNotes(e.target.value)}
+              />
             </div>
           )}
         </div>
 
-        <div className="col-lg-5" style={{ paddingLeft: '24px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.5px' }}>
-            Ho So Dinh Kem Tham Dinh
-          </div>
-
-          <div className="d-flex gap-2 mb-2 flex-wrap">
-            <DocCard label="Giay DKKD" filename={docFilename(app.businessLicenseUrl)} />
-            <DocCard label="CCCD 2 mat" filename={docFilename(app.idCardFrontUrl)} />
-          </div>
+        <div className="admin-modal-footer">
+          <button type="button" className="btn-modal-cancel" onClick={onClose} disabled={approving}>
+            Đóng
+          </button>
 
           {app.status === 'PENDING' && (
-            <div className="d-flex gap-2 justify-content-end mt-3">
+            <>
               <button
-                className="btn btn-outline-danger btn-sm"
-                style={{ padding: '7px 20px', fontWeight: 600 }}
-                onClick={() => onReject(app)}
+                type="button"
+                className="btn-modal-danger"
+                onClick={handleReject}
+                disabled={approving}
               >
-                Tu Choi
+                Từ Chối Hồ Sơ
               </button>
               <button
-                className="btn btn-success btn-sm"
-                style={{ padding: '7px 20px', fontWeight: 600, background: '#1B8A4E', borderColor: '#1B8A4E' }}
+                type="button"
+                className="btn-modal-approve"
                 onClick={handleApprove}
                 disabled={approving}
               >
-                {approving ? 'Dang xu ly...' : 'Phe Duyet'}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {approving ? 'Đang phê duyệt...' : 'Phê Duyệt Gian Hàng'}
               </button>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -224,90 +614,467 @@ function ShopCard({ app, onApprove, onReject }) {
   );
 }
 
-function Pagination({ page, totalPages, onPageChange }) {
-  if (totalPages <= 1) return null;
+function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
+  const [approving, setApproving] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
-  const pages = [];
-  for (let i = 1; i <= totalPages; i++) pages.push(i);
+  const handleApprove = async () => {
+    setApproving(true);
+    await onApprove(app);
+    setApproving(false);
+  };
+
+  const getFileName = (url, defaultName) => {
+    if (!url) return defaultName;
+    if (url.startsWith('data:')) return defaultName;
+    const parts = url.split('/');
+    const last = parts[parts.length - 1];
+    return last && last.length < 30 ? last : defaultName;
+  };
+
+  const licenseFile = getFileName(app.businessLicenseUrl, 'GPKD_Document.pdf');
+  const idCardFile = getFileName(app.idCardFrontUrl, 'CCCD_2Mat.jpg');
+  const idCardBackFile = getFileName(app.idCardBackUrl, 'CCCD_Mat_Sau.jpg');
+
+  const formatTime = (iso) => {
+    if (!iso) return 'HÔM NAY';
+    const d = new Date(iso);
+    const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = d.toLocaleDateString('vi-VN');
+    return `${timeStr} — ${dateStr}`;
+  };
+
+  const metaText = formatTime(app.createdAt);
+
+  const statusMap = {
+    PENDING: { label: 'Đăng ký mới', dot: '#059669' },
+    ACTIVE: { label: 'Đã duyệt', dot: '#2563EB' },
+    REJECTED: { label: 'Từ chối', dot: '#DC2626' },
+    SUSPENDED: { label: 'Tạm ngưng', dot: '#D97706' },
+  };
+
+  const currentStatus = statusMap[app.status] || { label: app.status, dot: '#737373' };
+
+  const ownerName = app.ownerId?.FullName || app.ownerId?.fullName || app.ownerName || 'Chưa cập nhật';
+  const ownerEmail = app.ownerId?.Email || app.ownerId?.email || app.ownerEmail || '—';
+  const ownerPhone = app.phone || app.ownerId?.Information?.[0]?.Phone || app.ownerId?.phone || '—';
+  const ownerRole = app.ownerId?.Role || app.ownerId?.role || 'CUSTOMER';
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=141414&color=fff`;
 
   return (
-    <div className="d-flex align-items-center justify-content-between mt-3">
-      <div style={{ fontSize: '13px', color: '#888' }}>
-        Trang {page} / {totalPages}
+    <div className="admin-shop-card">
+      <div className="admin-shop-card__top">
+        <div className="admin-shop-card__left">
+          <div className="admin-shop-card__meta-tag">
+            <span>{metaText}</span>
+            <span>•</span>
+            <span
+              className="admin-shop-card__meta-dot"
+              style={{ background: currentStatus.dot }}
+            />
+            <span
+              className="admin-shop-card__meta-status"
+              style={{ color: currentStatus.dot }}
+            >
+              {currentStatus.label}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+            {app.imageUrl && (
+              <img
+                src={app.imageUrl}
+                alt={app.name}
+                style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #E5E5E5', flexShrink: 0 }}
+              />
+            )}
+            <h3 className="admin-shop-card__name" style={{ margin: 0 }}>{app.name}</h3>
+          </div>
+          <div className="admin-shop-card__category">
+            <strong>Ngành hàng / Mô tả:</strong> {app.description || 'Chưa cập nhật'}
+          </div>
+
+          <div className="admin-owner-capsule">
+            <div className="admin-owner-capsule__main">
+              <img
+                src={avatarUrl}
+                alt={ownerName}
+                className="admin-owner-avatar clickable"
+                onClick={() => onViewApplicant(app)}
+                title="Xem hồ sơ người đăng ký"
+              />
+              <div className="admin-owner-col">
+                <span className="admin-owner-col__label">CHỦ SỞ HỮU</span>
+                <span className="admin-owner-col__val">
+                  {ownerName}
+                  <span className={`admin-owner-role-tag ${ownerRole === 'SHOP_OWNER' ? 'owner' : ''}`}>
+                    {ownerRole === 'SHOP_OWNER' ? 'Shop Owner' : 'Khách hàng'}
+                  </span>
+                </span>
+              </div>
+              <div className="admin-owner-col">
+                <span className="admin-owner-col__label">EMAIL</span>
+                <span className="admin-owner-col__val regular">{ownerEmail}</span>
+              </div>
+              <div className="admin-owner-col">
+                <span className="admin-owner-col__label">ĐIỆN THOẠI</span>
+                <span className="admin-owner-col__val regular">{ownerPhone}</span>
+              </div>
+              <div className="admin-owner-col">
+                <span className="admin-owner-col__label">MÃ TÀI KHOẢN (UID)</span>
+                <span className="admin-owner-col__val regular" style={{ fontFamily: 'monospace', fontSize: '11px' }} title={app.ownerId?._id || '—'}>
+                  {app.ownerId?._id ? `#${String(app.ownerId._id).slice(-8)}` : '—'}
+                </span>
+              </div>
+              <div className="admin-owner-col">
+                <span className="admin-owner-col__label">ĐỊA CHỈ SHOWROOM</span>
+                <span className="admin-owner-col__val regular">
+                  {app.address ? [app.address, app.ward, app.district, app.city].filter(Boolean).join(', ') : 'Chưa cập nhật'}
+                  {app.latitude && app.longitude && (
+                    <div style={{ fontSize: '10.5px', color: '#059669', fontWeight: 600, marginTop: '2px', fontFamily: 'monospace' }}>
+                      📍 GPS: {Number(app.latitude).toFixed(4)}, {Number(app.longitude).toFixed(4)} (Chính xác)
+                    </div>
+                  )}
+                  {(app.address || (app.latitude && app.longitude)) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowMap(!showMap)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          fontSize: '11px',
+                          color: '#059669',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        {showMap ? 'Thu nhỏ bản đồ ▲' : '🗺️ Xem bản đồ showroom ▼'}
+                      </button>
+                      <a
+                        href={(app.latitude && app.longitude) ? `https://www.google.com/maps?q=${app.latitude},${app.longitude}&z=17` : `https://www.google.com/maps?q=${encodeURIComponent([app.address, app.ward, app.city].filter(Boolean).join(', '))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          fontSize: '11px',
+                          color: '#8C6D3F',
+                          textDecoration: 'none',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <span>Mở Google Maps ↗</span>
+                      </a>
+                    </div>
+                  )}
+                  {showMap && (
+                    <div style={{ width: '100%', height: '170px', marginTop: '6px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #E5E5E5' }}>
+                      <iframe
+                        title={`Bản đồ ${app.name}`}
+                        src={(app.latitude && app.longitude)
+                          ? `https://maps.google.com/maps?q=${app.latitude},${app.longitude}&hl=vi&z=17&output=embed`
+                          : `https://maps.google.com/maps?q=${encodeURIComponent([app.address, app.ward, app.city].filter(Boolean).join(', '))}&hl=vi&z=14&output=embed`}
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn-view-applicant-profile"
+              onClick={() => onViewApplicant(app)}
+              title="Xem thông tin chi tiết của người đăng ký trở thành shop owner"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span>Xem Hồ Sơ Người Đăng Ký</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="admin-shop-card__right">
+          <div className="admin-doc-section-title">HỒ SƠ ĐÍNH KÈM THẨM ĐỊNH</div>
+
+          <div className="admin-docs-grid">
+            <div className="admin-doc-item">
+              <div className="admin-doc-icon-badge pdf">
+                PDF
+              </div>
+              <div className="admin-doc-info">
+                <div className="admin-doc-name">Giấy ĐKKD</div>
+                <div className="admin-doc-file" title={licenseFile}>
+                  {licenseFile}
+                </div>
+                <div className="admin-doc-status">
+                  {app.businessLicenseUrl ? 'Đã tải lên ✓' : 'Chưa có file'}
+                </div>
+              </div>
+              {app.businessLicenseUrl && (
+                <button
+                  type="button"
+                  className="admin-doc-view-btn"
+                  title="Xem tài liệu"
+                  onClick={() => onViewDoc({
+                    label: 'Giấy Phép Đăng Ký Kinh Doanh (ĐKKD)',
+                    filename: licenseFile,
+                    url: app.businessLicenseUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            <div className="admin-doc-item">
+              <div className="admin-doc-icon-badge id">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <circle cx="8" cy="10" r="2" />
+                  <line x1="14" y1="10" x2="18" y2="10" />
+                  <line x1="14" y1="14" x2="18" y2="14" />
+                </svg>
+              </div>
+              <div className="admin-doc-info">
+                <div className="admin-doc-name">{app.idCardBackUrl ? 'CCCD Mặt Trước' : 'CCCD 2 mặt'}</div>
+                <div className="admin-doc-file" title={idCardFile}>
+                  {idCardFile}
+                </div>
+                <div className="admin-doc-status">
+                  {app.idCardFrontUrl ? 'Đã tải lên ✓' : 'Chưa có file'}
+                </div>
+              </div>
+              {app.idCardFrontUrl && (
+                <button
+                  type="button"
+                  className="admin-doc-view-btn"
+                  title="Xem CCCD"
+                  onClick={() => onViewDoc({
+                    label: app.idCardBackUrl ? 'Căn Cước Công Dân (CCCD) — Mặt Trước' : 'Căn Cước Công Dân (CCCD) 2 Mặt',
+                    filename: idCardFile,
+                    url: app.idCardFrontUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {app.idCardBackUrl && (
+              <div className="admin-doc-item">
+                <div className="admin-doc-icon-badge id">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                    <circle cx="8" cy="10" r="2" />
+                    <line x1="14" y1="10" x2="18" y2="10" />
+                    <line x1="14" y1="14" x2="18" y2="14" />
+                  </svg>
+                </div>
+                <div className="admin-doc-info">
+                  <div className="admin-doc-name">CCCD Mặt Sau</div>
+                  <div className="admin-doc-file" title={idCardBackFile}>
+                    {idCardBackFile}
+                  </div>
+                  <div className="admin-doc-status">
+                    Đã tải lên ✓
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="admin-doc-view-btn"
+                  title="Xem CCCD Mặt Sau"
+                  onClick={() => onViewDoc({
+                    label: 'Căn Cước Công Dân (CCCD) — Mặt Sau',
+                    filename: idCardBackFile,
+                    url: app.idCardBackUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+            {app.imageUrl && (
+              <div className="admin-doc-item">
+                <div className="admin-doc-icon-badge" style={{ background: '#ECFDF5', color: '#059669', borderColor: '#A7F3D0', fontWeight: 700, fontSize: '11px' }}>
+                  IMG
+                </div>
+                <div className="admin-doc-info">
+                  <div className="admin-doc-name">Logo Showroom</div>
+                  <div className="admin-doc-file" title="Logo_Showroom.png">
+                    Logo_Showroom.png
+                  </div>
+                  <div className="admin-doc-status">
+                    Đã tải lên ✓
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="admin-doc-view-btn"
+                  title="Xem Logo Showroom"
+                  onClick={() => onViewDoc({
+                    label: 'Ảnh Đại Diện / Logo Gian Hàng',
+                    filename: 'Logo_Showroom.png',
+                    url: app.imageUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      <nav>
-        <ul className="pagination pagination-sm mb-0">
-          <li className={`page-item ${page === 1 ? 'disabled' : ''}`}>
-            <button className="page-link" onClick={() => onPageChange(page - 1)}>Truoc</button>
-          </li>
-          {pages.map(p => (
-            <li key={p} className={`page-item ${p === page ? 'active' : ''}`}>
-              <button className="page-link" onClick={() => onPageChange(p)}
-                style={p === page ? { background: '#1A1A1A', borderColor: '#1A1A1A' } : {}}>
-                {p}
-              </button>
-            </li>
-          ))}
-          <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
-            <button className="page-link" onClick={() => onPageChange(page + 1)}>Sau</button>
-          </li>
-        </ul>
-      </nav>
+
+      <div className="admin-shop-card__bottom">
+        <div className="admin-shop-card__note">
+          <span className="admin-shop-card__note-icon">i</span>
+          <span>
+            {app.notes || (app.address ? `Địa chỉ đăng ký: ${app.address}` : 'Cần đối chiếu số hiệu ĐKKD trên cổng thông tin quốc gia trước khi nhấn duyệt.')}
+          </span>
+        </div>
+
+        {app.status === 'PENDING' ? (
+          <div className="admin-shop-card__actions">
+            <button
+              type="button"
+              className="btn-reject-action"
+              onClick={() => onReject(app)}
+            >
+              Từ Chối
+            </button>
+            <button
+              type="button"
+              className="btn-approve-action"
+              onClick={handleApprove}
+              disabled={approving}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {approving ? 'Đang duyệt...' : 'Phê Duyệt'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: '13px', fontWeight: 600, color: app.status === 'ACTIVE' ? '#059669' : '#DC2626' }}>
+            {app.status === 'ACTIVE' ? '✓ Đã phê duyệt thành công' : `✕ Đã từ chối: ${app.rejectionReason || 'Hồ sơ không hợp lệ'}`}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 export default function AdminShopsPage() {
-  const [activeTab, setActiveTab] = useState('PENDING');
-  const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(
+    tabParam && ['PENDING', 'ACTIVE', 'REJECTED'].includes(tabParam) ? tabParam : 'PENDING'
+  );
+  const [searchQuery, setSearchQuery] = useState('');
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [viewingApplicant, setViewingApplicant] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const [shops, setShops] = useState([]);
   const [counts, setCounts] = useState({ PENDING: 0, ACTIVE: 0, REJECTED: 0 });
-  const [avgTime] = useState('3.5');
-  const [approvalRate] = useState('94.2');
+  const [newToday, setNewToday] = useState(0);
+  const [approvalRate, setApprovalRate] = useState('0.0');
+  const [avgProcessingHours, setAvgProcessingHours] = useState('0.0');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const LIMIT = 5;
+  const LIMIT = 6;
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && ['PENDING', 'ACTIVE', 'REJECTED'].includes(t)) {
+      setActiveTab(t);
+      setPage(1);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tabKey) => {
+    setActiveTab(tabKey);
+    setPage(1);
+    setSearchParams({ tab: tabKey });
+  };
 
   const fetchCounts = useCallback(async () => {
     try {
-      const [p, a, r] = await Promise.all([
-        fetch(`${API_BASE}/api/admin/shops?status=PENDING&limit=1`).then(r => r.json()),
-        fetch(`${API_BASE}/api/admin/shops?status=ACTIVE&limit=1`).then(r => r.json()),
-        fetch(`${API_BASE}/api/admin/shops?status=REJECTED&limit=1`).then(r => r.json()),
-      ]);
-      setCounts({
-        PENDING: p.total || 0,
-        ACTIVE: a.total || 0,
-        REJECTED: r.total || 0,
-      });
-    } catch (_) {}
+      const result = await apiClient.get('/api/admin/shops/stats');
+      if (result.success) {
+        setCounts(result.counts || { PENDING: 0, ACTIVE: 0, REJECTED: 0 });
+        setNewToday(result.newToday || 0);
+        setApprovalRate(result.approvalRate || '0.0');
+        setAvgProcessingHours(result.avgProcessingHours || '0.0');
+      }
+    } catch (_) {
+    }
   }, []);
 
   const fetchShops = useCallback(async () => {
     setLoading(true);
-    setError('');
     try {
-      const params = new URLSearchParams({
-        status: activeTab,
-        search: searchQuery,
-        page,
-        limit: LIMIT,
+      const data = await apiClient.get('/api/admin/shops', {
+        params: {
+          status: activeTab,
+          search: searchQuery,
+          page,
+          limit: LIMIT,
+        },
       });
-      const res = await fetch(`${API_BASE}/api/admin/shops?${params}`);
-      const data = await res.json();
+
       if (data.success) {
-        setShops(data.data);
-        setTotalPages(data.totalPages || 1);
+        if ((!data.data || data.data.length === 0) && data.total > 0 && page > 1) {
+          setPage((p) => Math.max(1, p - 1));
+          return;
+        }
+        setShops(data.data || []);
         setTotal(data.total || 0);
+        setTotalPages(data.totalPages || 1);
+      } else {
+        setShops([]);
+        setTotal(0);
       }
-    } catch (_) {
-      setError('Khong the ket noi den server.');
+    } catch (err) {
+      showToast('Không thể kết nối đến máy chủ: ' + err.message, 'error');
+      setShops([]);
     } finally {
       setLoading(false);
     }
@@ -325,198 +1092,281 @@ export default function AdminShopsPage() {
     fetchShops();
   }, [fetchShops]);
 
-  const handleApprove = async (shopId, notes) => {
+  const handleApprove = async (shop, customNotes = '') => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/shops/${shopId}/approve`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: ADMIN_ID, notes }),
+      const adminId = getAdminId();
+      const data = await apiClient.put(`/api/admin/shops/${shop._id}/approve`, {
+        adminId,
+        notes: customNotes.trim() || 'Đã thẩm định thông tin ĐKKD và CCCD hợp lệ.',
       });
-      const data = await res.json();
       if (!data.success) throw new Error(data.message);
+
+      showToast(`Đã phê duyệt gian hàng "${shop.name}" thành công!`);
       await fetchShops();
       await fetchCounts();
     } catch (err) {
-      alert('Loi: ' + err.message);
+      showToast('Lỗi phê duyệt: ' + err.message, 'error');
     }
   };
 
   const handleRejectConfirm = async (shopId, rejectionReason, notes) => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/shops/${shopId}/reject`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: ADMIN_ID, rejectionReason, notes }),
+      const adminId = getAdminId();
+      const data = await apiClient.put(`/api/admin/shops/${shopId}/reject`, {
+        adminId,
+        rejectionReason,
+        notes,
       });
-      const data = await res.json();
       if (!data.success) throw new Error(data.message);
+
       setRejectTarget(null);
+      showToast('Đã từ chối hồ sơ gian hàng.');
       await fetchShops();
       await fetchCounts();
     } catch (err) {
-      alert('Loi: ' + err.message);
+      showToast('Lỗi từ chối: ' + err.message, 'error');
     }
   };
 
   return (
-    <div className="admin-layout">
+    <div className="admin-shops-layout">
       <AdminSidebar
         isCollapsed={isSidebarCollapsed}
         onToggle={() => setIsSidebarCollapsed(prev => !prev)}
       />
 
-      <div className="admin-main-viewport">
+      <div className="admin-shops-viewport">
         <AdminTopHeader
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
-          breadcrumb="Phe Duyet Shop"
+          breadcrumb={activeTab === 'ACTIVE' ? 'Quản Lý Gian Hàng' : activeTab === 'REJECTED' ? 'Hồ Sơ Từ Chối' : 'Phê Duyệt Shop'}
         />
 
-        <div className="admin-content-body" style={{ background: '#F7F7F7', minHeight: '100vh' }}>
-          <div style={{ marginBottom: '6px' }}>
-            <h4 style={{ fontWeight: 700, fontSize: '22px', color: '#111', marginBottom: '4px' }}>
-              Phe Duyet Gian Hang Moi
-            </h4>
-            <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>
-              Xem xet ho so dang ky mo shop, kiem tra giay phep kinh doanh va CCCD cua nguoi dang ky.
+        <main className="admin-shops-content">
+          <div className="admin-shops-header-row">
+            <div className="admin-shops-breadcrumb">
+              <span className="current">
+                {activeTab === 'ACTIVE' ? 'Quản Lý Gian Hàng' : activeTab === 'REJECTED' ? 'Hồ Sơ Từ Chối' : 'Phê Duyệt Shop'}
+              </span>
+            </div>
+
+            <div className="admin-shops-live-pill">
+              HỒ SƠ CẬP NHẬT TRỰC TUYẾN
+            </div>
+          </div>
+
+          <div className="admin-shops-title-block">
+            <h1 className="admin-shops-page-title">Phê Duyệt Gian Hàng Mới</h1>
+            <p className="admin-shops-page-sub">
+              Xem xét hồ sơ đăng ký mở shop, kiểm tra giấy phép kinh doanh và CCCD của người đăng ký.
             </p>
           </div>
 
-          <div className="row g-3 mb-4" style={{ marginTop: '0' }}>
-            <div className="col-md-4">
-              <div style={card.wrapper}>
-                <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px', fontWeight: 500 }}>
-                  CHO PHE DUYET
+          <div className="admin-shops-metrics-grid">
+            <div className="admin-metric-card">
+              <div className="admin-metric-card__header">
+                <span className="admin-metric-card__label">CHỜ PHÊ DUYỆT</span>
+                <div className="admin-metric-card__icon-box">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="18" x2="12" y2="12" />
+                    <line x1="9" y1="15" x2="15" y2="15" />
+                  </svg>
                 </div>
-                <div style={{ fontSize: '36px', fontWeight: 800, color: '#111', lineHeight: 1 }}>
-                  {counts.PENDING}
+              </div>
+              <div>
+                <div className="admin-metric-card__main-row">
+                  <span className="admin-metric-card__number">{counts.PENDING}</span>
+                  <span className="admin-metric-card__badge-green">
+                    ↗ +{newToday} mới nộp hôm nay
+                  </span>
                 </div>
-                <div style={{ fontSize: '11px', color: '#4CAF50', marginTop: '6px' }}>
-                  +3 moi nop hom nay
+                <p className="admin-metric-card__subtext">
+                  Yêu cầu hoàn thiện thẩm định trong 24 giờ
+                </p>
+              </div>
+            </div>
+
+            <div className="admin-metric-card">
+              <div className="admin-metric-card__header">
+                <span className="admin-metric-card__label">THỜI GIAN XỬ LÝ TB</span>
+                <div className="admin-metric-card__icon-box">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
                 </div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                  Yeu cau hoan thien tham dinh trong 24 gio
+              </div>
+              <div>
+                <div className="admin-metric-card__main-row">
+                  <span className="admin-metric-card__number">
+                    {avgProcessingHours} <span className="unit">giờ</span>
+                  </span>
+                </div>
+                <div className="admin-metric-card__bar-row">
+                  <div className="admin-metric-card__bar-track">
+                    <div
+                      className="admin-metric-card__bar-fill"
+                      style={{
+                        width: `${Math.min(100, Math.max(8, parseFloat(avgProcessingHours || 0) * 15))}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="admin-metric-card__bar-label">
+                    {parseFloat(avgProcessingHours) > 0 ? 'Dữ liệu thực tế' : 'Chưa có dữ liệu duyệt'}
+                  </span>
                 </div>
               </div>
             </div>
-            <div className="col-md-4">
-              <div style={card.wrapper}>
-                <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px', fontWeight: 500 }}>
-                  THOI GIAN XU LY TB
-                </div>
-                <div style={{ fontSize: '36px', fontWeight: 800, color: '#111', lineHeight: 1 }}>
-                  {avgTime} <span style={{ fontSize: '16px', fontWeight: 400, color: '#666' }}>gio</span>
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                  <div className="progress" style={{ height: '6px', borderRadius: '3px' }}>
-                    <div className="progress-bar bg-success" style={{ width: '68%' }} />
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#4CAF50', marginTop: '4px' }}>
-                    Nhanh hon 18%
-                  </div>
+
+            <div className="admin-metric-card">
+              <div className="admin-metric-card__header">
+                <span className="admin-metric-card__label">TỶ LỆ DUYỆT HỒ SƠ</span>
+                <div className="admin-metric-card__icon-box" style={{ color: '#059669' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <polyline points="9 12 11 14 15 10" />
+                  </svg>
                 </div>
               </div>
-            </div>
-            <div className="col-md-4">
-              <div style={card.wrapper}>
-                <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px', fontWeight: 500 }}>
-                  TY LE DUYET HO SO
+              <div>
+                <div className="admin-metric-card__main-row">
+                  <span className="admin-metric-card__number">
+                    {approvalRate}<span className="unit">%</span>
+                  </span>
                 </div>
-                <div style={{ fontSize: '36px', fontWeight: 800, color: '#111', lineHeight: 1 }}>
-                  {approvalRate}<span style={{ fontSize: '20px' }}>%</span>
-                </div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '6px' }}>
-                  Dat tieu chuan hop quy dinh & phap ly hop le
-                </div>
+                <p className="admin-metric-card__subtext">
+                  Đạt tiêu chuẩn hợp quy định & pháp lý hợp lệ
+                </p>
               </div>
             </div>
           </div>
 
-          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #EBEBEB', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              <div className="d-flex gap-1" style={{ background: '#F5F5F5', borderRadius: '8px', padding: '4px' }}>
-                {STATUS_TABS.map(tab => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    style={{
-                      border: 'none', borderRadius: '6px', padding: '7px 16px',
-                      fontSize: '13px', cursor: 'pointer',
-                      background: activeTab === tab.key ? '#fff' : 'transparent',
-                      color: activeTab === tab.key ? '#111' : '#888',
-                      fontWeight: activeTab === tab.key ? 600 : 400,
-                      boxShadow: activeTab === tab.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                    }}
-                  >
-                    {tab.label}
-                    <span style={{
-                      background: activeTab === tab.key ? '#111' : '#DDD',
-                      color: activeTab === tab.key ? '#fff' : '#666',
-                      borderRadius: '20px', padding: '1px 7px', fontSize: '11px', fontWeight: 700,
-                    }}>
-                      {counts[tab.key] || 0}
-                    </span>
-                  </button>
-                ))}
+          <div className="admin-shops-toolbar">
+            <div className="admin-shops-tabs-pill">
+              {STATUS_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`admin-shops-tab-btn ${activeTab === tab.key ? 'active' : ''}`}
+                  onClick={() => handleTabChange(tab.key)}
+                >
+                  <span>{tab.label}</span>
+                  <span className="admin-shops-tab-count">
+                    {counts[tab.key] || 0}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="admin-shops-search-wrap">
+              <div className="admin-shops-search-box">
+                <span className="admin-shops-search-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  className="admin-shops-search-input"
+                  placeholder="Tìm kiếm tên shop, CCCD, SĐT..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
 
-              <div className="d-flex gap-2 align-items-center">
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    placeholder="Tim kiem ten shop, CCCD, SDT..."
-                    style={{ paddingLeft: '12px', fontSize: '13px', width: '260px', borderRadius: '8px' }}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <button className="btn btn-outline-secondary btn-sm" style={{ borderRadius: '8px', padding: '5px 10px' }}>
-                  Bo loc
+              <button
+                className="admin-shops-filter-btn"
+                title="Làm mới danh sách hồ sơ"
+                onClick={() => {
+                  fetchCounts();
+                  fetchShops();
+                  showToast('Đã làm mới danh sách hồ sơ');
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#737373' }}>
+              <div style={{ fontSize: '14px', fontWeight: 500 }}>Đang tải danh sách hồ sơ...</div>
+            </div>
+          ) : shops.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '80px 20px', background: '#FFFFFF', borderRadius: '18px', border: '1px solid #ECEAE5' }}>
+              <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
+              <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#171717', margin: '0 0 4px' }}>
+                Không tìm thấy hồ sơ phù hợp
+              </h4>
+              <p style={{ fontSize: '13px', color: '#737373', margin: 0 }}>
+                Trạng thái <strong>{STATUS_TABS.find(t => t.key === activeTab)?.label}</strong> hiện tại không có dữ liệu phù hợp.
+              </p>
+            </div>
+          ) : (
+            <div className="admin-shops-list">
+              {shops.map((app) => (
+                <ShopCard
+                  key={app._id}
+                  app={app}
+                  onApprove={handleApprove}
+                  onReject={setRejectTarget}
+                  onViewDoc={setPreviewDoc}
+                  onViewApplicant={setViewingApplicant}
+                />
+              ))}
+            </div>
+          )}
+
+          {total > 0 && (
+            <div className="admin-shops-pagination">
+              <div className="admin-shops-pagination__info">
+                Hiển thị {shops.length > 0 ? (page - 1) * LIMIT + 1 : 0}–{Math.min(page * LIMIT, total)} trong số {total} đơn {STATUS_TABS.find(t => t.key === activeTab)?.label?.toLowerCase()}
+              </div>
+
+              <div className="admin-shops-pagination__pages">
+                <button
+                  className="admin-shops-page-item"
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                >
+                  ‹
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    className={`admin-shops-page-item ${page === p ? 'active' : ''}`}
+                    onClick={() => setPage(p)}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  className="admin-shops-page-item"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                >
+                  ›
                 </button>
               </div>
             </div>
-
-            <div style={{ padding: '16px 20px' }}>
-              {error && (
-                <div className="alert alert-danger py-2 mb-3" style={{ fontSize: '13px' }}>{error}</div>
-              )}
-
-              {loading ? (
-                <div className="text-center py-5 text-muted" style={{ fontSize: '13px' }}>
-                  Dang tai du lieu...
-                </div>
-              ) : shops.length === 0 ? (
-                <div className="text-center py-5">
-                  <div style={{ fontSize: '36px', marginBottom: '8px' }}>--</div>
-                  <div style={{ fontWeight: 600, color: '#333' }}>Khong co ho so nao</div>
-                  <div style={{ color: '#888', fontSize: '13px', marginTop: '4px' }}>
-                    Tat ca ho so o trang thai nay da duoc xu ly.
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {shops.map(app => (
-                    <ShopCard
-                      key={app._id}
-                      app={app}
-                      onApprove={handleApprove}
-                      onReject={setRejectTarget}
-                    />
-                  ))}
-
-                  <div style={{ borderTop: '1px solid #F0F0F0', paddingTop: '14px' }}>
-                    <div style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>
-                      Hien thi 1–{shops.length} trong so {total} don cho duyet
-                    </div>
-                    <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+          )}
+        </main>
       </div>
+
+      {viewingApplicant && (
+        <ApplicantDetailModal
+          app={viewingApplicant}
+          onClose={() => setViewingApplicant(null)}
+          onApprove={handleApprove}
+          onReject={setRejectTarget}
+          onViewDoc={setPreviewDoc}
+        />
+      )}
 
       {rejectTarget && (
         <RejectModal
@@ -525,49 +1375,20 @@ export default function AdminShopsPage() {
           onConfirm={handleRejectConfirm}
         />
       )}
+
+      {previewDoc && (
+        <DocPreviewModal
+          doc={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
+      )}
+
+      {toast && (
+        <div className={`admin-toast-banner ${toast.type}`}>
+          <span>{toast.type === 'success' ? '✓' : '⚠'}</span>
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }
-
-const card = {
-  wrapper: {
-    background: '#fff', borderRadius: '12px',
-    border: '1px solid #EBEBEB', padding: '20px 22px',
-    height: '100%',
-  },
-};
-
-const ms = {
-  overlay: {
-    position: 'fixed', inset: 0,
-    background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)',
-    zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '24px',
-  },
-  modal: {
-    background: '#fff', borderRadius: '14px',
-    width: '100%', maxWidth: '960px',
-    maxHeight: '90vh', overflow: 'hidden',
-    display: 'flex', flexDirection: 'column',
-    boxShadow: '0 20px 50px rgba(0,0,0,0.2)',
-  },
-  mHeader: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    padding: '20px 24px 16px', borderBottom: '1px solid #F0F0F0',
-  },
-  mTag: {
-    fontSize: '10px', fontWeight: 700, letterSpacing: '1px',
-    color: '#888', marginBottom: '4px', textTransform: 'uppercase',
-  },
-  mTitle: {
-    fontSize: '17px', fontWeight: 700, color: '#111', margin: 0,
-  },
-  closeBtn: {
-    background: '#F5F5F5', border: 'none', borderRadius: '6px',
-    width: '30px', height: '30px', cursor: 'pointer',
-    fontSize: '14px', color: '#555',
-  },
-  label: {
-    fontSize: '12px', fontWeight: 600, color: '#444',
-  },
-};

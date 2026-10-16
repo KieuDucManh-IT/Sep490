@@ -249,7 +249,7 @@ export const getShopApplications = async (req, res) => {
 
     const [shops, total] = await Promise.all([
       Shop.find(filter)
-        .populate('ownerId', 'FullName Email Role Status Infomation fullName email createdAt updatedAt')
+        .populate('ownerId', 'FullName Email Role Status Information fullName email createdAt updatedAt')
         .populate('reviewedBy', 'FullName Email fullName email')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -321,7 +321,7 @@ export const getShopById = async (req, res) => {
     }
 
     const shop = await Shop.findById(req.params.id)
-      .populate('ownerId', 'FullName Email Role Status fullName email phone')
+      .populate('ownerId', 'FullName Email Role Status Information fullName email phone createdAt updatedAt')
       .populate('reviewedBy', 'FullName Email fullName email');
 
     if (!shop) {
@@ -479,3 +479,4 @@ export const toggleSuspendShop = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Có lỗi xảy ra khi thay đổi trạng thái gian hàng.' });
   }
 };
+

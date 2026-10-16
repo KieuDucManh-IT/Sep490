@@ -13,7 +13,6 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
   const notifRef = useRef(null);
   const profileRef = useRef(null);
 
-  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (notifRef.current && !notifRef.current.contains(event.target)) {
@@ -27,7 +26,6 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Close dropdowns on route change
   useEffect(() => {
     setShowNotif(false);
     setShowProfile(false);
@@ -40,8 +38,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
   };
 
   return (
-    <header className="admin-shops-topbar">
-      {/* 1. BRAND & BREADCRUMB NAVIGATION */}
+    <header className="admin-shops-topbar" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
       <div className="admin-shops-topbar__brand">
         {onToggleSidebar && (
           <button
@@ -72,9 +69,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
         )}
       </div>
 
-      {/* 2. ACTIONS: STATUS, NOTIFICATION BELL & USER PROFILE */}
       <div className="admin-shops-topbar__actions">
-        {/* System Health Status */}
         <div
           className="admin-shops-topbar__status"
           title="Máy chủ và CSDL MongoDB Atlas đang kết nối trực tiếp ổn định"
@@ -83,7 +78,6 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
           <span>Hoạt Động</span>
         </div>
 
-        {/* Notification Bell Dropdown */}
         <div className="admin-topbar-popover-container" ref={notifRef}>
           <button
             type="button"
@@ -186,7 +180,6 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
           )}
         </div>
 
-        {/* Admin User Profile Dropdown */}
         <div className="admin-topbar-popover-container" ref={profileRef}>
           <div
             className={`admin-shops-topbar__profile ${showProfile ? 'active' : ''}`}

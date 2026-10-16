@@ -7,6 +7,7 @@ import { connectDB } from "./src/config/db.js";
 import shopRoutes from "./src/routes/shopRoutes.js";
 import authRoutes from "./src/routes/authRoutes.js";
 import User from "./src/models/User.js";
+import apiRoutes from "./src/routes/apiRoutes.js";
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use("/api/auth", authRoutes);
 app.use("/api/shops", shopRoutes);
 app.use("/api/admin/shops", shopRoutes);
+app.use("/api", apiRoutes);
 
 app.use((error, req, res, next) => {
   console.error("Lỗi API:", error.name, error.code || "");
@@ -43,20 +45,18 @@ app.use((error, req, res, next) => {
   });
 });
 
+const PORT = process.env.PORT || 5000;
+
 async function startServer() {
   try {
     await connectDB();
-
-    // Đợi tạo index để kiểm tra email trùng.
     await User.init();
 
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);
 
-    const port = process.env.PORT || 5000;
-
-    app.listen(port, () => {
-      console.log(`Backend đang chạy tại http://localhost:${port}`);
+    app.listen(PORT, () => {
+      console.log(`Backend đang chạy tại http://localhost:${PORT}`);
     });
   } catch (error) {
     console.error("Lỗi khởi động backend:", error.message);

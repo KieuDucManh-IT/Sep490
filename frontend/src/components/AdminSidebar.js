@@ -21,7 +21,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
   return (
     <aside className={`admin-shops-sidebar admin-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div>
-        {/* Brand Header */}
         <div className="admin-shops-sidebar__brand">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Link to="/admin/dashboard" className="admin-shops-sidebar__logo" title="VESTORA Admin">
@@ -48,9 +47,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
           {!isCollapsed && <div className="admin-shops-sidebar__sub">QUẢN TRỊ HỆ THỐNG</div>}
         </div>
 
-        {/* Navigation Menu (Matching user screenshot 100%) */}
         <nav className="admin-shops-sidebar__nav">
-          {/* 1. Tổng Quan */}
           <Link
             to="/admin/dashboard"
             className={`admin-shops-sidebar__link ${isActive('/admin/dashboard')}`}
@@ -67,7 +64,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             {!isCollapsed && <span>Tổng Quan</span>}
           </Link>
 
-          {/* 2. Quản Lý Tài Khoản */}
           <Link
             to="/admin/accounts"
             className={`admin-shops-sidebar__link ${isActive('/admin/accounts')}`}
@@ -84,7 +80,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             {!isCollapsed && <span>Quản Lý Tài Khoản</span>}
           </Link>
 
-          {/* 3. Quản Lý Gian Hàng */}
           <Link
             to="/admin/shops?tab=ACTIVE"
             className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'ACTIVE')}`}
@@ -100,7 +95,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             {!isCollapsed && <span>Quản Lý Gian Hàng</span>}
           </Link>
 
-          {/* 4. Phê Duyệt Shop */}
           <Link
             to="/admin/shops?tab=PENDING"
             className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'PENDING')}`}
@@ -115,7 +109,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             {!isCollapsed && <span>Phê Duyệt Shop</span>}
           </Link>
 
-          {/* 5. Kiểm Duyệt Sản Phẩm */}
           <Link
             to="/admin/moderation"
             className={`admin-shops-sidebar__link ${isActive('/admin/moderation')}`}
@@ -131,7 +124,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             {!isCollapsed && <span>Kiểm Duyệt Sản Phẩm</span>}
           </Link>
 
-          {/* 6. Báo Cáo & Khiếu Nại */}
           <Link
             to="/admin/disputes"
             className={`admin-shops-sidebar__link ${isActive('/admin/disputes')}`}
@@ -147,7 +139,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             {!isCollapsed && <span>Báo Cáo & Khiếu Nại</span>}
           </Link>
 
-          {/* 7. Thống Kê Hệ Thống */}
           <Link
             to="/admin/analytics"
             className={`admin-shops-sidebar__link ${isActive('/admin/analytics')}`}
@@ -165,7 +156,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
         </nav>
       </div>
 
-      {/* Sidebar Footer Logout */}
       <div className="admin-shops-sidebar__bottom">
         <Link to="/" className="admin-shops-sidebar__logout" title="Về Sàn VESTORA">
           <span className="admin-shops-sidebar__icon">

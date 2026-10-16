@@ -1,3 +1,5 @@
+@import './AdminShops.css';
+
 /* ==========================================================
    VESTORA — TailAdmin-Inspired Modern Admin Dashboard
    Preserves all project fields & brand primary theme colors
@@ -11,7 +13,6 @@
   background-color: #F8FAFC;
   color: #1E293B;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  overflow-x: hidden;
 }
 
 /* ==========================================================
@@ -1129,5 +1130,68 @@
     padding: 16px;
   }
 }
+
+/* ==========================================================
+   Admin Table Action Icon Buttons (Lucide Eye / Lock / Unlock)
+   ========================================================== */
+.btn-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  padding: 0;
+  outline: none;
+}
+
+.btn-action-icon:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.btn-action-icon:active {
+  transform: translateY(0);
+}
+
+.btn-action-icon.view-blue {
+  background: #EFF6FF;
+  color: #2563EB;
+  border-color: #BFDBFE;
+}
+
+.btn-action-icon.view-blue:hover {
+  background: #DBEAFE;
+  border-color: #93C5FD;
+  color: #1D4ED8;
+}
+
+.btn-action-icon.lock-red {
+  background: #FEF2F2;
+  color: #EF4444;
+  border-color: #FECACA;
+}
+
+.btn-action-icon.lock-red:hover {
+  background: #FEE2E2;
+  border-color: #FCA5A5;
+  color: #DC2626;
+}
+
+.btn-action-icon.unlock-green {
+  background: #F0FDF4;
+  color: #16A34A;
+  border-color: #BBF7D0;
+}
+
+.btn-action-icon.unlock-green:hover {
+  background: #DCFCE7;
+  border-color: #86EFAC;
+  color: #15803D;
+}
+
 
 

@@ -7,6 +7,9 @@ import {
   loginGoogle,
   getMe,
   logout,
+  forgotPassword,
+  verifyForgotPasswordOtp,
+  resetPassword,
 } from "../controllers/authController.js";
 
 import { authMiddleware } from "../middlewares/errorMiddleware.js";
@@ -32,5 +35,23 @@ router.get("/me", authMiddleware, getMe);
 
 // Đăng xuất trên trình duyệt hiện tại.
 router.post("/logout", authRequestMiddleware, logout);
+
+router.post(
+  "/forgot-password",
+  authRequestMiddleware,
+  forgotPassword
+);
+
+router.post(
+  "/forgot-password/verify-otp",
+  authRequestMiddleware,
+  verifyForgotPasswordOtp
+);
+
+router.post(
+  "/reset-password",
+  authRequestMiddleware,
+  resetPassword
+);
 
 export default router;

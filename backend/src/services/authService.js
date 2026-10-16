@@ -480,3 +480,283 @@ export async function loginGoogle(data = {}) {
     user: toPublicUser(user),
   };
 }
+
+const passwordResetRequests = new Map();
+const passwordResetLocks = new Set();
+
+const RESET_OTP_LIFETIME = 5 * 60 * 1000;
+const RESET_TOKEN_LIFETIME = 10 * 60 * 1000;
+const RESET_RESEND_DELAY = 60 * 1000;
+const RESET_MAX_ATTEMPTS = 5;
+
+const passwordResetSecret = crypto.randomBytes(32);
+
+function hashResetValue(value) {
+  return crypto
+    .createHmac("sha256", passwordResetSecret)
+    .update(value)
+    .digest("hex");
+}
+
+function lockPasswordReset(email) {
+  if (passwordResetLocks.has(email)) {
+    fail(409, "Yêu cầu trước đang xử lý. Vui lòng chờ");
+  }
+
+  passwordResetLocks.add(email);
+}
+
+const passwordResetCleanup = setInterval(() => {
+  const now = Date.now();
+
+  for (const [email, request] of passwordResetRequests) {
+    if (
+      request.expiresAt <= now &&
+      request.resendAfter <= now &&
+      !passwordResetLocks.has(email)
+    ) {
+      passwordResetRequests.delete(email);
+    }
+  }
+}, 60 * 1000);
+
+passwordResetCleanup.unref();
+
+// Bước 1: Kiểm tra email và gửi OTP.
+export async function forgotPassword(data = {}) {
+  const email = normalizeEmail(data?.email);
+
+  lockPasswordReset(email);
+
+  try {
+    const previous = passwordResetRequests.get(email);
+
+    if (previous && previous.resendAfter > Date.now()) {
+      const seconds = Math.ceil(
+        (previous.resendAfter - Date.now()) / 1000
+      );
+
+      fail(
+        429,
+        `Vui lòng chờ ${seconds} giây trước khi gửi lại OTP`
+      );
+    }
+
+    const user = await User.findOne({ Email: email });
+
+    if (!user) {
+      fail(404, "Email chưa được đăng ký");
+    }
+
+    if (user.Status !== "active") {
+      fail(403, "Tài khoản đã bị vô hiệu hóa");
+    }
+
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const challengeId = crypto.randomBytes(32).toString("hex");
+
+    try {
+      await sendEmail(
+        email,
+        "VESTORA - Mã OTP đặt lại mật khẩu",
+        [
+          `Mã OTP đặt lại mật khẩu của bạn là: ${otp}`,
+          "Mã có hiệu lực trong 5 phút.",
+          "Không chia sẻ mã này với người khác.",
+          "Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.",
+        ].join("\n"),
+        `
+          <div style="font-family:Arial,sans-serif;line-height:1.7;color:#302c26">
+            <h2 style="color:#96723d">VESTORA</h2>
+            <p>Bạn vừa yêu cầu đặt lại mật khẩu.</p>
+            <p>Mã xác thực của bạn:</p>
+            <div style="font-size:30px;font-weight:700;letter-spacing:6px">
+              ${otp}
+            </div>
+            <p>Mã có hiệu lực trong <strong>5 phút</strong>.</p>
+            <p>Không chia sẻ mã này với người khác.</p>
+            <p>Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email.</p>
+          </div>
+        `
+      );
+    } catch {
+      fail(503, "Không gửi được OTP. Vui lòng thử lại");
+    }
+
+    const now = Date.now();
+
+    // Chỉ thay yêu cầu cũ khi gửi email thành công.
+    passwordResetRequests.set(email, {
+      userId: user._id.toString(),
+      challengeId,
+      stage: "otp",
+      otpHash: hashResetValue(`${challengeId}:${otp}`),
+      attempts: 0,
+      expiresAt: now + RESET_OTP_LIFETIME,
+      resendAfter: now + RESET_RESEND_DELAY,
+    });
+
+    return {
+      message: "Đã gửi OTP. Vui lòng kiểm tra email và thư rác",
+      email,
+      challengeId,
+    };
+  } finally {
+    passwordResetLocks.delete(email);
+  }
+}
+
+// Bước 2: Kiểm tra OTP, cấp quyền đặt lại mật khẩu.
+export async function verifyForgotPasswordOtp(data = {}) {
+  const email = normalizeEmail(data?.email);
+  const otp = typeof data?.otp === "string"
+    ? data.otp.trim()
+    : "";
+
+  if (
+    typeof data?.challengeId !== "string" ||
+    !/^[a-f0-9]{64}$/.test(data.challengeId)
+  ) {
+    fail(400, "Yêu cầu không hợp lệ. Vui lòng gửi lại OTP");
+  }
+
+  if (!/^\d{6}$/.test(otp)) {
+    fail(400, "OTP phải gồm 6 chữ số");
+  }
+
+  lockPasswordReset(email);
+
+  try {
+    const request = passwordResetRequests.get(email);
+
+    if (
+      !request ||
+      request.stage !== "otp" ||
+      request.challengeId !== data.challengeId
+    ) {
+      fail(400, "Yêu cầu không còn hiệu lực. Vui lòng gửi lại OTP");
+    }
+
+    if (request.expiresAt <= Date.now()) {
+      fail(400, "OTP đã hết hạn. Vui lòng gửi lại mã");
+    }
+
+    if (request.attempts >= RESET_MAX_ATTEMPTS) {
+      fail(400, "Đã nhập sai 5 lần. Vui lòng gửi lại OTP");
+    }
+
+    const receivedHash = hashResetValue(
+      `${request.challengeId}:${otp}`
+    );
+
+    const valid = crypto.timingSafeEqual(
+      Buffer.from(receivedHash, "hex"),
+      Buffer.from(request.otpHash, "hex")
+    );
+
+    if (!valid) {
+      request.attempts += 1;
+
+      const remaining = RESET_MAX_ATTEMPTS - request.attempts;
+
+      fail(
+        400,
+        remaining > 0
+          ? `OTP không đúng. Còn ${remaining} lần thử`
+          : "Đã nhập sai 5 lần. Vui lòng gửi lại OTP"
+      );
+    }
+
+    // OTP dùng xong không được xác thực lại.
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    request.stage = "reset";
+    request.resetTokenHash = hashResetValue(resetToken);
+    request.expiresAt = Date.now() + RESET_TOKEN_LIFETIME;
+
+    delete request.otpHash;
+
+    return {
+      message: "Xác thực OTP thành công",
+      resetToken,
+    };
+  } finally {
+    passwordResetLocks.delete(email);
+  }
+}
+
+// Bước 3: Kiểm tra quyền đặt lại mật khẩu và lưu mật khẩu mới.
+export async function resetPassword(data = {}) {
+  const email = normalizeEmail(data?.email);
+
+  if (
+    typeof data?.resetToken !== "string" ||
+    !/^[a-f0-9]{64}$/.test(data.resetToken)
+  ) {
+    fail(400, "Vui lòng xác thực OTP trước khi đặt lại mật khẩu");
+  }
+
+  if (
+    typeof data?.password !== "string" ||
+    data.password.length < 8 ||
+    Buffer.byteLength(data.password, "utf8") > 72
+  ) {
+    fail(
+      400,
+      "Mật khẩu phải có ít nhất 8 ký tự và không vượt quá 72 byte"
+    );
+  }
+
+  if (data.password !== data.confirmPassword) {
+    fail(400, "Mật khẩu xác nhận không khớp");
+  }
+
+  lockPasswordReset(email);
+
+  try {
+    const request = passwordResetRequests.get(email);
+
+    if (
+      !request ||
+      request.stage !== "reset" ||
+      request.expiresAt <= Date.now()
+    ) {
+      fail(400, "Yêu cầu đã hết hạn. Vui lòng xác thực OTP lại");
+    }
+
+    const valid = crypto.timingSafeEqual(
+      Buffer.from(hashResetValue(data.resetToken), "hex"),
+      Buffer.from(request.resetTokenHash, "hex")
+    );
+
+    if (!valid) {
+      fail(400, "Yêu cầu đặt lại mật khẩu không hợp lệ");
+    }
+
+    const user = await User.findOne({
+      _id: request.userId,
+      Email: email,
+    }).select("+PasswordHash");
+
+    if (!user) {
+      fail(404, "Tài khoản không còn tồn tại");
+    }
+
+    if (user.Status !== "active") {
+      fail(403, "Tài khoản đã bị vô hiệu hóa");
+    }
+
+    // Dùng phương thức băm mật khẩu sẵn có trong User.js.
+    await user.setPassword(data.password);
+    await user.save();
+
+    // Chỉ dùng quyền đặt lại mật khẩu một lần.
+    passwordResetRequests.delete(email);
+
+    return {
+      message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập",
+    };
+  } finally {
+    passwordResetLocks.delete(email);
+  }
+}

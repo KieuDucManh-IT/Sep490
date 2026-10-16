@@ -4,6 +4,9 @@ import {
   login as loginAccount,
   loginGoogle as loginGoogleAccount,
   toPublicUser,
+  forgotPassword as requestPasswordReset,
+  verifyForgotPasswordOtp as verifyPasswordResetOtp,
+  resetPassword as resetAccountPassword,
 } from "../services/authService.js";
 
 const COOKIE_NAME = "vestora_token";
@@ -100,4 +103,42 @@ export function logout(req, res) {
   return res.status(200).json({
     message: "Đăng xuất thành công",
   });
+}
+
+export async function forgotPassword(req, res, next) {
+  try {
+    const result = await requestPasswordReset(req.body);
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function verifyForgotPasswordOtp(req, res, next) {
+  try {
+    const result = await verifyPasswordResetOtp(req.body);
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetPassword(req, res, next) {
+  try {
+    const result = await resetAccountPassword(req.body);
+
+    // Xóa cookie đăng nhập của trình duyệt đang đặt lại mật khẩu.
+    res.clearCookie(COOKIE_NAME, cookieOptions());
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
 }

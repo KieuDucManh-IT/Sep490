@@ -137,3 +137,70 @@ export async function loginGoogleApi(credential) {
 
   return data;
 }
+
+async function passwordRecoveryRequest(path, body) {
+  const apiUrl =
+    process.env.REACT_APP_API_URL ||
+    "http://localhost:5000/api";
+
+  const response = await fetch(`${apiUrl}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const details = Array.isArray(data.errors)
+      ? data.errors.map((item) => item.message).join("; ")
+      : "";
+
+    const error = new Error(
+      details || data.message || "Không thực hiện được yêu cầu"
+    );
+
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
+export function forgotPasswordApi(email) {
+  return passwordRecoveryRequest("/auth/forgot-password", {
+    email,
+  });
+}
+
+export function verifyForgotPasswordOtpApi(
+  email,
+  challengeId,
+  otp
+) {
+  return passwordRecoveryRequest(
+    "/auth/forgot-password/verify-otp",
+    {
+      email,
+      challengeId,
+      otp,
+    }
+  );
+}
+
+export function resetPasswordApi(
+  email,
+  resetToken,
+  password,
+  confirmPassword
+) {
+  return passwordRecoveryRequest("/auth/reset-password", {
+    email,
+    resetToken,
+    password,
+    confirmPassword,
+  });
+}

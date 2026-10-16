@@ -1,6 +1,6 @@
-const authService = require("../services/authService");
+import authService from "../services/authService.js";
 
-async function register(req, res, next) {
+export async function register(req, res, next) {
   try {
     const result = await authService.register(req.body);
     res.status(200).json(result);
@@ -9,7 +9,7 @@ async function register(req, res, next) {
   }
 }
 
-async function verifyRegisterOtp(req, res, next) {
+export async function verifyRegisterOtp(req, res, next) {
   try {
     const result = await authService.verifyRegisterOtp(req.body);
     res.status(201).json(result);
@@ -18,7 +18,7 @@ async function verifyRegisterOtp(req, res, next) {
   }
 }
 
-module.exports = {
+export default {
   register,
   verifyRegisterOtp,
-};
+};

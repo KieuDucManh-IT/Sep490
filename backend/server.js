@@ -1,27 +1,20 @@
 import express from "express";
+import cors from "cors";
 import dotenv from "dotenv";
+import mongoose from "mongoose";
+
 import { connectDB } from "./src/config/db.js";
-import productRoutes from "./src/routes/productRoutes.js";
-import orderRoutes from "./src/routes/orderRoutes.js";
 import shopRoutes from "./src/routes/shopRoutes.js";
+import authRoutes from "./src/routes/authRoutes.js";
+import User from "./src/models/User.js";
 
-const mongoose = require("mongoose");
-const cors = require("cors");
-
-const authRoutes = require("./src/routes/authRoutes");
-const User = require("./src/models/User");
+dotenv.config();
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
-
-app.use("/api/products", productRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/shops", shopRoutes);
-app.use("/api/admin/shops", shopRoutes);
 const allowedOrigins = (
-  process.env.CLIENT_URL || "http://localhost:3000,http://127.0.0.1:3000"
+  process.env.CLIENT_URL ||
+  "http://localhost:3000,http://127.0.0.1:3000"
 )
   .split(",")
   .map((origin) => origin.trim());
@@ -29,12 +22,16 @@ const allowedOrigins = (
 app.use(
   cors({
     origin: allowedOrigins,
-  }),
+    credentials: true,
+  })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/shops", shopRoutes);
+app.use("/api/admin/shops", shopRoutes);
 
 app.use((error, req, res, next) => {
   console.error("Lỗi API:", error.name, error.code || "");
@@ -46,10 +43,9 @@ app.use((error, req, res, next) => {
   });
 });
 
-connectDB();
 async function startServer() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    await connectDB();
 
     // Đợi tạo index để kiểm tra email trùng.
     await User.init();

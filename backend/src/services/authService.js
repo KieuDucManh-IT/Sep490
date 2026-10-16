@@ -1,6 +1,6 @@
-const crypto = require("crypto");
-const User = require("../models/User");
-const sendEmail = require("../utils/sendEmail");
+import crypto from "crypto";
+import User from "../models/User.js";
+import sendEmail from "../utils/sendEmail.js";
 
 const pendingRegistrations = new Map();
 const otpSecret = crypto.randomBytes(32);
@@ -123,8 +123,8 @@ async function register(data = {}) {
       email,
       "VESTORA - Xác thực đăng ký",
       `Mã OTP của bạn là: ${otp}\n` +
-        "Mã có hiệu lực trong 5 phút.\n" +
-        "Không chia sẻ mã này với người khác."
+      "Mã có hiệu lực trong 5 phút.\n" +
+      "Không chia sẻ mã này với người khác."
     );
   } catch (error) {
     if (pendingRegistrations.get(email) === pending) {
@@ -251,7 +251,12 @@ async function verifyRegisterOtp(data = {}) {
   };
 }
 
-module.exports = {
+export {
   register,
   verifyRegisterOtp,
 };
+
+export default {
+  register,
+  verifyRegisterOtp,
+};

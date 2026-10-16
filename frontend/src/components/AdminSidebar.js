@@ -1,148 +1,185 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import '../styles/AdminDashboard.css';
+import '../styles/AdminShops.css';
 
 export default function AdminSidebar({ isCollapsed, onToggle }) {
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const currentTab = searchParams.get('tab') || 'PENDING';
 
-  const isActive = (path) => {
+  const isActive = (path, tab) => {
+    if (path === '/admin/shops') {
+      if (location.pathname !== '/admin/shops') return '';
+      if (tab === 'ACTIVE') return currentTab === 'ACTIVE' ? 'active' : '';
+      if (tab === 'PENDING') return currentTab === 'PENDING' || !searchParams.get('tab') ? 'active' : '';
+      return '';
+    }
     return location.pathname === path ? 'active' : '';
   };
 
   return (
-    <aside className={`admin-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      {/* Brand Logo Header (TailAdmin style) */}
-      <div className="admin-sidebar-header">
-        <Link to="/admin/dashboard" className="admin-brand-link">
-          <div className="admin-brand-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 5L12 19L20 5" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M8 5L12 12L16 5" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+    <aside className={`admin-shops-sidebar admin-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <div>
+        {/* Brand Header */}
+        <div className="admin-shops-sidebar__brand">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Link to="/admin/dashboard" className="admin-shops-sidebar__logo" title="VESTORA Admin">
+              {isCollapsed ? 'V' : 'VESTORA'}
+            </Link>
+            {onToggle && (
+              <button
+                type="button"
+                onClick={onToggle}
+                className="admin-sidebar-collapse-toggle"
+                title={isCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+                aria-label="Thu gọn / mở rộng menu"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {isCollapsed ? (
+                    <polyline points="9 18 15 12 9 6" />
+                  ) : (
+                    <polyline points="15 18 9 12 15 6" />
+                  )}
+                </svg>
+              </button>
+            )}
           </div>
-          {!isCollapsed && (
-            <div className="admin-brand-text">
-              <span className="admin-brand-name">VESTORA</span>
-              <span className="admin-brand-sub">Admin Console</span>
-            </div>
-          )}
-        </Link>
-        {onToggle && (
-          <button className="admin-sidebar-toggle-btn" onClick={onToggle} title="Thu gọn / Mở rộng">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 18l-6-6 6-6"/>
-            </svg>
-          </button>
-        )}
-      </div>
+          {!isCollapsed && <div className="admin-shops-sidebar__sub">QUẢN TRỊ HỆ THỐNG</div>}
+        </div>
 
-      {/* Navigation Sections */}
-      <nav className="admin-nav-container">
-        {/* Section 1: MENU */}
-        <div className="admin-nav-section">
-          {!isCollapsed && <div className="admin-nav-section-title">MENU</div>}
-          
-          <Link to="/admin/dashboard" className={`admin-nav-link ${isActive('/admin/dashboard')}`} title="Dashboard">
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        {/* Navigation Menu (Matching user screenshot 100%) */}
+        <nav className="admin-shops-sidebar__nav">
+          {/* 1. Tổng Quan */}
+          <Link
+            to="/admin/dashboard"
+            className={`admin-shops-sidebar__link ${isActive('/admin/dashboard')}`}
+            title="Tổng Quan"
+          >
+            <span className="admin-shops-sidebar__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <rect x="3" y="3" width="7" height="7" rx="1.5" />
                 <rect x="14" y="3" width="7" height="7" rx="1.5" />
                 <rect x="14" y="14" width="7" height="7" rx="1.5" />
                 <rect x="3" y="14" width="7" height="7" rx="1.5" />
               </svg>
             </span>
-            {!isCollapsed && <span className="admin-nav-text">Dashboard</span>}
-            {!isCollapsed && (
-              <span className="admin-nav-chevron">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </span>
-            )}
+            {!isCollapsed && <span>Tổng Quan</span>}
           </Link>
 
-          <Link to="/admin/analytics" className={`admin-nav-link ${isActive('/admin/analytics')}`} title="Thống Kê Chi Tiết">
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 20V10" />
-                <path d="M12 20V4" />
-                <path d="M6 20v-6" />
+          {/* 2. Quản Lý Tài Khoản */}
+          <Link
+            to="/admin/accounts"
+            className={`admin-shops-sidebar__link ${isActive('/admin/accounts')}`}
+            title="Quản Lý Tài Khoản"
+          >
+            <span className="admin-shops-sidebar__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="9" cy="7" r="4" />
+                <path d="M17 11a3 3 0 0 0-3-3" />
+                <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             </span>
-            {!isCollapsed && <span className="admin-nav-text">Thống Kê Hệ Thống</span>}
+            {!isCollapsed && <span>Quản Lý Tài Khoản</span>}
           </Link>
 
-          <Link to="/admin/shops" className={`admin-nav-link ${isActive('/admin/shops')}`} title="Gian Hàng Đối Tác">
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          {/* 3. Quản Lý Gian Hàng */}
+          <Link
+            to="/admin/shops?tab=ACTIVE"
+            className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'ACTIVE')}`}
+            title="Quản Lý Gian Hàng"
+          >
+            <span className="admin-shops-sidebar__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M3 9l2-5h14l2 5" />
                 <path d="M21 9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9" />
                 <path d="M10 13a2 2 0 0 0 4 0" />
               </svg>
             </span>
-            {!isCollapsed && <span className="admin-nav-text">Gian Hàng Đối Tác</span>}
-            {!isCollapsed && <span className="admin-nav-badge-count">48</span>}
+            {!isCollapsed && <span>Quản Lý Gian Hàng</span>}
           </Link>
 
-          <Link to="/admin/accounts" className={`admin-nav-link ${isActive('/admin/accounts')}`} title="Quản Lý Tài Khoản">
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="7" r="4" />
-                <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+          {/* 4. Phê Duyệt Shop */}
+          <Link
+            to="/admin/shops?tab=PENDING"
+            className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'PENDING')}`}
+            title="Phê Duyệt Shop"
+          >
+            <span className="admin-shops-sidebar__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <polyline points="9 12 11 14 15 10" />
               </svg>
             </span>
-            {!isCollapsed && <span className="admin-nav-text">Quản Lý Tài Khoản</span>}
+            {!isCollapsed && <span>Phê Duyệt Shop</span>}
           </Link>
 
-          <Link to="/admin/moderation" className={`admin-nav-link ${isActive('/admin/moderation')}`} title="Kiểm Duyệt Sản Phẩm">
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 11l3 3L22 4" />
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          {/* 5. Kiểm Duyệt Sản Phẩm */}
+          <Link
+            to="/admin/moderation"
+            className={`admin-shops-sidebar__link ${isActive('/admin/moderation')}`}
+            title="Kiểm Duyệt Sản Phẩm"
+          >
+            <span className="admin-shops-sidebar__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                <line x1="12" y1="22.08" x2="12" y2="12" />
               </svg>
             </span>
-            {!isCollapsed && <span className="admin-nav-text">Kiểm Duyệt Sản Phẩm</span>}
-            {!isCollapsed && <span className="admin-nav-badge-pill green">NEW</span>}
+            {!isCollapsed && <span>Kiểm Duyệt Sản Phẩm</span>}
           </Link>
 
-          <Link to="/admin/disputes" className={`admin-nav-link ${isActive('/admin/disputes')}`} title="Trọng Tài Escrow">
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3v18" />
-                <path d="M5 6l7-3 7 3" />
-                <path d="M5 10l-3 5h6l-3-5z" />
-                <path d="M19 10l-3 5h6l-3-5z" />
+          {/* 6. Báo Cáo & Khiếu Nại */}
+          <Link
+            to="/admin/disputes"
+            className={`admin-shops-sidebar__link ${isActive('/admin/disputes')}`}
+            title="Báo Cáo & Khiếu Nại"
+          >
+            <span className="admin-shops-sidebar__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </span>
-            {!isCollapsed && <span className="admin-nav-text">Trọng Tài PayOS Escrow</span>}
+            {!isCollapsed && <span>Báo Cáo & Khiếu Nại</span>}
           </Link>
-        </div>
 
-        {/* Section 2: SUPPORT */}
-        <div className="admin-nav-section" style={{ marginTop: '16px' }}>
-          {!isCollapsed && <div className="admin-nav-section-title">SUPPORT</div>}
-
-          <div className="admin-nav-link" style={{ cursor: 'pointer' }} onClick={() => alert('Trung tâm tư vấn hỗ trợ Admin VESTORA')}>
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          {/* 7. Thống Kê Hệ Thống */}
+          <Link
+            to="/admin/analytics"
+            className={`admin-shops-sidebar__link ${isActive('/admin/analytics')}`}
+            title="Thống Kê Hệ Thống"
+          >
+            <span className="admin-shops-sidebar__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
               </svg>
             </span>
-            {!isCollapsed && <span className="admin-nav-text">Hỗ Trợ & Chat</span>}
-          </div>
-
-          <Link to="/" className="admin-nav-link return-home" title="Trở về sàn VESTORA">
-            <span className="admin-nav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            </span>
-            {!isCollapsed && <span className="admin-nav-text">Về Sàn VESTORA</span>}
+            {!isCollapsed && <span>Thống Kê Hệ Thống</span>}
           </Link>
-        </div>
-      </nav>
+        </nav>
+      </div>
+
+      {/* Sidebar Footer Logout */}
+      <div className="admin-shops-sidebar__bottom">
+        <Link to="/" className="admin-shops-sidebar__logout" title="Về Sàn VESTORA">
+          <span className="admin-shops-sidebar__icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </span>
+          {!isCollapsed && <span>Đăng Xuất</span>}
+        </Link>
+      </div>
     </aside>
   );
 }
+
+

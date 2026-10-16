@@ -6,10 +6,12 @@ import {
   approveShop,
   rejectShop,
   toggleSuspendShop,
+  getShopStats,
 } from '../controllers/shopController.js';
 
 const router = express.Router();
 
+router.get('/stats', getShopStats);
 router.post('/apply', applyShop);
 router.get('/', getShopApplications);
 router.get('/:id', getShopById);

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import '../styles/AdminDashboard.css';
 import '../styles/AdminShops.css';
 
 export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -35,6 +37,16 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
     navigate(path);
     setShowNotif(false);
     setShowProfile(false);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      console.error('Lỗi đăng xuất admin:', err);
+      navigate('/login');
+    }
   };
 
   return (
@@ -265,11 +277,20 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
 
                 <button
                   type="button"
-                  className="admin-dropdown-menu-item logout"
+                  className="admin-dropdown-menu-item"
                   onClick={() => handleNav('/')}
                 >
+                  <span className="admin-dropdown-menu-icon">🛍️</span>
+                  <span>Về Trang Mua Sắm VESTORA</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item logout"
+                  onClick={handleLogout}
+                >
                   <span className="admin-dropdown-menu-icon">🚪</span>
-                  <span>Về Trang Sàn VESTORA / Đăng Xuất</span>
+                  <span>Đăng Xuất Khỏi Hệ Thống</span>
                 </button>
               </div>
             </div>

@@ -1,9 +1,22 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import '../styles/ShopDashboard.css';
 
 export default function ShopSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      console.error('Lỗi đăng xuất shop:', err);
+      navigate('/login');
+    }
+  };
 
   const isActive = (path) => {
     return location.pathname === path ? 'active' : '';
@@ -71,6 +84,22 @@ export default function ShopSidebar() {
           <Link to="/" className="sidebar-nav-item" style={{ color: '#9ca3af' }}>
             Trở Về Sàn VESTORA ➔
           </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="sidebar-nav-item"
+            style={{
+              background: 'none',
+              border: 'none',
+              width: '100%',
+              cursor: 'pointer',
+              textAlign: 'left',
+              color: '#f87171',
+              marginTop: '4px',
+            }}
+          >
+            Đăng Xuất 🚪
+          </button>
         </div>
       </nav>
     </aside>

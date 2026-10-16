@@ -1,12 +1,25 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import '../styles/AdminDashboard.css';
 import '../styles/AdminShops.css';
 
 export default function AdminSidebar({ isCollapsed, onToggle }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const searchParams = new URLSearchParams(location.search);
   const currentTab = searchParams.get('tab') || 'PENDING';
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      console.error('Lỗi đăng xuất admin sidebar:', err);
+      navigate('/login');
+    }
+  };
 
   const isActive = (path, tab) => {
     if (path === '/admin/shops') {
@@ -157,7 +170,25 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
       </div>
 
       <div className="admin-shops-sidebar__bottom">
-        <Link to="/" className="admin-shops-sidebar__logout" title="Về Sàn VESTORA">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="admin-shops-sidebar__logout"
+          title="Đăng xuất khỏi hệ thống"
+          style={{
+            background: 'none',
+            border: 'none',
+            width: '100%',
+            cursor: 'pointer',
+            textAlign: 'left',
+            font: 'inherit',
+            color: 'inherit',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px 16px',
+          }}
+        >
           <span className="admin-shops-sidebar__icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -166,7 +197,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             </svg>
           </span>
           {!isCollapsed && <span>Đăng Xuất</span>}
-        </Link>
+        </button>
       </div>
     </aside>
   );

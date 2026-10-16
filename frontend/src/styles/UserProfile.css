@@ -131,3 +131,426 @@
     padding: 0 20px;
   }
 }
+
+/* Nút chỉnh sửa trên đầu trang */
+.profile-page-container .profile-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 44px;
+  padding: 11px 20px;
+  border: 1px solid #d8c5a7;
+  border-radius: 10px;
+  background: #fbf8f2;
+  color: #846237;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.profile-page-container .profile-edit-toggle:hover {
+  background: #f1e9dc;
+  border-color: #96723d;
+}
+
+/* Form chỉnh sửa */
+.profile-page-container .vestora-profile-form {
+  display: block;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  color: #302c26;
+}
+
+.vestora-profile-form .profile-edit-intro {
+  margin-bottom: 26px;
+}
+
+.vestora-profile-form .profile-edit-eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: #96723d;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.vestora-profile-form .profile-edit-intro h4 {
+  margin: 0 0 8px;
+  color: #302c26;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.vestora-profile-form .profile-edit-intro p {
+  margin: 0;
+  color: #827b70;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Bố cục hai cột */
+.vestora-profile-form .profile-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.vestora-profile-form .profile-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 9px;
+}
+
+.vestora-profile-form .profile-field-full {
+  grid-column: 1 / -1;
+}
+
+.vestora-profile-form .profile-field-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.vestora-profile-form .profile-field label {
+  display: block;
+  margin: 0;
+  color: #433b30;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.vestora-profile-form .profile-field-counter,
+.vestora-profile-form .profile-field-optional {
+  color: #91897e;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.vestora-profile-form .profile-readonly-badge {
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: #f1ede6;
+  color: #847764;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Ô nhập */
+.profile-page-container .vestora-profile-form input,
+.profile-page-container .vestora-profile-form textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 13px 15px;
+  border: 1px solid #e4ddd2;
+  border-radius: 10px;
+  outline: none;
+  background: #fff;
+  color: #302c26;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  box-shadow: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.profile-page-container .vestora-profile-form input {
+  min-height: 50px;
+}
+
+.profile-page-container .vestora-profile-form textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.profile-page-container .vestora-profile-form input::placeholder,
+.profile-page-container .vestora-profile-form textarea::placeholder {
+  color: #aaa195;
+  font-size: 13px;
+}
+
+.profile-page-container .vestora-profile-form input:focus,
+.profile-page-container .vestora-profile-form textarea:focus {
+  border-color: #a78554;
+  box-shadow: 0 0 0 3px rgba(150, 114, 61, 0.1);
+}
+
+.profile-page-container .vestora-profile-form input[readonly] {
+  background: #f7f5f1;
+  color: #80786b;
+}
+
+.vestora-profile-form .profile-field small {
+  color: #91897e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* Thông báo */
+.vestora-profile-form .profile-edit-notice {
+  margin-top: 22px;
+  padding: 13px 16px;
+  border: 1px solid #ebd8b3;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #926a2f;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Thanh hành động cuối form */
+.vestora-profile-form .profile-edit-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid #eee8df;
+}
+
+.vestora-profile-form .profile-edit-actions p {
+  margin: 0;
+  color: #91897e;
+  font-size: 12px;
+}
+
+.vestora-profile-form .profile-edit-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.profile-page-container .profile-cancel-button,
+.profile-page-container .profile-save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 44px;
+  margin: 0;
+  padding: 11px 22px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.profile-page-container .profile-cancel-button {
+  border: 1px solid #e1d9cd;
+  background: #fff;
+  color: #746a5b;
+}
+
+.profile-page-container .profile-cancel-button:hover {
+  background: #f7f4ef;
+}
+
+.profile-page-container .profile-save-button {
+  border: 1px solid #96723d;
+  background: #96723d;
+  color: #fff;
+}
+
+.profile-page-container .profile-save-button:hover {
+  background: #805f31;
+}
+
+.profile-page-container .profile-edit-toggle:focus-visible,
+.profile-page-container .profile-cancel-button:focus-visible,
+.profile-page-container .profile-save-button:focus-visible {
+  outline: 3px solid #cbb38c;
+  outline-offset: 3px;
+}
+
+/* Màn hình nhỏ */
+@media (max-width: 700px) {
+  .vestora-profile-form .profile-fields-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .vestora-profile-form .profile-edit-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .vestora-profile-form .profile-edit-buttons {
+    width: 100%;
+  }
+
+  .profile-page-container .profile-cancel-button,
+  .profile-page-container .profile-save-button {
+    flex: 1;
+    padding: 11px 14px;
+  }
+}
+
+/* Nhóm menu thông tin cá nhân */
+.profile-page-container .profile-menu-group {
+  margin-bottom: 6px;
+}
+
+.profile-page-container .profile-menu-parent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #3d352a;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-page-container .profile-menu-parent:hover,
+.profile-page-container .profile-menu-parent.is-open {
+  background: #f7f4ef;
+}
+
+.profile-page-container .profile-menu-chevron {
+  flex-shrink: 0;
+  color: #8c8171;
+  transition: transform 0.2s ease;
+}
+
+.profile-page-container .profile-menu-parent.is-open
+.profile-menu-chevron {
+  transform: rotate(180deg);
+}
+
+/* Hai mục con */
+.profile-page-container .profile-account-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 12px 12px;
+  padding-left: 10px;
+  border-left: 1px solid #e9dfd0;
+}
+
+.profile-page-container .profile-submenu-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 58px;
+  margin: 0;
+  padding: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #62594d;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.profile-page-container .profile-submenu-button:hover {
+  background: #f8f5f0;
+  color: #846237;
+}
+
+.profile-page-container .profile-submenu-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #eeebe6;
+  color: #776d5f;
+}
+
+.profile-page-container .profile-submenu-button.is-active {
+  background: #f3eadb;
+  color: #76562c;
+  font-weight: 600;
+}
+
+.profile-page-container .profile-submenu-button.is-active
+.profile-submenu-icon {
+  background: #96723d;
+  color: #fff;
+}
+
+.profile-page-container .profile-menu-parent:focus-visible,
+.profile-page-container .profile-submenu-button:focus-visible {
+  outline: 2px solid #96723d;
+  outline-offset: 3px;
+}
+
+/* Khu vực đổi mật khẩu */
+.profile-page-container .profile-password-section {
+  padding: 4px 0;
+}
+
+.profile-page-container .profile-password-label {
+  display: block;
+  margin-bottom: 10px;
+  color: #96723d;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.profile-page-container .profile-password-section h4 {
+  margin: 0 0 10px;
+  color: #302c26;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.profile-page-container .profile-password-section p {
+  margin: 0;
+  color: #827b70;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.profile-page-container .profile-password-placeholder {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid #e7dece;
+  border-radius: 10px;
+  background: #fbf8f2;
+  color: #80715a;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-page-container .profile-menu-chevron,
+  .profile-page-container .profile-submenu-button {
+    transition: none;
+  }
+}

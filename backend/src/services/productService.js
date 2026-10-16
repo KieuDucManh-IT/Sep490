@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
+import { ProductVariant } from '../models/ProductVariant.js';
 
 //duc 2026-10-15: Dùng shop cố định tạm thời cho đến khi backend có middleware phiên đăng nhập.
 const DEFAULT_SHOP_ID = new mongoose.Types.ObjectId('6acf501f8818b8555c0c62c2');
@@ -25,6 +26,7 @@ const assertPricingIsValid = (product) => {
 };
 
 //duc 2026-10-15: Lấy danh sách sản phẩm chưa xóa thuộc shop với tìm kiếm, lọc và phân trang.
+//duc 2026-10-16: Gắn totalQuantity bằng cách tổng hợp quantity của các variant còn active.
 export const getProducts = async ({ search, tag, status, page, limit }) => {
   const filter = { shopId: DEFAULT_SHOP_ID, isDeleted: false };
   if (tag) filter.tag = tag;
@@ -37,10 +39,17 @@ export const getProducts = async ({ search, tag, status, page, limit }) => {
       { brand: { $regex: escapedSearch, $options: 'i' } }
     ];
   }
-  const [data, total] = await Promise.all([
-    Product.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+  const [products, total] = await Promise.all([
+    Product.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     Product.countDocuments(filter)
   ]);
+  const productIds = products.map((p) => p._id);
+  const variantTotals = await ProductVariant.aggregate([
+    { $match: { productId: { $in: productIds }, isDeleted: false } },
+    { $group: { _id: '$productId', totalQuantity: { $sum: '$quantity' } } }
+  ]);
+  const qtyMap = Object.fromEntries(variantTotals.map((v) => [v._id.toString(), v.totalQuantity]));
+  const data = products.map((p) => ({ ...p, totalQuantity: qtyMap[p._id.toString()] || 0 }));
   return { data, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 };
 

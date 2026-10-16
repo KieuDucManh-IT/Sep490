@@ -4,6 +4,7 @@ import userRoutes from './userRoutes.js';
 import adminRoutes from './adminRoutes.js';
 import productRoutes from './productRoutes.js';
 import orderRoutes from './orderRoutes.js';
+import categoryRoutes from './categoryRoutes.js';
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use('/orders', orderRoutes);
 router.use('/shops', shopRoutes);
 router.use('/users', userRoutes);
 router.use('/admin', adminRoutes);
+router.use('/categories', categoryRoutes);
 
 export default router;

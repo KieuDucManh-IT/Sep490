@@ -1,0 +1,23 @@
+/* ShopInventory.css – styles for inventory variant chips and indicators */
+
+.shop-inventory-page { gap: 20px; }
+.shop-inventory-page .shop-header h1 { font-family: var(--font-display); font-size: 30px; margin: 0; color: #171717; }
+.shop-inventory-page .shop-header p { color: #737373; font-size: 13px; margin: 4px 0 0; }
+
+.inv-variant-chip {
+  display: inline-block;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f3f4f6;
+  color: #374151;
+  margin-right: 4px;
+}
+
+.inv-color-chip { background: #ede9fe; color: #5b21b6; }
+
+.inv-rented { font-weight: 600; color: #d4af37; }
+.inv-booked { font-weight: 600; color: #3b82f6; }
+.inv-available { font-weight: 700; color: #059669; }
+.inv-available.inv-zero { color: #dc2626; }

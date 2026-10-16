@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import { registerOtpTemplate } from "../utils/registerOtpTemplate.js";
 import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
 
 const pendingRegistrations = new Map();
 const processingEmails = new Set();
@@ -10,6 +11,7 @@ const processingEmails = new Set();
 const otpSecret = crypto.randomBytes(32);
 const OTP_LIFETIME = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
+const googleClient = new OAuth2Client();
 
 function fail(status, message) {
   const error = new Error(message);
@@ -127,8 +129,8 @@ export async function register(data = {}) {
   const nameRegex =
     /^[A-Za-zÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐĨŨƠƯàáâãèéêìíòóôõùúýăđĩũơưẠ-ỹ ]+$/u;
 
-  if (!fullName || [...fullName].length > 12) {
-    fail(400, "Họ tên phải có từ 1 đến 12 ký tự");
+  if (!fullName || [...fullName].length > 25) {
+    fail(400, "Họ tên phải có từ 1 đến 25 ký tự");
   }
 
   if (!nameRegex.test(fullName)) {
@@ -305,4 +307,176 @@ export async function verifyRegisterOtp(data = {}) {
   } finally {
     processingEmails.delete(email);
   }
+}
+
+export async function loginGoogle(data = {}) {
+  if (
+    typeof data?.credential !== "string" ||
+    !data.credential.trim()
+  ) {
+    fail(400, "Thiếu thông tin đăng nhập Google");
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    fail(500, "Server chưa cấu hình GOOGLE_CLIENT_ID");
+  }
+
+  if (!process.env.JWT_SECRET) {
+    fail(500, "Server chưa cấu hình JWT_SECRET");
+  }
+
+  // Xác thực chữ ký, thời hạn và Client ID của Google token.
+  let payload;
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: data.credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    payload = ticket.getPayload();
+  } catch {
+    fail(
+      401,
+      "Không xác thực được Google. Vui lòng đăng nhập lại"
+    );
+  }
+
+  if (
+    !payload?.sub ||
+    !payload.email ||
+    payload.email_verified !== true
+  ) {
+    fail(401, "Tài khoản Google chưa có email được xác minh");
+  }
+
+  const email = normalizeEmail(payload.email);
+  const googleId = payload.sub;
+
+  // Ưu tiên định danh Google đã liên kết.
+  let user = await User.findOne({
+    GoogleId: googleId,
+  });
+
+  if (!user) {
+    const existingUser = await User.findOne({
+      Email: email,
+    });
+
+    if (existingUser) {
+      if (existingUser.Status !== "active") {
+        fail(403, "Tài khoản đã bị vô hiệu hóa");
+      }
+
+      if (
+        existingUser.GoogleId &&
+        existingUser.GoogleId !== googleId
+      ) {
+        fail(
+          409,
+          "Tài khoản đã liên kết với một tài khoản Google khác"
+        );
+      }
+
+      // Chỉ tự liên kết email khi Google quản lý email đó.
+      const googleOwnsEmail =
+        email.endsWith("@gmail.com") ||
+        (
+          payload.email_verified === true &&
+          typeof payload.hd === "string" &&
+          payload.hd.length > 0
+        );
+
+      if (!existingUser.GoogleId && !googleOwnsEmail) {
+        fail(
+          409,
+          "Email đã có tài khoản VESTORA. Vui lòng đăng nhập bằng mật khẩu"
+        );
+      }
+
+      // Không thay mật khẩu, vai trò hoặc thông tin tài khoản cũ.
+      // Điều kiện cập nhật ngăn ghi đè liên kết Google khác.
+      user = await User.findOneAndUpdate(
+        {
+          _id: existingUser._id,
+          Status: "active",
+          $or: [
+            { GoogleId: { $exists: false } },
+            { GoogleId: null },
+            { GoogleId: "" },
+            { GoogleId: googleId },
+          ],
+        },
+        {
+          $set: {
+            GoogleId: googleId,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
+      if (!user) {
+        fail(
+          409,
+          "Thông tin tài khoản đã thay đổi. Vui lòng thử lại"
+        );
+      }
+    } else {
+      // Chưa có tài khoản: tạo user Google.
+      try {
+        user = await User.create({
+          Email: email,
+          FullName:
+            typeof payload.name === "string" && payload.name.trim()
+              ? [...payload.name.normalize("NFC").trim()]
+                .slice(0, 25)
+                .join("")
+                .trim()
+              : "Người dùng Google",
+          GoogleId: googleId,
+          Avatar:
+            typeof payload.picture === "string"
+              ? payload.picture
+              : "",
+          AuthProvider: "google",
+          Role: "customer",
+          Status: "active",
+          Information: [],
+        });
+      } catch (error) {
+        if (error.code === 11000) {
+          fail(
+            409,
+            "Tài khoản vừa được tạo hoặc liên kết. Vui lòng đăng nhập lại"
+          );
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  if (user.Status !== "active") {
+    fail(403, "Tài khoản đã bị vô hiệu hóa");
+  }
+
+  // JWT của VESTORA dùng chung với đăng nhập email/mật khẩu.
+  const token = jwt.sign(
+    {},
+    process.env.JWT_SECRET,
+    {
+      algorithm: "HS256",
+      subject: user._id.toString(),
+      issuer: "vestora",
+      audience: "vestora-web",
+    }
+  );
+
+  return {
+    token,
+    user: toPublicUser(user),
+  };
 }

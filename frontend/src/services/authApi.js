@@ -101,3 +101,39 @@ export function getMeApi() {
 export function logoutApi() {
   return post("/auth/logout", {});
 }
+
+export async function loginGoogleApi(credential) {
+  const apiUrl =
+    process.env.REACT_APP_API_URL ||
+    "http://localhost:5000/api";
+
+  const response = await fetch(`${apiUrl}/auth/google`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ credential }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const details = Array.isArray(data.errors)
+      ? data.errors
+        .map((item) => `${item.field}: ${item.message}`)
+        .join("; ")
+      : "";
+
+    const error = new Error(
+      details ||
+      data.message ||
+      "Đăng nhập Google thất bại"
+    );
+
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}

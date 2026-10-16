@@ -5,6 +5,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import { GoogleLogin } from "@react-oauth/google";
 
 import AuthLayout from "../../components/AuthLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -20,7 +21,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { user, loading, login } = useAuth();
+  const { user, loading, login, loginGoogle } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -80,9 +81,9 @@ export default function LoginPage() {
 
       const destination =
         typeof from === "string" &&
-        from.startsWith("/") &&
-        !from.startsWith("//") &&
-        from !== "/login"
+          from.startsWith("/") &&
+          !from.startsWith("//") &&
+          from !== "/login"
           ? from
           : getHome(loggedInUser.role);
 
@@ -94,6 +95,41 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleGoogleSuccess = async (response) => {
+    if (submitting) return;
+
+    setErrors({});
+
+    if (!response.credential) {
+      setErrors({
+        server: "Không nhận được thông tin đăng nhập từ Google",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await loginGoogle(response.credential);
+
+      navigate("/", { replace: true });
+    } catch (error) {
+      setErrors({
+        server:
+          error.message ||
+          "Đăng nhập Google thất bại. Vui lòng thử lại",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setErrors({
+      server: "Không thể đăng nhập Google. Vui lòng thử lại",
+    });
   };
 
   if (loading) {
@@ -249,6 +285,42 @@ export default function LoginPage() {
           color: #827c72;
           font-size: 13px;
         }
+
+        .vestora-login .google-login-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  margin-top: 24px;
+}
+
+.vestora-login .login-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  color: #827c72;
+  font-size: 13px;
+}
+
+.vestora-login .login-divider::before,
+.vestora-login .login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #ece7de;
+}
+
+.vestora-login .login-divider span {
+  white-space: nowrap;
+}
+
+.vestora-login .google-login-status {
+  margin: 0;
+  color: #827c72;
+  font-size: 13px;
+}
       `}</style>
 
       <div className="vestora-login">
@@ -285,9 +357,8 @@ export default function LoginPage() {
             </label>
 
             <div
-              className={`login-input-box ${
-                errors.email ? "has-error" : ""
-              }`}
+              className={`login-input-box ${errors.email ? "has-error" : ""
+                }`}
             >
               <input
                 id="email"
@@ -326,9 +397,8 @@ export default function LoginPage() {
             </label>
 
             <div
-              className={`login-input-box ${
-                errors.password ? "has-error" : ""
-              }`}
+              className={`login-input-box ${errors.password ? "has-error" : ""
+                }`}
             >
               <input
                 id="password"
@@ -395,6 +465,29 @@ export default function LoginPage() {
               : "ĐĂNG NHẬP"}
           </button>
         </form>
+
+        <div className="google-login-section">
+          <div className="login-divider">
+            <span>Hoặc đăng nhập bằng</span>
+          </div>
+
+          {submitting ? (
+            <p className="google-login-status" role="status">
+              Đang xử lý đăng nhập...
+            </p>
+          ) : (
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              theme="outline"
+              size="large"
+              text="signin_with"
+              shape="pill"
+              locale="vi"
+              auto_select={false}
+            />
+          )}
+        </div>
 
         <div className="login-footer">
           Chưa có tài khoản?{" "}

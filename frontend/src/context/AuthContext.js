@@ -8,6 +8,7 @@ import React, {
 
 import {
   loginApi,
+  loginGoogleApi,
   getMeApi,
   logoutApi,
 } from "../services/authApi";
@@ -31,20 +32,39 @@ export function AuthProvider({ children }) {
         setAuthError("");
       } else {
         // Lỗi mạng không xóa cookie đăng nhập.
-        setAuthError(error.message);
+        setAuthError(
+          error.message || "Không thể kết nối đến server"
+        );
       }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Khi mở hoặc reload ứng dụng, lấy lại tài khoản từ cookie.
+  // Khôi phục tài khoản từ cookie khi mở hoặc reload trang.
   useEffect(() => {
     refreshUser();
   }, [refreshUser]);
 
+  // Đăng nhập bằng email và mật khẩu.
   const login = async (email, password) => {
     const data = await loginApi(email, password);
+
+    setUser(data.user);
+    setAuthError("");
+
+    return data.user;
+  };
+
+  // Đăng nhập bằng Google.
+  const loginGoogle = async (credential) => {
+    if (!credential) {
+      throw new Error(
+        "Không nhận được thông tin đăng nhập từ Google"
+      );
+    }
+
+    const data = await loginGoogleApi(credential);
 
     setUser(data.user);
     setAuthError("");
@@ -66,6 +86,7 @@ export function AuthProvider({ children }) {
         loading,
         authError,
         login,
+        loginGoogle,
         logout,
         refreshUser,
       }}

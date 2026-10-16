@@ -38,12 +38,14 @@ const userSchema = new mongoose.Schema(
     PasswordHash: {
       type: String,
       select: false,
+
       required: function () {
         return this.AuthProvider === "local";
       },
+
       match: [
         /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/,
-        "PasswordHash phải là mật khẩu đã băm",
+        "PasswordHash phải là mật khẩu đã băm bằng bcrypt",
       ],
     },
 
@@ -57,15 +59,13 @@ const userSchema = new mongoose.Schema(
     FullName: {
       type: String,
       required: [true, "Họ tên không được để trống"],
-      maxlength: [12, "Họ tên không được vượt quá 12 ký tự"],
-      set: (value) =>
-        typeof value === "string"
-          ? value.normalize("NFC").trim().replace(/ +/g, " ")
-          : value,
-      match: [
-        nameRegex,
-        "Họ tên chỉ được chứa chữ cái và khoảng trắng",
-      ],
+      trim: true,
+      validate: {
+        validator: function (value) {
+          return typeof value === "string" && [...value].length <= 25;
+        },
+        message: "Họ tên không được vượt quá 25 ký tự",
+      },
     },
 
     Status: {

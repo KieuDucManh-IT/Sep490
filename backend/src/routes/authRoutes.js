@@ -4,42 +4,33 @@ import {
   register,
   verifyRegisterOtp,
   login,
+  loginGoogle,
   getMe,
   logout,
 } from "../controllers/authController.js";
 
-import authMiddleware from "../middleware/authMiddleware.js";
-import authRequestMiddleware from "../middleware/authRequestMiddleware.js";
+import { authMiddleware } from "../middlewares/errorMiddleware.js";
+
+import authRequestMiddleware from "../middlewares/authRequestMiddleware.js";
 
 const router = express.Router();
 
-// Đăng ký: giữ OTP.
+// Đăng ký tài khoản.
 router.post("/register", register);
 
-router.post(
-  "/register/verify-otp",
-  verifyRegisterOtp
-);
+// Xác thực OTP đăng ký.
+router.post("/register/verify-otp", verifyRegisterOtp);
 
-// Login: chỉ email + mật khẩu.
-router.post(
-  "/login",
-  authRequestMiddleware,
-  login
-);
+// Đăng nhập bằng email và mật khẩu.
+router.post("/login", authRequestMiddleware, login);
+
+// Đăng nhập bằng Google.
+router.post("/google", authRequestMiddleware, loginGoogle);
 
 // Lấy tài khoản khi reload trang.
-router.get(
-  "/me",
-  authMiddleware,
-  getMe
-);
+router.get("/me", authMiddleware, getMe);
 
 // Đăng xuất trên trình duyệt hiện tại.
-router.post(
-  "/logout",
-  authRequestMiddleware,
-  logout
-);
+router.post("/logout", authRequestMiddleware, logout);
 
 export default router;

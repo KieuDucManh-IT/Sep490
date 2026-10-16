@@ -1,8 +1,6 @@
-import React, { useState } from "react";
-import {
+import React from "react"; import {
   Link,
   useLocation,
-  useNavigate,
 } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
@@ -10,37 +8,16 @@ import "../styles/Navbar.css";
 
 export default function Navbar() {
   const location = useLocation();
-  const navigate = useNavigate();
 
   const {
     user,
     loading,
     authError,
     refreshUser,
-    logout,
   } = useAuth();
-
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [logoutError, setLogoutError] = useState("");
 
   const isActive = (path) =>
     location.pathname === path ? "active" : "";
-
-  const handleLogout = async () => {
-    if (loggingOut) return;
-
-    setLoggingOut(true);
-    setLogoutError("");
-
-    try {
-      await logout();
-      navigate("/login", { replace: true });
-    } catch (error) {
-      setLogoutError(error.message);
-    } finally {
-      setLoggingOut(false);
-    }
-  };
 
   return (
     <header className="vestora-navbar">
@@ -147,29 +124,6 @@ export default function Navbar() {
               </span>
             </Link>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              style={{
-                border: "1px solid #e5dfd5",
-                borderRadius: 8,
-                background: "white",
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              {loggingOut ? "Đang thoát..." : "Đăng xuất"}
-            </button>
-
-            {logoutError && (
-              <span
-                role="alert"
-                style={{ color: "#b54747" }}
-              >
-                {logoutError}
-              </span>
-            )}
           </>
         ) : authError ? (
           <button type="button" onClick={refreshUser}>

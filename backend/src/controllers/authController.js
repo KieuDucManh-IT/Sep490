@@ -1,12 +1,10 @@
 import {
   register as registerAccount,
   verifyRegisterOtp as verifyRegistration,
-} from "../services/authService.js";
-
-import {
   login as loginAccount,
+  loginGoogle as loginGoogleAccount,
   toPublicUser,
-} from "../services/loginService.js";
+} from "../services/authService.js";
 
 const COOKIE_NAME = "vestora_token";
 const COOKIE_MAX_AGE = 400 * 24 * 60 * 60 * 1000;
@@ -23,7 +21,8 @@ function cookieOptions() {
 export async function register(req, res, next) {
   try {
     const result = await registerAccount(req.body);
-    res.status(200).json(result);
+
+    return res.status(200).json(result);
   } catch (error) {
     next(error);
   }
@@ -32,7 +31,8 @@ export async function register(req, res, next) {
 export async function verifyRegisterOtp(req, res, next) {
   try {
     const result = await verifyRegistration(req.body);
-    res.status(201).json(result);
+
+    return res.status(201).json(result);
   } catch (error) {
     next(error);
   }
@@ -49,8 +49,29 @@ export async function login(req, res, next) {
 
     res.set("Cache-Control", "no-store");
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Đăng nhập thành công",
+      user: result.user,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Đăng nhập bằng Google.
+export async function loginGoogle(req, res, next) {
+  try {
+    const result = await loginGoogleAccount(req.body);
+
+    res.cookie(COOKIE_NAME, result.token, {
+      ...cookieOptions(),
+      maxAge: COOKIE_MAX_AGE,
+    });
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json({
+      message: "Đăng nhập Google thành công",
       user: result.user,
     });
   } catch (error) {
@@ -66,7 +87,7 @@ export function getMe(req, res) {
 
   res.set("Cache-Control", "no-store");
 
-  res.status(200).json({
+  return res.status(200).json({
     user: toPublicUser(req.user),
   });
 }
@@ -76,7 +97,7 @@ export function logout(req, res) {
 
   res.set("Cache-Control", "no-store");
 
-  res.status(200).json({
+  return res.status(200).json({
     message: "Đăng xuất thành công",
   });
 }

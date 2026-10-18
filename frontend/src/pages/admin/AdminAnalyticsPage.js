@@ -51,8 +51,14 @@ export default function AdminAnalyticsPage() {
             <button
               className="btn-tail-gold"
               onClick={() => alert('Đã xuất file báo cáo phân tích PDF hệ thống!')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
             >
-              📥 Xuất Báo Cáo PDF
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Xuất Báo Cáo PDF</span>
             </button>
           </div>
 
@@ -92,7 +98,14 @@ export default function AdminAnalyticsPage() {
                   <div style={{ fontSize: '24px', fontWeight: 700, color: '#171717', margin: '4px 0' }}>{metrics.users?.total ?? 0} Người dùng</div>
                   <div style={{ fontSize: '12px', color: '#10B981' }}>{metrics.users?.customers ?? 0} Khách hàng • {metrics.users?.shopOwners ?? 0} Chủ gian hàng</div>
                 </div>
-                <div style={{ fontSize: '32px' }}>👥</div>
+                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </div>
               </div>
             </div>
             <div className="admin-card" style={{ borderLeft: '4px solid #10B981' }}>
@@ -102,7 +115,13 @@ export default function AdminAnalyticsPage() {
                   <div style={{ fontSize: '24px', fontWeight: 700, color: '#171717', margin: '4px 0' }}>{metrics.shops?.total ?? 0} Showroom</div>
                   <div style={{ fontSize: '12px', color: '#D97706' }}>{metrics.shops?.pending ?? 0} Chờ duyệt • {metrics.shops?.active ?? 0} Đang hoạt động</div>
                 </div>
-                <div style={{ fontSize: '32px' }}>🏪</div>
+                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 9l2-5h14l2 5" />
+                    <path d="M21 9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9" />
+                    <path d="M10 13a2 2 0 0 0 4 0" />
+                  </svg>
+                </div>
               </div>
             </div>
           </div>

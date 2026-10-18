@@ -51,7 +51,12 @@ function DocPreviewModal({ doc, onClose }) {
               )
             ) : (
               <div style={{ textAlign: 'center', color: '#737373', padding: '40px 20px' }}>
-                <div style={{ fontSize: '32px', marginBottom: '8px' }}>📄</div>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#F1F5F9', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                </div>
                 <div>Chưa có file hoặc tài liệu đang ở dạng liên kết nội bộ.</div>
               </div>
             )}
@@ -346,7 +351,7 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
                         marginTop: '2px',
                       }}
                     >
-                      <span>📍 Xem vị trí showroom trên Google Maps (Ghim đỏ chính xác) ↗</span>
+                      <span>Xem vị trí showroom trên Google Maps (Ghim đỏ chính xác) ↗</span>
                     </a>
                   )}
                   {(hasGps || app.address) && (
@@ -391,7 +396,7 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
                   {app.idCardFrontUrl ? (
                     <>
                       <img src={app.idCardFrontUrl} alt="CCCD Mặt Trước" />
-                      <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                      <div className="admin-applicant-doc-thumb-zoom-hint">Nhấn để phóng to</div>
                     </>
                   ) : (
                     <div style={{ color: '#737373', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
@@ -434,11 +439,17 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
                   {app.idCardBackUrl ? (
                     <>
                       <img src={app.idCardBackUrl} alt="CCCD Mặt Sau" />
-                      <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                      <div className="admin-applicant-doc-thumb-zoom-hint">Nhấn để phóng to</div>
                     </>
                   ) : app.idCardFrontUrl ? (
                     <div style={{ color: '#525252', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
-                      <div style={{ fontSize: '20px', marginBottom: '4px' }}>🪪</div>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#E2E8F0', margin: '0 auto 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="4" width="18" height="16" rx="2" />
+                          <line x1="7" y1="8" x2="17" y2="8" />
+                          <line x1="7" y1="12" x2="13" y2="12" />
+                        </svg>
+                      </div>
                       Đã đính kèm chung trong tệp CCCD
                     </div>
                   ) : (
@@ -482,13 +493,18 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
                   {app.businessLicenseUrl ? (
                     app.businessLicenseUrl.startsWith('data:application/pdf') ? (
                       <div style={{ color: '#DC2626', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
-                        <div style={{ fontSize: '28px', marginBottom: '4px' }}>📄</div>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#FEE2E2', margin: '0 auto 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626' }}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                          </svg>
+                        </div>
                         Tài liệu PDF ĐKKD
                       </div>
                     ) : (
                       <>
                         <img src={app.businessLicenseUrl} alt="Giấy ĐKKD" />
-                        <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                        <div className="admin-applicant-doc-thumb-zoom-hint">Nhấn để phóng to</div>
                       </>
                     )
                   ) : (
@@ -530,7 +546,7 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
                     })}
                   >
                     <img src={app.imageUrl} alt="Logo Showroom" />
-                    <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
+                    <div className="admin-applicant-doc-thumb-zoom-hint">Nhấn để phóng to</div>
                   </div>
                   <div className="admin-applicant-doc-body">
                     <div className="admin-applicant-doc-title">Logo / Showroom</div>
@@ -732,7 +748,7 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
                   {app.address ? [app.address, app.ward, app.district, app.city].filter(Boolean).join(', ') : 'Chưa cập nhật'}
                   {app.latitude && app.longitude && (
                     <div style={{ fontSize: '10.5px', color: '#059669', fontWeight: 600, marginTop: '2px', fontFamily: 'monospace' }}>
-                      📍 GPS: {Number(app.latitude).toFixed(4)}, {Number(app.longitude).toFixed(4)} (Chính xác)
+                      GPS: {Number(app.latitude).toFixed(4)}, {Number(app.longitude).toFixed(4)} (Chính xác)
                     </div>
                   )}
                   {(app.address || (app.latitude && app.longitude)) && (
@@ -753,7 +769,7 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
                           gap: '3px',
                         }}
                       >
-                        {showMap ? 'Thu nhỏ bản đồ ▲' : '🗺️ Xem bản đồ showroom ▼'}
+                        {showMap ? 'Thu nhỏ bản đồ ▲' : 'Xem bản đồ showroom ▼'}
                       </button>
                       <a
                         href={(app.latitude && app.longitude) ? `https://www.google.com/maps?q=${app.latitude},${app.longitude}&z=17` : `https://www.google.com/maps?q=${encodeURIComponent([app.address, app.ward, app.city].filter(Boolean).join(', '))}`}
@@ -1299,7 +1315,11 @@ export default function AdminShopsPage() {
             </div>
           ) : shops.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '80px 20px', background: '#FFFFFF', borderRadius: '18px', border: '1px solid #ECEAE5' }}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
+              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#F1F5F9', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+              </div>
               <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#171717', margin: '0 0 4px' }}>
                 Không tìm thấy hồ sơ phù hợp
               </h4>

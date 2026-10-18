@@ -1,109 +1,267 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import '../styles/ShopDashboard.css';
 
 export default function ShopSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const [ownerName, setOwnerName] = useState('Quý Văn Tộc');
 
-  const handleLogout = async () => {
+  useEffect(() => {
     try {
-      await logout();
-      navigate('/login');
-    } catch (err) {
-      console.error('Lỗi đăng xuất shop:', err);
-      navigate('/login');
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser);
+        if (parsed.fullName || parsed.FullName || parsed.name) {
+          setOwnerName(parsed.fullName || parsed.FullName || parsed.name);
+        }
+      }
+    } catch (e) {
+      // Dùng fallback mặc định nếu lỗi parse
     }
+  }, []);
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    } catch (err) {
+      console.error('Lỗi khi xóa session:', err);
+    }
+    navigate('/login');
   };
 
   const isActive = (path) => {
+    if (path === '/shop/settings') {
+      return (
+        location.pathname === '/shop/settings' ||
+        location.pathname === '/shop/branches' ||
+        location.pathname === '/shop/address' ||
+        location.pathname === '/shop/store-info'
+      ) ? 'active' : '';
+    }
     return location.pathname === path ? 'active' : '';
   };
 
+  const ownerInitial = ownerName.charAt(0).toUpperCase();
+
   return (
     <aside className="shop-sidebar">
-      <div className="shop-brand-badge">
-        <h2>VESTORA PRIVÉ</h2>
-        <span>Gian Hàng Đối Tác Premium</span>
-      </div>
-
-      <nav className="shop-nav-menu">
-        <div className="sidebar-section-label">GIAN HÀNG</div>
-        <Link to="/shop/dashboard" className={`sidebar-nav-item ${isActive('/shop/dashboard')}`}>
-          Tổng Quan Gian Hàng
-        </Link>
-        <Link to="/shop/analytics" className={`sidebar-nav-item ${isActive('/shop/analytics')}`}>
-          Báo Cáo Doanh Thu
-        </Link>
-        <Link
-          to="/shop/settings"
-          className={`sidebar-nav-item ${
-            isActive('/shop/settings') || isActive('/shop/branches') || isActive('/shop/address') || isActive('/shop/store-info')
-          }`}
-        >
-          Quản Lý Thông Tin Cửa Hàng
-        </Link>
-
-        <div className="sidebar-section-label" style={{ marginTop: '12px' }}>
-          SẢN PHẨM & TỒN KHO
-        </div>
-        <Link to="/shop/products" className={`sidebar-nav-item ${isActive('/shop/products')}`}>
-          Danh Sách Sản Phẩm
-        </Link>
-        <Link to="/shop/products/new" className={`sidebar-nav-item ${isActive('/shop/products/new')}`}>
-          Đăng Trang Phục Mới
-        </Link>
-        <Link to="/shop/inventory" className={`sidebar-nav-item ${isActive('/shop/inventory')}`}>
-          Quản Lý Tồn Kho & Giặt Spa
-        </Link>
-        <Link to="/shop/pricing" className={`sidebar-nav-item ${isActive('/shop/pricing')}`}>
-          Bảng Giá Thuê & Cọc Escrow
-        </Link>
-
-        <div className="sidebar-section-label" style={{ marginTop: '12px' }}>
-          ĐƠN HÀNG & ĐỐI SOÁT
-        </div>
-        <Link to="/shop/rental-orders" className={`sidebar-nav-item ${isActive('/shop/rental-orders')}`}>
-          Quản Lý Đơn Thuê
-        </Link>
-        <Link to="/shop/sale-orders" className={`sidebar-nav-item ${isActive('/shop/sale-orders')}`}>
-          Đơn Mua Bán Đứt
-        </Link>
-        <Link to="/shop/returns" className={`sidebar-nav-item ${isActive('/shop/returns')}`}>
-          Trả Hàng & Khấu Trừ Cọc
-        </Link>
-
-        <div className="sidebar-section-label" style={{ marginTop: '12px' }}>
-          KHÁCH HÀNG & ĐÁNH GIÁ
-        </div>
-        <Link to="/shop/reviews" className={`sidebar-nav-item ${isActive('/shop/reviews')}`}>
-          Đánh Giá Từ Khách Hàng
-        </Link>
-
-        <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <Link to="/" className="sidebar-nav-item" style={{ color: '#9ca3af' }}>
-            Trở Về Sàn VESTORA ➔
+      <div className="shop-sidebar-inner">
+        {/* Brand Title (Ảnh 1: Chỉ giữ lại chữ VESTORA) */}
+        <div className="shop-brand-badge">
+          <Link to="/shop/dashboard" style={{ textDecoration: 'none' }}>
+            <h2 className="shop-brand-title">VESTORA</h2>
           </Link>
+        </div>
+
+        {/* Shop Owner Mini Profile Card (Ảnh 2: Xóa luxury partner, chỉ giữ avatar & tên) */}
+        <div className="shop-owner-profile-card">
+          <div className="shop-owner-avatar-ring">
+            <span>{ownerInitial}</span>
+            <span className="shop-owner-status-dot" title="Gian hàng đang mở cửa đón khách" />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="shop-owner-name" title={ownerName}>{ownerName}</div>
+          </div>
+        </div>
+
+        {/* Navigation Menu */}
+        <nav className="shop-nav-menu">
+          {/* SECTION 1: GIAN HÀNG */}
+          <div className="sidebar-section-label">GIAN HÀNG</div>
+
+          <Link to="/shop/dashboard" className={`sidebar-nav-item ${isActive('/shop/dashboard')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </span>
+              <span>Tổng Quan Gian Hàng</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          <Link to="/shop/analytics" className={`sidebar-nav-item ${isActive('/shop/analytics')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+              </span>
+              <span>Báo Cáo Doanh Thu</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          <Link to="/shop/settings" className={`sidebar-nav-item ${isActive('/shop/settings')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              </span>
+              <span>Quản Lý Thông Tin Cửa Hàng</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          {/* SECTION 2: BỘ SƯU TẬP & TỒN KHO */}
+          <div className="sidebar-section-label">BỘ SƯU TẬP & TỒN KHO</div>
+
+          <Link to="/shop/products" className={`sidebar-nav-item ${isActive('/shop/products')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 4a3 3 0 0 0-3 3c0 1.2.7 2.2 1.7 2.7L2.4 15.3A1.5 1.5 0 0 0 3.5 17.5h17a1.5 1.5 0 0 0 1.1-2.2L13.3 9.7A3 3 0 0 0 12 4z" />
+                </svg>
+              </span>
+              <span>Danh Sách Sản Phẩm</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          <Link to="/shop/products/new" className={`sidebar-nav-item ${isActive('/shop/products/new')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="16" />
+                  <line x1="8" y1="12" x2="16" y2="12" />
+                </svg>
+              </span>
+              <span>Đăng Trang Phục Mới</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          <Link to="/shop/inventory" className={`sidebar-nav-item ${isActive('/shop/inventory')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                  <line x1="12" y1="22.08" x2="12" y2="12" />
+                </svg>
+              </span>
+              <span>Quản Lý Tồn Kho & Giặt Spa</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          <Link to="/shop/pricing" className={`sidebar-nav-item ${isActive('/shop/pricing')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                  <line x1="7" y1="7" x2="7.01" y2="7" />
+                </svg>
+              </span>
+              <span>Bảng Giá Thuê & Cọc Escrow</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          {/* SECTION 3: ĐƠN HÀNG & ĐỐI SOÁT */}
+          <div className="sidebar-section-label">ĐƠN HÀNG & ĐỐI SOÁT</div>
+
+          <Link to="/shop/rental-orders" className={`sidebar-nav-item ${isActive('/shop/rental-orders')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+              </span>
+              <span>Quản Lý Đơn Thuê</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          <Link to="/shop/sale-orders" className={`sidebar-nav-item ${isActive('/shop/sale-orders')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <path d="M16 10a4 4 0 0 1-8 0" />
+                </svg>
+              </span>
+              <span>Đơn Mua Bán Đứt</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          <Link to="/shop/returns" className={`sidebar-nav-item ${isActive('/shop/returns')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <polyline points="1 4 1 10 7 10" />
+                  <polyline points="23 20 23 14 17 14" />
+                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+                </svg>
+              </span>
+              <span>Trả Hàng & Khấu Trừ Cọc</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+
+          {/* SECTION 4: KHÁCH HÀNG & DANH TIẾNG */}
+          <div className="sidebar-section-label">KHÁCH HÀNG & ĐÁNH GIÁ</div>
+
+          <Link to="/shop/reviews" className={`sidebar-nav-item ${isActive('/shop/reviews')}`}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+              </span>
+              <span>Đánh Giá Từ Khách Hàng</span>
+            </div>
+            <span className="sidebar-nav-arrow">›</span>
+          </Link>
+        </nav>
+
+        {/* Footer Section (Ảnh 3: Đã xóa hộp Bảo chứng PayOS Escrow) */}
+        <div className="shop-sidebar-footer">
+          <Link to="/" className="sidebar-nav-item" style={{ color: '#9CA3AF' }}>
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon" style={{ color: '#9CA3AF' }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <circle cx="12" cy="12" r="10" />
+                  <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                </svg>
+              </span>
+              <span>Trở Về Sàn VESTORA</span>
+            </div>
+            <span style={{ fontSize: '12px', color: '#6B7280' }}>↗</span>
+          </Link>
+
           <button
             type="button"
             onClick={handleLogout}
-            className="sidebar-nav-item"
-            style={{
-              background: 'none',
-              border: 'none',
-              width: '100%',
-              cursor: 'pointer',
-              textAlign: 'left',
-              color: '#f87171',
-              marginTop: '4px',
-            }}
+            className="shop-sidebar-btn-logout"
           >
-            Đăng Xuất 🚪
+            <span className="sidebar-nav-icon" style={{ color: '#F87171' }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </span>
+            <span>Đăng Xuất Hệ Thống</span>
           </button>
         </div>
-      </nav>
+      </div>
     </aside>
   );
 }

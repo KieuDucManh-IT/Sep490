@@ -12,90 +12,265 @@
   align-items: stretch;
 }
 
-/* Sidebar */
+/* ============================================
+   VESTORA PRIVÉ — LUXURY SHOP OWNER SIDEBAR
+   Haute Couture & Atelier Partner Styling
+   ============================================ */
+
 .shop-sidebar {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
-  background: #171717;
+  width: 290px;
+  min-width: 290px;
+  max-width: 290px;
+  background: linear-gradient(180deg, #131417 0%, #0D0E11 100%);
   color: #FFFFFF;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  padding: 24px 16px;
+  padding: 0;
   position: sticky;
   top: 0;
   height: 100vh;
   box-sizing: border-box;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(212, 175, 55, 0.15);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+  z-index: 100;
+  overflow: hidden;
 }
 
-.shop-brand-badge {
-  padding: 16px 12px 24px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  margin-bottom: 16px;
-}
-
-.shop-brand-badge h2 {
-  font-family: 'Playfair Display', serif;
-  font-size: 1.4rem;
-  color: #d4af37;
-  margin: 0 0 4px 0;
-  letter-spacing: 1px;
-}
-
-.shop-brand-badge span {
-  font-size: 0.75rem;
-  color: #a3a3a3;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.shop-nav-menu,
-.sidebar-nav-section {
+/* Scrollable inner container */
+.shop-sidebar-inner {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 22px 16px 20px 16px;
+  box-sizing: border-box;
 }
 
-.sidebar-section-label {
-  font-size: 10px;
+.shop-sidebar-inner::-webkit-scrollbar {
+  width: 4px;
+}
+.shop-sidebar-inner::-webkit-scrollbar-track {
+  background: transparent;
+}
+.shop-sidebar-inner::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.2);
+  border-radius: 4px;
+}
+.shop-sidebar-inner::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.45);
+}
+
+/* Brand Badge */
+.shop-brand-badge {
+  display: flex;
+  align-items: center;
+  padding: 8px 8px 18px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  margin-bottom: 14px;
+}
+
+.shop-brand-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.45rem;
   font-weight: 700;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-  color: #737373;
-  padding: 12px 12px 4px 12px;
+  letter-spacing: 2px;
+  background: linear-gradient(135deg, #FFFFFF 0%, #F5E6BE 60%, #D4AF37 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+  line-height: 1.2;
 }
 
-.shop-nav-item,
-.sidebar-nav-item {
+/* Shop Owner Mini Profile Card */
+.shop-owner-profile-card {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  border-radius: 8px;
-  color: #d1d5db;
-  text-decoration: none;
-  font-size: 0.88rem;
-  font-weight: 500;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 16px;
   transition: all 0.2s ease;
-  width: 100%;
+}
+
+.shop-owner-profile-card:hover {
+  background: rgba(212, 175, 55, 0.06);
+  border-color: rgba(212, 175, 55, 0.2);
+}
+
+.shop-owner-avatar-ring {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #1F2228;
+  border: 1.5px solid #D4AF37;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #D4AF37;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.shop-owner-status-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10B981;
+  border: 1.5px solid #131417;
+  box-shadow: 0 0 6px #10B981;
+}
+
+.shop-owner-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #F3F4F6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+}
+
+/* Navigation Section Headers */
+.shop-nav-menu,
+.sidebar-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sidebar-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #7E8594;
+  padding: 14px 10px 4px 10px;
+}
+
+.sidebar-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Nav Item Links */
+.shop-nav-item,
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8.5px 12px;
+  margin: 1.5px 0;
+  border-radius: 8px;
+  color: #B4BAC7;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
+  position: relative;
+}
+
+.sidebar-nav-item-content {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.sidebar-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6E7687;
+  transition: color 0.2s, transform 0.2s;
+  flex-shrink: 0;
 }
 
 .shop-nav-item:hover,
 .sidebar-nav-item:hover {
-  background: rgba(212, 175, 55, 0.15);
-  color: #d4af37;
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  color: #FFFFFF;
+  transform: translateX(3px);
+}
+
+.shop-nav-item:hover .sidebar-nav-icon,
+.sidebar-nav-item:hover .sidebar-nav-icon {
+  color: #E2C275;
+  transform: scale(1.08);
 }
 
 .shop-nav-item.active,
 .sidebar-nav-item.active {
-  border-left: 3px solid #d4af37;
-  background: rgba(212, 175, 55, 0.2);
-  color: #d4af37;
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.16) 0%, rgba(212, 175, 55, 0.03) 100%);
+  color: #F7E7B4;
   font-weight: 600;
+  border-left: 3px solid #D4AF37;
+  border-radius: 0 8px 8px 0;
+  padding-left: 10px;
+}
+
+.shop-nav-item.active .sidebar-nav-icon,
+.sidebar-nav-item.active .sidebar-nav-icon {
+  color: #D4AF37;
+}
+
+.sidebar-nav-arrow {
+  font-size: 13px;
+  color: #D4AF37;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.2s ease;
+}
+
+.shop-nav-item.active .sidebar-nav-arrow,
+.sidebar-nav-item.active .sidebar-nav-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Footer Section */
+.shop-sidebar-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.shop-sidebar-btn-logout {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8.5px 12px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  color: #F87171;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  margin-top: 2px;
+}
+
+.shop-sidebar-btn-logout:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+  transform: translateX(3px);
 }
 
 /* Main Content Area */

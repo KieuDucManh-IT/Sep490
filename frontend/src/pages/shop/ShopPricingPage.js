@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import ShopSidebar from '../../components/ShopSidebar';
+import ShopPagination from '../../components/ShopPagination';
 import { fetchProducts, updateProduct } from '../../services/productService';
 import '../../styles/ShopDashboard.css';
 import '../../styles/ShopProducts.css';
 
-const PAGE_SIZE = 10;
 const fmt = (val) =>
   val == null || val === '' ? '—' : `${Number(val).toLocaleString('vi-VN')} ₫`;
 
@@ -14,6 +14,7 @@ const blankPrice = { salePrice: '', discount: '0', rentalPricePerDay: '', deposi
 export default function ShopPricingPage() {
   const [products, setProducts] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [page, setPage] = useState(1);
@@ -31,7 +32,7 @@ export default function ShopPricingPage() {
     setError('');
     try {
       const { data, pagination: pg } = await fetchProducts({
-        search, tag: filterTag, page, limit: PAGE_SIZE,
+        search, tag: filterTag, page, limit: pageSize,
       });
       setProducts(data);
       setPagination(pg);
@@ -40,7 +41,7 @@ export default function ShopPricingPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, filterTag, page]);
+  }, [search, filterTag, page, pageSize]);
 
   useEffect(() => { setPage(1); }, [search, filterTag]);
   useEffect(() => { loadProducts(); }, [loadProducts]);
@@ -160,13 +161,7 @@ export default function ShopPricingPage() {
           )}
 
           {/* Phân trang */}
-          {pagination.pages > 1 && (
-            <div className="shop-products-pagination">
-              <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>‹ Trước</button>
-              <span>Trang {pagination.page} / {pagination.pages}</span>
-              <button disabled={page >= pagination.pages} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
-            </div>
-          )}
+          <ShopPagination page={pagination.page} pages={pagination.pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
         </section>
 
         {/* Modal sửa giá */}

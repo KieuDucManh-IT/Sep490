@@ -18,6 +18,17 @@ export async function fetchProducts({ search = '', tag = '', status = '', page =
   return { data: result.data || [], pagination: result.pagination || { page: 1, pages: 1, total: 0 } };
 }
 
+export async function fetchAllProducts(params = {}) {
+  // The backend validates list limits to a maximum of 100.
+  const first = await fetchProducts({ ...params, page: 1, limit: 100 });
+  const data = [...first.data];
+  for (let page = 2; page <= (first.pagination.pages || 1); page += 1) {
+    const result = await fetchProducts({ ...params, page, limit: 100 });
+    data.push(...result.data);
+  }
+  return data;
+}
+
 /**
  * Tạo sản phẩm mới.
  * @param {Object} payload

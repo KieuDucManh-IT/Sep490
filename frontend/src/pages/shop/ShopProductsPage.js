@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import ShopSidebar from '../../components/ShopSidebar';
+import ShopPagination from '../../components/ShopPagination';
+import SearchableSelect from '../../components/SearchableSelect';
 import { fetchCategories } from '../../services/categoryService';
 import {
   fetchProducts,
@@ -10,7 +12,6 @@ import {
 import '../../styles/ShopDashboard.css';
 import '../../styles/ShopProducts.css';
 
-const PAGE_SIZE = 10;
 
 const blankProduct = {
   sku: '', name: '', brand: '', material: '', categoryId: '', tag: 'sale',
@@ -44,6 +45,7 @@ export default function ShopProductsPage() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -71,7 +73,7 @@ export default function ShopProductsPage() {
     setError('');
     try {
       const { data, pagination: pg } = await fetchProducts({
-        search, tag: filterTag, status: filterStatus, page, limit: PAGE_SIZE,
+        search, tag: filterTag, status: filterStatus, page, limit: pageSize,
       });
       setProducts(data);
       setPagination(pg);
@@ -80,7 +82,7 @@ export default function ShopProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, filterTag, filterStatus, page]);
+  }, [search, filterTag, filterStatus, page, pageSize]);
 
   useEffect(() => { loadCategories(); }, [loadCategories]);
   useEffect(() => { setPage(1); }, [search, filterTag, filterStatus, filterCategory]);
@@ -252,13 +254,7 @@ export default function ShopProductsPage() {
           )}
 
           {/* Phân trang */}
-          {pagination.pages > 1 && (
-            <div className="shop-products-pagination">
-              <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>‹ Trước</button>
-              <span>Trang {pagination.page} / {pagination.pages}</span>
-              <button disabled={page >= pagination.pages} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
-            </div>
-          )}
+          <ShopPagination page={pagination.page} pages={pagination.pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
         </section>
 
         {/* Modal thêm/sửa sản phẩm */}
@@ -286,15 +282,7 @@ export default function ShopProductsPage() {
                 </label>
                 <label>
                   Loại (Danh mục)
-                  <select name="categoryId" value={form.categoryId} onChange={updateField}>
-                    <option value="">— Chọn loại —</option>
-                    {categories.length === 0
-                      ? <option disabled>Chưa có danh mục nào</option>
-                      : categories.map((c) => (
-                          <option key={c._id} value={c._id}>{c.name}</option>
-                        ))
-                    }
-                  </select>
+                  <SearchableSelect value={form.categoryId} onChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))} options={categories.map((category) => ({ value: category._id, label: category.name }))} placeholder="Chọn loại" searchPlaceholder="Tìm loại sản phẩm" emptyText="Chưa có danh mục nào" />
                 </label>
                 <label>Thương hiệu<input name="brand" value={form.brand} onChange={updateField} /></label>
                 <label>Chất liệu<input name="material" value={form.material} onChange={updateField} /></label>

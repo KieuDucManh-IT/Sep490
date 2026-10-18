@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ShopSidebar from '../../components/ShopSidebar';
-import { fetchProducts } from '../../services/productService';
+import { fetchAllProducts } from '../../services/productService';
+import SearchableSelect from '../../components/SearchableSelect';
+import ShopPagination from '../../components/ShopPagination';
 import {
   fetchAllVariantsWithProductNames,
   createVariant,
@@ -8,9 +10,9 @@ import {
   deleteVariant,
 } from '../../services/productVariantService';
 import '../../styles/ShopDashboard.css';
+import '../../styles/ShopProducts.css';
 import '../../styles/ShopInventory.css';
 
-const PAGE_SIZE = 10;
 const VARIANT_STATUS_LABELS = { active: 'Hoạt động', inactive: 'Ngừng', maintenance: 'Bảo trì' };
 const blankVariant = { productId: '', size: '', color: '', condition: 'new', quantity: '', status: 'active' };
 
@@ -22,6 +24,7 @@ export default function ShopInventoryPage() {
   const [variants, setVariants] = useState([]);       // slice hiện tại sau lọc + phân trang
   const [products, setProducts] = useState([]);        // dùng cho dropdown
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState('');
   const [filterProduct, setFilterProduct] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -37,10 +40,11 @@ export default function ShopInventoryPage() {
   //duc 2026-10-16: Tải tất cả sản phẩm qua productService để dùng dropdown.
   const loadAllProducts = useCallback(async () => {
     try {
-      const { data } = await fetchProducts({ page: 1, limit: 200 });
+      const data = await fetchAllProducts();
       setProducts(data);
       return data;
-    } catch (_) {
+    } catch (err) {
+      setError(err.message || 'Không tải được danh sách sản phẩm');
       return [];
     }
   }, []);
@@ -74,11 +78,11 @@ export default function ShopInventoryPage() {
       );
     }
     const total = filtered.length;
-    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const pages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, pages);
-    setVariants(filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
+    setVariants(filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize));
     setPagination({ page: currentPage, pages, total });
-  }, [search, filterProduct, filterStatus, page]);
+  }, [search, filterProduct, filterStatus, page, pageSize]);
 
   // Khởi tạo lần đầu
   useEffect(() => {
@@ -265,13 +269,7 @@ export default function ShopInventoryPage() {
           )}
 
           {/* Phân trang */}
-          {pagination.pages > 1 && (
-            <div className="shop-products-pagination">
-              <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>‹ Trước</button>
-              <span>Trang {pagination.page} / {pagination.pages}</span>
-              <button disabled={page >= pagination.pages} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
-            </div>
-          )}
+          <ShopPagination page={pagination.page} pages={pagination.pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
         </section>
 
         {/* Modal thêm/sửa variant */}
@@ -291,15 +289,7 @@ export default function ShopInventoryPage() {
                 {!editingVariant?.variantId && (
                   <label className="shop-product-form-wide">
                     Sản phẩm
-                    <select name="productId" value={form.productId} onChange={updateField} required>
-                      <option value="">— Chọn sản phẩm —</option>
-                      {products.length === 0
-                        ? <option disabled>Chưa có sản phẩm</option>
-                        : products.map((p) => (
-                            <option key={p._id} value={p._id}>{p.name}</option>
-                          ))
-                      }
-                    </select>
+                    <SearchableSelect value={form.productId} onChange={(productId) => setForm((current) => ({ ...current, productId }))} options={products.filter((product) => product.status === 'active').map((p) => ({ value: p._id, label: `${p.sku ? `${p.sku} - ` : ''}${p.name}` }))} placeholder="Chọn sản phẩm" searchPlaceholder="Tìm theo mã hoặc tên sản phẩm" emptyText="Chưa có sản phẩm active" />
                   </label>
                 )}
                 <label>Cỡ (số)<input name="size" type="number" min="1" value={form.size} onChange={updateField} required /></label>

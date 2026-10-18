@@ -1,9 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Badge, Table } from 'react-bootstrap';
-import { Eye, LockKeyhole, LockKeyholeOpen } from 'lucide-react';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
+
+const Eye = ({ size = 17 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const LockKeyhole = ({ size = 17 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="16" r="1" />
+    <rect x="3" y="10" width="18" height="12" rx="2" />
+    <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+  </svg>
+);
+
+const LockKeyholeOpen = ({ size = 17 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="16" r="1" />
+    <rect x="3" y="10" width="18" height="12" rx="2" />
+    <path d="M7 10V7a5 5 0 0 1 9.9-1" />
+  </svg>
+);
 
 export default function AdminAccountsPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -87,22 +109,18 @@ export default function AdminAccountsPage() {
 
   return (
     <div className="admin-layout">
-      {/* 1. Sidebar */}
       <AdminSidebar 
         isCollapsed={isSidebarCollapsed} 
         onToggle={() => setIsSidebarCollapsed(prev => !prev)} 
       />
 
-      {/* 2. Main Viewport with Top Header */}
       <div className="admin-main-viewport">
         <AdminTopHeader 
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)} 
           breadcrumb="Quản Lý Tài Khoản Người Dùng"
         />
 
-        {/* 3. Content Body */}
         <div className="admin-content-body">
-          {/* Page Hero */}
           <div className="admin-page-hero">
             <div>
               <h1 className="admin-page-title">Quản Lý Danh Sách & Uy Tín Tài Khoản Người Dùng</h1>
@@ -112,7 +130,6 @@ export default function AdminAccountsPage() {
             </div>
           </div>
 
-          {/* User Table Card */}
           <div className="admin-card-table-wrapper" style={{ padding: '0 0 12px 0', overflow: 'hidden' }}>
             <Table responsive hover className="tailadmin-table align-middle mb-0">
               <thead>
@@ -182,7 +199,6 @@ export default function AdminAccountsPage() {
             </Table>
           </div>
 
-          {/* User Detail Modal */}
           <Modal 
             show={!!selectedUserModal} 
             onHide={() => setSelectedUserModal(null)}

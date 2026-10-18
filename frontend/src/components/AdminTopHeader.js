@@ -1,92 +1,304 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import '../styles/AdminDashboard.css';
+import '../styles/AdminShops.css';
 
-export default function AdminTopHeader({ onToggleSidebar, breadcrumb = 'Admin Console System' }) {
+export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useAuth();
+
+  const [showNotif, setShowNotif] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+
+  const notifRef = useRef(null);
+  const profileRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setShowNotif(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setShowProfile(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setShowNotif(false);
+    setShowProfile(false);
+  }, [location.pathname]);
+
+  const handleNav = (path) => {
+    navigate(path);
+    setShowNotif(false);
+    setShowProfile(false);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      console.error('Lỗi đăng xuất admin:', err);
+      navigate('/login');
+    }
+  };
 
   return (
-    <header className="admin-top-header">
-      <div className="admin-header-left">
+    <header className="admin-shops-topbar" style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
+      <div className="admin-shops-topbar__brand">
         {onToggleSidebar && (
           <button
-            className="admin-header-toggle-btn"
+            type="button"
+            className="admin-topbar-toggle-btn"
             onClick={onToggleSidebar}
-            title="Đóng / Mở Menu"
+            title="Đóng / Mở Menu Sidebar"
+            aria-label="Đóng / Mở Menu Sidebar"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="3" y1="6" x2="21" y2="6"></line>
-              <line x1="3" y1="18" x2="21" y2="18"></line>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
         )}
 
-        {/* Command Search Input (TailAdmin Style) */}
-        <div className="admin-search-wrapper">
-          <span className="admin-search-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </span>
-          <input
-            type="text"
-            className="admin-search-input"
-            placeholder="Search or type command..."
-          />
-          <span className="admin-search-kbd">⌘K</span>
-        </div>
+        <Link to="/admin/dashboard" className="admin-shops-topbar__brand-link" title="Về Dashboard Tổng Quan">
+          <span className="admin-shops-topbar__brand-name">VESTORA</span>
+          <span className="admin-shops-topbar__brand-tag">Admin Console</span>
+        </Link>
+
+        {breadcrumb && (
+          <div className="admin-shops-topbar__breadcrumb-wrap">
+            <span className="admin-shops-topbar__breadcrumb-sep">/</span>
+            <span className="admin-shops-topbar__breadcrumb-current">{breadcrumb}</span>
+          </div>
+        )}
       </div>
 
-      <div className="admin-header-right">
-        {/* Status indicator */}
-        <span style={{ fontSize: '11px', background: '#ECFDF5', color: '#059669', padding: '4px 12px', borderRadius: '9999px', fontWeight: 600, letterSpacing: '0.5px' }}>
-          ● HOẠT ĐỘNG
-        </span>
-
-        {/* Dark / Light Mode Toggle */}
-        <button
-          className="admin-icon-btn"
-          title="Chế độ giao diện"
-          onClick={() => alert('Giao diện chuẩn VESTORA Gold & Slate đã được kích hoạt')}
+      <div className="admin-shops-topbar__actions">
+        <div
+          className="admin-shops-topbar__status"
+          title="Máy chủ và CSDL MongoDB Atlas đang kết nối trực tiếp ổn định"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-          </svg>
-        </button>
+          <span className="admin-shops-topbar__status-dot" />
+          <span>Hoạt Động</span>
+        </div>
 
-        {/* Notification Bell */}
-        <button
-          className="admin-icon-btn"
-          title="Thông báo hệ thống"
-          onClick={() => navigate('/admin/moderation')}
-        >
-          <span className="badge-dot"></span>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-          </svg>
-        </button>
+        <div className="admin-topbar-popover-container" ref={notifRef}>
+          <button
+            type="button"
+            className={`admin-shops-topbar__bell ${showNotif ? 'active' : ''}`}
+            title="Thông báo hệ thống admin"
+            onClick={() => setShowNotif((prev) => !prev)}
+            aria-expanded={showNotif}
+          >
+            <span className="admin-shops-topbar__bell-badge" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+          </button>
 
-        {/* Admin User Profile Capsule */}
-        <div className="admin-user-capsule" onClick={() => navigate('/admin/accounts')}>
-          <img
-            src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=120&q=80"
-            alt="Musharof"
-            className="admin-user-avatar"
-          />
-          <div className="admin-user-info">
-            <span className="admin-user-name">
-              Musharof
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </span>
-            <span className="admin-user-role">System Admin</span>
+          {showNotif && (
+            <div className="admin-topbar-dropdown admin-notif-dropdown">
+              <div className="admin-dropdown-header">
+                <div>
+                  <h4 className="admin-dropdown-title">Thông Báo Hệ Thống</h4>
+                  <span className="admin-dropdown-sub">4 thông báo nghiệp vụ cần xử lý</span>
+                </div>
+                <button
+                  type="button"
+                  className="admin-dropdown-markall"
+                  onClick={() => handleNav('/admin/moderation')}
+                >
+                  Xem tất cả
+                </button>
+              </div>
+
+              <div className="admin-dropdown-list">
+                <div
+                  className="admin-dropdown-item notif"
+                  onClick={() => handleNav('/admin/shops')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="admin-dropdown-icon shop">🏪</span>
+                  <div className="admin-dropdown-content">
+                    <div className="admin-dropdown-item-title">Hồ sơ shop mới gửi phê duyệt</div>
+                    <div className="admin-dropdown-item-desc">Đã nhận hồ sơ ĐKKD & CCCD từ đối tác mới</div>
+                    <span className="admin-dropdown-time">Vừa xong • Nhấn để duyệt ngay</span>
+                  </div>
+                </div>
+
+                <div
+                  className="admin-dropdown-item notif"
+                  onClick={() => handleNav('/admin/moderation')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="admin-dropdown-icon product">👗</span>
+                  <div className="admin-dropdown-content">
+                    <div className="admin-dropdown-item-title">Trang phục dạ hội chờ kiểm duyệt</div>
+                    <div className="admin-dropdown-item-desc">Kiểm định tiêu chuẩn ảnh Haute Couture & giá cọc</div>
+                    <span className="admin-dropdown-time">15 phút trước • Kiểm duyệt</span>
+                  </div>
+                </div>
+
+                <div
+                  className="admin-dropdown-item notif"
+                  onClick={() => handleNav('/admin/disputes')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="admin-dropdown-icon dispute">⚖️</span>
+                  <div className="admin-dropdown-content">
+                    <div className="admin-dropdown-item-title">Yêu cầu hoàn cọc Escrow PayOS</div>
+                    <div className="admin-dropdown-item-desc">Đơn hàng đã hoàn tất trả đồ an toàn tại showroom</div>
+                    <span className="admin-dropdown-time">1 giờ trước • Trọng tài</span>
+                  </div>
+                </div>
+
+                <div
+                  className="admin-dropdown-item notif"
+                  onClick={() => handleNav('/admin/accounts')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="admin-dropdown-icon account">👤</span>
+                  <div className="admin-dropdown-content">
+                    <div className="admin-dropdown-item-title">Xác thực tài khoản người dùng KYC</div>
+                    <div className="admin-dropdown-item-desc">Cập nhật hồ sơ định danh điện tử hoàn tất</div>
+                    <span className="admin-dropdown-time">3 giờ trước • Quản lý</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-dropdown-footer">
+                <button
+                  type="button"
+                  className="admin-dropdown-footer-link"
+                  onClick={() => handleNav('/admin/moderation')}
+                >
+                  Đi đến Trung Tâm Kiểm Duyệt Tổng Hợp →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="admin-topbar-popover-container" ref={profileRef}>
+          <div
+            className={`admin-shops-topbar__profile ${showProfile ? 'active' : ''}`}
+            onClick={() => setShowProfile((prev) => !prev)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={showProfile}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                setShowProfile((prev) => !prev);
+              }
+            }}
+          >
+            <img
+              src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"
+              alt="Lê Hoàng Long"
+              className="admin-shops-topbar__avatar"
+            />
+            <div className="admin-shops-topbar__user-meta">
+              <span className="admin-shops-topbar__user-name">
+                Lê Hoàng Long
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginLeft: 3, verticalAlign: 'middle' }}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </span>
+              <span className="admin-shops-topbar__user-role">Quản Trị Viên</span>
+            </div>
           </div>
+
+          {showProfile && (
+            <div className="admin-topbar-dropdown admin-profile-dropdown">
+              <div className="admin-dropdown-profile-card">
+                <img
+                  src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"
+                  alt="Lê Hoàng Long"
+                  className="admin-dropdown-profile-avatar"
+                />
+                <div>
+                  <div className="admin-dropdown-profile-name">Lê Hoàng Long</div>
+                  <div className="admin-dropdown-profile-email">admin@vestora.vn</div>
+                  <span className="admin-dropdown-profile-badge">Quản Trị Hệ Thống Tối Cao</span>
+                </div>
+              </div>
+
+              <div className="admin-dropdown-menu">
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/accounts')}
+                >
+                  <span className="admin-dropdown-menu-icon">👤</span>
+                  <span>Quản Lý Danh Sách & Phân Quyền Tài Khoản</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/dashboard')}
+                >
+                  <span className="admin-dropdown-menu-icon">📊</span>
+                  <span>Dashboard Tổng Quan Hệ Thống</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/shops')}
+                >
+                  <span className="admin-dropdown-menu-icon">🏪</span>
+                  <span>Phê Duyệt Shop Owner & Showroom</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/analytics')}
+                >
+                  <span className="admin-dropdown-menu-icon">📈</span>
+                  <span>Báo Cáo Doanh Thu & Thống Kê Sàn</span>
+                </button>
+
+                <div className="admin-dropdown-divider" />
+
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/')}
+                >
+                  <span className="admin-dropdown-menu-icon">🛍️</span>
+                  <span>Về Trang Mua Sắm VESTORA</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item logout"
+                  onClick={handleLogout}
+                >
+                  <span className="admin-dropdown-menu-icon">🚪</span>
+                  <span>Đăng Xuất Khỏi Hệ Thống</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>
   );
 }
+
+

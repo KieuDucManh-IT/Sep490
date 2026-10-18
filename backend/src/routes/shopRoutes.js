@@ -1,16 +1,22 @@
 import express from 'express';
 import {
-  getShops,
+  applyShop,
+  getShopApplications,
+  approveShop,
+  rejectShop,
+  toggleSuspendShop,
+  getShopStats,
   getShopById,
-  updateShopStatus,
-  getShopStats
 } from '../controllers/shopController.js';
 
 const router = express.Router();
 
-router.get('/', getShops);
-router.get('/status', getShopStats);
+router.get('/stats', getShopStats);
+router.post('/apply', applyShop);
+router.get('/', getShopApplications);
 router.get('/:id', getShopById);
-router.patch('/:id/status', updateShopStatus);
+router.put('/:id/approve', approveShop);
+router.put('/:id/reject', rejectShop);
+router.put('/:id/toggle-suspend', toggleSuspendShop);
 
 export default router;

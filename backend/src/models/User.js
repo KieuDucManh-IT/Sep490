@@ -1,22 +1,24 @@
-import mongoose from "mongoose";
+﻿import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
-// Mỗi phần tử Information chứa Phone và Address
+const nameRegex =
+  /^[A-Za-zÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐĨŨƠƯàáâãèéêìíòóôõùúýăđĩũơưẠ-ỹ ]+$/u;
+
+const punctuationRegex =
+  /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/;
+
 const informationSchema = new mongoose.Schema(
   {
-    Phone: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    Address: {
-      type: String,
-      trim: true,
-      default: "",
-    },
+    Phone: { type: String, trim: true, default: "" },
+    Address: { type: String, trim: true, default: "" },
   },
   { _id: false }
 );
+
+function hidePassword(doc, result) {
+  delete result.PasswordHash;
+  return result;
+}
 
 const userSchema = new mongoose.Schema(
   {
@@ -37,12 +39,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       select: false,
 
-      // Tài khoản Google không bắt buộc có mật khẩu
       required: function () {
         return this.AuthProvider === "local";
       },
 
-      // Chỉ nhận chuỗi có định dạng bcrypt hash
       match: [
         /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/,
         "PasswordHash phải là mật khẩu đã băm bằng bcrypt",
@@ -63,6 +63,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Họ tên không được để trống"],
       trim: true,
+      validate: {
+        validator: function (value) {
+          return typeof value === "string" && [...value].length <= 25;
+        },
+        message: "Họ tên không được vượt quá 25 ký tự",
+      },
     },
 
     Status: {
@@ -100,7 +106,7 @@ const userSchema = new mongoose.Schema(
     WarningsCount: {
       type: Number,
       default: 0,
-      min: [0, "Số lần cảnh cáo không được âm"],
+      min: 0,
       validate: {
         validator: Number.isInteger,
         message: "Số lần cảnh cáo phải là số nguyên",
@@ -144,21 +150,34 @@ userSchema.index(
   }
 );
 
-// Băm mật khẩu khi đăng ký hoặc đổi mật khẩu.
 userSchema.methods.setPassword = async function (password) {
-  if (typeof password !== "string" || password.length < 8) {
-    throw new Error("Mật khẩu phải có ít nhất 8 ký tự");
+  if (
+    typeof password !== "string" ||
+    [...password].length < 9 ||
+    [...password].length > 16
+  ) {
+    const error = new Error("Mật khẩu phải có từ 9 đến 16 ký tự");
+    error.status = 400;
+    throw error;
   }
 
-  // bcrypt chỉ xử lý tối đa 72 byte
-  if (Buffer.byteLength(password, "utf8") > 72) {
-    throw new Error("Mật khẩu không được vượt quá 72 byte UTF-8");
+  if (
+    !/\p{Lu}/u.test(password) ||
+    !/\p{Ll}/u.test(password) ||
+    !/[0-9]/.test(password) ||
+    !punctuationRegex.test(password) ||
+    /\s/u.test(password)
+  ) {
+    const error = new Error(
+      "Mật khẩu phải có chữ hoa, chữ thường, số, dấu câu và không chứa khoảng trắng"
+    );
+    error.status = 400;
+    throw error;
   }
 
   this.PasswordHash = await bcrypt.hash(password, 12);
 };
 
-// So sánh mật khẩu nhập vào với mật khẩu đã băm
 userSchema.methods.comparePassword = async function (password) {
   if (typeof password !== "string" || !this.PasswordHash) {
     return false;
@@ -167,7 +186,6 @@ userSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.PasswordHash);
 };
 
-// Tăng số lần cảnh cáo và cập nhật thời gian trong cùng một thao tác
 userSchema.statics.addWarning = function (userId) {
   return this.findByIdAndUpdate(
     userId,
@@ -175,10 +193,7 @@ userSchema.statics.addWarning = function (userId) {
       $inc: { WarningsCount: 1 },
       $currentDate: { LastWarning: true },
     },
-    {
-      new: true,
-      runValidators: true,
-    }
+    { new: true, runValidators: true }
   );
 };
 

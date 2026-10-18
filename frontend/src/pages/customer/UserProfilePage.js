@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Navigate,
   useLocation,
@@ -12,6 +12,8 @@ import { changePasswordApi } from "../../services/authApi";
 
 import "../../styles/UserProfile.css";
 
+const ADDRESS_API = "https://provinces.open-api.vn/api/v2";
+
 const ROLE_LABELS = {
   customer: "Khách hàng",
   shop_owner: "Chủ cửa hàng",
@@ -19,13 +21,75 @@ const ROLE_LABELS = {
   operation_staff: "Nhân viên vận hành",
 };
 
+const PASSWORD_FIELDS = [
+  {
+    name: "currentPassword",
+    label: "Mật khẩu hiện tại",
+    placeholder: "Nhập mật khẩu đang sử dụng",
+    autoComplete: "current-password",
+  },
+  {
+    name: "newPassword",
+    label: "Mật khẩu mới",
+    placeholder: "Nhập mật khẩu mới",
+    autoComplete: "new-password",
+  },
+  {
+    name: "confirmNewPassword",
+    label: "Xác nhận mật khẩu mới",
+    placeholder: "Nhập lại mật khẩu mới",
+    autoComplete: "new-password",
+  },
+];
+
+const SELECT_STYLE = {
+  boxSizing: "border-box",
+  width: "100%",
+  minHeight: 48,
+  padding: "12px 14px",
+  border: "1px solid #ded6ca",
+  borderRadius: 10,
+  backgroundColor: "#fff",
+  color: "#40382f",
+  fontFamily: "inherit",
+  fontSize: 14,
+};
+
+const ERROR_STYLE = {
+  marginTop: 16,
+  padding: "12px 16px",
+  border: "1px solid #f0cccc",
+  borderRadius: 10,
+  background: "#fff3f3",
+  color: "#ab3838",
+  fontSize: 14,
+  lineHeight: 1.6,
+};
+
 function getProfile(user) {
+  const information = user?.information?.[0] || {};
+
   return {
     fullName: user?.fullName || "",
     email: user?.email || "",
-    phone: user?.information?.[0]?.Phone || "",
-    address: user?.information?.[0]?.Address || "",
+    phone: information.Phone || "",
+    address: information.Address || "",
+    provinceCode: String(information.ProvinceCode || ""),
+    wardCode: String(information.WardCode || ""),
+    addressDetail: information.AddressDetail || "",
   };
+}
+
+async function fetchAddress(path, signal) {
+  const response = await fetch(`${ADDRESS_API}${path}`, {
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error("Không tải được danh mục địa chỉ");
+  }
+
+  return response.json();
 }
 
 export default function UserProfilePage() {
@@ -38,20 +102,40 @@ export default function UserProfilePage() {
     authError,
     refreshUser,
     logout,
+    updateAvatar,
+    updateProfile,
   } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(true);
   const [profileTab, setProfileTab] = useState("information");
+
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+
+  // Cập nhật thông tin cá nhân.
+  const [userInfo, setUserInfo] = useState(() => getProfile(user));
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const [provinces, setProvinces] = useState([]);
+  const [wards, setWards] = useState([]);
+  const [loadingProvinces, setLoadingProvinces] = useState(false);
+  const [loadingWards, setLoadingWards] = useState(false);
+  const [provinceError, setProvinceError] = useState("");
+  const [wardError, setWardError] = useState("");
+  const [addressRetry, setAddressRetry] = useState(0);
+
+  const wardCache = useRef(new Map());
+
+  // Avatar: chọn ảnh xong tự upload.
+  const avatarInputRef = useRef(null);
   const [failedAvatar, setFailedAvatar] = useState("");
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
 
-  const [userInfo, setUserInfo] = useState(() =>
-    getProfile(user)
-  );
-
+  // Đổi mật khẩu.
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
     newPassword: "",
@@ -63,13 +147,165 @@ export default function UserProfilePage() {
   const [passwordErrors, setPasswordErrors] = useState({});
   const [passwordSuccess, setPasswordSuccess] = useState("");
 
-  // User được lấy bất đồng bộ khi reload trang.
-  // Cập nhật form sau khi AuthContext nhận được dữ liệu.
+  // Tránh gửi nhiều thao tác cập nhật tài khoản cùng lúc.
+  const accountActionRef = useRef(false);
+
+  const accountBusy =
+    profileSaving ||
+    avatarSaving ||
+    changingPassword ||
+    loggingOut;
+
+  const savedProfileJson = JSON.stringify(getProfile(user));
+  const savedUserId = user?.id;
+
+  // Không ghi đè nội dung người dùng đang nhập.
+  // Avatar không nằm trong savedProfileJson.
   useEffect(() => {
-    setUserInfo(getProfile(user));
-    setIsEditing(false);
-    setNotice("");
-  }, [user]);
+    if (!isEditing) {
+      setUserInfo(JSON.parse(savedProfileJson));
+    }
+  }, [savedProfileJson, savedUserId, isEditing]);
+
+  // Tải tỉnh/thành phố khi mở form chỉnh sửa.
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const controller = new AbortController();
+    let active = true;
+
+    const loadProvinces = async () => {
+      setLoadingProvinces(true);
+      setProvinceError("");
+
+      try {
+        const data = await fetchAddress("/p/", controller.signal);
+
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error("Danh sách Tỉnh/Thành phố chưa có dữ liệu");
+        }
+
+        if (active) {
+          setProvinces(data);
+        }
+      } catch (error) {
+        if (active && error.name !== "AbortError") {
+          setProvinceError(
+            error.message || "Không tải được danh sách Tỉnh/Thành phố"
+          );
+        }
+      } finally {
+        if (active) {
+          setLoadingProvinces(false);
+        }
+      }
+    };
+
+    loadProvinces();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [isEditing, addressRetry]);
+
+  // Tải phường/xã tương ứng với tỉnh đã chọn.
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const provinceCode = userInfo.provinceCode;
+
+    setWards([]);
+    setWardError("");
+
+    if (!provinceCode) {
+      setLoadingWards(false);
+      return;
+    }
+
+    const cached = wardCache.current.get(provinceCode);
+
+    if (cached) {
+      setWards(cached);
+      setLoadingWards(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+
+    const loadWards = async () => {
+      setLoadingWards(true);
+
+      try {
+        const data = await fetchAddress(
+          `/p/${encodeURIComponent(provinceCode)}?depth=2`,
+          controller.signal
+        );
+
+        if (!Array.isArray(data.wards)) {
+          throw new Error("Danh sách Phường/Xã không hợp lệ");
+        }
+
+        if (active) {
+          wardCache.current.set(provinceCode, data.wards);
+          setWards(data.wards);
+        }
+      } catch (error) {
+        if (active && error.name !== "AbortError") {
+          setWardError(
+            error.message || "Không tải được danh sách Phường/Xã"
+          );
+        }
+      } finally {
+        if (active) {
+          setLoadingWards(false);
+        }
+      }
+    };
+
+    loadWards();
+
+    // Đổi tỉnh thì bỏ phản hồi của yêu cầu trước.
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [isEditing, userInfo.provinceCode, addressRetry]);
+
+  const handleChooseAvatar = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file || accountActionRef.current) return;
+
+    setAvatarError("");
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Ảnh vượt quá 5 MB. Vui lòng chọn ảnh nhỏ hơn.");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Vui lòng chọn một tệp hình ảnh.");
+      return;
+    }
+
+    accountActionRef.current = true;
+    setAvatarSaving(true);
+
+    try {
+      await updateAvatar(file);
+      setFailedAvatar("");
+    } catch (error) {
+      setAvatarError(
+        error.message || "Không tải được ảnh. Vui lòng thử lại."
+      );
+    } finally {
+      accountActionRef.current = false;
+      setAvatarSaving(false);
+    }
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -77,52 +313,163 @@ export default function UserProfilePage() {
     setUserInfo((previous) => ({
       ...previous,
       [name]: value,
+      ...(name === "provinceCode" ? { wardCode: "" } : {}),
     }));
 
+    setProfileError("");
+    setNotice("");
+  };
+
+  const handleOpenEdit = () => {
+    if (accountActionRef.current) return;
+
+    setProfileTab("information");
+    setProfileMenuOpen(true);
+    setUserInfo(getProfile(user));
+    setIsEditing(true);
+    setProfileError("");
+    setNotice("");
+  };
+
+  const handleCancelEdit = () => {
+    if (accountActionRef.current) return;
+
+    setUserInfo(getProfile(user));
+    setIsEditing(false);
+    setProfileError("");
     setNotice("");
   };
 
   const handleToggleEdit = () => {
-    setProfileTab("information");
-    setProfileMenuOpen(true);
-    setUserInfo(getProfile(user));
-
-    setIsEditing((previous) =>
-      profileTab === "information" ? !previous : true
-    );
-
-    setNotice("");
+    if (isEditing && profileTab === "information") {
+      handleCancelEdit();
+    } else {
+      handleOpenEdit();
+    }
   };
 
-  const handleSave = (event) => {
+  const handleSave = async (event) => {
     event.preventDefault();
 
-    // Chưa có API cập nhật hồ sơ trong phần login.
-    // Không thay dữ liệu tài khoản hoặc báo lưu thành công giả.
-    setNotice(
-      "Chưa lưu thay đổi: chức năng cập nhật hồ sơ chưa được kết nối với backend."
+    if (accountActionRef.current) return;
+
+    setProfileError("");
+    setNotice("");
+
+    const fullName = userInfo.fullName
+      .normalize("NFC")
+      .trim()
+      .replace(/\s+/g, " ");
+
+    if (!fullName || [...fullName].length > 25) {
+      setProfileError("Họ tên phải có từ 1 đến 25 ký tự");
+      return;
+    }
+
+    if (!/^[\p{L}\p{M} ]+$/u.test(fullName)) {
+      setProfileError("Họ tên chỉ được chứa chữ cái và khoảng trắng");
+      return;
+    }
+
+    let phone = userInfo.phone.trim().replace(/[\s().-]/g, "");
+
+    if (phone.startsWith("+84")) {
+      phone = `0${phone.slice(3)}`;
+    }
+
+    if (!/^0[35789]\d{8}$/.test(phone)) {
+      setProfileError(
+        "Vui lòng nhập số di động Việt Nam hợp lệ gồm 10 chữ số"
+      );
+      return;
+    }
+
+    if (
+      loadingProvinces ||
+      loadingWards ||
+      provinceError ||
+      wardError
+    ) {
+      setProfileError("Vui lòng tải đầy đủ danh mục địa chỉ trước khi lưu");
+      return;
+    }
+
+    const selectedProvince = provinces.find(
+      (item) => String(item.code) === userInfo.provinceCode
     );
+
+    const selectedWard = wards.find(
+      (item) => String(item.code) === userInfo.wardCode
+    );
+
+    if (!selectedProvince || !selectedWard) {
+      setProfileError("Vui lòng chọn Tỉnh/Thành phố và Phường/Xã");
+      return;
+    }
+
+    const addressDetail = userInfo.addressDetail
+      .normalize("NFC")
+      .trim()
+      .replace(/\s+/g, " ");
+
+    if (!addressDetail || [...addressDetail].length > 200) {
+      setProfileError("Địa chỉ chi tiết phải có từ 1 đến 200 ký tự");
+      return;
+    }
+
+    accountActionRef.current = true;
+    setProfileSaving(true);
+
+    try {
+      const result = await updateProfile({
+        fullName,
+        phone,
+        provinceCode: userInfo.provinceCode,
+        wardCode: userInfo.wardCode,
+        addressDetail,
+      });
+
+      setUserInfo(getProfile(result.user));
+      setIsEditing(false);
+      setNotice(result.message || "Cập nhật hồ sơ thành công");
+    } catch (error) {
+      setProfileError(
+        error.message || "Không cập nhật được hồ sơ. Vui lòng thử lại"
+      );
+    } finally {
+      accountActionRef.current = false;
+      setProfileSaving(false);
+    }
   };
 
   const handleLogout = async () => {
-    if (loggingOut) return;
+    if (accountActionRef.current) return;
 
+    accountActionRef.current = true;
     setLoggingOut(true);
     setLogoutError("");
 
     try {
       await logout();
-
-      navigate("/login", {
-        replace: true,
-      });
+      navigate("/login", { replace: true });
     } catch (error) {
       setLogoutError(
         error.message || "Đăng xuất thất bại. Vui lòng thử lại."
       );
     } finally {
+      accountActionRef.current = false;
       setLoggingOut(false);
     }
+  };
+
+  const handleOpenPassword = () => {
+    if (accountActionRef.current) return;
+
+    setProfileTab("password");
+    setUserInfo(getProfile(user));
+    setIsEditing(false);
+    setProfileError("");
+    setNotice("");
   };
 
   const handlePasswordChange = (event) => {
@@ -145,7 +492,7 @@ export default function UserProfilePage() {
   const handleChangePassword = async (event) => {
     event.preventDefault();
 
-    if (changingPassword) return;
+    if (accountActionRef.current) return;
 
     setPasswordSuccess("");
 
@@ -160,18 +507,15 @@ export default function UserProfilePage() {
       new TextEncoder().encode(value).length;
 
     if (!currentPassword) {
-      nextErrors.currentPassword =
-        "Vui lòng nhập mật khẩu hiện tại";
+      nextErrors.currentPassword = "Vui lòng nhập mật khẩu hiện tại";
     } else if (byteLength(currentPassword) > 72) {
-      nextErrors.currentPassword =
-        "Mật khẩu hiện tại không hợp lệ";
+      nextErrors.currentPassword = "Mật khẩu hiện tại không hợp lệ";
     }
 
     if (!newPassword) {
       nextErrors.newPassword = "Vui lòng nhập mật khẩu mới";
     } else if (newPassword.length < 8) {
-      nextErrors.newPassword =
-        "Mật khẩu mới phải có ít nhất 8 ký tự";
+      nextErrors.newPassword = "Mật khẩu mới phải có ít nhất 8 ký tự";
     } else if (byteLength(newPassword) > 72) {
       nextErrors.newPassword =
         "Mật khẩu mới không được vượt quá 72 byte";
@@ -189,6 +533,7 @@ export default function UserProfilePage() {
 
     if (Object.keys(nextErrors).length > 0) return;
 
+    accountActionRef.current = true;
     setChangingPassword(true);
 
     try {
@@ -209,50 +554,38 @@ export default function UserProfilePage() {
     } catch (error) {
       setPasswordErrors({
         server:
-          error.message ||
-          "Đổi mật khẩu thất bại. Vui lòng thử lại",
+          error.message || "Đổi mật khẩu thất bại. Vui lòng thử lại",
       });
     } finally {
+      accountActionRef.current = false;
       setChangingPassword(false);
     }
   };
 
-  // Chờ /auth/me hoàn tất trước khi quyết định chuyển về login.
   if (loading) {
     return (
       <div className="profile-page-container">
         <Navbar />
-
         <div
           role="status"
-          style={{
-            padding: "60px 20px",
-            textAlign: "center",
-          }}
+          style={{ padding: "60px 20px", textAlign: "center" }}
         >
           Đang tải thông tin tài khoản...
         </div>
-
         <Footer />
       </div>
     );
   }
 
-  // Lỗi mạng không đồng nghĩa với đã đăng xuất.
   if (!user && authError) {
     return (
       <div className="profile-page-container">
         <Navbar />
-
         <div
           role="alert"
-          style={{
-            padding: "60px 20px",
-            textAlign: "center",
-          }}
+          style={{ padding: "60px 20px", textAlign: "center" }}
         >
           <p>{authError}</p>
-
           <button
             type="button"
             className="btn-primary"
@@ -261,7 +594,6 @@ export default function UserProfilePage() {
             Thử lại
           </button>
         </div>
-
         <Footer />
       </div>
     );
@@ -279,26 +611,42 @@ export default function UserProfilePage() {
 
   const profile = getProfile(user);
   const roleLabel = ROLE_LABELS[user.role] || user.role;
+  const canChangePassword = user.authProvider === "local";
 
   const avatarInitial =
     user.fullName?.trim().charAt(0).toUpperCase() || "U";
 
-  const showAvatar =
-    Boolean(user.avatar) && failedAvatar !== user.avatar;
+  const displayedAvatar =
+    user.avatar && failedAvatar !== user.avatar ? user.avatar : "";
+
+  const selectedProvince = provinces.find(
+    (item) => String(item.code) === userInfo.provinceCode
+  );
+
+  const selectedWard = wards.find(
+    (item) => String(item.code) === userInfo.wardCode
+  );
+
+  const addressPreview = [
+    userInfo.addressDetail.trim(),
+    selectedWard?.name,
+    selectedProvince?.name,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <div className="profile-page-container">
       <Navbar />
 
-      {/* Header */}
       <div className="profile-header-hero">
         <div
           style={{
-            fontSize: "11px",
+            fontSize: 11,
             fontWeight: 600,
-            letterSpacing: "1px",
+            letterSpacing: 1,
             color: "#666",
-            marginBottom: "8px",
+            marginBottom: 8,
           }}
         >
           TRANG CHỦ &gt; TÀI KHOẢN &gt; THÔNG TIN CÁ NHÂN
@@ -306,11 +654,11 @@ export default function UserProfilePage() {
 
         <div
           style={{
-            fontSize: "10px",
+            fontSize: 10,
             color: "var(--color-gold-deep)",
             fontWeight: 700,
-            letterSpacing: "1.5px",
-            marginBottom: "4px",
+            letterSpacing: 1.5,
+            marginBottom: 4,
           }}
         >
           HỒ SƠ TÀI KHOẢN
@@ -322,27 +670,21 @@ export default function UserProfilePage() {
             justifyContent: "space-between",
             alignItems: "flex-end",
             flexWrap: "wrap",
-            gap: "16px",
+            gap: 16,
           }}
         >
           <div>
             <h1
               style={{
                 fontFamily: "var(--font-title)",
-                fontSize: "40px",
+                fontSize: 40,
                 margin: "0 0 6px",
               }}
             >
               Thông Tin Cá Nhân
             </h1>
 
-            <p
-              style={{
-                fontSize: "14px",
-                color: "#666",
-                margin: 0,
-              }}
-            >
+            <p style={{ fontSize: 14, color: "#666", margin: 0 }}>
               Thông tin tài khoản của bạn trên VESTORA.
             </p>
           </div>
@@ -351,6 +693,7 @@ export default function UserProfilePage() {
             type="button"
             className="profile-edit-toggle"
             onClick={handleToggleEdit}
+            disabled={accountBusy}
           >
             {isEditing ? "Đóng chỉnh sửa" : "Chỉnh sửa thông tin"}
           </button>
@@ -358,38 +701,80 @@ export default function UserProfilePage() {
       </div>
 
       <div className="profile-main-grid">
-        {/* Sidebar */}
         <aside className="user-sidebar-card">
-          <div className="user-avatar-wrapper">
-            {showAvatar ? (
-              <img
-                src={user.avatar}
-                alt={`Ảnh đại diện của ${profile.fullName}`}
-                className="user-avatar-img"
-                onError={() => setFailedAvatar(user.avatar)}
-              />
-            ) : (
-              <div
-                className="user-avatar-img"
-                aria-label="Ảnh đại diện mặc định"
-                style={{
-                  display: "grid",
-                  placeItems: "center",
-                  background: "#eee7dc",
-                  color: "#96723d",
-                  fontSize: "42px",
-                  fontWeight: 700,
-                }}
-              >
-                {avatarInitial}
+          <div className="profile-avatar-section">
+            <div className="profile-avatar-picker">
+              <div className="profile-avatar-photo">
+                {displayedAvatar ? (
+                  <img
+                    key={displayedAvatar}
+                    src={displayedAvatar}
+                    alt={`Ảnh đại diện của ${profile.fullName}`}
+                    onError={() => setFailedAvatar(user.avatar)}
+                  />
+                ) : (
+                  <span className="profile-avatar-letter">
+                    {avatarInitial}
+                  </span>
+                )}
               </div>
+
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleChooseAvatar}
+                disabled={accountBusy}
+                aria-label="Chọn ảnh đại diện"
+                hidden
+              />
+
+              <button
+                type="button"
+                className="profile-avatar-add"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={accountBusy}
+                aria-label={
+                  avatarSaving ? "Đang tải ảnh lên" : "Đổi ảnh đại diện"
+                }
+                title={
+                  avatarSaving ? "Đang tải ảnh lên..." : "Đổi ảnh đại diện"
+                }
+                aria-busy={avatarSaving}
+              >
+                {avatarSaving ? (
+                  <span
+                    className="profile-avatar-spinner"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                )}
+              </button>
+            </div>
+
+            {avatarError && (
+              <p className="avatar-error" role="alert">
+                {avatarError}
+              </p>
             )}
           </div>
 
           <h2
             style={{
               fontFamily: "var(--font-title)",
-              fontSize: "22px",
+              fontSize: 22,
               margin: "0 0 4px",
               overflowWrap: "anywhere",
             }}
@@ -399,9 +784,9 @@ export default function UserProfilePage() {
 
           <div
             style={{
-              fontSize: "12px",
+              fontSize: 12,
               color: "#666",
-              marginBottom: "12px",
+              marginBottom: 12,
               overflowWrap: "anywhere",
             }}
           >
@@ -412,10 +797,10 @@ export default function UserProfilePage() {
             style={{
               background: "#ECFDF5",
               color: "#059669",
-              fontSize: "11px",
+              fontSize: 11,
               fontWeight: 700,
               padding: "4px 12px",
-              borderRadius: "9999px",
+              borderRadius: 9999,
             }}
           >
             {roleLabel}
@@ -424,14 +809,14 @@ export default function UserProfilePage() {
           <div className="profile-nav-menu">
             <button
               type="button"
-              className={`profile-nav-btn profile-menu-parent ${profileMenuOpen ? "is-open" : ""
-                }`}
+              className={`profile-nav-btn profile-menu-parent ${
+                profileMenuOpen ? "is-open" : ""
+              }`}
               onClick={() => setProfileMenuOpen((previous) => !previous)}
               aria-expanded={profileMenuOpen}
               aria-controls="profile-account-submenu"
             >
               <span>Thông tin cá nhân</span>
-
               <svg
                 className="profile-menu-chevron"
                 width="18"
@@ -453,67 +838,35 @@ export default function UserProfilePage() {
               >
                 <button
                   type="button"
-                  className={`profile-submenu-button ${profileTab === "information" && isEditing
-                    ? "is-active"
-                    : ""
-                    }`}
-                  onClick={() => {
-                    setProfileTab("information");
-                    setUserInfo(getProfile(user));
-                    setIsEditing(true);
-                    setNotice("");
-                  }}
+                  className={`profile-submenu-button ${
+                    profileTab === "information" && isEditing
+                      ? "is-active"
+                      : ""
+                  }`}
+                  onClick={handleOpenEdit}
+                  disabled={accountBusy}
                 >
-                  <span className="profile-submenu-icon">
-                    <svg
-                      width="19"
-                      height="19"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="m16 3 5 5-12 12-6 1 1-6L16 3Z" />
-                      <path d="m13 6 5 5" />
-                    </svg>
+                  <span className="profile-submenu-icon" aria-hidden="true">
+                    ✎
                   </span>
-
                   <span>Chỉnh sửa thông tin</span>
                 </button>
 
-                {user.authProvider === "local" && (
+                {canChangePassword && (
                   <button
                     type="button"
-                    className={`profile-submenu-button ${profileTab === "password" ? "is-active" : ""
-                      }`}
-                    onClick={() => {
-                      setProfileTab("password");
-                      setUserInfo(getProfile(user));
-                      setIsEditing(false);
-                      setNotice("");
-                    }}
+                    className={`profile-submenu-button ${
+                      profileTab === "password" ? "is-active" : ""
+                    }`}
+                    onClick={handleOpenPassword}
+                    disabled={accountBusy}
                   >
-                    <span className="profile-submenu-icon">
-                      <svg
-                        width="19"
-                        height="19"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <rect x="5" y="10" width="14" height="11" rx="3" />
-                        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                        <path d="M12 14v3" />
-                      </svg>
+                    <span
+                      className="profile-submenu-icon"
+                      aria-hidden="true"
+                    >
+                      🔒
                     </span>
-
                     <span>Đổi mật khẩu</span>
                   </button>
                 )}
@@ -524,6 +877,7 @@ export default function UserProfilePage() {
               type="button"
               className="profile-nav-btn"
               onClick={() => navigate("/cart")}
+              disabled={accountBusy}
             >
               <span>🛍️ Giỏ Hàng Của Tôi</span>
               <span>›</span>
@@ -533,6 +887,7 @@ export default function UserProfilePage() {
               type="button"
               className="profile-nav-btn"
               onClick={() => navigate("/favorites")}
+              disabled={accountBusy}
             >
               <span>♡ Sản Phẩm Yêu Thích</span>
               <span>›</span>
@@ -542,6 +897,7 @@ export default function UserProfilePage() {
               type="button"
               className="profile-nav-btn"
               onClick={() => navigate("/try-on-photo")}
+              disabled={accountBusy}
             >
               <span>👗 Thử Đồ Với Ảnh</span>
               <span>›</span>
@@ -551,13 +907,13 @@ export default function UserProfilePage() {
               type="button"
               className="profile-nav-btn"
               onClick={handleLogout}
-              disabled={loggingOut}
+              disabled={accountBusy}
               style={{
                 color: "#DC2626",
-                marginTop: "16px",
+                marginTop: 16,
                 borderTop: "1px solid #F3F4F6",
-                paddingTop: "12px",
-                opacity: loggingOut ? 0.6 : 1,
+                paddingTop: 12,
+                opacity: accountBusy ? 0.6 : 1,
               }}
             >
               <span>
@@ -572,7 +928,7 @@ export default function UserProfilePage() {
                 role="alert"
                 style={{
                   color: "#DC2626",
-                  fontSize: "13px",
+                  fontSize: 13,
                   padding: "0 12px",
                 }}
               >
@@ -582,7 +938,6 @@ export default function UserProfilePage() {
           </div>
         </aside>
 
-        {/* Chi tiết hồ sơ */}
         <div className="profile-details-panel">
           <div className="info-card-white">
             <div
@@ -591,17 +946,17 @@ export default function UserProfilePage() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 flexWrap: "wrap",
-                gap: "12px",
-                marginBottom: "24px",
+                gap: 12,
+                marginBottom: 24,
                 borderBottom: "1px solid #F3F4F6",
-                paddingBottom: "16px",
+                paddingBottom: 16,
               }}
             >
               <div>
                 <h3
                   style={{
                     fontFamily: "var(--font-title)",
-                    fontSize: "20px",
+                    fontSize: 20,
                     margin: 0,
                   }}
                 >
@@ -610,7 +965,7 @@ export default function UserProfilePage() {
 
                 <p
                   style={{
-                    fontSize: "12px",
+                    fontSize: 12,
                     color: "#666",
                     margin: "6px 0 0",
                   }}
@@ -623,10 +978,10 @@ export default function UserProfilePage() {
                 style={{
                   background: "#ECFDF5",
                   color: "#059669",
-                  fontSize: "11px",
+                  fontSize: 11,
                   fontWeight: 600,
                   padding: "4px 12px",
-                  borderRadius: "9999px",
+                  borderRadius: 9999,
                 }}
               >
                 {user.status === "active"
@@ -635,7 +990,7 @@ export default function UserProfilePage() {
               </span>
             </div>
 
-            {profileTab === "password" && user.authProvider === "local" ? (
+            {profileTab === "password" && canChangePassword ? (
               <section
                 className="profile-password-section"
                 aria-labelledby="profile-password-title"
@@ -656,115 +1011,60 @@ export default function UserProfilePage() {
                   noValidate
                 >
                   {passwordErrors.server && (
-                    <div className="password-feedback is-error" role="alert">
+                    <div
+                      className="password-feedback is-error"
+                      role="alert"
+                    >
                       {passwordErrors.server}
                     </div>
                   )}
 
                   {passwordSuccess && (
-                    <div className="password-feedback is-success" role="status">
+                    <div
+                      className="password-feedback is-success"
+                      role="status"
+                    >
                       {passwordSuccess}
                     </div>
                   )}
 
-                  <div className="profile-password-field">
-                    <label htmlFor="profile-current-password">
-                      Mật khẩu hiện tại
-                    </label>
+                  {PASSWORD_FIELDS.map((field) => (
+                    <div
+                      className="profile-password-field"
+                      key={field.name}
+                    >
+                      <label htmlFor={`profile-${field.name}`}>
+                        {field.label}
+                      </label>
 
-                    <input
-                      id="profile-current-password"
-                      name="currentPassword"
-                      type={showPasswords ? "text" : "password"}
-                      autoComplete="current-password"
-                      placeholder="Nhập mật khẩu đang sử dụng"
-                      value={passwordForm.currentPassword}
-                      onChange={handlePasswordChange}
-                      disabled={changingPassword}
-                      aria-invalid={Boolean(passwordErrors.currentPassword)}
-                      aria-describedby={
-                        passwordErrors.currentPassword
-                          ? "current-password-error"
-                          : undefined
-                      }
-                    />
+                      <input
+                        id={`profile-${field.name}`}
+                        name={field.name}
+                        type={showPasswords ? "text" : "password"}
+                        autoComplete={field.autoComplete}
+                        placeholder={field.placeholder}
+                        value={passwordForm[field.name]}
+                        onChange={handlePasswordChange}
+                        disabled={accountBusy}
+                        aria-invalid={Boolean(passwordErrors[field.name])}
+                        aria-describedby={
+                          passwordErrors[field.name]
+                            ? `profile-${field.name}-error`
+                            : undefined
+                        }
+                      />
 
-                    {passwordErrors.currentPassword && (
-                      <span
-                        id="current-password-error"
-                        className="profile-password-error"
-                        role="alert"
-                      >
-                        {passwordErrors.currentPassword}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="profile-password-field">
-                    <label htmlFor="profile-new-password">
-                      Mật khẩu mới
-                    </label>
-
-                    <input
-                      id="profile-new-password"
-                      name="newPassword"
-                      type={showPasswords ? "text" : "password"}
-                      autoComplete="new-password"
-                      placeholder="Nhập ít nhất 8 ký tự"
-                      value={passwordForm.newPassword}
-                      onChange={handlePasswordChange}
-                      disabled={changingPassword}
-                      aria-invalid={Boolean(passwordErrors.newPassword)}
-                      aria-describedby={
-                        passwordErrors.newPassword
-                          ? "profile-new-password-error"
-                          : undefined
-                      }
-                    />
-
-                    {passwordErrors.newPassword && (
-                      <span
-                        id="profile-new-password-error"
-                        className="profile-password-error"
-                        role="alert"
-                      >
-                        {passwordErrors.newPassword}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="profile-password-field">
-                    <label htmlFor="profile-confirm-password">
-                      Xác nhận mật khẩu mới
-                    </label>
-
-                    <input
-                      id="profile-confirm-password"
-                      name="confirmNewPassword"
-                      type={showPasswords ? "text" : "password"}
-                      autoComplete="new-password"
-                      placeholder="Nhập lại mật khẩu mới"
-                      value={passwordForm.confirmNewPassword}
-                      onChange={handlePasswordChange}
-                      disabled={changingPassword}
-                      aria-invalid={Boolean(passwordErrors.confirmNewPassword)}
-                      aria-describedby={
-                        passwordErrors.confirmNewPassword
-                          ? "profile-confirm-password-error"
-                          : undefined
-                      }
-                    />
-
-                    {passwordErrors.confirmNewPassword && (
-                      <span
-                        id="profile-confirm-password-error"
-                        className="profile-password-error"
-                        role="alert"
-                      >
-                        {passwordErrors.confirmNewPassword}
-                      </span>
-                    )}
-                  </div>
+                      {passwordErrors[field.name] && (
+                        <span
+                          id={`profile-${field.name}-error`}
+                          className="profile-password-error"
+                          role="alert"
+                        >
+                          {passwordErrors[field.name]}
+                        </span>
+                      )}
+                    </div>
+                  ))}
 
                   <label className="profile-password-visibility">
                     <input
@@ -773,6 +1073,7 @@ export default function UserProfilePage() {
                       onChange={(event) =>
                         setShowPasswords(event.target.checked)
                       }
+                      disabled={accountBusy}
                     />
                     Hiện mật khẩu
                   </label>
@@ -781,7 +1082,7 @@ export default function UserProfilePage() {
                     <button
                       type="submit"
                       className="profile-password-submit"
-                      disabled={changingPassword}
+                      disabled={accountBusy}
                     >
                       {changingPassword ? "Đang lưu..." : "Lưu mật khẩu mới"}
                     </button>
@@ -790,198 +1091,309 @@ export default function UserProfilePage() {
               </section>
             ) : !isEditing ? (
               <div>
-                <div className="profile-table-row">
-                  <span style={{ color: "#666" }}>
-                    Họ và tên
-                  </span>
-
-                  <strong>{profile.fullName}</strong>
-
-                  <span />
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: "#666" }}>
-                    Địa chỉ email
-                  </span>
-
-                  <strong
-                    style={{ overflowWrap: "anywhere" }}
-                  >
-                    {profile.email}
-                  </strong>
-
-                  <span />
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: "#666" }}>
-                    Số điện thoại liên lạc
-                  </span>
-
-                  <strong>
-                    {profile.phone || "Chưa cập nhật"}
-                  </strong>
-
-                  <span />
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: "#666" }}>
-                    Địa chỉ liên hệ
-                  </span>
-
-                  <strong
-                    style={{ overflowWrap: "anywhere" }}
-                  >
-                    {profile.address || "Chưa cập nhật"}
-                  </strong>
-
-                  <span />
-                </div>
-
-                <div className="profile-table-row">
-                  <span style={{ color: "#666" }}>
-                    Vai trò tài khoản
-                  </span>
-
-                  <strong>{roleLabel}</strong>
-
-                  <span />
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSave} className="vestora-profile-form">
-                <div className="profile-edit-intro">
-                  <span className="profile-edit-eyebrow">
-                    THÔNG TIN CÁ NHÂN
-                  </span>
-
-                  <h4>Chỉnh sửa hồ sơ</h4>
-
-                  <p>Cập nhật thông tin để VESTORA hỗ trợ bạn tốt hơn.</p>
-                </div>
-
-                <div className="profile-fields-grid">
-                  <div className="profile-field">
-                    <div className="profile-field-heading">
-                      <label htmlFor="profile-fullName">Họ và tên</label>
-
-                      <span className="profile-field-counter">
-                        {[...userInfo.fullName].length}/25
-                      </span>
-                    </div>
-
-                    <input
-                      id="profile-fullName"
-                      name="fullName"
-                      type="text"
-                      autoComplete="name"
-                      placeholder="Nhập họ và tên"
-                      value={userInfo.fullName}
-                      onChange={(event) => {
-                        if ([...event.target.value].length <= 25) {
-                          handleChange(event);
-                        }
-                      }}
-                      required
-                      aria-describedby="profile-name-hint"
-                    />
-
-                    <small id="profile-name-hint">
-                      Họ tên tối đa 25 ký tự.
-                    </small>
-                  </div>
-
-                  <div className="profile-field">
-                    <div className="profile-field-heading">
-                      <label htmlFor="profile-email">Địa chỉ email</label>
-
-                      <span className="profile-readonly-badge">
-                        Chỉ xem
-                      </span>
-                    </div>
-
-                    <input
-                      id="profile-email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      value={userInfo.email}
-                      readOnly
-                      aria-describedby="profile-email-hint"
-                    />
-
-                    <small id="profile-email-hint">
-                      Email đang dùng để đăng nhập tài khoản.
-                    </small>
-                  </div>
-
-                  <div className="profile-field">
-                    <div className="profile-field-heading">
-                      <label htmlFor="profile-phone">Số điện thoại</label>
-                      <span className="profile-field-optional">
-                        Không bắt buộc
-                      </span>
-                    </div>
-
-                    <input
-                      id="profile-phone"
-                      name="phone"
-                      type="tel"
-                      autoComplete="tel"
-                      placeholder="Nhập số điện thoại liên hệ"
-                      value={userInfo.phone}
-                      onChange={handleChange}
-                    />
-                  </div>
-
-                  <div className="profile-field profile-field-full">
-                    <div className="profile-field-heading">
-                      <label htmlFor="profile-address">Địa chỉ liên hệ</label>
-                      <span className="profile-field-optional">
-                        Không bắt buộc
-                      </span>
-                    </div>
-
-                    <textarea
-                      id="profile-address"
-                      name="address"
-                      autoComplete="street-address"
-                      placeholder="Số nhà, tên đường, phường/xã, tỉnh/thành phố"
-                      rows={3}
-                      value={userInfo.address}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-
                 {notice && (
-                  <div className="profile-edit-notice" role="status">
+                  <div
+                    className="profile-edit-notice"
+                    role="status"
+                    style={{ marginBottom: 16 }}
+                  >
                     {notice}
                   </div>
                 )}
 
-                <div className="profile-edit-actions">
-                  <p>Kiểm tra thông tin trước khi lưu.</p>
-
-                  <div className="profile-edit-buttons">
-                    <button
-                      type="button"
-                      className="profile-cancel-button"
-                      onClick={handleToggleEdit}
-                    >
-                      Hủy bỏ
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="profile-save-button"
-                    >
-                      Lưu thay đổi
-                    </button>
+                {[
+                  ["Họ và tên", profile.fullName],
+                  ["Địa chỉ email", profile.email],
+                  ["Số điện thoại liên lạc", profile.phone || "Chưa cập nhật"],
+                  ["Địa chỉ liên hệ", profile.address || "Chưa cập nhật"],
+                  ["Vai trò tài khoản", roleLabel],
+                ].map(([label, value]) => (
+                  <div className="profile-table-row" key={label}>
+                    <span style={{ color: "#666" }}>{label}</span>
+                    <strong style={{ overflowWrap: "anywhere" }}>
+                      {value}
+                    </strong>
+                    <span />
                   </div>
+                ))}
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSave}
+                className="vestora-profile-form"
+                noValidate
+              >
+                <div className="profile-edit-intro">
+                  <span className="profile-edit-eyebrow">
+                    THÔNG TIN CÁ NHÂN
+                  </span>
+                  <h4>Chỉnh sửa hồ sơ</h4>
+                  <p>Cập nhật thông tin liên hệ của bạn trên VESTORA.</p>
                 </div>
+
+                <fieldset
+                  disabled={accountBusy}
+                  style={{
+                    border: 0,
+                    padding: 0,
+                    margin: 0,
+                    minWidth: 0,
+                  }}
+                >
+                  <div className="profile-fields-grid">
+                    <div className="profile-field">
+                      <div className="profile-field-heading">
+                        <label htmlFor="profile-fullName">Họ và tên</label>
+                        <span className="profile-field-counter">
+                          {[...userInfo.fullName].length}/25
+                        </span>
+                      </div>
+
+                      <input
+                        id="profile-fullName"
+                        name="fullName"
+                        type="text"
+                        autoComplete="name"
+                        placeholder="Nhập họ và tên"
+                        value={userInfo.fullName}
+                        onChange={(event) => {
+                          if ([...event.target.value].length <= 25) {
+                            handleChange(event);
+                          }
+                        }}
+                        required
+                      />
+
+                      <small>Họ tên tối đa 25 ký tự.</small>
+                    </div>
+
+                    <div className="profile-field">
+                      <div className="profile-field-heading">
+                        <label htmlFor="profile-email">Địa chỉ email</label>
+                        <span className="profile-readonly-badge">
+                          Chỉ xem
+                        </span>
+                      </div>
+
+                      <input
+                        id="profile-email"
+                        type="email"
+                        autoComplete="email"
+                        value={userInfo.email}
+                        readOnly
+                      />
+
+                      <small>Email đang dùng để đăng nhập tài khoản.</small>
+                    </div>
+
+                    <div className="profile-field profile-field-full">
+                      <div className="profile-field-heading">
+                        <label htmlFor="profile-phone">Số điện thoại</label>
+                      </div>
+
+                      <input
+                        id="profile-phone"
+                        name="phone"
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="Ví dụ: 0912345678"
+                        value={userInfo.phone}
+                        onChange={handleChange}
+                        maxLength={20}
+                        required
+                      />
+                    </div>
+
+                    <div className="profile-field">
+                      <div className="profile-field-heading">
+                        <label htmlFor="profile-province">
+                          Tỉnh/Thành phố
+                        </label>
+                      </div>
+
+                      <select
+                        id="profile-province"
+                        name="provinceCode"
+                        value={userInfo.provinceCode}
+                        onChange={handleChange}
+                        disabled={loadingProvinces}
+                        style={SELECT_STYLE}
+                        required
+                      >
+                        <option value="">
+                          {loadingProvinces
+                            ? "Đang tải danh sách..."
+                            : "Chọn Tỉnh/Thành phố"}
+                        </option>
+
+                        {provinces.map((province) => (
+                          <option
+                            key={province.code}
+                            value={String(province.code)}
+                          >
+                            {province.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="profile-field">
+                      <div className="profile-field-heading">
+                        <label htmlFor="profile-ward">Phường/Xã</label>
+                      </div>
+
+                      <select
+                        id="profile-ward"
+                        name="wardCode"
+                        value={userInfo.wardCode}
+                        onChange={handleChange}
+                        disabled={!userInfo.provinceCode || loadingWards}
+                        style={SELECT_STYLE}
+                        required
+                      >
+                        <option value="">
+                          {loadingWards
+                            ? "Đang tải danh sách..."
+                            : !userInfo.provinceCode
+                              ? "Chọn tỉnh/thành phố trước"
+                              : "Chọn Phường/Xã"}
+                        </option>
+
+                        {wards.map((ward) => (
+                          <option
+                            key={ward.code}
+                            value={String(ward.code)}
+                          >
+                            {ward.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="profile-field profile-field-full">
+                      <div className="profile-field-heading">
+                        <label htmlFor="profile-address-detail">
+                          Địa chỉ chi tiết
+                        </label>
+                        <span className="profile-field-counter">
+                          {[...userInfo.addressDetail].length}/200
+                        </span>
+                      </div>
+
+                      <textarea
+                        id="profile-address-detail"
+                        name="addressDetail"
+                        autoComplete="street-address"
+                        placeholder="Số nhà, tên đường, ngõ, thôn..."
+                        rows={3}
+                        maxLength={200}
+                        value={userInfo.addressDetail}
+                        onChange={handleChange}
+                        required
+                      />
+
+                      {!profile.provinceCode && profile.address && (
+                        <small>
+                          Địa chỉ cũ: {profile.address}. Vui lòng chọn
+                          tỉnh/xã và nhập lại phần số nhà, đường, thôn.
+                        </small>
+                      )}
+                    </div>
+                  </div>
+
+                  {(provinceError || wardError) && (
+                    <div style={ERROR_STYLE} role="alert">
+                      <p style={{ margin: "0 0 8px" }}>
+                        {provinceError || wardError}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAddressRetry((previous) => previous + 1)
+                        }
+                        style={{
+                          border: 0,
+                          padding: 0,
+                          background: "transparent",
+                          color: "inherit",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Tải lại danh mục
+                      </button>
+                    </div>
+                  )}
+
+                  {addressPreview && (
+                    <div
+                      style={{
+                        marginTop: 20,
+                        padding: "14px 16px",
+                        border: "1px solid #e9dfcf",
+                        borderRadius: 10,
+                        background: "#f7f3ec",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: 1,
+                          color: "#96723d",
+                        }}
+                      >
+                        ĐỊA CHỈ ĐẦY ĐỦ
+                      </span>
+
+                      <p
+                        style={{
+                          margin: "8px 0 0",
+                          color: "#51483d",
+                          fontSize: 14,
+                          lineHeight: 1.6,
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {addressPreview}
+                      </p>
+                    </div>
+                  )}
+
+                  {profileError && (
+                    <div style={ERROR_STYLE} role="alert">
+                      {profileError}
+                    </div>
+                  )}
+
+                  <div className="profile-edit-actions">
+                    <p>Kiểm tra thông tin trước khi lưu.</p>
+
+                    <div className="profile-edit-buttons">
+                      <button
+                        type="button"
+                        className="profile-cancel-button"
+                        onClick={handleCancelEdit}
+                      >
+                        Hủy bỏ
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="profile-save-button"
+                        disabled={
+                          accountBusy ||
+                          loadingProvinces ||
+                          loadingWards ||
+                          Boolean(provinceError || wardError)
+                        }
+                      >
+                        {profileSaving ? "Đang lưu..." : "Lưu thay đổi"}
+                      </button>
+                    </div>
+                  </div>
+                </fieldset>
               </form>
             )}
           </div>

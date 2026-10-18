@@ -1,7 +1,5 @@
-import React from "react"; import {
-  Link,
-  useLocation,
-} from "react-router-dom";
+import React, { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
 import "../styles/Navbar.css";
@@ -16,8 +14,16 @@ export default function Navbar() {
     refreshUser,
   } = useAuth();
 
+  const [failedAvatar, setFailedAvatar] = useState("");
+
   const isActive = (path) =>
     location.pathname === path ? "active" : "";
+
+  const avatarUrl = user?.avatar || "";
+  const showAvatar = Boolean(avatarUrl) && failedAvatar !== avatarUrl;
+
+  const avatarInitial =
+    user?.fullName?.trim().charAt(0).toUpperCase() || "U";
 
   return (
     <header className="vestora-navbar">
@@ -64,7 +70,7 @@ export default function Navbar() {
         {user?.role === "shop_owner" && (
           <Link
             to="/shop/dashboard"
-            className="navbar-link"
+            className={`navbar-link ${isActive("/shop/dashboard")}`}
           >
             KÊNH CHỦ SHOP
           </Link>
@@ -73,7 +79,7 @@ export default function Navbar() {
         {user?.role === "admin" && (
           <Link
             to="/admin/dashboard"
-            className="navbar-link"
+            className={`navbar-link ${isActive("/admin/dashboard")}`}
           >
             ADMIN HỆ THỐNG
           </Link>
@@ -85,6 +91,7 @@ export default function Navbar() {
           to="/favorites"
           className="navbar-icon-btn"
           title="Danh sách yêu thích"
+          aria-label="Danh sách yêu thích"
         >
           ♡
         </Link>
@@ -93,38 +100,62 @@ export default function Navbar() {
           to="/cart"
           className="navbar-icon-btn"
           title="Giỏ hàng"
+          aria-label="Giỏ hàng"
         >
           🛒
         </Link>
 
         {loading ? (
-          <span>Đang tải...</span>
+          <span role="status">Đang tải...</span>
         ) : user ? (
-          <>
-            <Link
-              to="/profile"
-              className="user-profile-pill"
-              title="Hồ sơ cá nhân"
+          <Link
+            to="/profile"
+            className="user-profile-pill"
+            title="Hồ sơ cá nhân"
+          >
+            <span
+              className="user-avatar-circle"
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: 40,
+                height: 40,
+                flexShrink: 0,
+                overflow: "hidden",
+                borderRadius: "50%",
+                background: "#eee7dc",
+                color: "#96723d",
+                fontWeight: 700,
+              }}
             >
-              <span
-                className="user-avatar-circle"
-                style={{
-                  display: "grid",
-                  placeItems: "center",
-                  background: "#eee7dc",
-                  color: "#96723d",
-                  fontWeight: 700,
-                }}
-              >
-                {user.fullName?.charAt(0).toUpperCase()}
-              </span>
+              {showAvatar ? (
+                <img
+                  key={avatarUrl}
+                  src={avatarUrl}
+                  alt={`Ảnh đại diện của ${user.fullName}`}
+                  onError={() => setFailedAvatar(avatarUrl)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: "50%",
+                  }}
+                />
+              ) : (
+                avatarInitial
+              )}
+            </span>
 
-              <span className="user-display-name">
-                {user.fullName}
-              </span>
-            </Link>
-
-          </>
+            <span
+              className="user-display-name"
+              title={user.fullName || ""}
+            >
+              {[...(user.fullName || "")].length > 10
+                ? [...user.fullName].slice(0, 10).join("") + "..."
+                : user.fullName}
+            </span>
+          </Link>
         ) : authError ? (
           <button type="button" onClick={refreshUser}>
             Thử lại kết nối

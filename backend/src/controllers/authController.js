@@ -8,6 +8,8 @@ import {
   verifyForgotPasswordOtp as verifyPasswordResetOtp,
   resetPassword as resetAccountPassword,
   changePassword as changeAccountPassword,
+  updateAvatar as updateAccountAvatar,
+  updateProfile as updateAccountProfile,
 } from "../services/authService.js";
 
 const COOKIE_NAME = "vestora_token";
@@ -156,5 +158,35 @@ export async function changePassword(req, res, next) {
     return res.status(200).json(result);
   } catch (error) {
     next(error);
+  }
+}
+
+export async function updateAvatar(req, res, next) {
+  try {
+    const result = await updateAccountAvatar(
+      req.user._id,
+      req.file
+    );
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateProfile(req, res, next) {
+  try {
+    const result = await updateAccountProfile(
+      req.user._id,
+      req.body
+    );
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return next(error);
   }
 }

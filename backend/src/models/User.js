@@ -9,8 +9,45 @@ const punctuationRegex =
 
 const informationSchema = new mongoose.Schema(
   {
-    Phone: { type: String, trim: true, default: "" },
-    Address: { type: String, trim: true, default: "" },
+    Phone: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    // Địa chỉ đầy đủ để những giao diện hiện có tiếp tục hiển thị.
+    Address: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    ProvinceCode: {
+      type: String,
+      default: "",
+    },
+
+    ProvinceName: {
+      type: String,
+      default: "",
+    },
+
+    WardCode: {
+      type: String,
+      default: "",
+    },
+
+    WardName: {
+      type: String,
+      default: "",
+    },
+
+    AddressDetail: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: 200,
+    },
   },
   { _id: false }
 );
@@ -90,6 +127,11 @@ const userSchema = new mongoose.Schema(
     Avatar: {
       type: String,
       trim: true,
+      default: "",
+    },
+
+    AvatarPublicId: {
+      type: String,
       default: "",
     },
 

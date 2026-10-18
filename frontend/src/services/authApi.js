@@ -265,3 +265,34 @@ export async function changePasswordApi(
 
   return data;
 }
+
+export async function updateAvatarApi(file) {
+  const formData = new FormData();
+  formData.append("avatar", file);
+
+  const response = await fetch(`${API_URL}/auth/avatar`, {
+    method: "PATCH",
+    credentials: "include",
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(
+      data.message || "Không cập nhật được ảnh đại diện"
+    );
+
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
+export function updateProfileApi(payload) {
+  return request("/auth/profile", {
+    method: "PATCH",
+    body: payload,
+  });
+}

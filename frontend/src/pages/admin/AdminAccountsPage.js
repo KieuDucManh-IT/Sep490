@@ -109,14 +109,14 @@ export default function AdminAccountsPage() {
 
   return (
     <div className="admin-layout">
-      <AdminSidebar 
-        isCollapsed={isSidebarCollapsed} 
-        onToggle={() => setIsSidebarCollapsed(prev => !prev)} 
+      <AdminSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed(prev => !prev)}
       />
 
       <div className="admin-main-viewport">
-        <AdminTopHeader 
-          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)} 
+        <AdminTopHeader
+          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
           breadcrumb="Quản Lý Tài Khoản Người Dùng"
         />
 
@@ -167,7 +167,7 @@ export default function AdminAccountsPage() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <button 
+                        <button
                           className="btn-action-icon view-blue"
                           title="Xem chi tiết tài khoản"
                           onClick={() => setSelectedUserModal(u)}
@@ -175,7 +175,7 @@ export default function AdminAccountsPage() {
                           <Eye size={17} />
                         </button>
                         {u.status === 'LOCKED' ? (
-                          <button 
+                          <button
                             className="btn-action-icon unlock-green"
                             title="Mở khóa tài khoản"
                             onClick={() => handleToggleLock(u.id)}
@@ -183,7 +183,7 @@ export default function AdminAccountsPage() {
                             <LockKeyholeOpen size={17} />
                           </button>
                         ) : (
-                          <button 
+                          <button
                             className="btn-action-icon lock-red"
                             title="Khóa tài khoản"
                             onClick={() => handleToggleLock(u.id)}
@@ -199,8 +199,8 @@ export default function AdminAccountsPage() {
             </Table>
           </div>
 
-          <Modal 
-            show={!!selectedUserModal} 
+          <Modal
+            show={!!selectedUserModal}
             onHide={() => setSelectedUserModal(null)}
             centered
           >
@@ -217,7 +217,7 @@ export default function AdminAccountsPage() {
                   <p className="mb-1"><strong>Xác Thực KYC:</strong> {selectedUserModal.kyc}</p>
                   <p className="mb-1"><strong>Điểm Tín Nhiệm Escrow:</strong> {selectedUserModal.rating}</p>
                   <p className="mb-1"><strong>Tổng Đơn & Cọc:</strong> {selectedUserModal.totalOrders} đơn ({selectedUserModal.totalDepositEscrow})</p>
-                  <p className="mb-0"><strong>Trạng Thái Hợp Đồng:</strong> 
+                  <p className="mb-0"><strong>Trạng Thái Hợp Đồng:</strong>
                     <Badge bg={selectedUserModal.status === 'ACTIVE' ? 'success' : 'danger'} className="ms-2">
                       {selectedUserModal.status}
                     </Badge>

@@ -7,7 +7,8 @@ import '../styles/AdminShops.css';
 export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
+  const isOps = location.pathname.startsWith('/ops');
 
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -68,9 +69,18 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
           </button>
         )}
 
-        <Link to="/admin/dashboard" className="admin-shops-topbar__brand-link" title="Về Dashboard Tổng Quan">
+        <Link
+          to={isOps ? "/ops/shops" : "/admin/dashboard"}
+          className="admin-shops-topbar__brand-link"
+          title={isOps ? "Về Bàn Làm Việc Vận Hành (OPS)" : "Về Dashboard Tổng Quan"}
+        >
           <span className="admin-shops-topbar__brand-name">VESTORA</span>
-          <span className="admin-shops-topbar__brand-tag">Admin Console</span>
+          <span
+            className="admin-shops-topbar__brand-tag"
+            style={isOps ? { background: '#059669', color: '#FFFFFF' } : {}}
+          >
+            {isOps ? 'OPS Console' : 'Admin Console'}
+          </span>
         </Link>
 
         {breadcrumb && (
@@ -94,7 +104,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
           <button
             type="button"
             className={`admin-shops-topbar__bell ${showNotif ? 'active' : ''}`}
-            title="Thông báo hệ thống admin"
+            title="Thông báo hệ thống"
             onClick={() => setShowNotif((prev) => !prev)}
             aria-expanded={showNotif}
           >
@@ -115,7 +125,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                 <button
                   type="button"
                   className="admin-dropdown-markall"
-                  onClick={() => handleNav('/admin/moderation')}
+                  onClick={() => handleNav(isOps ? '/ops/moderation' : '/admin/moderation')}
                 >
                   Xem tất cả
                 </button>
@@ -124,7 +134,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
               <div className="admin-dropdown-list">
                 <div
                   className="admin-dropdown-item notif"
-                  onClick={() => handleNav('/admin/shops')}
+                  onClick={() => handleNav(isOps ? '/ops/shop-applications' : '/admin/shop-applications')}
                   role="button"
                   tabIndex={0}
                 >
@@ -138,7 +148,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
 
                 <div
                   className="admin-dropdown-item notif"
-                  onClick={() => handleNav('/admin/moderation')}
+                  onClick={() => handleNav(isOps ? '/ops/moderation' : '/admin/moderation')}
                   role="button"
                   tabIndex={0}
                 >
@@ -152,7 +162,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
 
                 <div
                   className="admin-dropdown-item notif"
-                  onClick={() => handleNav('/admin/disputes')}
+                  onClick={() => handleNav(isOps ? '/ops/disputes' : '/admin/disputes')}
                   role="button"
                   tabIndex={0}
                 >
@@ -166,15 +176,15 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
 
                 <div
                   className="admin-dropdown-item notif"
-                  onClick={() => handleNav('/admin/accounts')}
+                  onClick={() => handleNav(isOps ? '/ops/shops' : '/admin/accounts')}
                   role="button"
                   tabIndex={0}
                 >
-                  <span className="admin-dropdown-icon account">👤</span>
+                  <span className="admin-dropdown-icon account">{isOps ? '🏬' : '👤'}</span>
                   <div className="admin-dropdown-content">
-                    <div className="admin-dropdown-item-title">Xác thực tài khoản người dùng KYC</div>
-                    <div className="admin-dropdown-item-desc">Cập nhật hồ sơ định danh điện tử hoàn tất</div>
-                    <span className="admin-dropdown-time">3 giờ trước • Quản lý</span>
+                    <div className="admin-dropdown-item-title">{isOps ? 'Giám sát chi nhánh showroom mới' : 'Xác thực tài khoản người dùng KYC'}</div>
+                    <div className="admin-dropdown-item-desc">{isOps ? 'Chi nhánh cập nhật tọa độ GPS bản đồ' : 'Cập nhật hồ sơ định danh điện tử hoàn tất'}</div>
+                    <span className="admin-dropdown-time">3 giờ trước • Kiểm soát</span>
                   </div>
                 </div>
               </div>
@@ -183,7 +193,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                 <button
                   type="button"
                   className="admin-dropdown-footer-link"
-                  onClick={() => handleNav('/admin/moderation')}
+                  onClick={() => handleNav(isOps ? '/ops/moderation' : '/admin/moderation')}
                 >
                   Đi đến Trung Tâm Kiểm Duyệt Tổng Hợp →
                 </button>
@@ -217,7 +227,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   <path d="M6 9l6 6 6-6" />
                 </svg>
               </span>
-              <span className="admin-shops-topbar__user-role">Quản Trị Viên</span>
+              <span className="admin-shops-topbar__user-role">{isOps ? 'Bộ Phận Vận Hành' : 'Quản Trị Viên'}</span>
             </div>
           </div>
 
@@ -231,47 +241,103 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                 />
                 <div>
                   <div className="admin-dropdown-profile-name">Lê Hoàng Long</div>
-                  <div className="admin-dropdown-profile-email">admin@vestora.vn</div>
-                  <span className="admin-dropdown-profile-badge">Quản Trị Hệ Thống Tối Cao</span>
+                  <div className="admin-dropdown-profile-email">{isOps ? 'ops@vestora.vn' : 'admin@vestora.vn'}</div>
+                  <span
+                    className="admin-dropdown-profile-badge"
+                    style={isOps ? { background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' } : {}}
+                  >
+                    {isOps ? 'Chuyên Viên Vận Hành (OPS)' : 'Quản Trị Hệ Thống Tối Cao'}
+                  </span>
                 </div>
               </div>
 
               <div className="admin-dropdown-menu">
-                <button
-                  type="button"
-                  className="admin-dropdown-menu-item"
-                  onClick={() => handleNav('/admin/accounts')}
-                >
-                  <span className="admin-dropdown-menu-icon">👤</span>
-                  <span>Quản Lý Danh Sách & Phân Quyền Tài Khoản</span>
-                </button>
+                {isOps ? (
+                  <>
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/ops/shops')}
+                    >
+                      <span className="admin-dropdown-menu-icon">🏪</span>
+                      <span>Quản Lý Gian Hàng (Manage Shops)</span>
+                    </button>
 
-                <button
-                  type="button"
-                  className="admin-dropdown-menu-item"
-                  onClick={() => handleNav('/admin/dashboard')}
-                >
-                  <span className="admin-dropdown-menu-icon">📊</span>
-                  <span>Dashboard Tổng Quan Hệ Thống</span>
-                </button>
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/ops/shop-applications')}
+                    >
+                      <span className="admin-dropdown-menu-icon">📋</span>
+                      <span>Phê Duyệt Hồ Sơ Shop Mới</span>
+                    </button>
 
-                <button
-                  type="button"
-                  className="admin-dropdown-menu-item"
-                  onClick={() => handleNav('/admin/shops')}
-                >
-                  <span className="admin-dropdown-menu-icon">🏪</span>
-                  <span>Phê Duyệt Shop Owner & Showroom</span>
-                </button>
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/ops/moderation')}
+                    >
+                      <span className="admin-dropdown-menu-icon">👗</span>
+                      <span>Kiểm Duyệt Sản Phẩm Đăng Tải</span>
+                    </button>
 
-                <button
-                  type="button"
-                  className="admin-dropdown-menu-item"
-                  onClick={() => handleNav('/admin/analytics')}
-                >
-                  <span className="admin-dropdown-menu-icon">📈</span>
-                  <span>Báo Cáo Doanh Thu & Thống Kê Sàn</span>
-                </button>
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/ops/disputes')}
+                    >
+                      <span className="admin-dropdown-menu-icon">⚖️</span>
+                      <span>Xử Lý Tranh Chấp & Khiếu Nại</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/admin/accounts')}
+                    >
+                      <span className="admin-dropdown-menu-icon">👤</span>
+                      <span>Quản Lý Danh Sách & Phân Quyền Tài Khoản</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/admin/dashboard')}
+                    >
+                      <span className="admin-dropdown-menu-icon">📊</span>
+                      <span>Dashboard Tổng Quan Hệ Thống</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/admin/shops')}
+                    >
+                      <span className="admin-dropdown-menu-icon">🏪</span>
+                      <span>Quản Lý Gian Hàng (Manage Shops)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/admin/shop-applications')}
+                    >
+                      <span className="admin-dropdown-menu-icon">📋</span>
+                      <span>Phê Duyệt Hồ Sơ Shop Mới</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="admin-dropdown-menu-item"
+                      onClick={() => handleNav('/admin/analytics')}
+                    >
+                      <span className="admin-dropdown-menu-icon">📈</span>
+                      <span>Báo Cáo Doanh Thu & Thống Kê Sàn</span>
+                    </button>
+                  </>
+                )}
 
                 <div className="admin-dropdown-divider" />
 

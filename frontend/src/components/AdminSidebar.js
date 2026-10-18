@@ -8,8 +8,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const searchParams = new URLSearchParams(location.search);
-  const currentTab = searchParams.get('tab') || 'PENDING';
+  const isOps = location.pathname.startsWith('/ops');
 
   const handleLogout = async () => {
     try {
@@ -21,12 +20,28 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
     }
   };
 
-  const isActive = (path, tab) => {
-    if (path === '/admin/shops') {
-      if (location.pathname !== '/admin/shops') return '';
-      if (tab === 'ACTIVE') return currentTab === 'ACTIVE' ? 'active' : '';
-      if (tab === 'PENDING') return currentTab === 'PENDING' || !searchParams.get('tab') ? 'active' : '';
-      return '';
+  const isActive = (path) => {
+    if (path.includes('/shops')) {
+      return (
+        location.pathname === '/ops/shops' ||
+        location.pathname === '/admin/shops' ||
+        location.pathname === '/ops/manage-shops' ||
+        location.pathname === '/admin/manage-shops'
+      ) ? 'active' : '';
+    }
+    if (path.includes('/shop-applications')) {
+      return (
+        location.pathname === '/ops/shop-applications' ||
+        location.pathname === '/admin/shop-applications' ||
+        location.pathname === '/ops/shops/approvals' ||
+        location.pathname === '/admin/shops/approvals'
+      ) ? 'active' : '';
+    }
+    if (path.includes('/moderation')) {
+      return (location.pathname === '/ops/moderation' || location.pathname === '/admin/moderation') ? 'active' : '';
+    }
+    if (path.includes('/disputes')) {
+      return (location.pathname === '/ops/disputes' || location.pathname === '/admin/disputes') ? 'active' : '';
     }
     return location.pathname === path ? 'active' : '';
   };
@@ -36,7 +51,11 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
       <div>
         <div className="admin-shops-sidebar__brand">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Link to="/admin/dashboard" className="admin-shops-sidebar__logo" title="VESTORA Admin">
+            <Link
+              to={isOps ? "/ops/shops" : "/admin/dashboard"}
+              className="admin-shops-sidebar__logo"
+              title={isOps ? "VESTORA Operations Staff" : "VESTORA Admin"}
+            >
               {isCollapsed ? 'V' : 'VESTORA'}
             </Link>
             {onToggle && (
@@ -57,45 +76,56 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
               </button>
             )}
           </div>
-          {!isCollapsed && <div className="admin-shops-sidebar__sub">QUẢN TRỊ HỆ THỐNG</div>}
+          {!isCollapsed && (
+            <div
+              className="admin-shops-sidebar__sub"
+              style={{ color: isOps ? '#059669' : '#737373', letterSpacing: '1px' }}
+            >
+              {isOps ? 'BỘ PHẬN VẬN HÀNH (OPS)' : 'QUẢN TRỊ HỆ THỐNG'}
+            </div>
+          )}
         </div>
 
         <nav className="admin-shops-sidebar__nav">
-          <Link
-            to="/admin/dashboard"
-            className={`admin-shops-sidebar__link ${isActive('/admin/dashboard')}`}
-            title="Tổng Quan"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                <rect x="3" y="14" width="7" height="7" rx="1.5" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Tổng Quan</span>}
-          </Link>
+          {!isOps && (
+            <>
+              <Link
+                to="/admin/dashboard"
+                className={`admin-shops-sidebar__link ${isActive('/admin/dashboard')}`}
+                title="Tổng Quan"
+              >
+                <span className="admin-shops-sidebar__icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                </span>
+                {!isCollapsed && <span>Tổng Quan</span>}
+              </Link>
+
+              <Link
+                to="/admin/accounts"
+                className={`admin-shops-sidebar__link ${isActive('/admin/accounts')}`}
+                title="Quản Lý Tài Khoản"
+              >
+                <span className="admin-shops-sidebar__icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M17 11a3 3 0 0 0-3-3" />
+                    <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                {!isCollapsed && <span>Quản Lý Tài Khoản</span>}
+              </Link>
+            </>
+          )}
 
           <Link
-            to="/admin/accounts"
-            className={`admin-shops-sidebar__link ${isActive('/admin/accounts')}`}
-            title="Quản Lý Tài Khoản"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="9" cy="7" r="4" />
-                <path d="M17 11a3 3 0 0 0-3-3" />
-                <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Quản Lý Tài Khoản</span>}
-          </Link>
-
-          <Link
-            to="/admin/shops?tab=ACTIVE"
-            className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'ACTIVE')}`}
+            to={isOps ? "/ops/shops" : "/admin/shops"}
+            className={`admin-shops-sidebar__link ${isActive(isOps ? '/ops/shops' : '/admin/shops')}`}
             title="Quản Lý Gian Hàng"
           >
             <span className="admin-shops-sidebar__icon">
@@ -109,8 +139,8 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
           </Link>
 
           <Link
-            to="/admin/shops?tab=PENDING"
-            className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'PENDING')}`}
+            to={isOps ? "/ops/shop-applications" : "/admin/shop-applications"}
+            className={`admin-shops-sidebar__link ${isActive(isOps ? '/ops/shop-applications' : '/admin/shop-applications')}`}
             title="Phê Duyệt Shop"
           >
             <span className="admin-shops-sidebar__icon">
@@ -123,8 +153,8 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
           </Link>
 
           <Link
-            to="/admin/moderation"
-            className={`admin-shops-sidebar__link ${isActive('/admin/moderation')}`}
+            to={isOps ? "/ops/moderation" : "/admin/moderation"}
+            className={`admin-shops-sidebar__link ${isActive(isOps ? '/ops/moderation' : '/admin/moderation')}`}
             title="Kiểm Duyệt Sản Phẩm"
           >
             <span className="admin-shops-sidebar__icon">
@@ -138,8 +168,8 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
           </Link>
 
           <Link
-            to="/admin/disputes"
-            className={`admin-shops-sidebar__link ${isActive('/admin/disputes')}`}
+            to={isOps ? "/ops/disputes" : "/admin/disputes"}
+            className={`admin-shops-sidebar__link ${isActive(isOps ? '/ops/disputes' : '/admin/disputes')}`}
             title="Báo Cáo & Khiếu Nại"
           >
             <span className="admin-shops-sidebar__icon">
@@ -152,20 +182,22 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
             {!isCollapsed && <span>Báo Cáo & Khiếu Nại</span>}
           </Link>
 
-          <Link
-            to="/admin/analytics"
-            className={`admin-shops-sidebar__link ${isActive('/admin/analytics')}`}
-            title="Thống Kê Hệ Thống"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <line x1="18" y1="20" x2="18" y2="10" />
-                <line x1="12" y1="20" x2="12" y2="4" />
-                <line x1="6" y1="20" x2="6" y2="14" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Thống Kê Hệ Thống</span>}
-          </Link>
+          {!isOps && (
+            <Link
+              to="/admin/analytics"
+              className={`admin-shops-sidebar__link ${isActive('/admin/analytics')}`}
+              title="Thống Kê Hệ Thống"
+            >
+              <span className="admin-shops-sidebar__icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+              </span>
+              {!isCollapsed && <span>Thống Kê Hệ Thống</span>}
+            </Link>
+          )}
         </nav>
       </div>
 

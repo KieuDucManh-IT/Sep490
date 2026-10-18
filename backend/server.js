@@ -15,17 +15,34 @@ dotenv.config();
 
 const app = express();
 
-const allowedOrigins = (
-  process.env.CLIENT_URL ||
-  process.env.FRONTEND_URL ||
-  "http://localhost:3000,http://127.0.0.1:3000"
-)
-  .split(",")
-  .map((origin) => origin.trim());
+const defaultOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5000",
+  "http://127.0.0.1:5000",
+  "http://localhost:5001",
+  "http://127.0.0.1:5001",
+];
+
+const envOrigins = [
+  ...(process.env.CLIENT_URL ? process.env.CLIENT_URL.split(",") : []),
+  ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : []),
+].map((o) => o.trim()).filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   })
 );

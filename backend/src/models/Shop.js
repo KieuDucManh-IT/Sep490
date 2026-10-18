@@ -29,9 +29,8 @@ const shopSchema = new mongoose.Schema(
     },
     address: {
       type: String,
-      required: [true, 'Địa chỉ gian hàng không được để trống'],
+      default: '',
       trim: true,
-      minlength: [3, 'Địa chỉ gian hàng phải có ít nhất 3 ký tự'],
     },
     city: { type: String, default: '' },
     district: { type: String, default: '' },
@@ -49,6 +48,11 @@ const shopSchema = new mongoose.Schema(
       max: [180, 'Kinh độ không hợp lệ (-180 đến 180)'],
     },
     imageUrl: { type: String, default: '' },
+    openingHours: {
+      type: String,
+      default: '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
+      trim: true,
+    },
     businessLicenseUrl: { type: String, default: '' },
     idCardFrontUrl: { type: String, default: '' },
     idCardBackUrl: { type: String, default: '' },

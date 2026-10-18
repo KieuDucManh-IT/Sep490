@@ -37,11 +37,13 @@ export default function ShopSidebar() {
         <Link to="/shop/analytics" className={`sidebar-nav-item ${isActive('/shop/analytics')}`}>
           Báo Cáo Doanh Thu
         </Link>
-        <Link to="/shop/settings" className={`sidebar-nav-item ${isActive('/shop/settings')}`}>
-          Thông Tin Gian Hàng
-        </Link>
-        <Link to="/shop/branches" className={`sidebar-nav-item ${isActive('/shop/branches')}`}>
-          Địa Chỉ Chi Nhánh Showroom
+        <Link
+          to="/shop/settings"
+          className={`sidebar-nav-item ${
+            isActive('/shop/settings') || isActive('/shop/branches') || isActive('/shop/address') || isActive('/shop/store-info')
+          }`}
+        >
+          Quản Lý Thông Tin Cửa Hàng
         </Link>
 
         <div className="sidebar-section-label" style={{ marginTop: '12px' }}>

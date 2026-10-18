@@ -31,7 +31,6 @@ import ShopReturnsPage from './pages/shop/ShopReturnsPage';
 import ShopPricingPage from './pages/shop/ShopPricingPage';
 import ShopReviewsPage from './pages/shop/ShopReviewsPage';
 import ShopSettingsPage from './pages/shop/ShopSettingsPage';
-import ShopBranchesPage from './pages/shop/ShopBranchesPage';
 
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import AdminShopsPage from './pages/admin/AdminShopsPage';
@@ -83,10 +82,24 @@ function App() {
           <Route path="/shop/pricing" element={<ShopPricingPage />} />
           <Route path="/shop/reviews" element={<ShopReviewsPage />} />
           <Route path="/shop/settings" element={<ShopSettingsPage />} />
-          <Route path="/shop/branches" element={<ShopBranchesPage />} />
+          <Route path="/shop/branches" element={<ShopSettingsPage />} />
+          <Route path="/shop/address" element={<ShopSettingsPage />} />
+          <Route path="/shop/store-info" element={<ShopSettingsPage />} />
 
+          {/* Operations Staff (OPS) Routes */}
+          <Route path="/ops/shops" element={<AdminShopsPage />} />
+          <Route path="/ops/manage-shops" element={<AdminShopsPage />} />
+          <Route path="/ops/shop-applications" element={<AdminShopsPage />} />
+          <Route path="/ops/shops/approvals" element={<AdminShopsPage />} />
+          <Route path="/ops/moderation" element={<AdminModerationPage />} />
+          <Route path="/ops/disputes" element={<AdminDisputesPage />} />
+
+          {/* Administrator Routes */}
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/shops" element={<AdminShopsPage />} />
+          <Route path="/admin/manage-shops" element={<AdminShopsPage />} />
+          <Route path="/admin/shop-applications" element={<AdminShopsPage />} />
+          <Route path="/admin/shops/approvals" element={<AdminShopsPage />} />
           <Route path="/admin/accounts" element={<AdminAccountsPage />} />
           <Route path="/admin/moderation" element={<AdminModerationPage />} />
           <Route path="/admin/disputes" element={<AdminDisputesPage />} />

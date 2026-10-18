@@ -2,7 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
-import apiClient from '../../services/api';
+import {
+  getAdminShopsStatsApi,
+  getAdminShopsListApi,
+  approveShopApi,
+  rejectShopApi,
+  toggleSuspendShopApi,
+} from '../../services/shopApi';
 import '../../styles/AdminShops.css';
 
 const getAdminId = () => {
@@ -17,9 +23,18 @@ const getAdminId = () => {
 };
 
 const STATUS_TABS = [
-  { key: 'PENDING',  label: 'Chờ Duyệt' },
-  { key: 'ACTIVE',   label: 'Đã Duyệt' },
-  { key: 'REJECTED', label: 'Từ Chối' },
+  { key: 'PENDING',  label: 'Chờ Phê Duyệt' },
+  { key: 'REJECTED', label: 'Đã Từ Chối' },
+  { key: 'ACTIVE',   label: 'Đã Phê Duyệt' },
+];
+
+const CITIES = [
+  { value: 'ALL', label: 'Tất cả Tỉnh / TP' },
+  { value: 'Hà Nội', label: 'Hà Nội' },
+  { value: 'Hồ Chí Minh', label: 'TP. Hồ Chí Minh' },
+  { value: 'Đà Nẵng', label: 'Đà Nẵng' },
+  { value: 'Hải Phòng', label: 'Hải Phòng' },
+  { value: 'Cần Thơ', label: 'Cần Thơ' },
 ];
 
 function DocPreviewModal({ doc, onClose }) {
@@ -147,6 +162,392 @@ function RejectModal({ app, onClose, onConfirm }) {
   );
 }
 
+function SuspendModal({ app, onClose, onConfirm }) {
+  const [reason, setReason] = useState('Vi phạm quy định nền tảng về chất lượng hàng hóa');
+  const [customReason, setCustomReason] = useState('');
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const PRESET_REASONS = [
+    'Vi phạm quy định nền tảng về chất lượng hàng hóa / mô tả sai lệch',
+    'Tranh chấp tiền cọc hoặc khiếu nại khách hàng chưa xử lý',
+    'Chủ gian hàng tạm thời yêu cầu đóng cửa để kiểm kê kho',
+    'Địa chỉ hoặc giấy phép kinh doanh cần xác minh bổ sung',
+    'Khác (nhập chi tiết lý do bên dưới)',
+  ];
+
+  const handleSubmit = async () => {
+    const finalReason = reason.startsWith('Khác')
+      ? customReason.trim()
+      : (customReason.trim() ? `${reason} — ${customReason.trim()}` : reason);
+
+    if (!finalReason) return;
+    setLoading(true);
+    await onConfirm(app._id, finalReason, notes.trim());
+    setLoading(false);
+  };
+
+  if (!app) return null;
+
+  return (
+    <div className="admin-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="admin-modal-box">
+        <div className="admin-modal-header">
+          <div>
+            <div className="admin-modal-header-tag" style={{ color: '#D97706' }}>TẠM NGƯNG VẬN HÀNH GIAN HÀNG</div>
+            <h5 className="admin-modal-header-title">{app.name}</h5>
+          </div>
+          <button className="admin-modal-close-btn" onClick={onClose} title="Đóng">✕</button>
+        </div>
+
+        <div className="admin-modal-body">
+          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', color: '#92400E', marginBottom: '16px' }}>
+            ⚠️ <strong>Cảnh báo vận hành:</strong> Khi tạm ngưng, các sản phẩm của gian hàng sẽ tạm thời bị ẩn khỏi sàn thương mại Vestora và khách hàng không thể tạo đơn thuê/mua mới cho đến khi gian hàng được kích hoạt lại.
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label className="admin-modal-label">Lý do tạm ngưng <span className="req">*</span></label>
+            <select
+              className="admin-shops-select-filter"
+              style={{ width: '100%', marginBottom: '8px' }}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            >
+              {PRESET_REASONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <textarea
+              className="admin-modal-textarea"
+              rows={2}
+              placeholder="Chi tiết lý do tạm ngưng (bắt buộc nếu chọn Khác)..."
+              value={customReason}
+              onChange={(e) => setCustomReason(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="admin-modal-label">Ghi chú nội bộ cho Operations Staff</label>
+            <textarea
+              className="admin-modal-textarea"
+              rows={2}
+              placeholder="Ghi chú điều kiện hoặc hướng xử lý để mở lại gian hàng..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="admin-modal-footer">
+          <button className="btn-modal-cancel" onClick={onClose} disabled={loading}>Hủy</button>
+          <button
+            className="btn-modal-danger"
+            style={{ background: '#D97706', borderColor: '#D97706' }}
+            onClick={handleSubmit}
+            disabled={loading || (reason.startsWith('Khác') && !customReason.trim())}
+          >
+            {loading ? 'Đang xử lý...' : 'Xác Nhận Tạm Ngưng'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReactivateModal({ app, onClose, onConfirm }) {
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    await onConfirm(app._id, notes.trim());
+    setLoading(false);
+  };
+
+  if (!app) return null;
+
+  return (
+    <div className="admin-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="admin-modal-box">
+        <div className="admin-modal-header">
+          <div>
+            <div className="admin-modal-header-tag" style={{ color: '#059669' }}>KÍCH HOẠT LẠI GIAN HÀNG</div>
+            <h5 className="admin-modal-header-title">{app.name}</h5>
+          </div>
+          <button className="admin-modal-close-btn" onClick={onClose} title="Đóng">✕</button>
+        </div>
+
+        <div className="admin-modal-body">
+          <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', color: '#065F46', marginBottom: '16px' }}>
+            ✓ Gian hàng sẽ được khôi phục trạng thái <strong>ĐANG HOẠT ĐỘNG</strong> trên sàn Vestora. Người dùng có thể tìm kiếm sản phẩm và đặt thuê/mua bình thường.
+          </div>
+
+          {app.rejectionReason && (
+            <div style={{ background: '#F5F3EF', border: '1px solid #ECEAE5', padding: '12px 16px', borderRadius: '10px', fontSize: '12.5px', marginBottom: '14px' }}>
+              <strong>Lý do tạm ngưng trước đó:</strong> {app.rejectionReason}
+            </div>
+          )}
+
+          <div>
+            <label className="admin-modal-label">Ghi chú khôi phục hoạt động</label>
+            <textarea
+              className="admin-modal-textarea"
+              rows={3}
+              placeholder="Ghi chú xác nhận đã khắc phục vi phạm hoặc hoàn tất thẩm định..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="admin-modal-footer">
+          <button className="btn-modal-cancel" onClick={onClose} disabled={loading}>Hủy</button>
+          <button
+            className="btn-modal-approve"
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? 'Đang xử lý...' : 'Xác Nhận Kích Hoạt Lại'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShopDetailModal({ app, onClose, onSuspend, onReactivate, onApprove, onReject, onViewDoc }) {
+  if (!app) return null;
+
+  const owner = app.ownerId || {};
+  const ownerName = owner.FullName || owner.fullName || app.ownerName || 'Chưa cập nhật';
+  const ownerEmail = owner.Email || owner.email || app.ownerEmail || '—';
+  const ownerPhone = app.phone || owner.Information?.[0]?.Phone || owner.phone || '—';
+  const ownerRole = owner.Role || owner.role || 'CUSTOMER';
+  const ownerStatus = owner.Status || owner.status || 'ACTIVE';
+  const fullAddress = [app.address, app.ward, app.district, app.city].filter(Boolean).join(', ') || 'Chưa cập nhật';
+  const hasGps = app.latitude != null && app.longitude != null && !isNaN(Number(app.latitude)) && !isNaN(Number(app.longitude));
+
+  const statusMap = {
+    ACTIVE: { label: 'Đang Hoạt Động', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
+    SUSPENDED: { label: 'Tạm Ngưng Vận Hành', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+    PENDING: { label: 'Chờ Thẩm Định', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
+    REJECTED: { label: 'Đã Từ Chối', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  };
+  const currentStatus = statusMap[app.status] || { label: app.status, color: '#737373', bg: '#F5F5F5', border: '#E5E5E5' };
+
+  return (
+    <div className="admin-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="admin-modal-box admin-applicant-modal" style={{ maxWidth: '780px' }}>
+        <div className="admin-modal-header">
+          <div>
+            <div className="admin-modal-header-tag" style={{ color: currentStatus.color }}>
+              HỒ SƠ VẬN HÀNH GIAN HÀNG — {currentStatus.label.toUpperCase()}
+            </div>
+            <h5 className="admin-modal-header-title">{app.name}</h5>
+          </div>
+          <button className="admin-modal-close-btn" onClick={onClose} title="Đóng">✕</button>
+        </div>
+
+        <div className="admin-modal-body">
+          {/* Shop Header Banner */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: '#FAF9F6', borderRadius: '12px', border: '1px solid #ECEAE5', marginBottom: '20px' }}>
+            <img
+              src={app.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(app.name)}&background=141414&color=fff&size=100`}
+              alt={app.name}
+              style={{ width: '64px', height: '64px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #E5E5E5' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#171717' }}>{app.name}</h3>
+                <span style={{ background: currentStatus.bg, color: currentStatus.color, border: `1px solid ${currentStatus.border}`, borderRadius: '20px', padding: '3px 10px', fontSize: '11.5px', fontWeight: 600 }}>
+                  ● {currentStatus.label}
+                </span>
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#737373' }}>
+                {app.description || 'Chưa có mô tả gian hàng'}
+              </p>
+            </div>
+          </div>
+
+          {/* Grid Information */}
+          <div className="admin-applicant-grid" style={{ marginBottom: '20px' }}>
+            <div className="admin-applicant-field">
+              <span className="admin-applicant-field__label">CHỦ SỞ HỮU GIAN HÀNG</span>
+              <span className="admin-applicant-field__val">{ownerName}</span>
+            </div>
+            <div className="admin-applicant-field">
+              <span className="admin-applicant-field__label">VAI TRÒ / TRẠNG THÁI TÀI KHOẢN</span>
+              <span className="admin-applicant-field__val">
+                {ownerRole} ({ownerStatus})
+              </span>
+            </div>
+            <div className="admin-applicant-field">
+              <span className="admin-applicant-field__label">SỐ ĐIỆN THOẠI LIÊN HỆ</span>
+              <span className="admin-applicant-field__val">{ownerPhone}</span>
+            </div>
+            <div className="admin-applicant-field">
+              <span className="admin-applicant-field__label">EMAIL CHỦ GIAN HÀNG</span>
+              <span className="admin-applicant-field__val regular">{ownerEmail}</span>
+            </div>
+            <div className="admin-applicant-field" style={{ gridColumn: 'span 2' }}>
+              <span className="admin-applicant-field__label">ĐỊA CHỈ TRỤ SỞ / SHOWROOM</span>
+              <span className="admin-applicant-field__val regular">{fullAddress}</span>
+              {hasGps && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: '#059669', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📍 GPS: {Number(app.latitude).toFixed(4)}, {Number(app.longitude).toFixed(4)}</span>
+                  <a
+                    href={`https://www.google.com/maps?q=${app.latitude},${app.longitude}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: '#2563EB', textDecoration: 'underline', fontSize: '11.5px' }}
+                  >
+                    Xem trên Google Maps ↗
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Verification Documents */}
+          <div style={{ marginBottom: '20px' }}>
+            <div className="admin-doc-section-title" style={{ marginBottom: '10px' }}>HỒ SƠ PHÁP LÝ & GIẤY TỜ THẨM ĐỊNH</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+              {app.businessLicenseUrl && (
+                <button
+                  type="button"
+                  className="btn-detail-action"
+                  style={{ justifyContent: 'center', padding: '10px' }}
+                  onClick={() => onViewDoc({
+                    label: 'Giấy Phép Đăng Ký Kinh Doanh (ĐKKD)',
+                    filename: 'GPKD_Document.pdf',
+                    url: app.businessLicenseUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  📄 Xem Giấy ĐKKD
+                </button>
+              )}
+              {app.idCardFrontUrl && (
+                <button
+                  type="button"
+                  className="btn-detail-action"
+                  style={{ justifyContent: 'center', padding: '10px' }}
+                  onClick={() => onViewDoc({
+                    label: 'Căn Cước Công Dân (CCCD) — Mặt Trước',
+                    filename: 'CCCD_Mat_Truoc.jpg',
+                    url: app.idCardFrontUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  🪪 Xem CCCD Mặt Trước
+                </button>
+              )}
+              {app.idCardBackUrl && (
+                <button
+                  type="button"
+                  className="btn-detail-action"
+                  style={{ justifyContent: 'center', padding: '10px' }}
+                  onClick={() => onViewDoc({
+                    label: 'Căn Cước Công Dân (CCCD) — Mặt Sau',
+                    filename: 'CCCD_Mat_Sau.jpg',
+                    url: app.idCardBackUrl,
+                    shopName: app.name,
+                  })}
+                >
+                  🪪 Xem CCCD Mặt Sau
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Audit Trail & Notes */}
+          {(app.rejectionReason || app.notes || app.reviewedAt) && (
+            <div style={{ background: '#FAF8F5', border: '1px solid #ECEAE5', borderRadius: '12px', padding: '14px 18px', fontSize: '13px' }}>
+              <div style={{ fontWeight: 700, fontSize: '12px', color: '#737373', textTransform: 'uppercase', marginBottom: '8px' }}>
+                LỊCH SỬ THẨM ĐỊNH & GHI CHÚ KIỂM SOÁT
+              </div>
+              {app.reviewedAt && (
+                <div style={{ marginBottom: '6px', color: '#525252' }}>
+                  <strong>Thời gian xử lý:</strong> {new Date(app.reviewedAt).toLocaleString('vi-VN')}
+                </div>
+              )}
+              {app.rejectionReason && (
+                <div style={{ marginBottom: '6px', color: app.status === 'SUSPENDED' ? '#B45309' : '#DC2626' }}>
+                  <strong>{app.status === 'SUSPENDED' ? 'Lý do tạm ngưng:' : 'Lý do từ chối:'}</strong> {app.rejectionReason}
+                </div>
+              )}
+              {app.notes && (
+                <div style={{ color: '#525252' }}>
+                  <strong>Ghi chú nội bộ:</strong> {app.notes}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="admin-modal-footer">
+          <button type="button" className="btn-modal-cancel" onClick={onClose}>
+            Đóng
+          </button>
+
+          {app.status === 'ACTIVE' && (
+            <button
+              type="button"
+              className="btn-suspend-action"
+              style={{ padding: '9px 18px' }}
+              onClick={() => {
+                onClose();
+                onSuspend(app);
+              }}
+            >
+              ⏸ Tạm Ngưng Gian Hàng
+            </button>
+          )}
+
+          {app.status === 'SUSPENDED' && (
+            <button
+              type="button"
+              className="btn-reactivate-action"
+              style={{ padding: '9px 18px' }}
+              onClick={() => {
+                onClose();
+                onReactivate(app);
+              }}
+            >
+              ▶ Kích Hoạt Lại Gian Hàng
+            </button>
+          )}
+
+          {app.status === 'PENDING' && (
+            <>
+              <button
+                type="button"
+                className="btn-modal-danger"
+                onClick={() => {
+                  onClose();
+                  onReject(app);
+                }}
+              >
+                Từ Chối
+              </button>
+              <button
+                type="button"
+                className="btn-modal-approve"
+                onClick={() => {
+                  onClose();
+                  onApprove(app);
+                }}
+              >
+                Phê Duyệt
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) {
   const [copiedId, setCopiedId] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -162,14 +563,6 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
   const ownerRole = owner.Role || owner.role || 'CUSTOMER';
   const ownerStatus = owner.Status || owner.status || 'ACTIVE';
   const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=141414&color=fff&size=128`;
-
-  const formatTime = (iso) => {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    const dateStr = d.toLocaleDateString('vi-VN');
-    return `${timeStr} — ${dateStr}`;
-  };
 
   const copyUserId = () => {
     if (ownerIdString && ownerIdString !== '—') {
@@ -251,303 +644,124 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
               </div>
 
               <div className="admin-applicant-field">
-                <span className="admin-applicant-field__label">EMAIL XÁC THỰC</span>
-                <span className="admin-applicant-field__val" title={ownerEmail}>{ownerEmail}</span>
+                <span className="admin-applicant-field__label">ĐỊA CHỈ EMAIL</span>
+                <span className="admin-applicant-field__val regular">{ownerEmail}</span>
               </div>
 
               <div className="admin-applicant-field">
-                <span className="admin-applicant-field__label">SỐ ĐIỆN THOẠI ĐĂNG KÝ</span>
-                <span className="admin-applicant-field__val">{ownerPhone}</span>
+                <span className="admin-applicant-field__label">SỐ ĐIỆN THOẠI LIÊN HỆ</span>
+                <span className="admin-applicant-field__val regular">{ownerPhone}</span>
               </div>
 
               <div className="admin-applicant-field">
-                <span className="admin-applicant-field__label">MÃ ĐỊNH DANH TÀI KHOẢN (UID)</span>
-                <span className="admin-applicant-field__val" style={{ fontFamily: 'monospace', fontSize: '11.5px' }}>
-                  <span>{ownerIdString && ownerIdString !== '—' ? `${String(ownerIdString).slice(0, 10)}...` : '—'}</span>
-                  {ownerIdString && ownerIdString !== '—' && (
-                    <button
-                      type="button"
-                      className="admin-copy-uid-btn"
-                      onClick={copyUserId}
-                      title="Sao chép toàn bộ ID người dùng"
-                    >
-                      {copiedId ? 'Đã chép ✓' : 'Sao chép'}
-                    </button>
-                  )}
+                <span className="admin-applicant-field__label">MÃ ĐỊNH DANH (USER ID)</span>
+                <span
+                  className="admin-applicant-field__val regular clickable-copy"
+                  onClick={copyUserId}
+                  title="Nhấn để sao chép User ID"
+                >
+                  <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{ownerIdString}</span>
+                  <span style={{ fontSize: '11px', color: copiedId ? '#059669' : '#A6865A', fontWeight: 600 }}>
+                    {copiedId ? '✓ Đã sao chép' : '📋 Copy'}
+                  </span>
                 </span>
               </div>
 
               <div className="admin-applicant-field">
-                <span className="admin-applicant-field__label">NGÀY THAM GIA NỀN TẢNG</span>
-                <span className="admin-applicant-field__val">{formatTime(owner.createdAt)}</span>
+                <span className="admin-applicant-field__label">TÊN GIAN HÀNG ĐĂNG KÝ</span>
+                <span className="admin-applicant-field__val">{app.name}</span>
               </div>
 
               <div className="admin-applicant-field">
-                <span className="admin-applicant-field__label">THỜI ĐIỂM NỘP HỒ SƠ</span>
-                <span className="admin-applicant-field__val">{formatTime(app.createdAt)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="admin-applicant-section-title">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
-              THÔNG TIN GIAN HÀNG ĐĂNG KÝ
-            </div>
-
-            <div className="admin-applicant-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-              <div className="admin-applicant-field">
-                <span className="admin-applicant-field__label">TÊN GIAN HÀNG</span>
-                <span className="admin-applicant-field__val" style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {app.imageUrl && (
-                    <img
-                      src={app.imageUrl}
-                      alt={app.name}
-                      style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #D4D4D4' }}
-                    />
-                  )}
-                  <span>{app.name}</span>
+                <span className="admin-applicant-field__label">TRẠNG THÁI HỒ SƠ</span>
+                <span className="admin-applicant-field__val" style={{ color: currentStatus.dot, fontWeight: 700 }}>
+                  ● {currentStatus.label}
                 </span>
               </div>
 
-              <div className="admin-applicant-field">
-                <span className="admin-applicant-field__label">NGÀNH HÀNG / MÔ TẢ</span>
-                <span className="admin-applicant-field__val" style={{ fontWeight: 400 }}>
-                  {app.description || 'Chưa cập nhật'}
+              <div className="admin-applicant-field" style={{ gridColumn: 'span 2' }}>
+                <span className="admin-applicant-field__label">MÔ TẢ GIAN HÀNG / LĨNH VỰC KINH DOANH</span>
+                <span className="admin-applicant-field__val regular" style={{ lineHeight: '1.5' }}>
+                  {app.description || 'Chưa cung cấp mô tả chi tiết'}
                 </span>
               </div>
 
               <div className="admin-applicant-field" style={{ gridColumn: 'span 2' }}>
                 <span className="admin-applicant-field__label">ĐỊA CHỈ SHOWROOM / KHO HÀNG</span>
-                <span className="admin-applicant-field__val" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-                  <span style={{ fontWeight: 600 }}>{fullAddress}</span>
-                  {hasGps && (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#059669', background: '#ECFDF5', padding: '3px 8px', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669', display: 'inline-block' }} />
-                      <span>Định vị GPS chính xác: <strong>{Number(app.latitude).toFixed(5)}°B, {Number(app.longitude).toFixed(5)}°Đ</strong></span>
-                    </div>
-                  )}
-                  {(app.address || hasGps) && (
-                    <a
-                      href={hasGps ? `https://www.google.com/maps?q=${app.latitude},${app.longitude}&z=17` : `https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        fontSize: '11px',
-                        color: '#8C6D3F',
-                        textDecoration: 'none',
-                        fontWeight: 600,
-                        marginTop: '2px',
-                      }}
-                    >
-                      <span>📍 Xem vị trí showroom trên Google Maps (Ghim đỏ chính xác) ↗</span>
-                    </a>
-                  )}
-                  {(hasGps || app.address) && (
-                    <div style={{ width: '100%', height: '220px', marginTop: '6px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #E5E5E5', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                      <iframe
-                        title="Bản đồ vị trí showroom"
-                        src={hasGps
-                          ? `https://maps.google.com/maps?q=${app.latitude},${app.longitude}&hl=vi&z=17&output=embed`
-                          : `https://maps.google.com/maps?q=${encodeURIComponent(fullAddress)}&hl=vi&z=14&output=embed`}
-                        style={{ width: '100%', height: '100%', border: 'none' }}
-                        loading="lazy"
-                      />
-                    </div>
-                  )}
-                </span>
+                <span className="admin-applicant-field__val regular">{fullAddress}</span>
+                {hasGps && (
+                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#059669', fontFamily: 'monospace' }}>
+                    📍 Tọa độ GPS: {Number(app.latitude).toFixed(5)}, {Number(app.longitude).toFixed(5)}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          <div>
-            <div className="admin-applicant-section-title">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <circle cx="8" cy="10" r="2" />
-                <line x1="14" y1="10" x2="18" y2="10" />
-                <line x1="14" y1="14" x2="18" y2="14" />
-              </svg>
-              HỒ SƠ ĐỊNH DANH NHÂN THÂN & PHÁP LÝ (KYC)
-            </div>
-
+          <div className="admin-applicant-docs-section">
+            <div className="admin-doc-section-title">TÀI LIỆU PHÁP LÝ ĐÍNH KÈM THẨM ĐỊNH</div>
             <div className="admin-applicant-docs-grid">
               <div className="admin-applicant-doc-card">
-                <div
-                  className="admin-applicant-doc-thumb"
-                  onClick={() => app.idCardFrontUrl && onViewDoc({
-                    label: 'Căn Cước Công Dân (CCCD) — Mặt Trước',
-                    filename: 'CCCD_Mat_Truoc.jpg',
-                    url: app.idCardFrontUrl,
-                    shopName: app.name,
-                  })}
-                >
-                  {app.idCardFrontUrl ? (
-                    <>
-                      <img src={app.idCardFrontUrl} alt="CCCD Mặt Trước" />
-                      <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
-                    </>
-                  ) : (
-                    <div style={{ color: '#737373', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
-                      Chưa có ảnh mặt trước
-                    </div>
-                  )}
+                <div className="admin-applicant-doc-badge pdf">PDF</div>
+                <div className="admin-applicant-doc-name">Giấy ĐKKD</div>
+                <div className="admin-applicant-doc-status">
+                  {app.businessLicenseUrl ? 'Đã tải lên' : 'Chưa có file'}
                 </div>
-                <div className="admin-applicant-doc-body">
-                  <div className="admin-applicant-doc-title">CCCD Mặt Trước</div>
-                  <div className="admin-applicant-doc-status">
-                    {app.idCardFrontUrl ? 'Đã tải lên ✓' : 'Chưa cung cấp'}
-                  </div>
-                  {app.idCardFrontUrl && (
-                    <button
-                      type="button"
-                      className="admin-applicant-doc-btn"
-                      onClick={() => onViewDoc({
-                        label: 'Căn Cước Công Dân (CCCD) — Mặt Trước',
-                        filename: 'CCCD_Mat_Truoc.jpg',
-                        url: app.idCardFrontUrl,
-                        shopName: app.name,
-                      })}
-                    >
-                      Xem chi tiết
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="admin-applicant-doc-card">
-                <div
-                  className="admin-applicant-doc-thumb"
-                  onClick={() => (app.idCardBackUrl || app.idCardFrontUrl) && onViewDoc({
-                    label: app.idCardBackUrl ? 'Căn Cước Công Dân (CCCD) — Mặt Sau' : 'Căn Cước Công Dân (CCCD) 2 Mặt',
-                    filename: 'CCCD_Mat_Sau.jpg',
-                    url: app.idCardBackUrl || app.idCardFrontUrl,
-                    shopName: app.name,
-                  })}
-                >
-                  {app.idCardBackUrl ? (
-                    <>
-                      <img src={app.idCardBackUrl} alt="CCCD Mặt Sau" />
-                      <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
-                    </>
-                  ) : app.idCardFrontUrl ? (
-                    <div style={{ color: '#525252', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
-                      <div style={{ fontSize: '20px', marginBottom: '4px' }}>🪪</div>
-                      Đã đính kèm chung trong tệp CCCD
-                    </div>
-                  ) : (
-                    <div style={{ color: '#737373', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
-                      Chưa có ảnh mặt sau
-                    </div>
-                  )}
-                </div>
-                <div className="admin-applicant-doc-body">
-                  <div className="admin-applicant-doc-title">CCCD Mặt Sau</div>
-                  <div className="admin-applicant-doc-status">
-                    {app.idCardBackUrl ? 'Đã tải lên ✓' : app.idCardFrontUrl ? 'Đính kèm chung ✓' : 'Chưa cung cấp'}
-                  </div>
-                  {(app.idCardBackUrl || app.idCardFrontUrl) && (
-                    <button
-                      type="button"
-                      className="admin-applicant-doc-btn"
-                      onClick={() => onViewDoc({
-                        label: app.idCardBackUrl ? 'Căn Cước Công Dân (CCCD) — Mặt Sau' : 'Căn Cước Công Dân (CCCD) 2 Mặt',
-                        filename: 'CCCD_Mat_Sau.jpg',
-                        url: app.idCardBackUrl || app.idCardFrontUrl,
-                        shopName: app.name,
-                      })}
-                    >
-                      Xem chi tiết
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="admin-applicant-doc-card">
-                <div
-                  className="admin-applicant-doc-thumb"
-                  onClick={() => app.businessLicenseUrl && onViewDoc({
-                    label: 'Giấy Phép Đăng Ký Kinh Doanh (ĐKKD)',
-                    filename: 'GPKD_Document.pdf',
-                    url: app.businessLicenseUrl,
-                    shopName: app.name,
-                  })}
-                >
-                  {app.businessLicenseUrl ? (
-                    app.businessLicenseUrl.startsWith('data:application/pdf') ? (
-                      <div style={{ color: '#DC2626', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
-                        <div style={{ fontSize: '28px', marginBottom: '4px' }}>📄</div>
-                        Tài liệu PDF ĐKKD
-                      </div>
-                    ) : (
-                      <>
-                        <img src={app.businessLicenseUrl} alt="Giấy ĐKKD" />
-                        <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
-                      </>
-                    )
-                  ) : (
-                    <div style={{ color: '#737373', fontSize: '11px', textAlign: 'center', padding: '10px' }}>
-                      Chưa tải lên Giấy ĐKKD
-                    </div>
-                  )}
-                </div>
-                <div className="admin-applicant-doc-body">
-                  <div className="admin-applicant-doc-title">Giấy Phép ĐKKD</div>
-                  <div className="admin-applicant-doc-status">
-                    {app.businessLicenseUrl ? 'Đã tải lên ✓' : 'Chưa cung cấp'}
-                  </div>
-                  {app.businessLicenseUrl && (
-                    <button
-                      type="button"
-                      className="admin-applicant-doc-btn"
-                      onClick={() => onViewDoc({
-                        label: 'Giấy Phép Đăng Ký Kinh Doanh (ĐKKD)',
-                        filename: 'GPKD_Document.pdf',
-                        url: app.businessLicenseUrl,
-                        shopName: app.name,
-                      })}
-                    >
-                      Xem tài liệu
-                    </button>
-                  )}
-                </div>
-              </div>
-              {app.imageUrl && (
-                <div className="admin-applicant-doc-card">
-                  <div
-                    className="admin-applicant-doc-thumb"
+                {app.businessLicenseUrl && (
+                  <button
+                    type="button"
+                    className="admin-applicant-doc-btn"
                     onClick={() => onViewDoc({
-                      label: 'Ảnh Đại Diện / Logo Gian Hàng',
-                      filename: 'Logo_Showroom.png',
-                      url: app.imageUrl,
+                      label: 'Giấy Phép Đăng Ký Kinh Doanh (ĐKKD)',
+                      filename: 'GPKD_Document.pdf',
+                      url: app.businessLicenseUrl,
                       shopName: app.name,
                     })}
                   >
-                    <img src={app.imageUrl} alt="Logo Showroom" />
-                    <div className="admin-applicant-doc-thumb-zoom-hint">🔍 Nhấn để phóng to</div>
-                  </div>
-                  <div className="admin-applicant-doc-body">
-                    <div className="admin-applicant-doc-title">Logo / Showroom</div>
-                    <div className="admin-applicant-doc-status">Đã tải lên ✓</div>
-                    <button
-                      type="button"
-                      className="admin-applicant-doc-btn"
-                      onClick={() => onViewDoc({
-                        label: 'Ảnh Đại Diện / Logo Gian Hàng',
-                        filename: 'Logo_Showroom.png',
-                        url: app.imageUrl,
-                        shopName: app.name,
-                      })}
-                    >
-                      Xem chi tiết
-                    </button>
-                  </div>
+                    Xem tài liệu
+                  </button>
+                )}
+              </div>
+
+              <div className="admin-applicant-doc-card">
+                <div className="admin-applicant-doc-badge id">CCCD</div>
+                <div className="admin-applicant-doc-name">CCCD Mặt Trước</div>
+                <div className="admin-applicant-doc-status">
+                  {app.idCardFrontUrl ? 'Đã tải lên' : 'Chưa có file'}
+                </div>
+                {app.idCardFrontUrl && (
+                  <button
+                    type="button"
+                    className="admin-applicant-doc-btn"
+                    onClick={() => onViewDoc({
+                      label: 'Căn Cước Công Dân (CCCD) — Mặt Trước',
+                      filename: 'CCCD_Mat_Truoc.jpg',
+                      url: app.idCardFrontUrl,
+                      shopName: app.name,
+                    })}
+                  >
+                    Xem tài liệu
+                  </button>
+                )}
+              </div>
+
+              {app.idCardBackUrl && (
+                <div className="admin-applicant-doc-card">
+                  <div className="admin-applicant-doc-badge id">CCCD</div>
+                  <div className="admin-applicant-doc-name">CCCD Mặt Sau</div>
+                  <div className="admin-applicant-doc-status">Đã tải lên</div>
+                  <button
+                    type="button"
+                    className="admin-applicant-doc-btn"
+                    onClick={() => onViewDoc({
+                      label: 'Căn Cước Công Dân (CCCD) — Mặt Sau',
+                      filename: 'CCCD_Mat_Sau.jpg',
+                      url: app.idCardBackUrl,
+                      shopName: app.name,
+                    })}
+                  >
+                    Xem tài liệu
+                  </button>
                 </div>
               )}
             </div>
@@ -614,7 +828,134 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
   );
 }
 
-function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
+function ShopTableView({ shops, onSuspend, onReactivate, onApprove, onReject, onViewDetail }) {
+  const statusMap = {
+    ACTIVE: { label: 'Đang hoạt động', cls: 'active' },
+    SUSPENDED: { label: 'Tạm ngưng', cls: 'suspended' },
+    PENDING: { label: 'Chờ duyệt', cls: 'pending' },
+    REJECTED: { label: 'Từ chối', cls: 'rejected' },
+  };
+
+  return (
+    <div className="admin-shops-table-card">
+      <div className="admin-shops-table-wrap">
+        <table className="admin-shops-table">
+          <thead>
+            <tr>
+              <th>Gian Hàng</th>
+              <th>Chủ Sở Hữu</th>
+              <th>Địa Chỉ & Khu Vực</th>
+              <th>Trạng Thái Vận Hành</th>
+              <th>Ngày Đăng Ký</th>
+              <th style={{ textAlign: 'right' }}>Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shops.map((s) => {
+              const owner = s.ownerId || {};
+              const ownerName = owner.FullName || owner.fullName || s.ownerName || 'Chưa cập nhật';
+              const ownerPhone = s.phone || owner.Information?.[0]?.Phone || owner.phone || '—';
+              const st = statusMap[s.status] || { label: s.status, cls: '' };
+
+              return (
+                <tr key={s._id}>
+                  <td>
+                    <div className="admin-table-shop-cell">
+                      <img
+                        src={s.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name)}&background=141414&color=fff&size=80`}
+                        alt={s.name}
+                        className="admin-table-shop-avatar"
+                      />
+                      <div>
+                        <div className="admin-table-shop-name">{s.name}</div>
+                        <div className="admin-table-shop-cat">{s.description || 'Chưa có mô tả'}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 600, color: '#171717' }}>{ownerName}</div>
+                    <div style={{ fontSize: '11.5px', color: '#737373' }}>{ownerPhone}</div>
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 500 }}>{s.city || 'Chưa cập nhật'}</div>
+                    <div style={{ fontSize: '11.5px', color: '#737373', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.address}
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`admin-table-badge ${st.cls}`}>
+                      ● {st.label}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: '12px', color: '#737373' }}>
+                    {s.createdAt ? new Date(s.createdAt).toLocaleDateString('vi-VN') : '—'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div className="admin-table-actions" style={{ justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn-detail-action"
+                        onClick={() => onViewDetail(s)}
+                        title="Xem chi tiết hồ sơ vận hành"
+                      >
+                        Chi Tiết
+                      </button>
+
+                      {s.status === 'ACTIVE' && (
+                        <button
+                          type="button"
+                          className="btn-suspend-action"
+                          onClick={() => onSuspend(s)}
+                          title="Tạm ngưng hoạt động gian hàng"
+                        >
+                          Tạm Ngưng
+                        </button>
+                      )}
+
+                      {s.status === 'SUSPENDED' && (
+                        <button
+                          type="button"
+                          className="btn-reactivate-action"
+                          onClick={() => onReactivate(s)}
+                          title="Kích hoạt lại hoạt động"
+                        >
+                          Kích Hoạt
+                        </button>
+                      )}
+
+                      {s.status === 'PENDING' && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-reject-action"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            onClick={() => onReject(s)}
+                          >
+                            Từ Chối
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-approve-action"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            onClick={() => onApprove(s)}
+                          >
+                            Duyệt
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ShopCard({ app, onApprove, onReject, onSuspend, onReactivate, onViewDoc, onViewApplicant, onViewDetail }) {
   const [approving, setApproving] = useState(false);
   const [showMap, setShowMap] = useState(false);
 
@@ -647,14 +988,13 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
   const metaText = formatTime(app.createdAt);
 
   const statusMap = {
-    PENDING: { label: 'Đăng ký mới', dot: '#059669' },
-    ACTIVE: { label: 'Đã duyệt', dot: '#2563EB' },
-    REJECTED: { label: 'Từ chối', dot: '#DC2626' },
-    SUSPENDED: { label: 'Tạm ngưng', dot: '#D97706' },
+    ACTIVE: { label: 'Đang hoạt động', dot: '#059669', color: '#059669' },
+    SUSPENDED: { label: 'Tạm ngưng vận hành', dot: '#D97706', color: '#D97706' },
+    PENDING: { label: 'Đăng ký mới', dot: '#2563EB', color: '#2563EB' },
+    REJECTED: { label: 'Từ chối', dot: '#DC2626', color: '#DC2626' },
   };
 
-  const currentStatus = statusMap[app.status] || { label: app.status, dot: '#737373' };
-
+  const currentStatus = statusMap[app.status] || { label: app.status, dot: '#737373', color: '#737373' };
   const ownerName = app.ownerId?.FullName || app.ownerId?.fullName || app.ownerName || 'Chưa cập nhật';
   const ownerEmail = app.ownerId?.Email || app.ownerId?.email || app.ownerEmail || '—';
   const ownerPhone = app.phone || app.ownerId?.Information?.[0]?.Phone || app.ownerId?.phone || '—';
@@ -674,7 +1014,7 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
             />
             <span
               className="admin-shop-card__meta-status"
-              style={{ color: currentStatus.dot }}
+              style={{ color: currentStatus.color, fontWeight: 700 }}
             >
               {currentStatus.label}
             </span>
@@ -685,13 +1025,13 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
               <img
                 src={app.imageUrl}
                 alt={app.name}
-                style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #E5E5E5', flexShrink: 0 }}
+                style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #E5E5E5', flexShrink: 0 }}
               />
             )}
             <h3 className="admin-shop-card__name" style={{ margin: 0 }}>{app.name}</h3>
           </div>
           <div className="admin-shop-card__category">
-            <strong>Ngành hàng / Mô tả:</strong> {app.description || 'Chưa cập nhật'}
+            <strong>Mô tả:</strong> {app.description || 'Chưa cập nhật mô tả'}
           </div>
 
           <div className="admin-owner-capsule">
@@ -721,10 +1061,8 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
                 <span className="admin-owner-col__val regular">{ownerPhone}</span>
               </div>
               <div className="admin-owner-col">
-                <span className="admin-owner-col__label">MÃ TÀI KHOẢN (UID)</span>
-                <span className="admin-owner-col__val regular" style={{ fontFamily: 'monospace', fontSize: '11px' }} title={app.ownerId?._id || '—'}>
-                  {app.ownerId?._id ? `#${String(app.ownerId._id).slice(-8)}` : '—'}
-                </span>
+                <span className="admin-owner-col__label">KHU VỰC</span>
+                <span className="admin-owner-col__val regular">{app.city || 'Toàn quốc'}</span>
               </div>
               <div className="admin-owner-col">
                 <span className="admin-owner-col__label">ĐỊA CHỈ SHOWROOM</span>
@@ -732,7 +1070,7 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
                   {app.address ? [app.address, app.ward, app.district, app.city].filter(Boolean).join(', ') : 'Chưa cập nhật'}
                   {app.latitude && app.longitude && (
                     <div style={{ fontSize: '10.5px', color: '#059669', fontWeight: 600, marginTop: '2px', fontFamily: 'monospace' }}>
-                      📍 GPS: {Number(app.latitude).toFixed(4)}, {Number(app.longitude).toFixed(4)} (Chính xác)
+                      📍 GPS: {Number(app.latitude).toFixed(4)}, {Number(app.longitude).toFixed(4)}
                     </div>
                   )}
                   {(app.address || (app.latitude && app.longitude)) && (
@@ -748,41 +1086,11 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
                           color: '#059669',
                           cursor: 'pointer',
                           fontWeight: 600,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
+                          textDecoration: 'underline',
                         }}
                       >
-                        {showMap ? 'Thu nhỏ bản đồ ▲' : '🗺️ Xem bản đồ showroom ▼'}
+                        {showMap ? 'Ẩn bản đồ thu nhỏ ✕' : 'Xem bản đồ vệ tinh ↗'}
                       </button>
-                      <a
-                        href={(app.latitude && app.longitude) ? `https://www.google.com/maps?q=${app.latitude},${app.longitude}&z=17` : `https://www.google.com/maps?q=${encodeURIComponent([app.address, app.ward, app.city].filter(Boolean).join(', '))}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          fontSize: '11px',
-                          color: '#8C6D3F',
-                          textDecoration: 'none',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <span>Mở Google Maps ↗</span>
-                      </a>
-                    </div>
-                  )}
-                  {showMap && (
-                    <div style={{ width: '100%', height: '170px', marginTop: '6px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #E5E5E5' }}>
-                      <iframe
-                        title={`Bản đồ ${app.name}`}
-                        src={(app.latitude && app.longitude)
-                          ? `https://maps.google.com/maps?q=${app.latitude},${app.longitude}&hl=vi&z=17&output=embed`
-                          : `https://maps.google.com/maps?q=${encodeURIComponent([app.address, app.ward, app.city].filter(Boolean).join(', '))}&hl=vi&z=14&output=embed`}
-                        style={{ width: '100%', height: '100%', border: 'none' }}
-                        loading="lazy"
-                      />
                     </div>
                   )}
                 </span>
@@ -791,17 +1099,29 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
 
             <button
               type="button"
-              className="btn-view-applicant-profile"
+              className="admin-owner-capsule__btn"
               onClick={() => onViewApplicant(app)}
-              title="Xem thông tin chi tiết của người đăng ký trở thành shop owner"
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
-              <span>Xem Hồ Sơ Người Đăng Ký</span>
+              <span>Xem Hồ Sơ Ứng Viên</span>
             </button>
           </div>
+
+          {showMap && (
+            <div style={{ marginTop: '12px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #ECEAE5' }}>
+              <iframe
+                title={`Map of ${app.name}`}
+                width="100%"
+                height="220"
+                style={{ border: 0 }}
+                loading="lazy"
+                src={`https://maps.google.com/maps?q=${app.latitude || encodeURIComponent(app.address || 'Hà Nội')},${app.longitude || ''}&hl=vi&z=15&output=embed`}
+              />
+            </div>
+          )}
         </div>
 
         <div className="admin-shop-card__right">
@@ -843,12 +1163,7 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
 
             <div className="admin-doc-item">
               <div className="admin-doc-icon-badge id">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="4" width="20" height="16" rx="2" />
-                  <circle cx="8" cy="10" r="2" />
-                  <line x1="14" y1="10" x2="18" y2="10" />
-                  <line x1="14" y1="14" x2="18" y2="14" />
-                </svg>
+                CCCD
               </div>
               <div className="admin-doc-info">
                 <div className="admin-doc-name">{app.idCardBackUrl ? 'CCCD Mặt Trước' : 'CCCD 2 mặt'}</div>
@@ -882,12 +1197,7 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
             {app.idCardBackUrl && (
               <div className="admin-doc-item">
                 <div className="admin-doc-icon-badge id">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="4" width="20" height="16" rx="2" />
-                    <circle cx="8" cy="10" r="2" />
-                    <line x1="14" y1="10" x2="18" y2="10" />
-                    <line x1="14" y1="14" x2="18" y2="14" />
-                  </svg>
+                  CCCD
                 </div>
                 <div className="admin-doc-info">
                   <div className="admin-doc-name">CCCD Mặt Sau</div>
@@ -916,39 +1226,6 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
                 </button>
               </div>
             )}
-
-            {app.imageUrl && (
-              <div className="admin-doc-item">
-                <div className="admin-doc-icon-badge" style={{ background: '#ECFDF5', color: '#059669', borderColor: '#A7F3D0', fontWeight: 700, fontSize: '11px' }}>
-                  IMG
-                </div>
-                <div className="admin-doc-info">
-                  <div className="admin-doc-name">Logo Showroom</div>
-                  <div className="admin-doc-file" title="Logo_Showroom.png">
-                    Logo_Showroom.png
-                  </div>
-                  <div className="admin-doc-status">
-                    Đã tải lên ✓
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="admin-doc-view-btn"
-                  title="Xem Logo Showroom"
-                  onClick={() => onViewDoc({
-                    label: 'Ảnh Đại Diện / Logo Gian Hàng',
-                    filename: 'Logo_Showroom.png',
-                    url: app.imageUrl,
-                    shopName: app.name,
-                  })}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -957,36 +1234,64 @@ function ShopCard({ app, onApprove, onReject, onViewDoc, onViewApplicant }) {
         <div className="admin-shop-card__note">
           <span className="admin-shop-card__note-icon">i</span>
           <span>
-            {app.notes || (app.address ? `Địa chỉ đăng ký: ${app.address}` : 'Cần đối chiếu số hiệu ĐKKD trên cổng thông tin quốc gia trước khi nhấn duyệt.')}
+            {app.status === 'SUSPENDED' && app.rejectionReason
+              ? `Lý do tạm ngưng: ${app.rejectionReason}`
+              : app.notes || (app.address ? `Địa chỉ đăng ký: ${app.address}` : 'Hồ sơ pháp lý đầy đủ.')}
           </span>
         </div>
 
-        {app.status === 'PENDING' ? (
-          <div className="admin-shop-card__actions">
+        <div className="admin-shop-card__actions">
+          <button
+            type="button"
+            className="btn-detail-action"
+            onClick={() => onViewDetail(app)}
+          >
+            Chi Tiết Vận Hành
+          </button>
+
+          {app.status === 'ACTIVE' && (
             <button
               type="button"
-              className="btn-reject-action"
-              onClick={() => onReject(app)}
+              className="btn-suspend-action"
+              onClick={() => onSuspend(app)}
             >
-              Từ Chối
+              Tạm Ngưng
             </button>
+          )}
+
+          {app.status === 'SUSPENDED' && (
             <button
               type="button"
-              className="btn-approve-action"
-              onClick={handleApprove}
-              disabled={approving}
+              className="btn-reactivate-action"
+              onClick={() => onReactivate(app)}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              {approving ? 'Đang duyệt...' : 'Phê Duyệt'}
+              Kích Hoạt Lại
             </button>
-          </div>
-        ) : (
-          <div style={{ fontSize: '13px', fontWeight: 600, color: app.status === 'ACTIVE' ? '#059669' : '#DC2626' }}>
-            {app.status === 'ACTIVE' ? '✓ Đã phê duyệt thành công' : `✕ Đã từ chối: ${app.rejectionReason || 'Hồ sơ không hợp lệ'}`}
-          </div>
-        )}
+          )}
+
+          {app.status === 'PENDING' && (
+            <>
+              <button
+                type="button"
+                className="btn-reject-action"
+                onClick={() => onReject(app)}
+              >
+                Từ Chối
+              </button>
+              <button
+                type="button"
+                className="btn-approve-action"
+                onClick={handleApprove}
+                disabled={approving}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {approving ? 'Đang duyệt...' : 'Phê Duyệt'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -997,16 +1302,24 @@ export default function AdminShopsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(
-    tabParam && ['PENDING', 'ACTIVE', 'REJECTED'].includes(tabParam) ? tabParam : 'PENDING'
+    tabParam && ['PENDING', 'ACTIVE', 'REJECTED'].includes(tabParam)
+      ? tabParam
+      : 'PENDING'
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [cityFilter, setCityFilter] = useState('ALL');
+  const [viewMode, setViewMode] = useState('cards');
+
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [suspendTarget, setSuspendTarget] = useState(null);
+  const [reactivateTarget, setReactivateTarget] = useState(null);
+  const [detailShop, setDetailShop] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [viewingApplicant, setViewingApplicant] = useState(null);
   const [toast, setToast] = useState(null);
 
   const [shops, setShops] = useState([]);
-  const [counts, setCounts] = useState({ PENDING: 0, ACTIVE: 0, REJECTED: 0 });
+  const [counts, setCounts] = useState({ ALL: 0, PENDING: 0, ACTIVE: 0, SUSPENDED: 0, REJECTED: 0 });
   const [newToday, setNewToday] = useState(0);
   const [approvalRate, setApprovalRate] = useState('0.0');
   const [avgProcessingHours, setAvgProcessingHours] = useState('0.0');
@@ -1023,7 +1336,7 @@ export default function AdminShopsPage() {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t && ['PENDING', 'ACTIVE', 'REJECTED'].includes(t)) {
+    if (t && ['ALL', 'ACTIVE', 'SUSPENDED', 'PENDING', 'REJECTED'].includes(t)) {
       setActiveTab(t);
       setPage(1);
     }
@@ -1037,28 +1350,34 @@ export default function AdminShopsPage() {
 
   const fetchCounts = useCallback(async () => {
     try {
-      const result = await apiClient.get('/api/admin/shops/stats');
+      const result = await getAdminShopsStatsApi();
       if (result.success) {
-        setCounts(result.counts || { PENDING: 0, ACTIVE: 0, REJECTED: 0 });
+        setCounts(result.counts || { ALL: 0, PENDING: 0, ACTIVE: 0, SUSPENDED: 0, REJECTED: 0 });
         setNewToday(result.newToday || 0);
         setApprovalRate(result.approvalRate || '0.0');
         setAvgProcessingHours(result.avgProcessingHours || '0.0');
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }, []);
 
   const fetchShops = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiClient.get('/api/admin/shops', {
-        params: {
-          status: activeTab,
-          search: searchQuery,
-          page,
-          limit: LIMIT,
-        },
-      });
+      const params = {
+        page,
+        limit: LIMIT,
+      };
+      if (activeTab !== 'ALL') {
+        params.status = activeTab;
+      }
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+      if (cityFilter !== 'ALL') {
+        params.city = cityFilter;
+      }
+
+      const data = await getAdminShopsListApi(params);
 
       if (data.success) {
         if ((!data.data || data.data.length === 0) && data.total > 0 && page > 1) {
@@ -1078,7 +1397,7 @@ export default function AdminShopsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, searchQuery, page]);
+  }, [activeTab, searchQuery, cityFilter, page]);
 
   useEffect(() => {
     fetchCounts();
@@ -1086,7 +1405,7 @@ export default function AdminShopsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchQuery]);
+  }, [activeTab, searchQuery, cityFilter]);
 
   useEffect(() => {
     fetchShops();
@@ -1095,7 +1414,7 @@ export default function AdminShopsPage() {
   const handleApprove = async (shop, customNotes = '') => {
     try {
       const adminId = getAdminId();
-      const data = await apiClient.put(`/api/admin/shops/${shop._id}/approve`, {
+      const data = await approveShopApi(shop._id, {
         adminId,
         notes: customNotes.trim() || 'Đã thẩm định thông tin ĐKKD và CCCD hợp lệ.',
       });
@@ -1112,7 +1431,7 @@ export default function AdminShopsPage() {
   const handleRejectConfirm = async (shopId, rejectionReason, notes) => {
     try {
       const adminId = getAdminId();
-      const data = await apiClient.put(`/api/admin/shops/${shopId}/reject`, {
+      const data = await rejectShopApi(shopId, {
         adminId,
         rejectionReason,
         notes,
@@ -1128,70 +1447,153 @@ export default function AdminShopsPage() {
     }
   };
 
+  const handleSuspendConfirm = async (shopId, reason, notes) => {
+    try {
+      const adminId = getAdminId();
+      const data = await toggleSuspendShopApi(shopId, {
+        adminId,
+        reason,
+        notes,
+      });
+      if (!data.success) throw new Error(data.message);
+
+      setSuspendTarget(null);
+      showToast(data.message || 'Đã tạm ngưng gian hàng thành công.', 'warning');
+      await fetchShops();
+      await fetchCounts();
+    } catch (err) {
+      showToast('Lỗi khi tạm ngưng gian hàng: ' + err.message, 'error');
+    }
+  };
+
+  const handleReactivateConfirm = async (shopId, notes) => {
+    try {
+      const adminId = getAdminId();
+      const data = await toggleSuspendShopApi(shopId, {
+        adminId,
+        notes,
+      });
+      if (!data.success) throw new Error(data.message);
+
+      setReactivateTarget(null);
+      showToast(data.message || 'Đã kích hoạt lại gian hàng thành công!', 'success');
+      await fetchShops();
+      await fetchCounts();
+    } catch (err) {
+      showToast('Lỗi khi kích hoạt lại: ' + err.message, 'error');
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (!shops || shops.length === 0) {
+      showToast('Không có dữ liệu gian hàng để xuất báo cáo.', 'error');
+      return;
+    }
+
+    const headers = [
+      'Mã Gian Hàng',
+      'Tên Gian Hàng',
+      'Chủ Sở Hữu',
+      'Email',
+      'Số Điện Thoại',
+      'Tỉnh / Thành Phố',
+      'Quận / Huyện',
+      'Địa Chỉ Chi Tiết',
+      'Vĩ Độ (Latitude)',
+      'Kinh Độ (Longitude)',
+      'Trạng Thái Vận Hành',
+      'Ngày Nộp Hồ Sơ',
+      'Ngày Xét Duyệt',
+    ];
+
+    const rows = shops.map((s) => {
+      const owner = s.ownerId || {};
+      const ownerName = owner.FullName || owner.fullName || s.ownerName || '';
+      const ownerEmail = owner.Email || owner.email || s.ownerEmail || '';
+      const ownerPhone = s.phone || owner.Information?.[0]?.Phone || owner.phone || '';
+      const statusLabel =
+        s.status === 'ACTIVE'
+          ? 'Đang hoạt động'
+          : s.status === 'SUSPENDED'
+          ? 'Tạm ngưng'
+          : s.status === 'PENDING'
+          ? 'Chờ duyệt'
+          : s.status === 'REJECTED'
+          ? 'Từ chối'
+          : s.status;
+
+      return [
+        s._id || '',
+        s.name || '',
+        ownerName,
+        ownerEmail,
+        ownerPhone,
+        s.city || '',
+        s.district || '',
+        s.address || '',
+        s.latitude != null ? String(s.latitude) : '',
+        s.longitude != null ? String(s.longitude) : '',
+        statusLabel,
+        s.createdAt ? new Date(s.createdAt).toLocaleString('vi-VN') : '',
+        s.reviewedAt ? new Date(s.reviewedAt).toLocaleString('vi-VN') : '',
+      ].map((val) => `"${String(val).replace(/"/g, '""')}"`);
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `VESTORA_QuanLyGianHang_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Đã xuất báo cáo ${shops.length} gian hàng thành công!`);
+  };
+
   return (
     <div className="admin-shops-layout">
       <AdminSidebar
         isCollapsed={isSidebarCollapsed}
-        onToggle={() => setIsSidebarCollapsed(prev => !prev)}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
       />
 
       <div className="admin-shops-viewport">
         <AdminTopHeader
-          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
-          breadcrumb={activeTab === 'ACTIVE' ? 'Quản Lý Gian Hàng' : activeTab === 'REJECTED' ? 'Hồ Sơ Từ Chối' : 'Phê Duyệt Shop'}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Phê Duyệt Shop Mới (Shop Applications)"
         />
 
         <main className="admin-shops-content">
           <div className="admin-shops-header-row">
             <div className="admin-shops-breadcrumb">
               <span className="current">
-                {activeTab === 'ACTIVE' ? 'Quản Lý Gian Hàng' : activeTab === 'REJECTED' ? 'Hồ Sơ Từ Chối' : 'Phê Duyệt Shop'}
+                {activeTab === 'PENDING' ? 'Hồ Sơ Chờ Phê Duyệt' : activeTab === 'REJECTED' ? 'Hồ Sơ Đã Từ Chối' : 'Hồ Sơ Đã Duyệt'}
               </span>
             </div>
 
             <div className="admin-shops-live-pill">
-              HỒ SƠ CẬP NHẬT TRỰC TUYẾN
+              THẨM ĐỊNH HỒ SƠ TRỰC TUYẾN
             </div>
           </div>
 
           <div className="admin-shops-title-block">
-            <h1 className="admin-shops-page-title">Phê Duyệt Gian Hàng Mới</h1>
+            <h1 className="admin-shops-page-title">
+              Phê Duyệt Hồ Sơ Gian Hàng (Shop Applications)
+            </h1>
             <p className="admin-shops-page-sub">
-              Xem xét hồ sơ đăng ký mở shop, kiểm tra giấy phép kinh doanh và CCCD của người đăng ký.
+              Thẩm định hồ sơ đăng ký mở shop của đối tác, đối soát giấy phép kinh doanh (ĐKKD) và ảnh CCCD 2 mặt của chủ shop.
             </p>
           </div>
 
+          {/* 3 Metrics Cards for Application Approvals */}
           <div className="admin-shops-metrics-grid">
             <div className="admin-metric-card">
               <div className="admin-metric-card__header">
-                <span className="admin-metric-card__label">CHỜ PHÊ DUYỆT</span>
+                <span className="admin-metric-card__label">HỒ SƠ CHỜ PHÊ DUYỆT</span>
                 <div className="admin-metric-card__icon-box">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="12" y1="18" x2="12" y2="12" />
-                    <line x1="9" y1="15" x2="15" y2="15" />
-                  </svg>
-                </div>
-              </div>
-              <div>
-                <div className="admin-metric-card__main-row">
-                  <span className="admin-metric-card__number">{counts.PENDING}</span>
-                  <span className="admin-metric-card__badge-green">
-                    ↗ +{newToday} mới nộp hôm nay
-                  </span>
-                </div>
-                <p className="admin-metric-card__subtext">
-                  Yêu cầu hoàn thiện thẩm định trong 24 giờ
-                </p>
-              </div>
-            </div>
-
-            <div className="admin-metric-card">
-              <div className="admin-metric-card__header">
-                <span className="admin-metric-card__label">THỜI GIAN XỬ LÝ TB</span>
-                <div className="admin-metric-card__icon-box">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
@@ -1199,49 +1601,52 @@ export default function AdminShopsPage() {
               </div>
               <div>
                 <div className="admin-metric-card__main-row">
-                  <span className="admin-metric-card__number">
-                    {avgProcessingHours} <span className="unit">giờ</span>
-                  </span>
+                  <span className="admin-metric-card__number" style={{ color: '#2563EB' }}>{counts.PENDING || 0}</span>
+                  {newToday > 0 && (
+                    <span className="admin-metric-card__badge-green">+{newToday} nộp hôm nay</span>
+                  )}
                 </div>
-                <div className="admin-metric-card__bar-row">
-                  <div className="admin-metric-card__bar-track">
-                    <div
-                      className="admin-metric-card__bar-fill"
-                      style={{
-                        width: `${Math.min(100, Math.max(8, parseFloat(avgProcessingHours || 0) * 15))}%`,
-                      }}
-                    />
-                  </div>
-                  <span className="admin-metric-card__bar-label">
-                    {parseFloat(avgProcessingHours) > 0 ? 'Dữ liệu thực tế' : 'Chưa có dữ liệu duyệt'}
-                  </span>
-                </div>
+                <p className="admin-metric-card__subtext">Yêu cầu hoàn tất thẩm định trong 24 giờ</p>
               </div>
             </div>
 
             <div className="admin-metric-card">
               <div className="admin-metric-card__header">
-                <span className="admin-metric-card__label">TỶ LỆ DUYỆT HỒ SƠ</span>
-                <div className="admin-metric-card__icon-box" style={{ color: '#059669' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <polyline points="9 12 11 14 15 10" />
+                <span className="admin-metric-card__label">THỜI GIAN XỬ LÝ TRUNG BÌNH</span>
+                <div className="admin-metric-card__icon-box">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
                   </svg>
                 </div>
               </div>
               <div>
                 <div className="admin-metric-card__main-row">
-                  <span className="admin-metric-card__number">
-                    {approvalRate}<span className="unit">%</span>
-                  </span>
+                  <span className="admin-metric-card__number">{avgProcessingHours} <span className="unit">giờ</span></span>
                 </div>
-                <p className="admin-metric-card__subtext">
-                  Đạt tiêu chuẩn hợp quy định & pháp lý hợp lệ
-                </p>
+                <p className="admin-metric-card__subtext">Thời gian phản hồi kết quả cho ứng viên</p>
+              </div>
+            </div>
+
+            <div className="admin-metric-card">
+              <div className="admin-metric-card__header">
+                <span className="admin-metric-card__label">TỶ LỆ PHÊ DUYỆT HỒ SƠ</span>
+                <div className="admin-metric-card__icon-box" style={{ color: '#059669' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+              </div>
+              <div>
+                <div className="admin-metric-card__main-row">
+                  <span className="admin-metric-card__number" style={{ color: '#059669' }}>{approvalRate}%</span>
+                </div>
+                <p className="admin-metric-card__subtext">Hồ sơ đạt tiêu chuẩn pháp lý hợp quy</p>
               </div>
             </div>
           </div>
 
+          {/* Operational Toolbar */}
           <div className="admin-shops-toolbar">
             <div className="admin-shops-tabs-pill">
               {STATUS_TABS.map((tab) => (
@@ -1262,7 +1667,7 @@ export default function AdminShopsPage() {
             <div className="admin-shops-search-wrap">
               <div className="admin-shops-search-box">
                 <span className="admin-shops-search-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
@@ -1270,22 +1675,81 @@ export default function AdminShopsPage() {
                 <input
                   type="text"
                   className="admin-shops-search-input"
-                  placeholder="Tìm kiếm tên shop, CCCD, SĐT..."
+                  placeholder="Tìm kiếm tên shop, chủ sở hữu, SĐT, email..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
 
+              <select
+                className="admin-shops-select-filter"
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+                title="Lọc theo Tỉnh / Thành phố"
+              >
+                {CITIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+
               <button
+                type="button"
+                className="admin-shops-export-btn"
+                onClick={handleExportCSV}
+                title="Xuất danh sách gian hàng dạng file CSV"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Xuất Báo Cáo
+              </button>
+
+              <div className="admin-shops-view-switch">
+                <button
+                  type="button"
+                  className={`admin-shops-view-switch-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                  onClick={() => setViewMode('cards')}
+                  title="Chế độ xem dạng thẻ"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                  </svg>
+                  Thẻ
+                </button>
+                <button
+                  type="button"
+                  className={`admin-shops-view-switch-btn ${viewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => setViewMode('table')}
+                  title="Chế độ xem dạng bảng"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                  Bảng
+                </button>
+              </div>
+
+              <button
+                type="button"
                 className="admin-shops-filter-btn"
-                title="Làm mới danh sách hồ sơ"
+                title="Làm mới danh sách"
                 onClick={() => {
                   fetchCounts();
                   fetchShops();
-                  showToast('Đã làm mới danh sách hồ sơ');
+                  showToast('Đã làm mới dữ liệu gian hàng');
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="23 4 23 10 17 10" />
                   <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                 </svg>
@@ -1293,20 +1757,30 @@ export default function AdminShopsPage() {
             </div>
           </div>
 
+          {/* Main List / Table */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: '60px 20px', color: '#737373' }}>
-              <div style={{ fontSize: '14px', fontWeight: 500 }}>Đang tải danh sách hồ sơ...</div>
+              <div style={{ fontSize: '14px', fontWeight: 500 }}>Đang tải danh sách gian hàng...</div>
             </div>
           ) : shops.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '80px 20px', background: '#FFFFFF', borderRadius: '18px', border: '1px solid #ECEAE5' }}>
               <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
               <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#171717', margin: '0 0 4px' }}>
-                Không tìm thấy hồ sơ phù hợp
+                Không tìm thấy gian hàng phù hợp
               </h4>
               <p style={{ fontSize: '13px', color: '#737373', margin: 0 }}>
-                Trạng thái <strong>{STATUS_TABS.find(t => t.key === activeTab)?.label}</strong> hiện tại không có dữ liệu phù hợp.
+                Không có dữ liệu gian hàng phù hợp với điều kiện tìm kiếm hoặc bộ lọc hiện tại.
               </p>
             </div>
+          ) : viewMode === 'table' ? (
+            <ShopTableView
+              shops={shops}
+              onSuspend={setSuspendTarget}
+              onReactivate={setReactivateTarget}
+              onApprove={handleApprove}
+              onReject={setRejectTarget}
+              onViewDetail={setDetailShop}
+            />
           ) : (
             <div className="admin-shops-list">
               {shops.map((app) => (
@@ -1315,24 +1789,28 @@ export default function AdminShopsPage() {
                   app={app}
                   onApprove={handleApprove}
                   onReject={setRejectTarget}
+                  onSuspend={setSuspendTarget}
+                  onReactivate={setReactivateTarget}
                   onViewDoc={setPreviewDoc}
                   onViewApplicant={setViewingApplicant}
+                  onViewDetail={setDetailShop}
                 />
               ))}
             </div>
           )}
 
+          {/* Pagination */}
           {total > 0 && (
             <div className="admin-shops-pagination">
               <div className="admin-shops-pagination__info">
-                Hiển thị {shops.length > 0 ? (page - 1) * LIMIT + 1 : 0}–{Math.min(page * LIMIT, total)} trong số {total} đơn {STATUS_TABS.find(t => t.key === activeTab)?.label?.toLowerCase()}
+                Hiển thị {shops.length > 0 ? (page - 1) * LIMIT + 1 : 0}–{Math.min(page * LIMIT, total)} trong số {total} gian hàng
               </div>
 
               <div className="admin-shops-pagination__pages">
                 <button
                   className="admin-shops-page-item"
                   disabled={page <= 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   ‹
                 </button>
@@ -1348,7 +1826,7 @@ export default function AdminShopsPage() {
                 <button
                   className="admin-shops-page-item"
                   disabled={page >= totalPages}
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
                   ›
                 </button>
@@ -1357,6 +1835,35 @@ export default function AdminShopsPage() {
           )}
         </main>
       </div>
+
+      {/* Operational Modals */}
+      {detailShop && (
+        <ShopDetailModal
+          app={detailShop}
+          onClose={() => setDetailShop(null)}
+          onSuspend={setSuspendTarget}
+          onReactivate={setReactivateTarget}
+          onApprove={handleApprove}
+          onReject={setRejectTarget}
+          onViewDoc={setPreviewDoc}
+        />
+      )}
+
+      {suspendTarget && (
+        <SuspendModal
+          app={suspendTarget}
+          onClose={() => setSuspendTarget(null)}
+          onConfirm={handleSuspendConfirm}
+        />
+      )}
+
+      {reactivateTarget && (
+        <ReactivateModal
+          app={reactivateTarget}
+          onClose={() => setReactivateTarget(null)}
+          onConfirm={handleReactivateConfirm}
+        />
+      )}
 
       {viewingApplicant && (
         <ApplicantDetailModal
@@ -1385,7 +1892,7 @@ export default function AdminShopsPage() {
 
       {toast && (
         <div className={`admin-toast-banner ${toast.type}`}>
-          <span>{toast.type === 'success' ? '✓' : '⚠'}</span>
+          <span>{toast.type === 'success' ? '✓' : toast.type === 'warning' ? '⚠' : '✕'}</span>
           <span>{toast.message}</span>
         </div>
       )}

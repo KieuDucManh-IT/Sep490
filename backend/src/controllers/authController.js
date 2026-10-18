@@ -7,6 +7,7 @@ import {
   forgotPassword as requestPasswordReset,
   verifyForgotPasswordOtp as verifyPasswordResetOtp,
   resetPassword as resetAccountPassword,
+  changePassword as changeAccountPassword,
 } from "../services/authService.js";
 
 const COOKIE_NAME = "vestora_token";
@@ -135,6 +136,21 @@ export async function resetPassword(req, res, next) {
 
     // Xóa cookie đăng nhập của trình duyệt đang đặt lại mật khẩu.
     res.clearCookie(COOKIE_NAME, cookieOptions());
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changePassword(req, res, next) {
+  try {
+    const result = await changeAccountPassword(
+      req.user._id,
+      req.body
+    );
+
     res.set("Cache-Control", "no-store");
 
     return res.status(200).json(result);

@@ -94,8 +94,29 @@ export async function loginApi(email, password) {
   return data;
 }
 
-export function getMeApi() {
-  return request("/auth/me");
+export async function getMeApi() {
+  const apiUrl =
+    process.env.REACT_APP_API_URL ||
+    "http://localhost:5000/api";
+
+  const response = await fetch(`${apiUrl}/auth/me`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(
+      data.message || "Không lấy được thông tin đăng nhập"
+    );
+
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
 }
 
 export function logoutApi() {
@@ -203,4 +224,44 @@ export function resetPasswordApi(
     password,
     confirmPassword,
   });
+}
+
+export async function changePasswordApi(
+  currentPassword,
+  newPassword,
+  confirmNewPassword
+) {
+  const apiUrl =
+    process.env.REACT_APP_API_URL ||
+    "http://localhost:5000/api";
+
+  const response = await fetch(`${apiUrl}/auth/change-password`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      currentPassword,
+      newPassword,
+      confirmNewPassword,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const details = Array.isArray(data.errors)
+      ? data.errors.map((item) => item.message).join("; ")
+      : "";
+
+    const error = new Error(
+      details || data.message || "Không thể đổi mật khẩu"
+    );
+
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
 }

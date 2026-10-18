@@ -8,6 +8,7 @@ import {
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import { useAuth } from "../../context/AuthContext";
+import { changePasswordApi } from "../../services/authApi";
 
 import "../../styles/UserProfile.css";
 
@@ -40,7 +41,7 @@ export default function UserProfilePage() {
   } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(true);
   const [profileTab, setProfileTab] = useState("information");
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
@@ -50,6 +51,17 @@ export default function UserProfilePage() {
   const [userInfo, setUserInfo] = useState(() =>
     getProfile(user)
   );
+
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmNewPassword: "",
+  });
+
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState({});
+  const [passwordSuccess, setPasswordSuccess] = useState("");
 
   // User được lấy bất đồng bộ khi reload trang.
   // Cập nhật form sau khi AuthContext nhận được dữ liệu.
@@ -110,6 +122,98 @@ export default function UserProfilePage() {
       );
     } finally {
       setLoggingOut(false);
+    }
+  };
+
+  const handlePasswordChange = (event) => {
+    const { name, value } = event.target;
+
+    setPasswordForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+
+    setPasswordErrors((previous) => ({
+      ...previous,
+      [name]: "",
+      server: "",
+    }));
+
+    setPasswordSuccess("");
+  };
+
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+
+    if (changingPassword) return;
+
+    setPasswordSuccess("");
+
+    const {
+      currentPassword,
+      newPassword,
+      confirmNewPassword,
+    } = passwordForm;
+
+    const nextErrors = {};
+    const byteLength = (value) =>
+      new TextEncoder().encode(value).length;
+
+    if (!currentPassword) {
+      nextErrors.currentPassword =
+        "Vui lòng nhập mật khẩu hiện tại";
+    } else if (byteLength(currentPassword) > 72) {
+      nextErrors.currentPassword =
+        "Mật khẩu hiện tại không hợp lệ";
+    }
+
+    if (!newPassword) {
+      nextErrors.newPassword = "Vui lòng nhập mật khẩu mới";
+    } else if (newPassword.length < 8) {
+      nextErrors.newPassword =
+        "Mật khẩu mới phải có ít nhất 8 ký tự";
+    } else if (byteLength(newPassword) > 72) {
+      nextErrors.newPassword =
+        "Mật khẩu mới không được vượt quá 72 byte";
+    }
+
+    if (!confirmNewPassword) {
+      nextErrors.confirmNewPassword =
+        "Vui lòng xác nhận mật khẩu mới";
+    } else if (newPassword !== confirmNewPassword) {
+      nextErrors.confirmNewPassword =
+        "Mật khẩu xác nhận không khớp";
+    }
+
+    setPasswordErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setChangingPassword(true);
+
+    try {
+      const result = await changePasswordApi(
+        currentPassword,
+        newPassword,
+        confirmNewPassword
+      );
+
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmNewPassword: "",
+      });
+
+      setShowPasswords(false);
+      setPasswordSuccess(result.message);
+    } catch (error) {
+      setPasswordErrors({
+        server:
+          error.message ||
+          "Đổi mật khẩu thất bại. Vui lòng thử lại",
+      });
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -380,37 +484,39 @@ export default function UserProfilePage() {
                   <span>Chỉnh sửa thông tin</span>
                 </button>
 
-                <button
-                  type="button"
-                  className={`profile-submenu-button ${profileTab === "password" ? "is-active" : ""
-                    }`}
-                  onClick={() => {
-                    setProfileTab("password");
-                    setUserInfo(getProfile(user));
-                    setIsEditing(false);
-                    setNotice("");
-                  }}
-                >
-                  <span className="profile-submenu-icon">
-                    <svg
-                      width="19"
-                      height="19"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <rect x="5" y="10" width="14" height="11" rx="3" />
-                      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                      <path d="M12 14v3" />
-                    </svg>
-                  </span>
+                {user.authProvider === "local" && (
+                  <button
+                    type="button"
+                    className={`profile-submenu-button ${profileTab === "password" ? "is-active" : ""
+                      }`}
+                    onClick={() => {
+                      setProfileTab("password");
+                      setUserInfo(getProfile(user));
+                      setIsEditing(false);
+                      setNotice("");
+                    }}
+                  >
+                    <span className="profile-submenu-icon">
+                      <svg
+                        width="19"
+                        height="19"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <rect x="5" y="10" width="14" height="11" rx="3" />
+                        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                        <path d="M12 14v3" />
+                      </svg>
+                    </span>
 
-                  <span>Đổi mật khẩu</span>
-                </button>
+                    <span>Đổi mật khẩu</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -529,7 +635,7 @@ export default function UserProfilePage() {
               </span>
             </div>
 
-            {profileTab === "password" ? (
+            {profileTab === "password" && user.authProvider === "local" ? (
               <section
                 className="profile-password-section"
                 aria-labelledby="profile-password-title"
@@ -541,12 +647,146 @@ export default function UserProfilePage() {
                 <h4 id="profile-password-title">Đổi mật khẩu</h4>
 
                 <p>
-                  Quản lý mật khẩu đăng nhập tài khoản VESTORA của bạn.
+                  Nhập mật khẩu hiện tại để xác nhận và thiết lập mật khẩu mới.
                 </p>
 
-                <div className="profile-password-placeholder" role="status">
-                  Chức năng đổi mật khẩu hiện chưa khả dụng.
-                </div>
+                <form
+                  className="profile-change-password-form"
+                  onSubmit={handleChangePassword}
+                  noValidate
+                >
+                  {passwordErrors.server && (
+                    <div className="password-feedback is-error" role="alert">
+                      {passwordErrors.server}
+                    </div>
+                  )}
+
+                  {passwordSuccess && (
+                    <div className="password-feedback is-success" role="status">
+                      {passwordSuccess}
+                    </div>
+                  )}
+
+                  <div className="profile-password-field">
+                    <label htmlFor="profile-current-password">
+                      Mật khẩu hiện tại
+                    </label>
+
+                    <input
+                      id="profile-current-password"
+                      name="currentPassword"
+                      type={showPasswords ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="Nhập mật khẩu đang sử dụng"
+                      value={passwordForm.currentPassword}
+                      onChange={handlePasswordChange}
+                      disabled={changingPassword}
+                      aria-invalid={Boolean(passwordErrors.currentPassword)}
+                      aria-describedby={
+                        passwordErrors.currentPassword
+                          ? "current-password-error"
+                          : undefined
+                      }
+                    />
+
+                    {passwordErrors.currentPassword && (
+                      <span
+                        id="current-password-error"
+                        className="profile-password-error"
+                        role="alert"
+                      >
+                        {passwordErrors.currentPassword}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="profile-password-field">
+                    <label htmlFor="profile-new-password">
+                      Mật khẩu mới
+                    </label>
+
+                    <input
+                      id="profile-new-password"
+                      name="newPassword"
+                      type={showPasswords ? "text" : "password"}
+                      autoComplete="new-password"
+                      placeholder="Nhập ít nhất 8 ký tự"
+                      value={passwordForm.newPassword}
+                      onChange={handlePasswordChange}
+                      disabled={changingPassword}
+                      aria-invalid={Boolean(passwordErrors.newPassword)}
+                      aria-describedby={
+                        passwordErrors.newPassword
+                          ? "profile-new-password-error"
+                          : undefined
+                      }
+                    />
+
+                    {passwordErrors.newPassword && (
+                      <span
+                        id="profile-new-password-error"
+                        className="profile-password-error"
+                        role="alert"
+                      >
+                        {passwordErrors.newPassword}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="profile-password-field">
+                    <label htmlFor="profile-confirm-password">
+                      Xác nhận mật khẩu mới
+                    </label>
+
+                    <input
+                      id="profile-confirm-password"
+                      name="confirmNewPassword"
+                      type={showPasswords ? "text" : "password"}
+                      autoComplete="new-password"
+                      placeholder="Nhập lại mật khẩu mới"
+                      value={passwordForm.confirmNewPassword}
+                      onChange={handlePasswordChange}
+                      disabled={changingPassword}
+                      aria-invalid={Boolean(passwordErrors.confirmNewPassword)}
+                      aria-describedby={
+                        passwordErrors.confirmNewPassword
+                          ? "profile-confirm-password-error"
+                          : undefined
+                      }
+                    />
+
+                    {passwordErrors.confirmNewPassword && (
+                      <span
+                        id="profile-confirm-password-error"
+                        className="profile-password-error"
+                        role="alert"
+                      >
+                        {passwordErrors.confirmNewPassword}
+                      </span>
+                    )}
+                  </div>
+
+                  <label className="profile-password-visibility">
+                    <input
+                      type="checkbox"
+                      checked={showPasswords}
+                      onChange={(event) =>
+                        setShowPasswords(event.target.checked)
+                      }
+                    />
+                    Hiện mật khẩu
+                  </label>
+
+                  <div className="profile-password-actions">
+                    <button
+                      type="submit"
+                      className="profile-password-submit"
+                      disabled={changingPassword}
+                    >
+                      {changingPassword ? "Đang lưu..." : "Lưu mật khẩu mới"}
+                    </button>
+                  </div>
+                </form>
               </section>
             ) : !isEditing ? (
               <div>

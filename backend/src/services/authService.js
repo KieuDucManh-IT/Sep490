@@ -70,6 +70,7 @@ export function toPublicUser(user) {
     status: user.Status,
     avatar: user.Avatar || "",
     information: user.Information || [],
+    authProvider: user.AuthProvider,
   };
 }
 
@@ -759,4 +760,103 @@ export async function resetPassword(data = {}) {
   } finally {
     passwordResetLocks.delete(email);
   }
+}
+
+export async function changePassword(userId, data = {}) {
+  const {
+    currentPassword,
+    newPassword,
+    confirmNewPassword,
+  } = data ?? {};
+
+  if (
+    typeof currentPassword !== "string" ||
+    !currentPassword ||
+    Buffer.byteLength(currentPassword, "utf8") > 72
+  ) {
+    fail(400, "Vui lòng nhập mật khẩu hiện tại hợp lệ");
+  }
+
+  if (
+    typeof newPassword !== "string" ||
+    newPassword.length < 8 ||
+    Buffer.byteLength(newPassword, "utf8") > 72
+  ) {
+    fail(
+      400,
+      "Mật khẩu mới phải có ít nhất 8 ký tự và không vượt quá 72 byte"
+    );
+  }
+
+  if (newPassword !== confirmNewPassword) {
+    fail(400, "Mật khẩu xác nhận không khớp");
+  }
+
+  const user = await User.findById(userId)
+    .select("+PasswordHash");
+
+  if (!user) {
+    fail(401, "Tài khoản không còn tồn tại");
+  }
+
+  if (user.AuthProvider === "google") {
+    fail(
+      403,
+      "Tài khoản đăng nhập bằng Google không hỗ trợ đổi mật khẩu tại VESTORA"
+    );
+  }
+
+  if (user.Status !== "active") {
+    fail(403, "Tài khoản đã bị vô hiệu hóa");
+  }
+
+  // Tài khoản tạo bằng Google có thể chưa có mật khẩu riêng.
+  if (!user.PasswordHash) {
+    fail(
+      400,
+      "Tài khoản chưa có mật khẩu VESTORA. Hãy dùng Quên mật khẩu để thiết lập mật khẩu trước"
+    );
+  }
+
+  const correctPassword = await user.comparePassword(
+    currentPassword
+  );
+
+  if (!correctPassword) {
+    fail(400, "Mật khẩu hiện tại không đúng");
+  }
+
+  const previousHash = user.PasswordHash;
+
+  // Dùng phương thức băm mật khẩu hiện có trong User.js.
+  await user.setPassword(newPassword);
+
+  // Chỉ cập nhật nếu mật khẩu chưa bị thay đổi bởi yêu cầu khác.
+  const updatedUser = await User.findOneAndUpdate(
+    {
+      _id: user._id,
+      Status: "active",
+      PasswordHash: previousHash,
+    },
+    {
+      $set: {
+        PasswordHash: user.PasswordHash,
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+
+  if (!updatedUser) {
+    fail(
+      409,
+      "Thông tin tài khoản đã thay đổi. Vui lòng thử lại"
+    );
+  }
+
+  return {
+    message: "Đổi mật khẩu thành công",
+  };
 }

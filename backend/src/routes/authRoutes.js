@@ -10,6 +10,7 @@ import {
   forgotPassword,
   verifyForgotPasswordOtp,
   resetPassword,
+  changePassword,
 } from "../controllers/authController.js";
 
 import { authMiddleware } from "../middlewares/errorMiddleware.js";
@@ -52,6 +53,13 @@ router.post(
   "/reset-password",
   authRequestMiddleware,
   resetPassword
+);
+
+router.post(
+  "/change-password",
+  authRequestMiddleware,
+  authMiddleware,
+  changePassword
 );
 
 export default router;

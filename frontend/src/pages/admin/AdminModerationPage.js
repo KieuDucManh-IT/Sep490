@@ -148,13 +148,13 @@ export default function AdminModerationPage() {
               className={activeTab === 'SHOPS' ? 'btn-tail-gold' : 'btn-tail-outline'}
               onClick={() => setActiveTab('SHOPS')}
             >
-              🏪 Duyệt Gian Hàng Mới Đăng Ký ({pendingShops.length})
+              Duyệt Gian Hàng Mới Đăng Ký ({pendingShops.length})
             </button>
             <button
               className={activeTab === 'PRODUCTS' ? 'btn-tail-gold' : 'btn-tail-outline'}
               onClick={() => setActiveTab('PRODUCTS')}
             >
-              👗 Duyệt Mẫu Trang Phục Thuê Mới ({pendingProducts.length})
+              Duyệt Mẫu Trang Phục Thuê Mới ({pendingProducts.length})
             </button>
           </div>
 

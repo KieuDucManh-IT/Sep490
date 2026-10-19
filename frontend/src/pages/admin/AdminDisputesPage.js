@@ -108,14 +108,14 @@ export default function AdminDisputesPage() {
                       style={{ padding: '8px 16px', fontSize: '12px' }}
                       onClick={() => handleResolveDispute(d.id, 'Khách Hàng (Hoàn Cọc 100%)')}
                     >
-                      ⚖️ Xử Thắng Cho Khách Hàng
+                      Xử Thắng Cho Khách Hàng
                     </button>
                     <button 
                       className="btn-tail-outline"
                       style={{ padding: '8px 16px', fontSize: '12px' }}
                       onClick={() => handleResolveDispute(d.id, 'Gian Hàng (Trừ Cọc Đã Duyệt)')}
                     >
-                      ⚖️ Xử Thắng Cho Gian Hàng
+                      Xử Thắng Cho Gian Hàng
                     </button>
                   </div>
                 ) : (

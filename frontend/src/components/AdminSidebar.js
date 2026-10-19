@@ -80,7 +80,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
           <Link
             to="/admin/accounts"
             className={`admin-shops-sidebar__link ${isActive('/admin/accounts')}`}
-            title="Quản Lý Tài Khoản"
+            title="Quản Lý Người Dùng"
           >
             <span className="admin-shops-sidebar__icon">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -90,7 +90,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             </span>
-            {!isCollapsed && <span>Quản Lý Tài Khoản</span>}
+            {!isCollapsed && <span>Quản Lý Người Dùng</span>}
           </Link>
 
           <Link

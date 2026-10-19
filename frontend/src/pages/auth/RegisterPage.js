@@ -22,13 +22,6 @@ const fields = [
     placeholder: "example@domain.com",
     autoComplete: "email",
   },
-  {
-    name: "phone",
-    label: "SỐ ĐIỆN THOẠI",
-    type: "tel",
-    placeholder: "0912 345 678",
-    autoComplete: "tel",
-  },
 ];
 
 export default function RegisterPage() {
@@ -37,7 +30,6 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
-    phone: "",
     password: "",
     confirmPassword: "",
     agreeTerms: false,
@@ -98,15 +90,14 @@ export default function RegisterPage() {
       .trim()
       .replace(/ +/g, " ");
     const email = formData.email.trim().toLowerCase();
-    const phone = formData.phone.replace(/\s/g, "");
 
     const fullNameRegex =
       /^[A-Za-zÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐĨŨƠƯàáâãèéêìíòóôõùúýăđĩũơưẠ-ỹ ]+$/u;
 
     if (!fullName) {
       newErrors.fullName = "Vui lòng nhập họ và tên";
-    } else if ([...fullName].length > 12) {
-      newErrors.fullName = "Họ tên tối đa 12 ký tự, tính cả khoảng trắng";
+    } else if ([...fullName].length > 25) {
+      newErrors.fullName = "Họ tên tối đa 25 ký tự, tính cả khoảng trắng";
     } else if (!fullNameRegex.test(fullName)) {
       newErrors.fullName =
         "Họ tên chỉ được chứa chữ cái tiếng Việt và khoảng trắng";
@@ -119,12 +110,6 @@ export default function RegisterPage() {
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
     ) {
       newErrors.email = "Email không đúng định dạng";
-    }
-
-    if (!phone) {
-      newErrors.phone = "Vui lòng nhập số điện thoại";
-    } else if (!/^\+?[0-9]{9,15}$/.test(phone)) {
-      newErrors.phone = "Số điện thoại không hợp lệ";
     }
 
     const password = formData.password;
@@ -165,7 +150,6 @@ export default function RegisterPage() {
     const payload = {
       fullName,
       email,
-      phone,
       password: formData.password,
       confirmPassword: formData.confirmPassword,
       agreeTerms: formData.agreeTerms,
@@ -657,7 +641,7 @@ export default function RegisterPage() {
                 <input
                   id={field.name}
                   name={field.name}
-                  maxLength={field.name === "fullName" ? 12 : undefined}
+                  maxLength={field.name === "fullName" ? 25 : undefined}
                   type={field.type}
                   autoComplete={field.autoComplete}
                   placeholder={field.placeholder}

@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import LoginPage from './pages/auth/LoginPage';
@@ -42,7 +41,7 @@ import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 
 function App() {
   return (
-    <AuthProvider>
+    
       <Router>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -95,7 +94,6 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
-    </AuthProvider>
   );
 }
 

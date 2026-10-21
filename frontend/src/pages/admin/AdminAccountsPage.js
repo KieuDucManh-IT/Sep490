@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
 import '../../styles/AdminAccounts.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 export default function AdminAccountsPage() {
+  const { user: currentUser } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -14,6 +16,25 @@ export default function AdminAccountsPage() {
   const [activeDrawerTab, setActiveDrawerTab] = useState('INFO');
   const [isLoading, setIsLoading] = useState(true);
   const [backendStats, setBackendStats] = useState(null);
+
+  // Helper functions: Bảo vệ tài khoản Quản trị viên và tài khoản hiện tại đang đăng nhập
+  const isUserAdmin = (u) => {
+    if (!u) return false;
+    const r = (u.role || u.Role || '').toUpperCase();
+    return r === 'ADMIN';
+  };
+
+  const isSelf = (u) => {
+    if (!u || !currentUser) return false;
+    const currentId = currentUser.id || currentUser._id;
+    const currentEmail = (currentUser.email || currentUser.Email || '').toLowerCase();
+    return (
+      (currentId && (u.id === currentId || u._id === currentId)) ||
+      (currentEmail && u.email && u.email.toLowerCase() === currentEmail)
+    );
+  };
+
+  const cannotLock = (u) => isUserAdmin(u) || isSelf(u);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,6 +68,7 @@ export default function AdminAccountsPage() {
   const [editForm, setEditForm] = useState({
     name: '',
     phone: '',
+    address: '',
     dob: '',
     gender: 'Nữ',
     role: 'CUSTOMER',
@@ -236,6 +258,16 @@ export default function AdminAccountsPage() {
 
   // Toggle Lock/Unlock User with Backend API
   const handleToggleLock = async (userId) => {
+    const target = users.find(u => u.id === userId);
+    if (cannotLock(target)) {
+      alert(
+        isSelf(target)
+          ? 'Bạn không thể tự khóa tài khoản của chính mình!'
+          : 'Không thể khóa tài khoản Quản trị viên (Admin) để bảo vệ quyền quản trị hệ thống!'
+      );
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, { method: 'PATCH' });
       const json = await res.json();
@@ -255,15 +287,28 @@ export default function AdminAccountsPage() {
             status: prev.status === 'LOCKED' ? 'ACTIVE' : 'LOCKED'
           }));
         }
+      } else {
+        alert(json.message || 'Không thể thực hiện thao tác này');
       }
     } catch (e) {
       console.error('Lỗi khi khóa/mở khóa tài khoản:', e);
+      alert('Lỗi kết nối máy chủ khi thay đổi trạng thái tài khoản');
     }
   };
 
   // Bulk Actions
   const handleBulkLock = async () => {
-    for (const id of selectedIds) {
+    const safeIds = selectedIds.filter(id => {
+      const u = users.find(user => user.id === id);
+      return !cannotLock(u);
+    });
+
+    if (safeIds.length === 0) {
+      alert('Không có tài khoản nào hợp lệ để khóa (Tài khoản Quản trị viên và tài khoản hiện tại được bảo vệ).');
+      return;
+    }
+
+    for (const id of safeIds) {
       const user = users.find(u => u.id === id);
       if (user && user.status !== 'LOCKED') {
         await handleToggleLock(id);
@@ -312,12 +357,18 @@ export default function AdminAccountsPage() {
 
   // Open Edit Modal
   const openEditModalForUser = (user) => {
+    if (!user) return;
+    if (isUserAdmin(user)) {
+      alert('Tài khoản Quản trị viên (Admin) duy nhất của hệ thống được bảo vệ và không thể chỉnh sửa!');
+      return;
+    }
     setEditForm({
       name: user.name,
       phone: user.phone !== 'Chưa cập nhật' ? user.phone : '',
+      address: user.address !== 'Chưa cập nhật' ? user.address : '',
       dob: user.dob || '15/08/2000',
       gender: user.gender || 'Nữ',
-      role: user.role,
+      role: user.role === 'ADMIN' ? 'CUSTOMER' : user.role,
       status: user.status
     });
     setSelectedUser(user);
@@ -330,6 +381,20 @@ export default function AdminAccountsPage() {
     e.preventDefault();
     if (!selectedUser) return;
 
+    if (cannotLock(selectedUser) && editForm.status === 'LOCKED') {
+      alert(
+        isSelf(selectedUser)
+          ? 'Bạn không thể tự khóa tài khoản của chính mình!'
+          : 'Không thể chuyển tài khoản Quản trị viên (Admin) sang trạng thái Tạm khóa!'
+      );
+      return;
+    }
+
+    if (editForm.name.trim().length > 25) {
+      alert('Họ và tên không được vượt quá 25 ký tự!');
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/users/${selectedUser.id}`, {
         method: 'PUT',
@@ -338,7 +403,8 @@ export default function AdminAccountsPage() {
           FullName: editForm.name,
           Role: editForm.role.toLowerCase().replace(' ', '_'),
           Status: editForm.status.toLowerCase(),
-          Phone: editForm.phone
+          Phone: editForm.phone,
+          Address: editForm.address
         })
       });
       const json = await res.json();
@@ -350,6 +416,7 @@ export default function AdminAccountsPage() {
       }
     } catch (err) {
       console.error('Lỗi cập nhật người dùng:', err);
+      alert('Không thể kết nối máy chủ khi cập nhật thông tin');
     }
   };
 
@@ -411,7 +478,7 @@ export default function AdminAccountsPage() {
   };
 
   return (
-    <div className="admin-layout">
+    <div className="admin-layout" style={{ backgroundColor: '#FBF9F5' }}>
       {/* 1. TailAdmin Left Sidebar */}
       <AdminSidebar
         isCollapsed={isSidebarCollapsed}
@@ -419,7 +486,7 @@ export default function AdminAccountsPage() {
       />
 
       {/* 2. Main Viewport */}
-      <div className="admin-main-viewport">
+      <div className="admin-main-viewport" style={{ backgroundColor: '#FBF9F5' }}>
         {/* Top Navbar */}
         <AdminTopHeader
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
@@ -427,7 +494,7 @@ export default function AdminAccountsPage() {
         />
 
         {/* 3. Accounts Management Body */}
-        <div className="admin-acc-page">
+        <div className="admin-acc-page" style={{ backgroundColor: '#FBF9F5' }}>
           {/* Breadcrumb & Hero */}
           <div className="admin-acc-header">
             <div className="admin-acc-breadcrumb">
@@ -740,7 +807,7 @@ export default function AdminAccountsPage() {
                       />
                     </th>
                     <th>NGƯỜI DÙNG</th>
-                    <th>VAI TRÒ</th>
+                    <th style={{ minWidth: '135px', whiteSpace: 'nowrap' }}>VAI TRÒ</th>
                     <th>XÁC MINH</th>
                     <th>TRẠNG THÁI</th>
                     <th>NGÀY THAM GIA</th>
@@ -800,12 +867,11 @@ export default function AdminAccountsPage() {
                         </td>
 
                         {/* Role */}
-                        <td>
-                          <span className={`role-pill ${
-                            u.role === 'ADMIN' ? 'admin' :
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <span className={`role-pill ${u.role === 'ADMIN' ? 'admin' :
                             u.role.includes('SHOP') ? 'shop-owner' :
-                            u.role === 'STAFF' ? 'staff' : 'customer'
-                          }`}>
+                              u.role === 'STAFF' ? 'staff' : 'customer'
+                            }`}>
                             {u.role}
                           </span>
                         </td>
@@ -936,28 +1002,30 @@ export default function AdminAccountsPage() {
                                   <span>Xem chi tiết</span>
                                 </button>
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
-                                  onClick={() => openEditModalForUser(u)}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                  </svg>
-                                  <span>Chỉnh sửa thông tin</span>
-                                </button>
+                                {!isUserAdmin(u) && (
+                                  <button
+                                    type="button"
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '8px 10px',
+                                      fontSize: '12px',
+                                      background: 'none',
+                                      border: 'none',
+                                      borderRadius: '5px',
+                                      cursor: 'pointer',
+                                      color: '#334155'
+                                    }}
+                                    onClick={() => openEditModalForUser(u)}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                    </svg>
+                                    <span>Chỉnh sửa thông tin</span>
+                                  </button>
+                                )}
 
                                 <button
                                   type="button"
@@ -1166,11 +1234,10 @@ export default function AdminAccountsPage() {
 
               <div className="admin-acc-drawer-name">{selectedUser.name}</div>
               <div className="admin-acc-drawer-email">{selectedUser.email}</div>
-              <span className={`role-pill ${
-                selectedUser.role === 'ADMIN' ? 'admin' :
+              <span className={`role-pill ${selectedUser.role === 'ADMIN' ? 'admin' :
                 selectedUser.role.includes('SHOP') ? 'shop-owner' :
-                selectedUser.role === 'STAFF' ? 'staff' : 'customer'
-              }`}>
+                  selectedUser.role === 'STAFF' ? 'staff' : 'customer'
+                }`}>
                 {selectedUser.role}
               </span>
             </div>
@@ -1215,17 +1282,19 @@ export default function AdminAccountsPage() {
                   <div>
                     <div className="admin-acc-sec-header">
                       <h4 className="admin-acc-sec-title">Thông tin cơ bản</h4>
-                      <button
-                        type="button"
-                        className="btn-acc-sec-edit"
-                        onClick={() => openEditModalForUser(selectedUser)}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                        <span>Chỉnh sửa</span>
-                      </button>
+                      {!isUserAdmin(selectedUser) && (
+                        <button
+                          type="button"
+                          className="btn-acc-sec-edit"
+                          onClick={() => openEditModalForUser(selectedUser)}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                          <span>Chỉnh sửa</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="admin-acc-kv-list">
@@ -1387,17 +1456,19 @@ export default function AdminAccountsPage() {
 
                     <div className="admin-acc-quick-actions">
                       <div className="admin-acc-btn-row">
-                        <button
-                          type="button"
-                          className="btn-acc-action-primary"
-                          onClick={() => openEditModalForUser(selectedUser)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                          <span>Chỉnh sửa</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && (
+                          <button
+                            type="button"
+                            className="btn-acc-action-primary"
+                            onClick={() => openEditModalForUser(selectedUser)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            <span>Chỉnh sửa</span>
+                          </button>
+                        )}
 
                         <button
                           type="button"
@@ -1593,10 +1664,9 @@ export default function AdminAccountsPage() {
                       value={addForm.role}
                       onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
                     >
-                      <option value="CUSTOMER">CUSTOMER</option>
-                      <option value="SHOP OWNER">SHOP OWNER</option>
-                      <option value="STAFF">STAFF</option>
-                      <option value="ADMIN">ADMIN</option>
+                      <option value="CUSTOMER">CUSTOMER (Khách hàng)</option>
+                      <option value="SHOP OWNER">SHOP OWNER (Chủ gian hàng)</option>
+                      <option value="STAFF">STAFF (Nhân viên)</option>
                     </select>
                   </div>
 
@@ -1721,10 +1791,9 @@ export default function AdminAccountsPage() {
                       value={editForm.role}
                       onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                     >
-                      <option value="CUSTOMER">CUSTOMER</option>
-                      <option value="SHOP OWNER">SHOP OWNER</option>
-                      <option value="STAFF">STAFF</option>
-                      <option value="ADMIN">ADMIN</option>
+                      <option value="CUSTOMER">CUSTOMER (Khách hàng)</option>
+                      <option value="SHOP OWNER">SHOP OWNER (Chủ gian hàng)</option>
+                      <option value="STAFF">STAFF (Nhân viên)</option>
                     </select>
                   </div>
 

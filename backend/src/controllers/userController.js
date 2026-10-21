@@ -58,7 +58,15 @@ export const toggleLockUser = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
 
-    const newStatus = user.Status === 'locked' ? 'active' : 'locked';
+    // Không cho phép khóa tài khoản Quản trị viên (Admin)
+    if (user.Role && user.Role.toLowerCase() === 'admin') {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể khóa tài khoản Quản trị viên (Admin) để bảo vệ quyền truy cập hệ thống!'
+      });
+    }
+
+    const newStatus = user.Status?.toLowerCase() === 'locked' ? 'active' : 'locked';
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
       { $set: { Status: newStatus } },
@@ -114,6 +122,14 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email và họ tên không được để trống' });
     }
 
+    // Không cho phép tạo tài khoản có vai trò admin vì chỉ có 1 tài khoản admin duy nhất
+    if (Role && Role.toLowerCase() === 'admin') {
+      return res.status(400).json({
+        success: false,
+        message: 'Hệ thống chỉ duy trì 1 tài khoản Quản trị viên (Admin) duy nhất, không thể tạo thêm vai trò Admin!'
+      });
+    }
+
     const existing = await User.findOne({ Email: Email.toLowerCase().trim() });
     if (existing) {
       return res.status(400).json({ success: false, message: 'Email này đã tồn tại trong hệ thống' });
@@ -153,24 +169,63 @@ export const createUser = async (req, res) => {
 // Cập nhật tài khoản từ Admin Console
 export const updateUser = async (req, res) => {
   try {
-    const { FullName, Role, Status, Phone } = req.body;
+    const { FullName, Role, Status, Phone, Address } = req.body;
+
+    const existingUser = await User.findById(req.params.id);
+    if (!existingUser) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    }
+
+    // Bảo vệ tài khoản Quản trị viên: Không cho phép chỉnh sửa tài khoản Admin
+    const isTargetAdmin = existingUser.Role && existingUser.Role.toLowerCase() === 'admin';
+    if (isTargetAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Hệ thống chỉ có 1 tài khoản Quản trị viên (Admin) duy nhất, không thể chỉnh sửa tài khoản này!'
+      });
+    }
+
+    // Không cho phép nâng cấp bất kỳ ai thành Admin
+    if (Role && Role.toLowerCase() === 'admin') {
+      return res.status(400).json({
+        success: false,
+        message: 'Hệ thống chỉ duy trì 1 tài khoản Quản trị viên (Admin) duy nhất, không thể phân quyền vai trò này!'
+      });
+    }
+
     const updateData = {};
-    if (FullName) updateData.FullName = FullName.trim();
-    if (Role) updateData.Role = Role.toLowerCase();
-    if (Status) updateData.Status = Status.toLowerCase();
-    if (Phone !== undefined) {
-      updateData.Information = [{ Phone }];
+    if (FullName !== undefined) {
+      const trimmed = FullName.trim();
+      if (!trimmed) {
+        return res.status(400).json({ success: false, message: 'Họ và tên không được để trống' });
+      }
+      if ([...trimmed].length > 25) {
+        return res.status(400).json({ success: false, message: 'Họ và tên không được vượt quá 25 ký tự' });
+      }
+      updateData.FullName = trimmed;
+    }
+
+    if (Role !== undefined) {
+      updateData.Role = Role.toLowerCase();
+    }
+
+    if (Status !== undefined) {
+      updateData.Status = Status.toLowerCase();
+    }
+
+    if (Phone !== undefined || Address !== undefined) {
+      const prevInfo = existingUser.Information?.[0] || {};
+      updateData.Information = [{
+        Phone: Phone !== undefined ? Phone.trim() : (prevInfo.Phone || ''),
+        Address: Address !== undefined ? Address.trim() : (prevInfo.Address || '')
+      }];
     }
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
-      { new: true }
+      { new: true, runValidators: true }
     ).select('-PasswordHash');
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
-    }
 
     res.json({
       success: true,
@@ -179,6 +234,7 @@ export const updateUser = async (req, res) => {
     });
   } catch (error) {
     console.error('Error in updateUser:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message || 'Lỗi hệ thống khi cập nhật tài khoản' });
   }
 };
+

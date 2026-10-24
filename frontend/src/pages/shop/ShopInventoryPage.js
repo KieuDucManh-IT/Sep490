@@ -1,171 +1,328 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ShopSidebar from '../../components/ShopSidebar';
+import { fetchAllProducts } from '../../services/productService';
+import SearchableSelect from '../../components/SearchableSelect';
+import ShopPagination from '../../components/ShopPagination';
+import {
+  fetchAllVariantsWithProductNames,
+  createVariant,
+  updateVariant,
+  deleteVariant,
+} from '../../services/productVariantService';
 import '../../styles/ShopDashboard.css';
+import '../../styles/ShopProducts.css';
+import '../../styles/ShopInventory.css';
 
+const VARIANT_STATUS_LABELS = { active: 'Hoạt động', inactive: 'Ngừng', maintenance: 'Bảo trì' };
+const blankVariant = { productId: '', size: '', color: '', condition: 'new', quantity: '', status: 'active' };
+
+//duc 2026-10-16: Trang quản lý tồn kho theo từng variant (cỡ & màu) của sản phẩm.
 export default function ShopInventoryPage() {
-  const [stockItems, setStockItems] = useState([
-    {
-      id: 'SKU-VEST-001',
-      name: 'Đầm Dạ Hội Haute Couture Rose Gold',
-      category: 'Đầm Dạ Hội',
-      totalQty: 10,
-      rentedQty: 4,
-      availableQty: 5,
-      cleaningQty: 1,
-      sizeStock: { S: 2, M: 4, L: 3, XL: 1 },
-      status: 'AVAILABLE'
-    },
-    {
-      id: 'SKU-VEST-002',
-      name: 'Bộ Vest Nam Tailored Smoking Tuxedo',
-      category: 'Vest Nam',
-      totalQty: 6,
-      rentedQty: 3,
-      availableQty: 2,
-      cleaningQty: 1,
-      sizeStock: { S: 1, M: 2, L: 2, XL: 1 },
-      status: 'LOW_STOCK'
-    },
-    {
-      id: 'SKU-VEST-003',
-      name: 'Áo Khoác Wool Privé Dáng Dài',
-      category: 'Áo Khoác Luxury',
-      totalQty: 4,
-      rentedQty: 4,
-      availableQty: 0,
-      cleaningQty: 0,
-      sizeStock: { S: 0, M: 2, L: 1, XL: 1 },
-      status: 'OUT_OF_STOCK'
-    }
-  ]);
+  // Toàn bộ variants sau khi ghép tên sản phẩm (source of truth phía client)
+  const allVariantsRef = useRef([]);
 
-  const handleStockUpdate = (sku, size, delta) => {
-    setStockItems(prev => prev.map(item => {
-      if (item.id === sku) {
-        const newSizeQty = Math.max(0, item.sizeStock[size] + delta);
-        const newTotal = Object.values({ ...item.sizeStock, [size]: newSizeQty }).reduce((a, b) => a + b, 0);
-        return {
-          ...item,
-          sizeStock: { ...item.sizeStock, [size]: newSizeQty },
-          totalQty: newTotal,
-          availableQty: Math.max(0, newTotal - item.rentedQty - item.cleaningQty)
-        };
+  const [variants, setVariants] = useState([]);       // slice hiện tại sau lọc + phân trang
+  const [products, setProducts] = useState([]);        // dùng cho dropdown
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [pageSize, setPageSize] = useState(10);
+  const [search, setSearch] = useState('');
+  const [filterProduct, setFilterProduct] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [form, setForm] = useState(blankVariant);
+  const [editingVariant, setEditingVariant] = useState(null); // { productId, variantId }
+
+  //duc 2026-10-16: Tải tất cả sản phẩm qua productService để dùng dropdown.
+  const loadAllProducts = useCallback(async () => {
+    try {
+      const data = await fetchAllProducts();
+      setProducts(data);
+      return data;
+    } catch (err) {
+      setError(err.message || 'Không tải được danh sách sản phẩm');
+      return [];
+    }
+  }, []);
+
+  //duc 2026-10-16: Tải tất cả variants qua productVariantService, ghép productName.
+  const loadAllVariants = useCallback(async (productList) => {
+    setLoading(true);
+    setError('');
+    try {
+      const prods = productList ?? (await loadAllProducts());
+      const all = await fetchAllVariantsWithProductNames(prods);
+      allVariantsRef.current = all;
+    } catch (err) {
+      setError(err.message || 'Không tải được dữ liệu tồn kho');
+    } finally {
+      setLoading(false);
+    }
+  }, [loadAllProducts]);
+
+  //duc 2026-10-16: Áp dụng filter + phân trang trên allVariantsRef mỗi khi filter/page thay đổi.
+  const applyFilter = useCallback(() => {
+    let filtered = allVariantsRef.current;
+    if (filterProduct) filtered = filtered.filter((v) => String(v.productId) === filterProduct);
+    if (filterStatus) filtered = filtered.filter((v) => v.status === filterStatus);
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter((v) =>
+        v.productName?.toLowerCase().includes(q) ||
+        v.color?.toLowerCase().includes(q) ||
+        String(v.size).includes(q)
+      );
+    }
+    const total = filtered.length;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const currentPage = Math.min(page, pages);
+    setVariants(filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize));
+    setPagination({ page: currentPage, pages, total });
+  }, [search, filterProduct, filterStatus, page, pageSize]);
+
+  // Khởi tạo lần đầu
+  useEffect(() => {
+    (async () => {
+      const prods = await loadAllProducts();
+      await loadAllVariants(prods);
+      // applyFilter sẽ chạy qua effect dưới
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mỗi khi all variants hoặc filter thay đổi → re-apply
+  useEffect(() => { applyFilter(); }, [applyFilter, loading]);
+
+  // Reset page về 1 khi filter thay đổi
+  useEffect(() => { setPage(1); }, [search, filterProduct, filterStatus]);
+
+  const reload = async () => {
+    const prods = await loadAllProducts();
+    await loadAllVariants(prods);
+  };
+
+  //duc 2026-10-16: Mở form thêm variant mới hoặc sửa variant đã có.
+  const openForm = (variant) => {
+    setError('');
+    setNotice('');
+    if (variant) {
+      setEditingVariant({ productId: String(variant.productId), variantId: variant._id });
+      setForm({
+        productId: String(variant.productId),
+        size: variant.size || '',
+        color: variant.color || '',
+        condition: variant.condition || 'new',
+        quantity: variant.quantity ?? '',
+        status: variant.status || 'active',
+      });
+    } else {
+      setEditingVariant(null);
+      setForm(blankVariant);
+    }
+    setIsFormOpen(true);
+  };
+
+  const updateField = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  const saveVariant = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const prodId = editingVariant?.productId || form.productId;
+      if (!prodId) throw new Error('Vui lòng chọn sản phẩm');
+      const payload = {
+        size: Number(form.size),
+        color: form.color.trim(),
+        condition: form.condition,
+        quantity: Number(form.quantity),
+        status: form.status,
+      };
+      if (editingVariant?.variantId) {
+        await updateVariant(prodId, editingVariant.variantId, payload);
+        setNotice('Đã cập nhật variant.');
+      } else {
+        await createVariant(prodId, payload);
+        setNotice('Đã thêm variant.');
       }
-      return item;
-    }));
+      setIsFormOpen(false);
+      await reload();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeVariant = async (variant) => {
+    if (!window.confirm(`Xóa variant cỡ ${variant.size} - ${variant.color} của "${variant.productName}"?`)) return;
+    setError('');
+    try {
+      await deleteVariant(String(variant.productId), variant._id);
+      setNotice('Đã xóa variant.');
+      await reload();
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   return (
     <div className="shop-dashboard-layout">
-      {/* Sidebar */}
       <ShopSidebar />
-
-      {/* Main Area */}
-      <main className="shop-main-content">
+      <main className="shop-main-content shop-inventory-page">
         <header className="shop-header">
           <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.8rem', margin: 0 }}>
-              Quản Lý Tồn Kho Theo Size & Trạng Thái Vệ Sinh
-            </h1>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '4px' }}>
-              Kiểm soát chính xác số lượng đang cho thuê, kho sẵn sàng và quy trình hấp ủi giặt sấy
-            </p>
+            <h1>Tồn kho</h1>
+            <p>Quản lý số lượng theo cỡ &amp; màu của từng sản phẩm</p>
           </div>
-          <button 
-            className="btn-vestora btn-vestora-primary"
-            onClick={() => alert('Cập nhật kho nhanh thành công!')}
-          >
-            💾 Lưu Cập Nhật Kho
+          <button className="shop-product-primary" onClick={() => openForm(null)}>
+            + Thêm variant
           </button>
         </header>
 
-        {/* Metrics Grid */}
-        <div className="shop-metrics-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', margin: '20px 0' }}>
-          <div className="metric-card">
-            <span className="metric-title">Tổng Sản Phẩm Trong Kho</span>
-            <span className="metric-value">20 Bộ</span>
+        <section className="shop-products-panel">
+          {/* Toolbar */}
+          <div className="shop-products-toolbar">
+            <strong>{pagination.total} variant</strong>
+            <div className="shop-products-filters">
+              <input
+                placeholder="Tìm tên sản phẩm, màu, cỡ"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <select value={filterProduct} onChange={(e) => setFilterProduct(e.target.value)} aria-label="Lọc sản phẩm">
+                <option value="">Tất cả sản phẩm</option>
+                {products.map((p) => (
+                  <option key={p._id} value={p._id}>{p.name}</option>
+                ))}
+              </select>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} aria-label="Lọc trạng thái">
+                <option value="">Tất cả trạng thái</option>
+                <option value="active">Hoạt động</option>
+                <option value="inactive">Ngừng</option>
+                <option value="maintenance">Bảo trì</option>
+              </select>
+            </div>
           </div>
-          <div className="metric-card">
-            <span className="metric-title">Đang Cho Thuê (On Rent)</span>
-            <span className="metric-value" style={{ color: '#d4af37' }}>11 Bộ</span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-title">Sẵn Sàng Cho Thuê (Available)</span>
-            <span className="metric-value" style={{ color: '#059669' }}>7 Bộ</span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-title">Đang Giặt Sấy Spa (Cleaning)</span>
-            <span className="metric-value" style={{ color: '#3b82f6' }}>2 Bộ</span>
-          </div>
-        </div>
 
-        {/* Inventory List */}
-        <div className="dashboard-card" style={{ padding: 0 }}>
-          <table className="urgent-orders-table">
-            <thead>
-              <tr>
-                <th>SKU / Sản Phẩm</th>
-                <th>Phân Loại</th>
-                <th>Size Breakdown (S / M / L / XL)</th>
-                <th>Đang Cho Thuê</th>
-                <th>Sẵn Sàng Giặt Sấy</th>
-                <th>Sẵn Sàng Giao Khách</th>
-                <th>Hành Động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stockItems.map(item => (
-                <tr key={item.id}>
-                  <td style={{ fontWeight: '600' }}>
-                    {item.name}
-                    <div style={{ fontSize: '0.78rem', color: '#725b38' }}>{item.id}</div>
-                  </td>
-                  <td>{item.category}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      {Object.entries(item.sizeStock).map(([size, count]) => (
-                        <div 
-                          key={size} 
-                          style={{ 
-                            background: '#f3f4f6', 
-                            padding: '4px 8px', 
-                            borderRadius: '4px', 
-                            fontSize: '0.8rem',
-                            display: 'flex',
-                            gap: '4px'
-                          }}
-                        >
-                          <span style={{ fontWeight: '700' }}>{size}:</span>
-                          <span>{count}</span>
-                          <button 
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#059669', fontWeight: 'bold' }}
-                            onClick={() => handleStockUpdate(item.id, size, 1)}
-                          >
-                            +
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                  <td style={{ fontWeight: '600', color: '#d4af37' }}>{item.rentedQty} bộ</td>
-                  <td style={{ color: '#3b82f6' }}>{item.cleaningQty} bộ</td>
-                  <td style={{ fontWeight: '700', color: '#059669' }}>{item.availableQty} bộ</td>
-                  <td>
-                    <button 
-                      className="btn-vestora btn-vestora-secondary"
-                      style={{ padding: '4px 10px', fontSize: '0.8rem' }}
-                      onClick={() => alert(`Cập nhật trạng thái kiểm kê cho ${item.name}`)}
-                    >
-                      Kiểm Kê Kho
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          {notice && <div className="shop-products-notice">{notice}</div>}
+          {error && <div className="shop-products-error">{error}</div>}
+
+          {loading ? (
+            <p className="shop-products-empty">Đang tải tồn kho…</p>
+          ) : variants.length === 0 ? (
+            <p className="shop-products-empty">Chưa có dữ liệu tồn kho.</p>
+          ) : (
+            <div className="shop-products-table-wrap">
+              <table className="shop-products-table">
+                <thead>
+                  <tr>
+                    <th>Tên sản phẩm</th>
+                    <th>Cỡ &amp; Màu</th>
+                    <th>Tổng SL</th>
+                    <th>Đang thuê</th>
+                    <th>Đã đặt</th>
+                    <th>Khả dụng</th>
+                    <th>Trạng thái</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {variants.map((v) => {
+                    const rented = 0;  // tạm thời chờ tích hợp order
+                    const booked = 0;  // tạm thời chờ tích hợp order
+                    const available = Math.max(0, v.quantity - rented - booked);
+                    return (
+                      <tr key={v._id}>
+                        <td><strong>{v.productName}</strong></td>
+                        <td>
+                          <span className="inv-variant-chip">Cỡ {v.size}</span>
+                          <span className="inv-variant-chip inv-color-chip">{v.color}</span>
+                        </td>
+                        <td><strong>{v.quantity}</strong></td>
+                        <td><span className="inv-rented">{rented}</span></td>
+                        <td><span className="inv-booked">{booked}</span></td>
+                        <td>
+                          <span className={`inv-available ${available === 0 ? 'inv-zero' : ''}`}>
+                            {available}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`shop-product-status status-${v.status}`}>
+                            {VARIANT_STATUS_LABELS[v.status] || v.status}
+                          </span>
+                        </td>
+                        <td className="shop-product-actions">
+                          <button onClick={() => openForm(v)}>Sửa</button>
+                          <button className="shop-product-delete" onClick={() => removeVariant(v)}>Xóa</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Phân trang */}
+          <ShopPagination page={pagination.page} pages={pagination.pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+        </section>
+
+        {/* Modal thêm/sửa variant */}
+        {isFormOpen && (
+          <div
+            className="shop-product-modal-backdrop"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setIsFormOpen(false); }}
+          >
+            <form className="shop-product-modal" onSubmit={saveVariant}>
+              <div className="shop-product-modal-heading">
+                <h2>{editingVariant?.variantId ? 'Sửa variant' : 'Thêm variant'}</h2>
+                <button type="button" aria-label="Đóng" onClick={() => setIsFormOpen(false)}>×</button>
+              </div>
+              {error && <div className="shop-products-error">{error}</div>}
+              <div className="shop-product-form-grid">
+                {/* Chọn sản phẩm nếu tạo mới */}
+                {!editingVariant?.variantId && (
+                  <label className="shop-product-form-wide">
+                    Sản phẩm
+                    <SearchableSelect value={form.productId} onChange={(productId) => setForm((current) => ({ ...current, productId }))} options={products.filter((product) => product.status === 'active').map((p) => ({ value: p._id, label: `${p.sku ? `${p.sku} - ` : ''}${p.name}` }))} placeholder="Chọn sản phẩm" searchPlaceholder="Tìm theo mã hoặc tên sản phẩm" emptyText="Chưa có sản phẩm active" />
+                  </label>
+                )}
+                <label>Cỡ (số)<input name="size" type="number" min="1" value={form.size} onChange={updateField} required /></label>
+                <label>Màu<input name="color" value={form.color} onChange={updateField} required /></label>
+                <label>
+                  Tình trạng
+                  <select name="condition" value={form.condition} onChange={updateField}>
+                    <option value="new">Mới</option>
+                    <option value="like-new">Như mới</option>
+                    <option value="good">Tốt</option>
+                    <option value="fair">Khá</option>
+                  </select>
+                </label>
+                <label>Số lượng<input name="quantity" type="number" min="0" value={form.quantity} onChange={updateField} required /></label>
+                <label>
+                  Trạng thái
+                  <select name="status" value={form.status} onChange={updateField}>
+                    <option value="active">Hoạt động</option>
+                    <option value="inactive">Ngừng</option>
+                    <option value="maintenance">Bảo trì</option>
+                  </select>
+                </label>
+              </div>
+              <div className="shop-product-modal-actions">
+                <button type="button" onClick={() => setIsFormOpen(false)}>Hủy</button>
+                <button className="shop-product-primary" disabled={saving}>
+                  {saving ? 'Đang lưu…' : 'Lưu'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </main>
     </div>
   );
 }
-

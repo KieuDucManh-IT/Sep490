@@ -154,12 +154,6 @@ export default function AdminAccountsPage() {
         });
 
         setUsers(mapped);
-
-        // Open drawer for the first real user if not already selected
-        if (mapped.length > 0) {
-          setSelectedUser(prev => prev ? mapped.find(m => m.id === prev.id) || mapped[0] : mapped[0]);
-          setDrawerOpen(true);
-        }
       }
     } catch (err) {
       console.error('Lỗi khi tải dữ liệu người dùng từ backend:', err);
@@ -497,18 +491,11 @@ export default function AdminAccountsPage() {
         <div className="admin-acc-page" style={{ backgroundColor: '#FBF9F5' }}>
           {/* Breadcrumb & Hero */}
           <div className="admin-acc-header">
-            <div className="admin-acc-breadcrumb">
-              <span>Admin Console</span>
-              <span className="admin-acc-breadcrumb-sep">&gt;</span>
-              <span className="admin-acc-breadcrumb-active">Quản lý người dùng</span>
-            </div>
 
             <div className="admin-acc-hero">
               <div>
                 <h1 className="admin-acc-title">Quản lý tài khoản người dùng</h1>
-                <p className="admin-acc-desc">
-                  Quản lý danh sách tài khoản, quyền truy cập, xác minh danh tính và trạng thái hoạt động trực tiếp từ MongoDB.
-                </p>
+                
               </div>
 
               <div className="admin-acc-hero-actions">
@@ -1002,7 +989,7 @@ export default function AdminAccountsPage() {
                                   <span>Xem chi tiết</span>
                                 </button>
 
-                                {!isUserAdmin(u) && (
+                                  {!isUserAdmin(u) && (
                                   <button
                                     type="button"
                                     style={{
@@ -1177,6 +1164,7 @@ export default function AdminAccountsPage() {
                     fontSize: '12px'
                   }}
                 >
+                  <option value={5}>5</option>
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import  { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
@@ -153,7 +153,7 @@ export default function AdminAccountsPage() {
           };
         });
 
-        setUsers(mapped);
+        setUsers(mapped.sort((a, b) => Number(b.role === 'ADMIN') - Number(a.role === 'ADMIN')));
       }
     } catch (err) {
       console.error('Lỗi khi tải dữ liệu người dùng từ backend:', err);

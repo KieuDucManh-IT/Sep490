@@ -84,12 +84,12 @@ function App() {
           <Route path="/shop/settings" element={<ShopSettingsPage />} />
           <Route path="/shop/branches" element={<ShopBranchesPage />} />
 
-          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-          <Route path="/admin/shops" element={<AdminShopsPage />} />
-          <Route path="/admin/accounts" element={<AdminAccountsPage />} />
-          <Route path="/admin/moderation" element={<AdminModerationPage />} />
-          <Route path="/admin/disputes" element={<AdminDisputesPage />} />
-          <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+          <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminDashboardPage /></ProtectedRoute>} />
+          <Route path="/admin/shops" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminShopsPage /></ProtectedRoute>} />
+          <Route path="/admin/accounts" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminAccountsPage /></ProtectedRoute>} />
+          <Route path="/admin/moderation" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminModerationPage /></ProtectedRoute>} />
+          <Route path="/admin/disputes" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminDisputesPage /></ProtectedRoute>} />
+          <Route path="/admin/analytics" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminAnalyticsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

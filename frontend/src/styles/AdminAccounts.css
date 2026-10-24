@@ -434,9 +434,16 @@
 
 .admin-acc-table {
   width: 100%;
+  min-width: 1200px;
+  table-layout: fixed;
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
+}
+
+.admin-acc-table th:nth-child(2),
+.admin-acc-table td:nth-child(2) {
+  width: 32%;
 }
 
 .admin-acc-table th {
@@ -479,6 +486,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .admin-acc-avatar {
@@ -508,14 +516,22 @@
 .admin-acc-user-meta {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .admin-acc-user-name {
+  display: block;
+  width: 100%;
   font-size: 13.5px;
   font-weight: 600;
   color: #0F172A;
   cursor: pointer;
   transition: color 0.15s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-acc-user-name:hover {
@@ -523,8 +539,13 @@
 }
 
 .admin-acc-user-email {
+  display: block;
+  width: 100%;
   font-size: 12px;
   color: #64748B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==========================================================

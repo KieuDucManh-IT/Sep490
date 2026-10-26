@@ -1,4 +1,4 @@
-import  { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
@@ -7,9 +7,27 @@ import '../../styles/AdminAccounts.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
+const ROLE_LABELS = {
+  customer: 'customer',
+  shopOwner: 'shopOwner',
+  brandmanager: 'brandmanager',
+  warehouseManager: 'warehouseManager',
+  warehousestaff: 'warehousestaff',
+  admin: 'admin'
+};
+
 export default function AdminAccountsPage() {
   const { user: currentUser } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // ── Toast system ──────────────────────────────────────────────────────────
+  const [toasts, setToasts] = useState([]);
+  const showToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  };
+  const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -20,8 +38,8 @@ export default function AdminAccountsPage() {
   // Helper functions: Bảo vệ tài khoản Quản trị viên và tài khoản hiện tại đang đăng nhập
   const isUserAdmin = (u) => {
     if (!u) return false;
-    const r = (u.role || u.Role || '').toUpperCase();
-    return r === 'ADMIN';
+    const r = (u.role || u.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+    return r === 'admin';
   };
 
   const isSelf = (u) => {
@@ -55,12 +73,18 @@ export default function AdminAccountsPage() {
   const [showResetPwdModal, setShowResetPwdModal] = useState(false);
   const [showNotifyModal, setShowNotifyModal] = useState(false);
 
+  // Modal lý do khóa tài khoản
+  const [showLockReasonModal, setShowLockReasonModal] = useState(false);
+  const [lockReasonTarget, setLockReasonTarget] = useState(null); // userId
+  const [lockReasonText, setLockReasonText] = useState('');
+  const [isLocking, setIsLocking] = useState(false);
+
   // Forms
   const [addForm, setAddForm] = useState({
     name: '',
     email: '',
     phone: '',
-    role: 'CUSTOMER',
+    role: 'customer',
     status: 'ACTIVE',
     password: ''
   });
@@ -71,7 +95,7 @@ export default function AdminAccountsPage() {
     address: '',
     dob: '',
     gender: 'Nữ',
-    role: 'CUSTOMER',
+    role: 'customer',
     status: 'ACTIVE'
   });
 
@@ -114,17 +138,37 @@ export default function AdminAccountsPage() {
       }
 
       if (usersJson.success && Array.isArray(usersJson.data)) {
+        // Chuẩn hóa role từ DB sang đúng danh sách 6 vai trò người dùng yêu cầu:
+        // shopOwner, brandmanager, admin, customer, warehousestaff, warehouseManager
+        const normalizeRole = (raw) => {
+          const r = (raw || 'customer').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+          if (r === 'admin') return 'admin';
+          if (r === 'shopowner') return 'shopOwner';
+          if (r === 'brandmanager') return 'brandmanager';
+          if (r === 'warehousemanager') return 'warehouseManager';
+          if (r === 'warehousestaff') return 'warehousestaff';
+          return 'customer';
+        };
+
+        const roleColor = (role) => {
+          if (role === 'admin') return '#4338CA';
+          if (role === 'shopOwner') return '#C2410C';
+          if (role === 'brandmanager') return '#7E22CE';
+          if (role === 'warehouseManager') return '#0E7490';
+          if (role === 'warehousestaff') return '#047857';
+          return '#0369A1'; // customer
+        };
+
         const mapped = usersJson.data.map(u => {
-          const roleUpper = (u.Role || 'CUSTOMER').toUpperCase().replace('_', ' ');
+          const role = normalizeRole(u.Role);
           const statusUpper = (u.Status || 'ACTIVE').toUpperCase();
           const phone = u.Information?.[0]?.Phone || u.Infomation?.[0]?.Phone || '';
           const address = u.Information?.[0]?.Address || u.Infomation?.[0]?.Address || '';
 
-          // Determine verification badge
           let verifyStatus = 'VERIFIED';
           if (u.IsVerified === false) {
             verifyStatus = 'UNVERIFIED';
-          } else if (u.Role?.toLowerCase() === 'shop_owner' && !u.IsVerified) {
+          } else if (role === 'shopOwner' && !u.IsVerified) {
             verifyStatus = 'PENDING';
           }
 
@@ -133,7 +177,7 @@ export default function AdminAccountsPage() {
             displayId: `#${String(u.UserId || u._id).slice(-6).toUpperCase()}`,
             name: u.FullName || u.Email?.split('@')[0] || 'Người dùng VESTORA',
             email: u.Email,
-            role: roleUpper,
+            role,
             verified: verifyStatus,
             status: statusUpper,
             joinDate: u.createdAt ? new Date(u.createdAt).toLocaleDateString('vi-VN') : '—',
@@ -141,7 +185,7 @@ export default function AdminAccountsPage() {
             lastLogin: u.updatedAt ? new Date(u.updatedAt).toLocaleString('vi-VN') : 'Mới tạo',
             avatar: u.Avatar || null,
             letter: (u.FullName || u.Email || 'U').charAt(0).toUpperCase(),
-            letterColor: roleUpper === 'ADMIN' ? '#2563EB' : roleUpper.includes('SHOP') ? '#EA580C' : '#3B82F6',
+            letterColor: roleColor(role),
             phone: phone || 'Chưa cập nhật',
             address: address || 'Chưa cập nhật',
             dob: '15/08/2000',
@@ -153,7 +197,7 @@ export default function AdminAccountsPage() {
           };
         });
 
-        setUsers(mapped.sort((a, b) => Number(b.role === 'ADMIN') - Number(a.role === 'ADMIN')));
+        setUsers(mapped.sort((a, b) => Number(b.role === 'admin') - Number(a.role === 'admin')));
       }
     } catch (err) {
       console.error('Lỗi khi tải dữ liệu người dùng từ backend:', err);
@@ -202,10 +246,9 @@ export default function AdminAccountsPage() {
 
       // Role filter
       if (roleFilter !== 'ALL') {
-        if (roleFilter === 'ADMIN' && u.role !== 'ADMIN') return false;
-        if (roleFilter === 'CUSTOMER' && u.role !== 'CUSTOMER') return false;
-        if (roleFilter === 'SHOP_OWNER' && !u.role.includes('SHOP')) return false;
-        if (roleFilter === 'STAFF' && u.role !== 'STAFF') return false;
+        const filterKey = roleFilter.toLowerCase().replace(/[_\s-]/g, '');
+        const userRoleKey = (u.role || '').toLowerCase().replace(/[_\s-]/g, '');
+        if (userRoleKey !== filterKey) return false;
       }
 
       // Status filter
@@ -254,39 +297,76 @@ export default function AdminAccountsPage() {
   const handleToggleLock = async (userId) => {
     const target = users.find(u => u.id === userId);
     if (cannotLock(target)) {
-      alert(
+      showToast(
         isSelf(target)
           ? 'Bạn không thể tự khóa tài khoản của chính mình!'
-          : 'Không thể khóa tài khoản Quản trị viên (Admin) để bảo vệ quyền quản trị hệ thống!'
+          : 'Không thể khóa tài khoản Quản trị viên!',
+        'error'
       );
       return;
     }
 
+    const isCurrentlyLocked = target?.status === 'LOCKED';
+
+    // Nếu đang MỞ KHÓA — không cần lý do, thực hiện ngay
+    if (isCurrentlyLocked) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, { method: 'PATCH' });
+        const json = await res.json();
+        if (json.success) {
+          setUsers(prev => prev.map(u =>
+            u.id === userId ? { ...u, status: 'ACTIVE' } : u
+          ));
+          if (selectedUser?.id === userId) setSelectedUser(prev => ({ ...prev, status: 'ACTIVE' }));
+          showToast('Đã mở khóa tài khoản thành công', 'success');
+        } else {
+          showToast(json.message || 'Không thể mở khóa tài khoản', 'error');
+        }
+      } catch (e) {
+        console.error('Lỗi mở khóa:', e);
+        showToast('Lỗi kết nối máy chủ', 'error');
+      }
+      return;
+    }
+
+    // Nếu đang KHÓA — mở modal nhập lý do
+    setLockReasonTarget(userId);
+    setLockReasonText('');
+    setShowLockReasonModal(true);
+  };
+
+  // Xác nhận khóa sau khi đã nhập lý do
+  const confirmLockWithReason = async () => {
+    const reason = lockReasonText.trim();
+    if (!reason || reason.length < 5) {
+      showToast('Vui lòng nhập lý do khóa (tối thiểu 5 ký tự).', 'warning');
+      return;
+    }
+    setIsLocking(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, { method: 'PATCH' });
+      const res = await fetch(`${API_BASE_URL}/users/${lockReasonTarget}/toggle-lock`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
       const json = await res.json();
       if (json.success) {
-        // Update local state
-        setUsers(prev => prev.map(u => {
-          if (u.id === userId) {
-            const nextStatus = u.status === 'LOCKED' ? 'ACTIVE' : 'LOCKED';
-            return { ...u, status: nextStatus };
-          }
-          return u;
-        }));
-
-        if (selectedUser && selectedUser.id === userId) {
-          setSelectedUser(prev => ({
-            ...prev,
-            status: prev.status === 'LOCKED' ? 'ACTIVE' : 'LOCKED'
-          }));
-        }
+        setUsers(prev => prev.map(u =>
+          u.id === lockReasonTarget ? { ...u, status: 'LOCKED' } : u
+        ));
+        if (selectedUser?.id === lockReasonTarget) setSelectedUser(prev => ({ ...prev, status: 'LOCKED' }));
+        setShowLockReasonModal(false);
+        setLockReasonTarget(null);
+        setLockReasonText('');
+        showToast('Đã khóa tài khoản và gửi email thông báo', 'success');
       } else {
-        alert(json.message || 'Không thể thực hiện thao tác này');
+        showToast(json.message || 'Không thể khóa tài khoản', 'error');
       }
     } catch (e) {
-      console.error('Lỗi khi khóa/mở khóa tài khoản:', e);
-      alert('Lỗi kết nối máy chủ khi thay đổi trạng thái tài khoản');
+      console.error('Lỗi khóa tài khoản:', e);
+      showToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setIsLocking(false);
     }
   };
 
@@ -298,7 +378,7 @@ export default function AdminAccountsPage() {
     });
 
     if (safeIds.length === 0) {
-      alert('Không có tài khoản nào hợp lệ để khóa (Tài khoản Quản trị viên và tài khoản hiện tại được bảo vệ).');
+      showToast('Không có tài khoản nào hợp lệ để khóa (Tài khoản Quản trị viên và tài khoản hiện tại được bảo vệ).', 'warning');
       return;
     }
 
@@ -309,6 +389,7 @@ export default function AdminAccountsPage() {
       }
     }
     setSelectedIds([]);
+    showToast('Đã thực hiện khóa các tài khoản được chọn.', 'success');
   };
 
   const handleBulkUnlock = async () => {
@@ -319,6 +400,7 @@ export default function AdminAccountsPage() {
       }
     }
     setSelectedIds([]);
+    showToast('Đã thực hiện mở khóa các tài khoản được chọn.', 'success');
   };
 
   // Export list to CSV
@@ -347,13 +429,14 @@ export default function AdminAccountsPage() {
     link.download = `Danh_Sach_Nguoi_Dung_VESTORA_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+    showToast(`Đã xuất ${listToExport.length} tài khoản ra file CSV!`, 'success');
   };
 
   // Open Edit Modal
   const openEditModalForUser = (user) => {
     if (!user) return;
     if (isUserAdmin(user)) {
-      alert('Tài khoản Quản trị viên (Admin) duy nhất của hệ thống được bảo vệ và không thể chỉnh sửa!');
+      showToast('Tài khoản Quản trị viên (Admin) duy nhất của hệ thống được bảo vệ và không thể chỉnh sửa!', 'warning');
       return;
     }
     setEditForm({
@@ -362,7 +445,7 @@ export default function AdminAccountsPage() {
       address: user.address !== 'Chưa cập nhật' ? user.address : '',
       dob: user.dob || '15/08/2000',
       gender: user.gender || 'Nữ',
-      role: user.role === 'ADMIN' ? 'CUSTOMER' : user.role,
+      role: user.role === 'admin' ? 'customer' : user.role,
       status: user.status
     });
     setSelectedUser(user);
@@ -376,16 +459,17 @@ export default function AdminAccountsPage() {
     if (!selectedUser) return;
 
     if (cannotLock(selectedUser) && editForm.status === 'LOCKED') {
-      alert(
+      showToast(
         isSelf(selectedUser)
           ? 'Bạn không thể tự khóa tài khoản của chính mình!'
-          : 'Không thể chuyển tài khoản Quản trị viên (Admin) sang trạng thái Tạm khóa!'
+          : 'Không thể chuyển tài khoản Quản trị viên (Admin) sang trạng thái Tạm khóa!',
+        'warning'
       );
       return;
     }
 
     if (editForm.name.trim().length > 25) {
-      alert('Họ và tên không được vượt quá 25 ký tự!');
+      showToast('Họ và tên không được vượt quá 25 ký tự!', 'error');
       return;
     }
 
@@ -395,7 +479,7 @@ export default function AdminAccountsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           FullName: editForm.name,
-          Role: editForm.role.toLowerCase().replace(' ', '_'),
+          Role: editForm.role,
           Status: editForm.status.toLowerCase(),
           Phone: editForm.phone,
           Address: editForm.address
@@ -405,12 +489,13 @@ export default function AdminAccountsPage() {
       if (json.success) {
         await fetchUsers();
         setShowEditModal(false);
+        showToast('Đã cập nhật thông tin tài khoản thành công!', 'success');
       } else {
-        alert(json.message || 'Lỗi khi cập nhật thông tin');
+        showToast(json.message || 'Lỗi khi cập nhật thông tin', 'error');
       }
     } catch (err) {
       console.error('Lỗi cập nhật người dùng:', err);
-      alert('Không thể kết nối máy chủ khi cập nhật thông tin');
+      showToast('Không thể kết nối máy chủ khi cập nhật thông tin', 'error');
     }
   };
 
@@ -418,7 +503,7 @@ export default function AdminAccountsPage() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!addForm.name || !addForm.email) {
-      alert('Vui lòng nhập họ tên và email!');
+      showToast('Vui lòng nhập đầy đủ họ tên và email!', 'warning');
       return;
     }
 
@@ -429,7 +514,7 @@ export default function AdminAccountsPage() {
         body: JSON.stringify({
           FullName: addForm.name,
           Email: addForm.email,
-          Role: addForm.role.toLowerCase().replace(' ', '_'),
+          Role: addForm.role,
           Status: addForm.status.toLowerCase(),
           Password: addForm.password || 'Vestora@2026',
           Phone: addForm.phone
@@ -443,15 +528,17 @@ export default function AdminAccountsPage() {
           name: '',
           email: '',
           phone: '',
-          role: 'CUSTOMER',
+          role: 'customer',
           status: 'ACTIVE',
           password: ''
         });
+        showToast('Đã tạo tài khoản mới thành công!', 'success');
       } else {
-        alert(json.message || 'Lỗi khi tạo tài khoản');
+        showToast(json.message || 'Lỗi khi tạo tài khoản', 'error');
       }
     } catch (err) {
       console.error('Lỗi khi tạo người dùng mới:', err);
+      showToast('Không thể kết nối máy chủ khi tạo tài khoản', 'error');
     }
   };
 
@@ -495,7 +582,7 @@ export default function AdminAccountsPage() {
             <div className="admin-acc-hero">
               <div>
                 <h1 className="admin-acc-title">Quản lý tài khoản người dùng</h1>
-                
+
               </div>
 
               <div className="admin-acc-hero-actions">
@@ -669,10 +756,12 @@ export default function AdminAccountsPage() {
               }}
             >
               <option value="ALL">Tất cả vai trò</option>
-              <option value="ADMIN">ADMIN</option>
-              <option value="CUSTOMER">CUSTOMER</option>
-              <option value="SHOP_OWNER">SHOP OWNER</option>
-              <option value="STAFF">STAFF</option>
+              <option value="customer">customer</option>
+              <option value="shopOwner">shopOwner</option>
+              <option value="brandmanager">brandmanager</option>
+              <option value="warehouseManager">warehouseManager</option>
+              <option value="warehousestaff">warehousestaff</option>
+              <option value="admin">admin</option>
             </select>
 
             {/* Status Select */}
@@ -708,7 +797,7 @@ export default function AdminAccountsPage() {
             <button
               type="button"
               className="btn-acc-filter-extra"
-              onClick={() => alert(`Đang hiển thị ${filteredUsers.length} người dùng thật từ MongoDB Atlas.`)}
+              onClick={() => showToast(`Đang hiển thị ${filteredUsers.length} người dùng thật từ MongoDB Atlas.`, 'info')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="4" y1="21" x2="4" y2="14" />
@@ -819,6 +908,7 @@ export default function AdminAccountsPage() {
                         className={isRowSelected ? 'selected' : ''}
                         onClick={() => {
                           setSelectedUser(u);
+                          setActiveDrawerTab('INFO');
                           setDrawerOpen(true);
                         }}
                         style={{ cursor: 'pointer' }}
@@ -855,10 +945,7 @@ export default function AdminAccountsPage() {
 
                         {/* Role */}
                         <td style={{ whiteSpace: 'nowrap' }}>
-                          <span className={`role-pill ${u.role === 'ADMIN' ? 'admin' :
-                            u.role.includes('SHOP') ? 'shop-owner' :
-                              u.role === 'STAFF' ? 'staff' : 'customer'
-                            }`}>
+                          <span className={`role-pill ${u.role}`}>
                             {u.role}
                           </span>
                         </td>
@@ -918,6 +1005,7 @@ export default function AdminAccountsPage() {
                               title="Xem chi tiết tài khoản"
                               onClick={() => {
                                 setSelectedUser(u);
+                                setActiveDrawerTab('INFO');
                                 setDrawerOpen(true);
                               }}
                             >
@@ -989,7 +1077,7 @@ export default function AdminAccountsPage() {
                                   <span>Xem chi tiết</span>
                                 </button>
 
-                                  {!isUserAdmin(u) && (
+                                {!isUserAdmin(u) && (
                                   <button
                                     type="button"
                                     style={{
@@ -1014,82 +1102,86 @@ export default function AdminAccountsPage() {
                                   </button>
                                 )}
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: u.status === 'LOCKED' ? '#059669' : '#DC2626'
-                                  }}
-                                  onClick={() => {
-                                    handleToggleLock(u.id);
-                                    setOpenActionId(null);
-                                  }}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                                  </svg>
-                                  <span>{u.status === 'LOCKED' ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản'}</span>
-                                </button>
+                                  {!isUserAdmin(u) && (
+                                    <button
+                                      type="button"
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '8px 10px',
+                                        fontSize: '12px',
+                                        background: 'none',
+                                        border: 'none',
+                                        borderRadius: '5px',
+                                        cursor: 'pointer',
+                                        color: u.status === 'LOCKED' ? '#059669' : '#DC2626'
+                                      }}
+                                      onClick={() => {
+                                        handleToggleLock(u.id);
+                                        setOpenActionId(null);
+                                      }}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                      </svg>
+                                      <span>{u.status === 'LOCKED' ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản'}</span>
+                                    </button>
+                                  )}
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
-                                  onClick={() => openResetPasswordModal(u)}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="16" r="1" />
-                                    <rect x="3" y="10" width="18" height="12" rx="2" />
-                                    <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                                  </svg>
-                                  <span>Đặt lại mật khẩu</span>
-                                </button>
+                                  <button
+                                    type="button"
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '8px 10px',
+                                      fontSize: '12px',
+                                      background: 'none',
+                                      border: 'none',
+                                      borderRadius: '5px',
+                                      cursor: 'pointer',
+                                      color: '#334155'
+                                    }}
+                                    onClick={() => openResetPasswordModal(u)}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <circle cx="12" cy="16" r="1" />
+                                      <rect x="3" y="10" width="18" height="12" rx="2" />
+                                      <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                                    </svg>
+                                    <span>Đặt lại mật khẩu</span>
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
-                                  onClick={() => {
-                                    setSelectedUser(u);
-                                    setShowNotifyModal(true);
-                                    setOpenActionId(null);
-                                  }}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="22" y1="2" x2="11" y2="13" />
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                                  </svg>
-                                  <span>Gửi thông báo</span>
-                                </button>
+                                  {!isUserAdmin(u) && (
+                                    <button
+                                      type="button"
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '8px 10px',
+                                        fontSize: '12px',
+                                        background: 'none',
+                                        border: 'none',
+                                        borderRadius: '5px',
+                                        cursor: 'pointer',
+                                        color: '#334155'
+                                      }}
+                                      onClick={() => {
+                                        setSelectedUser(u);
+                                        setShowNotifyModal(true);
+                                        setOpenActionId(null);
+                                      }}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <line x1="22" y1="2" x2="11" y2="13" />
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                      </svg>
+                                      <span>Gửi thông báo</span>
+                                    </button>
+                                  )}
                               </div>
                             )}
                           </div>
@@ -1222,11 +1314,8 @@ export default function AdminAccountsPage() {
 
               <div className="admin-acc-drawer-name">{selectedUser.name}</div>
               <div className="admin-acc-drawer-email">{selectedUser.email}</div>
-              <span className={`role-pill ${selectedUser.role === 'ADMIN' ? 'admin' :
-                selectedUser.role.includes('SHOP') ? 'shop-owner' :
-                  selectedUser.role === 'STAFF' ? 'staff' : 'customer'
-                }`}>
-                {selectedUser.role}
+              <span className={`role-pill ${selectedUser.role}`}>
+                {ROLE_LABELS[selectedUser.role] || selectedUser.role}
               </span>
             </div>
 
@@ -1246,20 +1335,24 @@ export default function AdminAccountsPage() {
               >
                 Hoạt động
               </button>
-              <button
-                type="button"
-                className={`admin-acc-tab-btn ${activeDrawerTab === 'TRANSACTIONS' ? 'active' : ''}`}
-                onClick={() => setActiveDrawerTab('TRANSACTIONS')}
-              >
-                Giao dịch
-              </button>
-              <button
-                type="button"
-                className={`admin-acc-tab-btn ${activeDrawerTab === 'VIOLATIONS' ? 'active' : ''}`}
-                onClick={() => setActiveDrawerTab('VIOLATIONS')}
-              >
-                Vi phạm
-              </button>
+              {!isUserAdmin(selectedUser) && (
+                <>
+                  <button
+                    type="button"
+                    className={`admin-acc-tab-btn ${activeDrawerTab === 'TRANSACTIONS' ? 'active' : ''}`}
+                    onClick={() => setActiveDrawerTab('TRANSACTIONS')}
+                  >
+                    Giao dịch
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-acc-tab-btn ${activeDrawerTab === 'VIOLATIONS' ? 'active' : ''}`}
+                    onClick={() => setActiveDrawerTab('VIOLATIONS')}
+                  >
+                    Vi phạm
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Drawer Body Content */}
@@ -1344,17 +1437,19 @@ export default function AdminAccountsPage() {
                             <span className="dot" />
                             {selectedUser.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm khóa'}
                           </span>
-                          <button
-                            type="button"
-                            className={`btn-acc-lock-toggle ${selectedUser.status === 'LOCKED' ? 'unlock' : 'lock'}`}
-                            onClick={() => handleToggleLock(selectedUser.id)}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                            </svg>
-                            {selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}
-                          </button>
+                          {!isUserAdmin(selectedUser) && (
+                            <button
+                              type="button"
+                              className={`btn-acc-lock-toggle ${selectedUser.status === 'LOCKED' ? 'unlock' : 'lock'}`}
+                              onClick={() => handleToggleLock(selectedUser.id)}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                              </svg>
+                              {selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1382,59 +1477,61 @@ export default function AdminAccountsPage() {
                     </div>
                   </div>
 
-                  {/* Section 3: Thống kê */}
-                  <div>
-                    <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
-                      Thống kê hệ thống
-                    </h4>
+                  {/* Section 3: Thống kê (Chỉ hiển thị cho người dùng thông thường, ẩn hoàn toàn đối với Admin) */}
+                  {!isUserAdmin(selectedUser) && (
+                    <div>
+                      <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
+                        Thống kê hệ thống
+                      </h4>
 
-                    <div className="admin-acc-stats-grid">
-                      {/* Box 1 */}
-                      <div className="admin-acc-stat-box">
-                        <div className="admin-acc-stat-box-icon blue">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-                            <line x1="3" y1="6" x2="21" y2="6" />
-                            <path d="M16 10a4 4 0 0 1-8 0" />
-                          </svg>
+                      <div className="admin-acc-stats-grid">
+                        {/* Box 1 */}
+                        <div className="admin-acc-stat-box">
+                          <div className="admin-acc-stat-box-icon blue">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                              <line x1="3" y1="6" x2="21" y2="6" />
+                              <path d="M16 10a4 4 0 0 1-8 0" />
+                            </svg>
+                          </div>
+                          <div className="admin-acc-stat-box-label">Giao dịch thuê</div>
+                          <div className="admin-acc-stat-box-val">{selectedUser.totalOrders} đơn</div>
+                          <div className="admin-acc-stat-box-sub">{selectedUser.totalDeposit}</div>
                         </div>
-                        <div className="admin-acc-stat-box-label">Giao dịch thuê</div>
-                        <div className="admin-acc-stat-box-val">{selectedUser.totalOrders} đơn</div>
-                        <div className="admin-acc-stat-box-sub">{selectedUser.totalDeposit}</div>
-                      </div>
 
-                      {/* Box 2 */}
-                      <div className="admin-acc-stat-box">
-                        <div className="admin-acc-stat-box-icon green">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                            <polyline points="9 12 11 14 15 10" />
-                          </svg>
+                        {/* Box 2 */}
+                        <div className="admin-acc-stat-box">
+                          <div className="admin-acc-stat-box-icon green">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                              <polyline points="9 12 11 14 15 10" />
+                            </svg>
+                          </div>
+                          <div className="admin-acc-stat-box-label">Điểm uy tín Escrow</div>
+                          <div className="admin-acc-stat-box-val" style={{ color: '#059669' }}>
+                            {selectedUser.rating}
+                          </div>
+                          <div className="admin-acc-stat-box-sub">PayOS Bảo đảm</div>
                         </div>
-                        <div className="admin-acc-stat-box-label">Điểm uy tín Escrow</div>
-                        <div className="admin-acc-stat-box-val" style={{ color: '#059669' }}>
-                          {selectedUser.rating}
-                        </div>
-                        <div className="admin-acc-stat-box-sub">PayOS Bảo đảm</div>
-                      </div>
 
-                      {/* Box 3 */}
-                      <div className="admin-acc-stat-box">
-                        <div className="admin-acc-stat-box-icon red">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                            <line x1="12" y1="9" x2="12" y2="13" />
-                            <line x1="12" y1="17" x2="12.01" y2="17" />
-                          </svg>
+                        {/* Box 3 */}
+                        <div className="admin-acc-stat-box">
+                          <div className="admin-acc-stat-box-icon red">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                              <line x1="12" y1="9" x2="12" y2="13" />
+                              <line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                          </div>
+                          <div className="admin-acc-stat-box-label">Vi phạm</div>
+                          <div className="admin-acc-stat-box-val" style={{ color: selectedUser.violations > 0 ? '#EF4444' : '#10B981' }}>
+                            {selectedUser.violations} lần
+                          </div>
+                          <div className="admin-acc-stat-box-sub">An toàn hợp đồng</div>
                         </div>
-                        <div className="admin-acc-stat-box-label">Vi phạm</div>
-                        <div className="admin-acc-stat-box-val" style={{ color: selectedUser.violations > 0 ? '#EF4444' : '#10B981' }}>
-                          {selectedUser.violations} lần
-                        </div>
-                        <div className="admin-acc-stat-box-sub">An toàn hợp đồng</div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Section 4: Thao tác nhanh */}
                   <div>
@@ -1458,17 +1555,19 @@ export default function AdminAccountsPage() {
                           </button>
                         )}
 
-                        <button
-                          type="button"
-                          className={selectedUser.status === 'LOCKED' ? 'btn-acc-action-primary' : 'btn-acc-action-danger'}
-                          onClick={() => handleToggleLock(selectedUser.id)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                          </svg>
-                          <span>{selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && (
+                          <button
+                            type="button"
+                            className={selectedUser.status === 'LOCKED' ? 'btn-acc-action-primary' : 'btn-acc-action-danger'}
+                            onClick={() => handleToggleLock(selectedUser.id)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                            <span>{selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}</span>
+                          </button>
+                        )}
 
                         <button
                           type="button"
@@ -1497,17 +1596,19 @@ export default function AdminAccountsPage() {
                           <span>Xem lịch sử hoạt động</span>
                         </button>
 
-                        <button
-                          type="button"
-                          className="btn-acc-action-secondary"
-                          onClick={() => setShowNotifyModal(true)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="22" y1="2" x2="11" y2="13" />
-                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                          </svg>
-                          <span>Gửi thông báo</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && (
+                          <button
+                            type="button"
+                            className="btn-acc-action-secondary"
+                            onClick={() => setShowNotifyModal(true)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="22" y1="2" x2="11" y2="13" />
+                              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                            <span>Gửi thông báo</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1652,9 +1753,12 @@ export default function AdminAccountsPage() {
                       value={addForm.role}
                       onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
                     >
-                      <option value="CUSTOMER">CUSTOMER (Khách hàng)</option>
-                      <option value="SHOP OWNER">SHOP OWNER (Chủ gian hàng)</option>
-                      <option value="STAFF">STAFF (Nhân viên)</option>
+                      <option value="customer">customer — Khách hàng</option>
+                      <option value="shopOwner">shopOwner — Chủ gian hàng</option>
+                      <option value="brandmanager">brandmanager — Quản lý thương hiệu</option>
+                      <option value="warehouseManager">warehouseManager — Quản lý kho</option>
+                      <option value="warehousestaff">warehousestaff — Nhân viên kho</option>
+                      <option value="admin">admin — Quản trị viên</option>
                     </select>
                   </div>
 
@@ -1779,9 +1883,11 @@ export default function AdminAccountsPage() {
                       value={editForm.role}
                       onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                     >
-                      <option value="CUSTOMER">CUSTOMER (Khách hàng)</option>
-                      <option value="SHOP OWNER">SHOP OWNER (Chủ gian hàng)</option>
-                      <option value="STAFF">STAFF (Nhân viên)</option>
+                      <option value="customer">customer — Khách hàng</option>
+                      <option value="shopOwner">shopOwner — Chủ gian hàng</option>
+                      <option value="brandmanager">brandmanager — Quản lý thương hiệu</option>
+                      <option value="warehouseManager">warehouseManager — Quản lý kho</option>
+                      <option value="warehousestaff">warehousestaff — Nhân viên kho</option>
                     </select>
                   </div>
 
@@ -1967,6 +2073,193 @@ export default function AdminAccountsPage() {
           </div>
         </div>
       )}
+
+      {/* ========== MODAL: Lý Do Khóa Tài Khoản ========== */}
+      {showLockReasonModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLockReasonModal(false); }}
+        >
+          <div style={{
+            background: '#1E293B', borderRadius: '16px', border: '1px solid #334155',
+            width: '100%', maxWidth: '480px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px', borderBottom: '1px solid #334155',
+              display: 'flex', alignItems: 'center', gap: '12px'
+            }}>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0
+              }}>🔒</div>
+              <div>
+                <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '15px' }}>Khóa Tài Khoản</div>
+                <div style={{ color: '#94A3B8', fontSize: '12px', marginTop: '2px' }}>
+                  Hệ thống sẽ gửi email thông báo lý do tới người dùng
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLockReasonModal(false)}
+                style={{
+                  marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#64748B', fontSize: '18px', lineHeight: 1
+                }}
+              >✕</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px' }}>
+              <div style={{
+                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: '10px', padding: '14px 16px', marginBottom: '20px'
+              }}>
+                <div style={{ color: '#FCA5A5', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>⚠️ LƯU Ý</div>
+                <div style={{ color: '#CBD5E1', fontSize: '13px', lineHeight: 1.6 }}>
+                  Người dùng sẽ nhận được email thông báo kèm lý do khóa ngay sau khi bạn xác nhận.
+                  Tài khoản bị khóa sẽ không thể đăng nhập cho đến khi được mở khóa.
+                </div>
+              </div>
+
+              <label style={{ display: 'block', color: '#94A3B8', fontSize: '12px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Lý do khóa tài khoản <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              <textarea
+                rows={4}
+                value={lockReasonText}
+                onChange={(e) => setLockReasonText(e.target.value)}
+                placeholder="Vd: Vi phạm điều khoản sử dụng dịch vụ, giao dịch gian lận, phản ánh từ người dùng khác..."
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: '#0F172A', border: `1px solid ${lockReasonText.trim().length > 0 && lockReasonText.trim().length < 5 ? '#EF4444' : '#334155'}`,
+                  borderRadius: '10px', color: '#F1F5F9', fontSize: '14px',
+                  padding: '12px 14px', resize: 'vertical', lineHeight: 1.6,
+                  outline: 'none', fontFamily: 'inherit'
+                }}
+              />
+              {lockReasonText.trim().length > 0 && lockReasonText.trim().length < 5 && (
+                <div style={{ color: '#EF4444', fontSize: '12px', marginTop: '6px' }}>Lý do phải có ít nhất 5 ký tự.</div>
+              )}
+              <div style={{ color: '#64748B', fontSize: '11px', marginTop: '6px', textAlign: 'right' }}>
+                {lockReasonText.length} ký tự
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px', borderTop: '1px solid #334155',
+              display: 'flex', gap: '12px', justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => setShowLockReasonModal(false)}
+                disabled={isLocking}
+                style={{
+                  padding: '10px 20px', borderRadius: '8px', border: '1px solid #334155',
+                  background: 'transparent', color: '#94A3B8', fontSize: '13px',
+                  cursor: 'pointer', fontWeight: 500
+                }}
+              >Hủy</button>
+              <button
+                onClick={confirmLockWithReason}
+                disabled={isLocking || lockReasonText.trim().length < 5}
+                style={{
+                  padding: '10px 24px', borderRadius: '8px', border: 'none',
+                  background: lockReasonText.trim().length >= 5 && !isLocking ? '#EF4444' : '#475569',
+                  color: '#fff', fontSize: '13px', fontWeight: 600,
+                  cursor: lockReasonText.trim().length >= 5 && !isLocking ? 'pointer' : 'not-allowed',
+                  transition: 'background 0.2s'
+                }}
+              >
+                {isLocking ? 'Đang xử lý...' : '🔒 Xác nhận khóa & Gửi email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification Container */}
+      {toasts.length > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 99999,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            pointerEvents: 'none'
+          }}
+        >
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              style={{
+                pointerEvents: 'auto',
+                minWidth: '320px',
+                maxWidth: '440px',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                color: '#FFFFFF',
+                fontSize: '13.5px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 12px 30px -4px rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.1)',
+                background:
+                  t.type === 'success'
+                    ? 'linear-gradient(135deg, #065F46, #059669)'
+                    : t.type === 'error'
+                    ? 'linear-gradient(135deg, #991B1B, #DC2626)'
+                    : t.type === 'warning'
+                    ? 'linear-gradient(135deg, #92400E, #D97706)'
+                    : 'linear-gradient(135deg, #1E293B, #334155)',
+                borderLeft: `5px solid ${
+                  t.type === 'success'
+                    ? '#34D399'
+                    : t.type === 'error'
+                    ? '#F87171'
+                    : t.type === 'warning'
+                    ? '#FBBF24'
+                    : '#60A5FA'
+                }`,
+                backdropFilter: 'blur(8px)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '16px' }}>
+                  {t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : t.type === 'warning' ? '⚠️' : 'ℹ️'}
+                </span>
+                <span style={{ lineHeight: 1.45 }}>{t.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeToast(t.id)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'rgba(255, 255, 255, 0.75)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  fontSize: '15px',
+                  lineHeight: 1
+                }}
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+

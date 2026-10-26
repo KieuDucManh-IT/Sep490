@@ -573,25 +573,43 @@
   border: 1px solid #C7D2FE;
 }
 
-/* SHOP OWNER: Tone cam đất Terracotta ấm áp, không bị vàng bẩn, luôn trên 1 dòng */
+/* SHOP OWNER: Tone cam đất Terracotta ấm áp */
+.role-pill.shopOwner,
 .role-pill.shop-owner {
   background: #FFF7ED;
   color: #C2410C;
   border: 1px solid #FED7AA;
 }
 
-/* CUSTOMER: Tone xanh dương Sky sạch sẽ, sáng sủa, thanh lịch */
+/* BRAND MANAGER: Tone tím Violet hiện đại, sang trọng */
+.role-pill.brandmanager,
+.role-pill.brand-manager {
+  background: #FAF5FF;
+  color: #7E22CE;
+  border: 1px solid #E9D5FF;
+}
+
+/* WAREHOUSE MANAGER: Tone xanh ngọc Cyan kỹ thuật, quản lý kho */
+.role-pill.warehouseManager,
+.role-pill.warehouse-manager {
+  background: #ECFEFF;
+  color: #0E7490;
+  border: 1px solid #A5F3FC;
+}
+
+/* WAREHOUSE STAFF: Tone xanh lục Emerald thực thi kho */
+.role-pill.warehousestaff,
+.role-pill.warehouse-staff {
+  background: #ECFDF5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
+}
+
+/* CUSTOMER: Tone xanh dương Sky sạch sẽ, thanh lịch */
 .role-pill.customer {
   background: #F0F9FF;
   color: #0369A1;
   border: 1px solid #BAE6FD;
-}
-
-/* STAFF: Tone tím Violet hiện đại */
-.role-pill.staff {
-  background: #FAF5FF;
-  color: #7E22CE;
-  border: 1px solid #E9D5FF;
 }
 
 /* Verification Pills */
@@ -770,6 +788,8 @@
   flex-direction: column;
   animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 @keyframes slideLeft {
@@ -788,6 +808,7 @@
   top: 0;
   background: #FFFFFF;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-title {
@@ -809,6 +830,7 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-close:hover {
@@ -816,7 +838,7 @@
   color: #0F172A;
 }
 
-/* Drawer User Hero Card */
+/* Drawer User Hero Card - Không bao giờ bị co rúm (flex-shrink: 0) */
 .admin-acc-drawer-hero {
   padding: 24px;
   display: flex;
@@ -825,6 +847,9 @@
   text-align: center;
   border-bottom: 1px solid #F1F5F9;
   background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
+  width: 100%;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .admin-acc-drawer-avatar {
@@ -835,6 +860,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   margin-bottom: 12px;
   border: 3px solid #FFFFFF;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-avatar-letter {
@@ -850,19 +876,34 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   margin-bottom: 12px;
   border: 3px solid #FFFFFF;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-name {
   font-size: 17px;
   font-weight: 700;
   color: #0F172A;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  width: 100%;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .admin-acc-drawer-email {
   font-size: 13px;
   color: #64748B;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  width: 100%;
+  max-width: 100%;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.4;
+  text-align: center;
 }
 
 /* Drawer Tabs */
@@ -872,6 +913,7 @@
   border-bottom: 1px solid #E2E8F0;
   background: #FFFFFF;
   gap: 20px;
+  flex-shrink: 0;
 }
 
 .admin-acc-tab-btn {
@@ -884,6 +926,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .admin-acc-tab-btn:hover {
@@ -899,10 +942,11 @@
 /* Drawer Body */
 .admin-acc-drawer-body {
   padding: 24px;
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  box-sizing: border-box;
 }
 
 /* Section Header with edit button */
@@ -952,23 +996,35 @@
 .admin-acc-kv-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
+  align-items: flex-start;
+  padding: 8px 0;
   border-bottom: 1px dashed #F1F5F9;
+  gap: 16px;
+  min-width: 0;
 }
 
 .admin-acc-kv-key {
   color: #64748B;
   font-weight: 400;
+  flex-shrink: 0;
+  min-width: 105px;
 }
 
 .admin-acc-kv-val {
   color: #0F172A;
   font-weight: 500;
   text-align: right;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.5;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* Status & Verification Box */

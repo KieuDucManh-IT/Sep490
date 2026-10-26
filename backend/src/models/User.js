@@ -1,4 +1,4 @@
-﻿import mongoose from "mongoose";
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
 const nameRegex =
@@ -89,7 +89,11 @@ const userSchema = new mongoose.Schema(
     Role: {
       type: String,
       enum: {
-        values: ["customer", "admin", "shop_owner", "operation_staff", "CUSTOMER", "ADMIN", "SHOP_OWNER", "OPERATION_STAFF"],
+        values: [
+          "customer", "shopOwner", "brandmanager", "brandManager", "warehousestaff", "warehouseStaff", "warehouseManager", "admin",
+          "shopowner", "warehousemanager",
+          "CUSTOMER", "SHOPOWNER", "BRANDMANAGER", "WAREHOUSESTAFF", "WAREHOUSEMANAGER", "ADMIN"
+        ],
         message: "Role không hợp lệ",
       },
       required: true,

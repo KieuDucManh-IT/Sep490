@@ -1,5 +1,75 @@
 import { User } from '../models/User.js';
 import bcrypt from 'bcryptjs';
+import { sendEmail } from '../utils/sendEmail.js';
+
+// Template email thông báo khóa tài khoản
+function buildLockEmailHtml(fullName, reason) {
+  return `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thông báo tài khoản bị khóa - VESTORA</title>
+</head>
+<body style="margin:0;padding:0;background:#0F172A;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0F172A;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#1E293B;border-radius:16px;overflow:hidden;border:1px solid #334155;">
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#1E293B 0%,#0F172A 100%);padding:36px 40px;border-bottom:2px solid #C5A880;text-align:center;">
+            <div style="font-size:28px;font-weight:800;letter-spacing:4px;color:#C5A880;">VESTORA</div>
+            <div style="font-size:11px;color:#94A3B8;letter-spacing:2px;margin-top:4px;">HỆ THỐNG QUẢN LÝ TÀI KHOẢN</div>
+          </td>
+        </tr>
+        <!-- Alert Icon -->
+        <tr>
+          <td style="padding:36px 40px 0;text-align:center;">
+            <div style="display:inline-block;width:64px;height:64px;background:rgba(239,68,68,0.15);border-radius:50%;line-height:64px;font-size:28px;">🔒</div>
+            <h1 style="color:#F1F5F9;font-size:22px;font-weight:700;margin:16px 0 8px;">Tài Khoản Của Bạn Đã Bị Khóa</h1>
+            <p style="color:#94A3B8;font-size:14px;margin:0;">Xin chào <strong style="color:#C5A880;">${fullName}</strong>,</p>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:24px 40px;">
+            <p style="color:#CBD5E1;font-size:14px;line-height:1.7;margin:0 0 20px;">
+              Chúng tôi thông báo rằng tài khoản VESTORA liên kết với địa chỉ email này đã bị <strong style="color:#EF4444;">tạm khóa</strong> bởi bộ phận quản trị hệ thống.
+            </p>
+            <!-- Reason Box -->
+            <div style="background:#0F172A;border-left:4px solid #EF4444;border-radius:8px;padding:20px 24px;margin:0 0 24px;">
+              <div style="color:#94A3B8;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Lý do khóa tài khoản</div>
+              <div style="color:#F1F5F9;font-size:15px;font-weight:500;line-height:1.6;">${reason}</div>
+            </div>
+            <p style="color:#CBD5E1;font-size:13px;line-height:1.7;margin:0 0 12px;">
+              Trong thời gian tài khoản bị khóa, bạn sẽ không thể đăng nhập hoặc sử dụng các dịch vụ của VESTORA.
+            </p>
+            <p style="color:#CBD5E1;font-size:13px;line-height:1.7;margin:0;">
+              Nếu bạn cho rằng đây là sự nhầm lẫn hoặc muốn khiếu nại, vui lòng liên hệ bộ phận hỗ trợ.
+            </p>
+          </td>
+        </tr>
+        <!-- Contact -->
+        <tr>
+          <td style="padding:0 40px 36px;">
+            <div style="background:rgba(197,168,128,0.08);border:1px solid rgba(197,168,128,0.2);border-radius:10px;padding:18px 20px;text-align:center;">
+              <div style="color:#C5A880;font-size:12px;font-weight:600;margin-bottom:6px;">📧 HỖ TRỢ KHIẾU NẠI</div>
+              <div style="color:#94A3B8;font-size:12px;">support@vestora.vn &nbsp;|&nbsp; Hotline: 1800-VESTORA</div>
+            </div>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background:#0F172A;padding:20px 40px;text-align:center;border-top:1px solid #1E293B;">
+            <p style="color:#475569;font-size:11px;margin:0;">Email tự động từ hệ thống VESTORA. Vui lòng không trả lời email này.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
 
 // Lấy danh sách tài khoản
 export const getUsers = async (req, res) => {
@@ -66,7 +136,45 @@ export const toggleLockUser = async (req, res) => {
       });
     }
 
-    const newStatus = user.Status?.toLowerCase() === 'locked' ? 'active' : 'locked';
+    const isCurrentlyLocked = user.Status?.toLowerCase() === 'locked';
+    const newStatus = isCurrentlyLocked ? 'active' : 'locked';
+
+    // Khi KHÓA: bắt buộc phải có lý do
+    if (!isCurrentlyLocked) {
+      const reason = req.body?.reason?.trim();
+      if (!reason || reason.length < 5) {
+        return res.status(400).json({
+          success: false,
+          message: 'Vui lòng cung cấp lý do khóa tài khoản (tối thiểu 5 ký tự).'
+        });
+      }
+
+      // Cập nhật trạng thái
+      await User.findByIdAndUpdate(req.params.id, { $set: { Status: newStatus } }, { new: true });
+
+      // Gửi email thông báo (không block response nếu email lỗi)
+      const fullName = user.FullName || user.Email;
+      const toEmail = user.Email;
+      try {
+        await sendEmail(
+          toEmail,
+          ' [VESTORA] Tài khoản của bạn đã bị khóa',
+          `Xin chào ${fullName},\n\nTài khoản VESTORA của bạn đã bị khóa.\nLý do: ${reason}\n\nNếu có thắc mắc, vui lòng liên hệ support@vestora.vn.`,
+          buildLockEmailHtml(fullName, reason)
+        );
+      } catch (emailErr) {
+        console.error('Gửi email khóa tài khoản thất bại:', emailErr.message);
+        // Không throw — vẫn trả về thành công dù email lỗi
+      }
+
+      return res.json({
+        success: true,
+        message: `Đã khóa tài khoản và gửi email thông báo tới ${toEmail}`,
+        data: { id: user._id, Status: newStatus, Email: user.Email, FullName: user.FullName }
+      });
+    }
+
+    // Khi MỞ KHÓA: không cần lý do, không cần email
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
       { $set: { Status: newStatus } },
@@ -75,7 +183,7 @@ export const toggleLockUser = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Đã ${newStatus === 'locked' ? 'khóa' : 'mở khóa'} tài khoản thành công`,
+      message: 'Đã mở khóa tài khoản thành công',
       data: {
         id: updatedUser._id,
         Status: updatedUser.Status,
@@ -87,6 +195,7 @@ export const toggleLockUser = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // Thống kê người dùng cho Admin Dashboard
 export const getUserStats = async (req, res) => {
@@ -138,10 +247,20 @@ export const createUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(Password || 'Vestora@2026', salt);
 
+    const normalizeRole = (r) => {
+      const clean = (r || 'customer').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+      if (clean === 'admin') return 'admin';
+      if (clean === 'shopowner') return 'shopOwner';
+      if (clean === 'brandmanager') return 'brandmanager';
+      if (clean === 'warehousemanager') return 'warehouseManager';
+      if (clean === 'warehousestaff') return 'warehousestaff';
+      return 'customer';
+    };
+
     const newUser = new User({
       Email: Email.toLowerCase().trim(),
       FullName: FullName.trim(),
-      Role: (Role || 'customer').toLowerCase(),
+      Role: normalizeRole(Role),
       Status: (Status || 'active').toLowerCase(),
       PasswordHash: passwordHash,
       AuthProvider: 'local',
@@ -206,7 +325,13 @@ export const updateUser = async (req, res) => {
     }
 
     if (Role !== undefined) {
-      updateData.Role = Role.toLowerCase();
+      const clean = Role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+      if (clean === 'shopowner') updateData.Role = 'shopOwner';
+      else if (clean === 'brandmanager') updateData.Role = 'brandmanager';
+      else if (clean === 'warehousemanager') updateData.Role = 'warehouseManager';
+      else if (clean === 'warehousestaff') updateData.Role = 'warehousestaff';
+      else if (clean === 'admin') updateData.Role = 'admin';
+      else updateData.Role = 'customer';
     }
 
     if (Status !== undefined) {

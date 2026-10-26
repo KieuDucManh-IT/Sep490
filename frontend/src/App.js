@@ -32,12 +32,7 @@ import ShopReviewsPage from './pages/shop/ShopReviewsPage';
 import ShopSettingsPage from './pages/shop/ShopSettingsPage';
 import ShopBranchesPage from './pages/shop/ShopBranchesPage';
 
-import AdminDashboardPage from './pages/admin/AdminDashboardPage';
-import AdminShopsPage from './pages/admin/AdminShopsPage';
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
-import AdminModerationPage from './pages/admin/AdminModerationPage';
-import AdminDisputesPage from './pages/admin/AdminDisputesPage';
-import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 
 function App() {
   return (
@@ -84,12 +79,9 @@ function App() {
           <Route path="/shop/settings" element={<ShopSettingsPage />} />
           <Route path="/shop/branches" element={<ShopBranchesPage />} />
 
-          <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminDashboardPage /></ProtectedRoute>} />
-          <Route path="/admin/shops" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminShopsPage /></ProtectedRoute>} />
           <Route path="/admin/accounts" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminAccountsPage /></ProtectedRoute>} />
-          <Route path="/admin/moderation" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminModerationPage /></ProtectedRoute>} />
-          <Route path="/admin/disputes" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminDisputesPage /></ProtectedRoute>} />
-          <Route path="/admin/analytics" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminAnalyticsPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<Navigate to="/admin/accounts" replace />} />
+          <Route path="/admin/*" element={<Navigate to="/admin/accounts" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -62,22 +62,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
 
         <nav className="admin-shops-sidebar__nav">
           <Link
-            to="/admin/dashboard"
-            className={`admin-shops-sidebar__link ${isActive('/admin/dashboard')}`}
-            title="Tổng Quan"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                <rect x="3" y="14" width="7" height="7" rx="1.5" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Tổng Quan</span>}
-          </Link>
-
-          <Link
             to="/admin/accounts"
             className={`admin-shops-sidebar__link ${isActive('/admin/accounts')}`}
             title="Quản Lý Người Dùng"
@@ -91,80 +75,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
               </svg>
             </span>
             {!isCollapsed && <span>Quản Lý Người Dùng</span>}
-          </Link>
-
-          <Link
-            to="/admin/shops?tab=ACTIVE"
-            className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'ACTIVE')}`}
-            title="Quản Lý Gian Hàng"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M3 9l2-5h14l2 5" />
-                <path d="M21 9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9" />
-                <path d="M10 13a2 2 0 0 0 4 0" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Quản Lý Gian Hàng</span>}
-          </Link>
-
-          <Link
-            to="/admin/shops?tab=PENDING"
-            className={`admin-shops-sidebar__link ${isActive('/admin/shops', 'PENDING')}`}
-            title="Phê Duyệt Shop"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                <polyline points="9 12 11 14 15 10" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Phê Duyệt Shop</span>}
-          </Link>
-
-          <Link
-            to="/admin/moderation"
-            className={`admin-shops-sidebar__link ${isActive('/admin/moderation')}`}
-            title="Kiểm Duyệt Sản Phẩm"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                <line x1="12" y1="22.08" x2="12" y2="12" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Kiểm Duyệt Sản Phẩm</span>}
-          </Link>
-
-          <Link
-            to="/admin/disputes"
-            className={`admin-shops-sidebar__link ${isActive('/admin/disputes')}`}
-            title="Báo Cáo & Khiếu Nại"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Báo Cáo & Khiếu Nại</span>}
-          </Link>
-
-          <Link
-            to="/admin/analytics"
-            className={`admin-shops-sidebar__link ${isActive('/admin/analytics')}`}
-            title="Thống Kê Hệ Thống"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <line x1="18" y1="20" x2="18" y2="10" />
-                <line x1="12" y1="20" x2="12" y2="4" />
-                <line x1="6" y1="20" x2="6" y2="14" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Thống Kê Hệ Thống</span>}
           </Link>
         </nav>
       </div>

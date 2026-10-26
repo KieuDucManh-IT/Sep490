@@ -15,7 +15,6 @@ const informationSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Địa chỉ đầy đủ để những giao diện hiện có tiếp tục hiển thị.
     Address: {
       type: String,
       trim: true,

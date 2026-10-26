@@ -13,7 +13,7 @@ export default function Footer() {
             VESTORA Haute Couture & Archive — Nền tảng lưu trữ, giám định độc lập và cho thuê trang phục dạ hội thảm đỏ cao cấp hàng đầu tại Việt Nam.
           </div>
           <div className="footer-escrow-badge">
-            <span>🛡️</span> BẢO CHỨNG KÝ QUỸ ESCROW QUỐC TẾ QUA PAYOS
+             BẢO CHỨNG KÝ QUỸ ESCROW QUỐC TẾ QUA PAYOS
           </div>
         </div>
 

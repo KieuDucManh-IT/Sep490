@@ -1213,13 +1213,15 @@
 .admin-acc-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(2px);
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
   z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  overflow-y: auto;
+  box-sizing: border-box;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -1231,6 +1233,7 @@
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
   overflow: hidden;
   animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin: auto;
 }
 
 @keyframes popIn {
@@ -1300,4 +1303,370 @@
   justify-content: flex-end;
   gap: 10px;
   background: #F8FAFC;
+}
+
+/* ==========================================================
+   RICH EDIT USER MODAL (Chuẩn theo giao diện thiết kế, cân đối khung nhìn)
+   ========================================================== */
+.admin-acc-modal-card.admin-acc-edit-card {
+  max-width: 620px;
+  width: 100%;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.2), 0 4px 12px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  margin: auto;
+}
+
+.admin-acc-modal-head-rich {
+  padding: 16px 24px;
+  border-bottom: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: #FFFFFF;
+}
+
+.admin-acc-modal-head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-acc-modal-head-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-acc-modal-head-icon.blue {
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.admin-acc-modal-title-rich {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0 0 2px 0;
+  letter-spacing: -0.01em;
+}
+
+.admin-acc-modal-sub-rich {
+  font-size: 12.5px;
+  color: #64748B;
+  margin: 0;
+}
+
+/* Edit Form Container with internal scroll */
+.admin-acc-edit-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-acc-edit-modal-body {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+/* Avatar Upload & Edit Component */
+.admin-acc-edit-avatar-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: #F8FAFC;
+  border: 1px dashed #CBD5E1;
+  border-radius: 12px;
+  margin-bottom: 2px;
+}
+
+.admin-acc-edit-avatar-preview-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.admin-acc-edit-avatar-img {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.admin-acc-edit-avatar-letter {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-size: 20px;
+  font-weight: 700;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.admin-acc-edit-avatar-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
+  background: #2563EB;
+  color: #FFFFFF;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.admin-acc-edit-avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.admin-acc-edit-avatar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1E293B;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-acc-edit-avatar-desc {
+  font-size: 11.5px;
+  color: #64748B;
+  margin: 0;
+}
+
+.admin-acc-edit-avatar-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+}
+
+.btn-upload-avatar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563EB;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-upload-avatar:hover {
+  background: #EFF6FF;
+  border-color: #93C5FD;
+}
+
+.btn-remove-avatar {
+  background: transparent;
+  border: none;
+  font-size: 11.5px;
+  color: #EF4444;
+  cursor: pointer;
+  padding: 4px 6px;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.btn-remove-avatar:hover {
+  text-decoration: underline;
+  color: #DC2626;
+}
+
+/* Input Icon Container */
+.admin-acc-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.admin-acc-input-icon {
+  position: absolute;
+  left: 12px;
+  color: #94A3B8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.admin-acc-input-wrap .admin-acc-form-input,
+.admin-acc-input-wrap .admin-acc-form-select {
+  padding-left: 38px;
+  padding-right: 12px;
+  height: 38px;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 9px;
+  font-size: 13.5px;
+  color: #0F172A;
+  background: #FFFFFF;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.admin-acc-input-wrap .admin-acc-form-input:disabled {
+  background: #F8FAFC;
+  color: #64748B;
+  border-color: #E2E8F0;
+  cursor: not-allowed;
+}
+
+.admin-acc-input-wrap .admin-acc-form-input:focus,
+.admin-acc-input-wrap .admin-acc-form-select:focus,
+.admin-acc-input-wrap .admin-acc-form-textarea:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  outline: none;
+}
+
+.admin-acc-input-wrap.has-textarea {
+  align-items: flex-start;
+}
+
+.admin-acc-input-wrap.has-textarea .admin-acc-input-icon {
+  top: 11px;
+}
+
+.admin-acc-input-wrap .admin-acc-form-textarea {
+  padding-left: 38px;
+  padding-right: 12px;
+  padding-top: 9px;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 9px;
+  font-size: 13.5px;
+  color: #0F172A;
+  background: #FFFFFF;
+  width: 100%;
+  min-height: 64px;
+  box-sizing: border-box;
+  resize: vertical;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.admin-acc-field-hint {
+  font-size: 11.5px;
+  color: #94A3B8;
+  margin-top: 4px;
+  display: block;
+}
+
+.admin-acc-field-error {
+  font-size: 11.5px;
+  color: #EF4444;
+  margin-top: 3px;
+  display: block;
+}
+
+/* Info Banner Alert */
+.admin-acc-edit-info-alert {
+  background: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 9px;
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: #1E40AF;
+  line-height: 1.4;
+}
+
+.admin-acc-edit-info-alert svg {
+  color: #3B82F6;
+  flex-shrink: 0;
+}
+
+/* Rich Modal Footer */
+.admin-acc-modal-foot-rich {
+  padding: 13px 24px;
+  border-top: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  background: #FFFFFF;
+  border-bottom-left-radius: 18px;
+  border-bottom-right-radius: 18px;
+  flex-shrink: 0;
+}
+
+.btn-acc-modal-cancel {
+  padding: 8px 18px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-acc-modal-cancel:hover {
+  background: #F8FAFC;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+.btn-acc-modal-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  background: #2563EB;
+  border: none;
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+.btn-acc-modal-save:hover {
+  background: #1D4ED8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
 }

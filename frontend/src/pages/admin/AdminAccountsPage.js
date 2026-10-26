@@ -4,6 +4,7 @@ import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
 import '../../styles/AdminAccounts.css';
+import { validateEditForm } from '../../utils/userValidation';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
@@ -91,13 +92,17 @@ export default function AdminAccountsPage() {
 
   const [editForm, setEditForm] = useState({
     name: '',
+    email: '',
     phone: '',
     address: '',
     dob: '',
     gender: 'Nữ',
+    avatar: '',
     role: 'customer',
     status: 'ACTIVE'
   });
+  const [editFormErrors, setEditFormErrors] = useState({});
+  const avatarFileInputRef = useRef(null);
 
   const [resetPwdValue, setResetPwdValue] = useState('');
   const [notifyForm, setNotifyForm] = useState({
@@ -440,20 +445,56 @@ export default function AdminAccountsPage() {
       return;
     }
     setEditForm({
-      name: user.name,
-      phone: user.phone !== 'Chưa cập nhật' ? user.phone : '',
-      address: user.address !== 'Chưa cập nhật' ? user.address : '',
-      dob: user.dob || '15/08/2000',
+      name: user.name || '',
+      email: user.email || '',
+      phone: user.phone && user.phone !== 'Chưa cập nhật' ? user.phone : '',
+      address: user.address && user.address !== 'Chưa cập nhật' ? user.address : '',
+      dob: user.dob && user.dob !== '—' ? user.dob : '15/08/2000',
       gender: user.gender || 'Nữ',
+      avatar: user.avatar || '',
       role: user.role === 'admin' ? 'customer' : user.role,
-      status: user.status
+      status: user.status || 'ACTIVE'
     });
+    setEditFormErrors({});
     setSelectedUser(user);
     setShowEditModal(true);
     setOpenActionId(null);
   };
 
-  // Save Edit User with Backend API
+  // Avatar upload file handler
+  const handleAvatarFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Vui lòng chọn file hình ảnh hợp lệ (PNG, JPG, WEBP)!', 'error');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Kích thước ảnh không được vượt quá 5MB!', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEditForm(prev => ({ ...prev, avatar: reader.result }));
+      if (editFormErrors.avatar) setEditFormErrors(prev => ({ ...prev, avatar: null }));
+      showToast('Đã tải ảnh đại diện lên!', 'success');
+    };
+    reader.onerror = () => {
+      showToast('Không thể đọc file ảnh đã chọn', 'error');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Gỡ avatar quay về chữ cái đại diện
+  const handleRemoveAvatar = () => {
+    setEditForm(prev => ({ ...prev, avatar: '' }));
+    showToast('Đã gỡ ảnh đại diện (sử dụng chữ cái mặc định)', 'info');
+  };
+
+  // Save Edit User with Backend API & Validation
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!selectedUser) return;
@@ -468,10 +509,15 @@ export default function AdminAccountsPage() {
       return;
     }
 
-    if (editForm.name.trim().length > 25) {
-      showToast('Họ và tên không được vượt quá 25 ký tự!', 'error');
+    // Validate using reusable frontend validation module
+    const validation = validateEditForm(editForm);
+    if (!validation.isValid) {
+      setEditFormErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      showToast(firstError, 'error');
       return;
     }
+    setEditFormErrors({});
 
     try {
       const res = await fetch(`${API_BASE_URL}/users/${selectedUser.id}`, {
@@ -482,14 +528,28 @@ export default function AdminAccountsPage() {
           Role: editForm.role,
           Status: editForm.status.toLowerCase(),
           Phone: editForm.phone,
-          Address: editForm.address
+          Address: editForm.address,
+          DateOfBirth: editForm.dob,
+          Gender: editForm.gender,
+          Avatar: editForm.avatar
         })
       });
       const json = await res.json();
       if (json.success) {
         await fetchUsers();
+        setSelectedUser(prev => prev ? {
+          ...prev,
+          name: editForm.name,
+          phone: editForm.phone || 'Chưa cập nhật',
+          address: editForm.address || 'Chưa cập nhật',
+          dob: editForm.dob,
+          gender: editForm.gender,
+          avatar: editForm.avatar || null,
+          role: editForm.role,
+          status: editForm.status
+        } : null);
         setShowEditModal(false);
-        showToast('Đã cập nhật thông tin tài khoản thành công!', 'success');
+        showToast('Đã cập nhật thông tin hồ sơ thành công!', 'success');
       } else {
         showToast(json.message || 'Lỗi khi cập nhật thông tin', 'error');
       }
@@ -1102,34 +1162,59 @@ export default function AdminAccountsPage() {
                                   </button>
                                 )}
 
-                                  {!isUserAdmin(u) && (
-                                    <button
-                                      type="button"
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        padding: '8px 10px',
-                                        fontSize: '12px',
-                                        background: 'none',
-                                        border: 'none',
-                                        borderRadius: '5px',
-                                        cursor: 'pointer',
-                                        color: u.status === 'LOCKED' ? '#059669' : '#DC2626'
-                                      }}
-                                      onClick={() => {
-                                        handleToggleLock(u.id);
-                                        setOpenActionId(null);
-                                      }}
-                                    >
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                                      </svg>
-                                      <span>{u.status === 'LOCKED' ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản'}</span>
-                                    </button>
-                                  )}
+                                {!isUserAdmin(u) && (
+                                  <button
+                                    type="button"
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '8px 10px',
+                                      fontSize: '12px',
+                                      background: 'none',
+                                      border: 'none',
+                                      borderRadius: '5px',
+                                      cursor: 'pointer',
+                                      color: u.status === 'LOCKED' ? '#059669' : '#DC2626'
+                                    }}
+                                    onClick={() => {
+                                      handleToggleLock(u.id);
+                                      setOpenActionId(null);
+                                    }}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                    </svg>
+                                    <span>{u.status === 'LOCKED' ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản'}</span>
+                                  </button>
+                                )}
 
+                                <button
+                                  type="button"
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px 10px',
+                                    fontSize: '12px',
+                                    background: 'none',
+                                    border: 'none',
+                                    borderRadius: '5px',
+                                    cursor: 'pointer',
+                                    color: '#334155'
+                                  }}
+                                  onClick={() => openResetPasswordModal(u)}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="12" cy="16" r="1" />
+                                    <rect x="3" y="10" width="18" height="12" rx="2" />
+                                    <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                                  </svg>
+                                  <span>Đặt lại mật khẩu</span>
+                                </button>
+
+                                {!isUserAdmin(u) && (
                                   <button
                                     type="button"
                                     style={{
@@ -1144,44 +1229,19 @@ export default function AdminAccountsPage() {
                                       cursor: 'pointer',
                                       color: '#334155'
                                     }}
-                                    onClick={() => openResetPasswordModal(u)}
+                                    onClick={() => {
+                                      setSelectedUser(u);
+                                      setShowNotifyModal(true);
+                                      setOpenActionId(null);
+                                    }}
                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                      <circle cx="12" cy="16" r="1" />
-                                      <rect x="3" y="10" width="18" height="12" rx="2" />
-                                      <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                                      <line x1="22" y1="2" x2="11" y2="13" />
+                                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
                                     </svg>
-                                    <span>Đặt lại mật khẩu</span>
+                                    <span>Gửi thông báo</span>
                                   </button>
-
-                                  {!isUserAdmin(u) && (
-                                    <button
-                                      type="button"
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        padding: '8px 10px',
-                                        fontSize: '12px',
-                                        background: 'none',
-                                        border: 'none',
-                                        borderRadius: '5px',
-                                        cursor: 'pointer',
-                                        color: '#334155'
-                                      }}
-                                      onClick={() => {
-                                        setSelectedUser(u);
-                                        setShowNotifyModal(true);
-                                        setOpenActionId(null);
-                                      }}
-                                    >
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <line x1="22" y1="2" x2="11" y2="13" />
-                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                                      </svg>
-                                      <span>Gửi thông báo</span>
-                                    </button>
-                                  )}
+                                )}
                               </div>
                             )}
                           </div>
@@ -1401,6 +1461,14 @@ export default function AdminAccountsPage() {
                       <div className="admin-acc-kv-row">
                         <span className="admin-acc-kv-key">Số điện thoại</span>
                         <span className="admin-acc-kv-val">{selectedUser.phone}</span>
+                      </div>
+                      <div className="admin-acc-kv-row">
+                        <span className="admin-acc-kv-key">Ngày sinh</span>
+                        <span className="admin-acc-kv-val">{selectedUser.dob || '15/08/2000'}</span>
+                      </div>
+                      <div className="admin-acc-kv-row">
+                        <span className="admin-acc-kv-key">Giới tính</span>
+                        <span className="admin-acc-kv-val">{selectedUser.gender || 'Nữ'}</span>
                       </div>
                       <div className="admin-acc-kv-row">
                         <span className="admin-acc-kv-key">Địa chỉ</span>
@@ -1810,114 +1878,301 @@ export default function AdminAccountsPage() {
       {/* ==========================================================
           MODAL: CHỈNH SỬA TÀI KHOẢN
           ========================================================== */}
+      {/* ==========================================================
+          MODAL: CHỈNH SỬA HỒ SƠ TÀI KHOẢN (TailAdmin Rich Edit Modal)
+          ========================================================== */}
       {showEditModal && selectedUser && (
         <div className="admin-acc-modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="admin-acc-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-acc-modal-head">
-              <h3 className="admin-acc-modal-title">Chỉnh sửa hồ sơ {selectedUser.name}</h3>
+          <div className="admin-acc-modal-card admin-acc-edit-card" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="admin-acc-modal-head-rich">
+              <div className="admin-acc-modal-head-left">
+                <div className="admin-acc-modal-head-icon blue">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="admin-acc-modal-title-rich">
+                    Chỉnh sửa hồ sơ {selectedUser.role === 'customer' ? 'khách hàng' : (ROLE_LABELS[selectedUser.role] || 'người dùng')}
+                  </h3>
+                  <p className="admin-acc-modal-sub-rich">
+                    Cập nhật thông tin cá nhân của {selectedUser.role === 'customer' ? 'khách hàng' : (ROLE_LABELS[selectedUser.role]?.toLowerCase() || 'người dùng')}
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 className="admin-acc-drawer-close"
                 onClick={() => setShowEditModal(false)}
+                title="Đóng modal"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <i className="fa-solid fa-xmark" style={{ fontSize: '15px' }} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit}>
-              <div className="admin-acc-modal-body">
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Họ và tên *</label>
-                  <input
-                    type="text"
-                    required
-                    className="admin-acc-form-input"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  />
-                </div>
+            <form onSubmit={handleSaveEdit} className="admin-acc-edit-form">
+              <div className="admin-acc-modal-body admin-acc-edit-modal-body">
+                {/* 1. Phần Chỉnh Sửa Avatar */}
+                <div className="admin-acc-edit-avatar-box">
+                  <div className="admin-acc-edit-avatar-preview-wrap">
+                    {editForm.avatar ? (
+                      <img
+                        src={editForm.avatar}
+                        alt="Preview Avatar"
+                        className="admin-acc-edit-avatar-img"
+                      />
+                    ) : (
+                      <div
+                        className="admin-acc-edit-avatar-letter"
+                        style={{ background: selectedUser.letterColor || '#3B82F6' }}
+                      >
+                        {editForm.name ? editForm.name.charAt(0).toUpperCase() : 'U'}
+                      </div>
+                    )}
+                    <div className="admin-acc-edit-avatar-badge" title="Đổi ảnh đại diện">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    </div>
+                  </div>
 
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Số điện thoại</label>
-                  <input
-                    type="text"
-                    className="admin-acc-form-input"
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  />
+                  <div className="admin-acc-edit-avatar-actions">
+                    <div className="admin-acc-edit-avatar-title">
+                      <span>Ảnh đại diện người dùng</span>
+                    </div>
+                    <p className="admin-acc-edit-avatar-desc">
+                      Tải lên hình ảnh đại diện (PNG, JPG, WEBP tối đa 5MB)
+                    </p>
+                    <div className="admin-acc-edit-avatar-btns">
+                      <input
+                        type="file"
+                        ref={avatarFileInputRef}
+                        onChange={handleAvatarFileChange}
+                        accept="image/png, image/jpeg, image/jpg, image/webp"
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-upload-avatar"
+                        onClick={() => avatarFileInputRef.current?.click()}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="17 8 12 3 7 8" />
+                          <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <span>Tải ảnh mới</span>
+                      </button>
+                      {editForm.avatar && (
+                        <button
+                          type="button"
+                          className="btn-remove-avatar"
+                          onClick={handleRemoveAvatar}
+                        >
+                          Gỡ ảnh (dùng chữ cái)
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
+                {editFormErrors.avatar && (
+                  <span className="admin-acc-field-error">{editFormErrors.avatar}</span>
+                )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Ngày sinh</label>
+                {/* 2. Họ và tên * */}
+                <div className="admin-acc-form-group">
+                  <label className="admin-acc-form-label">
+                    Họ và tên <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <div className="admin-acc-input-wrap">
+                    <span className="admin-acc-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                    </span>
                     <input
                       type="text"
+                      required
                       className="admin-acc-form-input"
-                      value={editForm.dob}
-                      onChange={(e) => setEditForm({ ...editForm, dob: e.target.value })}
+                      placeholder="Nhập họ và tên đầy đủ"
+                      value={editForm.name}
+                      onChange={(e) => {
+                        setEditForm({ ...editForm, name: e.target.value });
+                        if (editFormErrors.name) setEditFormErrors(prev => ({ ...prev, name: null }));
+                      }}
                     />
+                  </div>
+                  {editFormErrors.name && (
+                    <span className="admin-acc-field-error">{editFormErrors.name}</span>
+                  )}
+                </div>
+
+                {/* 3. Row: Email * | Số điện thoại */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '14px' }}>
+                  <div className="admin-acc-form-group">
+                    <label className="admin-acc-form-label">
+                      Email <span style={{ color: '#EF4444' }}>*</span>
+                    </label>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                      </span>
+                      <input
+                        type="email"
+                        disabled
+                        className="admin-acc-form-input"
+                        value={editForm.email || selectedUser.email}
+                      />
+                    </div>
+                    <span className="admin-acc-field-hint">Email không thể chỉnh sửa</span>
+                  </div>
+
+                  <div className="admin-acc-form-group">
+                    <label className="admin-acc-form-label">Số điện thoại</label>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                        </svg>
+                      </span>
+                      <input
+                        type="text"
+                        className="admin-acc-form-input"
+                        placeholder="0912345678"
+                        value={editForm.phone}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, phone: e.target.value });
+                          if (editFormErrors.phone) setEditFormErrors(prev => ({ ...prev, phone: null }));
+                        }}
+                      />
+                    </div>
+                    {editFormErrors.phone && (
+                      <span className="admin-acc-field-error">{editFormErrors.phone}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Row: Ngày sinh | Giới tính */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div className="admin-acc-form-group">
+                    <label className="admin-acc-form-label">Ngày sinh</label>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                          <line x1="16" y1="2" x2="16" y2="6" />
+                          <line x1="8" y1="2" x2="8" y2="6" />
+                          <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                      </span>
+                      <input
+                        type="text"
+                        className="admin-acc-form-input"
+                        placeholder="15/08/2000"
+                        value={editForm.dob}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, dob: e.target.value });
+                          if (editFormErrors.dob) setEditFormErrors(prev => ({ ...prev, dob: null }));
+                        }}
+                      />
+                    </div>
+                    {editFormErrors.dob && (
+                      <span className="admin-acc-field-error">{editFormErrors.dob}</span>
+                    )}
                   </div>
 
                   <div className="admin-acc-form-group">
                     <label className="admin-acc-form-label">Giới tính</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={editForm.gender}
-                      onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
-                    >
-                      <option value="Nam">Nam</option>
-                      <option value="Nữ">Nữ</option>
-                      <option value="Khác">Khác</option>
-                    </select>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="9" r="5" />
+                          <line x1="12" y1="14" x2="12" y2="21" />
+                          <line x1="9" y1="18" x2="15" y2="18" />
+                        </svg>
+                      </span>
+                      <select
+                        className="admin-acc-form-select"
+                        value={editForm.gender}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, gender: e.target.value });
+                          if (editFormErrors.gender) setEditFormErrors(prev => ({ ...prev, gender: null }));
+                        }}
+                      >
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                      </select>
+                    </div>
+                    {editFormErrors.gender && (
+                      <span className="admin-acc-field-error">{editFormErrors.gender}</span>
+                    )}
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Vai trò</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={editForm.role}
-                      onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                    >
-                      <option value="customer">customer — Khách hàng</option>
-                      <option value="shopOwner">shopOwner — Chủ gian hàng</option>
-                      <option value="brandmanager">brandmanager — Quản lý thương hiệu</option>
-                      <option value="warehouseManager">warehouseManager — Quản lý kho</option>
-                      <option value="warehousestaff">warehousestaff — Nhân viên kho</option>
-                    </select>
+                {/* 5. Địa chỉ */}
+                <div className="admin-acc-form-group">
+                  <label className="admin-acc-form-label">Địa chỉ</label>
+                  <div className="admin-acc-input-wrap has-textarea">
+                    <span className="admin-acc-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                    </span>
+                    <textarea
+                      rows={2}
+                      className="admin-acc-form-textarea"
+                      placeholder="123 Nguyễn Văn Cừ, Quận Long Biên, Hà Nội"
+                      value={editForm.address}
+                      onChange={(e) => {
+                        setEditForm({ ...editForm, address: e.target.value });
+                        if (editFormErrors.address) setEditFormErrors(prev => ({ ...prev, address: null }));
+                      }}
+                    />
                   </div>
+                  {editFormErrors.address && (
+                    <span className="admin-acc-field-error">{editFormErrors.address}</span>
+                  )}
+                </div>
 
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Trạng thái</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={editForm.status}
-                      onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    >
-                      <option value="ACTIVE">Hoạt động</option>
-                      <option value="LOCKED">Tạm khóa</option>
-                    </select>
-                  </div>
+                {/* 6. Info Banner Alert */}
+                <div className="admin-acc-edit-info-alert">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                  <span>Các trường có dấu <strong style={{ color: '#EF4444' }}>*</strong> là bắt buộc. Email không thể thay đổi.</span>
                 </div>
               </div>
 
-              <div className="admin-acc-modal-foot">
+              {/* Modal Footer */}
+              <div className="admin-acc-modal-foot-rich">
                 <button
                   type="button"
-                  className="btn-acc-outline"
+                  className="btn-acc-modal-cancel"
                   onClick={() => setShowEditModal(false)}
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="btn-acc-primary"
+                  className="btn-acc-modal-save"
                 >
-                  Lưu thay đổi
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  <span>Lưu thay đổi</span>
                 </button>
               </div>
             </form>
@@ -1937,11 +2192,9 @@ export default function AdminAccountsPage() {
                 type="button"
                 className="admin-acc-drawer-close"
                 onClick={() => setShowResetPwdModal(false)}
+                title="Đóng"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <i className="fa-solid fa-xmark" style={{ fontSize: '15px' }} />
               </button>
             </div>
 
@@ -1986,6 +2239,7 @@ export default function AdminAccountsPage() {
                   setShowResetPwdModal(false);
                 }}
               >
+                <i className="fa-solid fa-key" style={{ marginRight: '6px' }} />
                 Cập nhật mật khẩu
               </button>
             </div>
@@ -2005,11 +2259,9 @@ export default function AdminAccountsPage() {
                 type="button"
                 className="admin-acc-drawer-close"
                 onClick={() => setShowNotifyModal(false)}
+                title="Đóng"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <i className="fa-solid fa-xmark" style={{ fontSize: '15px' }} />
               </button>
             </div>
 
@@ -2062,11 +2314,12 @@ export default function AdminAccountsPage() {
                 type="button"
                 className="btn-acc-primary"
                 onClick={() => {
-                  alert(`Đã gửi thông báo thành công tới ${selectedUser.email}!`);
+                  showToast(`Đã gửi thông báo thành công tới ${selectedUser.email}!`, 'success');
                   setShowNotifyModal(false);
                   setNotifyForm({ title: '', message: '', type: 'SYSTEM' });
                 }}
               >
+                <i className="fa-solid fa-paper-plane" style={{ marginRight: '6px' }} />
                 Gửi thông báo
               </button>
             </div>
@@ -2074,60 +2327,137 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
-      {/* ========== MODAL: Lý Do Khóa Tài Khoản ========== */}
+      {/* ========== MODAL: Lý Do Khóa Tài Khoản (Theme Sáng + Font Awesome) ========== */}
       {showLockReasonModal && (
         <div
           style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(15, 23, 42, 0.45)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            boxSizing: 'border-box'
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowLockReasonModal(false); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isLocking) setShowLockReasonModal(false);
+          }}
         >
-          <div style={{
-            background: '#1E293B', borderRadius: '16px', border: '1px solid #334155',
-            width: '100%', maxWidth: '480px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', overflow: 'hidden'
-          }}>
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: '16px',
+              border: '1px solid #E2E8F0',
+              width: '100%',
+              maxWidth: '490px',
+              boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.16)',
+              overflow: 'hidden'
+            }}
+          >
             {/* Header */}
-            <div style={{
-              padding: '20px 24px', borderBottom: '1px solid #334155',
-              display: 'flex', alignItems: 'center', gap: '12px'
-            }}>
-              <div style={{
-                width: '36px', height: '36px', borderRadius: '50%',
-                background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0
-              }}>🔒</div>
-              <div>
-                <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '15px' }}>Khóa Tài Khoản</div>
-                <div style={{ color: '#94A3B8', fontSize: '12px', marginTop: '2px' }}>
+            <div
+              style={{
+                padding: '20px 24px',
+                borderBottom: '1px solid #F1F5F9',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                background: '#FFFFFF'
+              }}
+            >
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: '#FEE2E2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <i className="fa-solid fa-lock" style={{ color: '#DC2626', fontSize: '18px' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#0F172A', fontWeight: 700, fontSize: '16px', lineHeight: 1.3 }}>
+                  Khóa Tài Khoản
+                </div>
+                <div style={{ color: '#64748B', fontSize: '12.5px', marginTop: '3px' }}>
                   Hệ thống sẽ gửi email thông báo lý do tới người dùng
                 </div>
               </div>
               <button
-                onClick={() => setShowLockReasonModal(false)}
+                type="button"
+                onClick={() => !isLocking && setShowLockReasonModal(false)}
+                disabled={isLocking}
                 style={{
-                  marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#64748B', fontSize: '18px', lineHeight: 1
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '8px',
+                  cursor: isLocking ? 'not-allowed' : 'pointer',
+                  color: '#64748B',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px',
+                  transition: 'all 0.15s ease'
                 }}
-              >✕</button>
+                title="Đóng"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
             </div>
 
             {/* Body */}
             <div style={{ padding: '24px' }}>
-              <div style={{
-                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
-                borderRadius: '10px', padding: '14px 16px', marginBottom: '20px'
-              }}>
-                <div style={{ color: '#FCA5A5', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>⚠️ LƯU Ý</div>
-                <div style={{ color: '#CBD5E1', fontSize: '13px', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  background: '#FFF7ED',
+                  border: '1px solid #FFEDD5',
+                  borderRadius: '10px',
+                  padding: '14px 16px',
+                  marginBottom: '20px'
+                }}
+              >
+                <div
+                  style={{
+                    color: '#C2410C',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    marginBottom: '5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    letterSpacing: '0.3px'
+                  }}
+                >
+                  <i className="fa-solid fa-triangle-exclamation" style={{ color: '#EA580C', fontSize: '13px' }} />
+                  <span>LƯU Ý</span>
+                </div>
+                <div style={{ color: '#9A3412', fontSize: '13px', lineHeight: 1.6 }}>
                   Người dùng sẽ nhận được email thông báo kèm lý do khóa ngay sau khi bạn xác nhận.
                   Tài khoản bị khóa sẽ không thể đăng nhập cho đến khi được mở khóa.
                 </div>
               </div>
 
-              <label style={{ display: 'block', color: '#94A3B8', fontSize: '12px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Lý do khóa tài khoản <span style={{ color: '#EF4444' }}>*</span>
+              <label
+                style={{
+                  display: 'block',
+                  color: '#334155',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}
+              >
+                Lý do khóa tài khoản <span style={{ color: '#DC2626' }}>*</span>
               </label>
               <textarea
                 rows={4}
@@ -2135,47 +2465,107 @@ export default function AdminAccountsPage() {
                 onChange={(e) => setLockReasonText(e.target.value)}
                 placeholder="Vd: Vi phạm điều khoản sử dụng dịch vụ, giao dịch gian lận, phản ánh từ người dùng khác..."
                 style={{
-                  width: '100%', boxSizing: 'border-box',
-                  background: '#0F172A', border: `1px solid ${lockReasonText.trim().length > 0 && lockReasonText.trim().length < 5 ? '#EF4444' : '#334155'}`,
-                  borderRadius: '10px', color: '#F1F5F9', fontSize: '14px',
-                  padding: '12px 14px', resize: 'vertical', lineHeight: 1.6,
-                  outline: 'none', fontFamily: 'inherit'
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: '#FFFFFF',
+                  border: `1px solid ${
+                    lockReasonText.trim().length > 0 && lockReasonText.trim().length < 5 ? '#DC2626' : '#CBD5E1'
+                  }`,
+                  borderRadius: '10px',
+                  color: '#0F172A',
+                  fontSize: '13.5px',
+                  padding: '12px 14px',
+                  resize: 'vertical',
+                  lineHeight: 1.6,
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)'
                 }}
               />
               {lockReasonText.trim().length > 0 && lockReasonText.trim().length < 5 && (
-                <div style={{ color: '#EF4444', fontSize: '12px', marginTop: '6px' }}>Lý do phải có ít nhất 5 ký tự.</div>
+                <div
+                  style={{
+                    color: '#DC2626',
+                    fontSize: '12px',
+                    marginTop: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '12px' }} />
+                  <span>Lý do phải có ít nhất 5 ký tự.</span>
+                </div>
               )}
-              <div style={{ color: '#64748B', fontSize: '11px', marginTop: '6px', textAlign: 'right' }}>
+              <div style={{ color: '#94A3B8', fontSize: '11.5px', marginTop: '6px', textAlign: 'right' }}>
                 {lockReasonText.length} ký tự
               </div>
             </div>
 
             {/* Footer */}
-            <div style={{
-              padding: '16px 24px', borderTop: '1px solid #334155',
-              display: 'flex', gap: '12px', justifyContent: 'flex-end'
-            }}>
+            <div
+              style={{
+                padding: '16px 24px',
+                borderTop: '1px solid #F1F5F9',
+                background: '#F8FAFC',
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end',
+                alignItems: 'center'
+              }}
+            >
               <button
+                type="button"
                 onClick={() => setShowLockReasonModal(false)}
                 disabled={isLocking}
                 style={{
-                  padding: '10px 20px', borderRadius: '8px', border: '1px solid #334155',
-                  background: 'transparent', color: '#94A3B8', fontSize: '13px',
-                  cursor: 'pointer', fontWeight: 500
+                  padding: '10px 18px',
+                  borderRadius: '8px',
+                  border: '1px solid #CBD5E1',
+                  background: '#FFFFFF',
+                  color: '#475569',
+                  fontSize: '13px',
+                  cursor: isLocking ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                 }}
-              >Hủy</button>
+              >
+                Hủy
+              </button>
               <button
+                type="button"
                 onClick={confirmLockWithReason}
                 disabled={isLocking || lockReasonText.trim().length < 5}
                 style={{
-                  padding: '10px 24px', borderRadius: '8px', border: 'none',
-                  background: lockReasonText.trim().length >= 5 && !isLocking ? '#EF4444' : '#475569',
-                  color: '#fff', fontSize: '13px', fontWeight: 600,
+                  padding: '10px 22px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: lockReasonText.trim().length >= 5 && !isLocking ? '#DC2626' : '#94A3B8',
+                  color: '#FFFFFF',
+                  fontSize: '13px',
+                  fontWeight: 600,
                   cursor: lockReasonText.trim().length >= 5 && !isLocking ? 'pointer' : 'not-allowed',
-                  transition: 'background 0.2s'
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow:
+                    lockReasonText.trim().length >= 5 && !isLocking
+                      ? '0 2px 8px rgba(220, 38, 38, 0.25)'
+                      : 'none',
+                  transition: 'all 0.15s ease'
                 }}
               >
-                {isLocking ? 'Đang xử lý...' : '🔒 Xác nhận khóa & Gửi email'}
+                {isLocking ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin" />
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-lock" />
+                    <span>Xác nhận khóa & Gửi email</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -2217,25 +2607,29 @@ export default function AdminAccountsPage() {
                   t.type === 'success'
                     ? 'linear-gradient(135deg, #065F46, #059669)'
                     : t.type === 'error'
-                    ? 'linear-gradient(135deg, #991B1B, #DC2626)'
-                    : t.type === 'warning'
-                    ? 'linear-gradient(135deg, #92400E, #D97706)'
-                    : 'linear-gradient(135deg, #1E293B, #334155)',
-                borderLeft: `5px solid ${
-                  t.type === 'success'
-                    ? '#34D399'
-                    : t.type === 'error'
+                      ? 'linear-gradient(135deg, #991B1B, #DC2626)'
+                      : t.type === 'warning'
+                        ? 'linear-gradient(135deg, #92400E, #D97706)'
+                        : 'linear-gradient(135deg, #1E293B, #334155)',
+                borderLeft: `5px solid ${t.type === 'success'
+                  ? '#34D399'
+                  : t.type === 'error'
                     ? '#F87171'
                     : t.type === 'warning'
-                    ? '#FBBF24'
-                    : '#60A5FA'
-                }`,
+                      ? '#FBBF24'
+                      : '#60A5FA'
+                  }`,
                 backdropFilter: 'blur(8px)'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '16px' }}>
-                  {t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : t.type === 'warning' ? '⚠️' : 'ℹ️'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {t.type === 'success' && <i className="fa-solid fa-circle-check" style={{ color: '#34D399' }} />}
+                  {t.type === 'error' && <i className="fa-solid fa-circle-xmark" style={{ color: '#F87171' }} />}
+                  {t.type === 'warning' && <i className="fa-solid fa-triangle-exclamation" style={{ color: '#FBBF24' }} />}
+                  {(t.type === 'info' || (!['success', 'error', 'warning'].includes(t.type))) && (
+                    <i className="fa-solid fa-circle-info" style={{ color: '#60A5FA' }} />
+                  )}
                 </span>
                 <span style={{ lineHeight: 1.45 }}>{t.message}</span>
               </div>
@@ -2248,12 +2642,15 @@ export default function AdminAccountsPage() {
                   color: 'rgba(255, 255, 255, 0.75)',
                   cursor: 'pointer',
                   padding: '4px',
-                  fontSize: '15px',
-                  lineHeight: 1
+                  fontSize: '14px',
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
-                title="Đóng"
+                title="Đóng thông báo"
               >
-                ✕
+                <i className="fa-solid fa-xmark" />
               </button>
             </div>
           ))}

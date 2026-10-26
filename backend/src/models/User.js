@@ -48,6 +48,18 @@ const informationSchema = new mongoose.Schema(
       default: "",
       maxlength: 200,
     },
+
+    DateOfBirth: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    Gender: {
+      type: String,
+      trim: true,
+      default: "",
+    },
   },
   { _id: false }
 );
@@ -139,6 +151,18 @@ const userSchema = new mongoose.Schema(
 
     AvatarPublicId: {
       type: String,
+      default: "",
+    },
+
+    DateOfBirth: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    Gender: {
+      type: String,
+      trim: true,
       default: "",
     },
 

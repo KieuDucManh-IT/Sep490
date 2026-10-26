@@ -1,6 +1,7 @@
 import { User } from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import { sendEmail } from '../utils/sendEmail.js';
+import { validateUserUpdate, validateUserCreate } from '../utils/userValidation.js';
 
 // Template email thông báo khóa tài khoản
 function buildLockEmailHtml(fullName, reason) {
@@ -226,9 +227,12 @@ export const getUserStats = async (req, res) => {
 // Tạo tài khoản mới từ Admin Console
 export const createUser = async (req, res) => {
   try {
-    const { Email, FullName, Role, Password, Phone, Status } = req.body;
-    if (!Email || !FullName) {
-      return res.status(400).json({ success: false, message: 'Email và họ tên không được để trống' });
+    const { Email, FullName, Role, Password, Phone, Status, Avatar, DateOfBirth, Gender } = req.body;
+
+    const validation = validateUserCreate(req.body);
+    if (!validation.isValid) {
+      const firstError = Object.values(validation.errors)[0];
+      return res.status(400).json({ success: false, message: firstError, errors: validation.errors });
     }
 
     // Không cho phép tạo tài khoản có vai trò admin vì chỉ có 1 tài khoản admin duy nhất
@@ -264,7 +268,14 @@ export const createUser = async (req, res) => {
       Status: (Status || 'active').toLowerCase(),
       PasswordHash: passwordHash,
       AuthProvider: 'local',
-      Information: Phone ? [{ Phone }] : []
+      Avatar: Avatar ? Avatar.trim() : '',
+      DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
+      Gender: Gender ? Gender.trim() : '',
+      Information: [{
+        Phone: Phone ? Phone.trim() : '',
+        DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
+        Gender: Gender ? Gender.trim() : ''
+      }]
     });
 
     await newUser.save();
@@ -276,7 +287,8 @@ export const createUser = async (req, res) => {
         Email: newUser.Email,
         FullName: newUser.FullName,
         Role: newUser.Role,
-        Status: newUser.Status
+        Status: newUser.Status,
+        Avatar: newUser.Avatar
       }
     });
   } catch (error) {
@@ -288,7 +300,7 @@ export const createUser = async (req, res) => {
 // Cập nhật tài khoản từ Admin Console
 export const updateUser = async (req, res) => {
   try {
-    const { FullName, Role, Status, Phone, Address } = req.body;
+    const { FullName, Role, Status, Phone, Address, DateOfBirth, Gender, Avatar } = req.body;
 
     const existingUser = await User.findById(req.params.id);
     if (!existingUser) {
@@ -312,16 +324,20 @@ export const updateUser = async (req, res) => {
       });
     }
 
+    // Validate dữ liệu đầu vào bằng reusable userValidation module
+    const validation = validateUserUpdate(req.body);
+    if (!validation.isValid) {
+      const firstError = Object.values(validation.errors)[0];
+      return res.status(400).json({
+        success: false,
+        message: firstError,
+        errors: validation.errors
+      });
+    }
+
     const updateData = {};
     if (FullName !== undefined) {
-      const trimmed = FullName.trim();
-      if (!trimmed) {
-        return res.status(400).json({ success: false, message: 'Họ và tên không được để trống' });
-      }
-      if ([...trimmed].length > 25) {
-        return res.status(400).json({ success: false, message: 'Họ và tên không được vượt quá 25 ký tự' });
-      }
-      updateData.FullName = trimmed;
+      updateData.FullName = FullName.trim();
     }
 
     if (Role !== undefined) {
@@ -338,11 +354,25 @@ export const updateUser = async (req, res) => {
       updateData.Status = Status.toLowerCase();
     }
 
-    if (Phone !== undefined || Address !== undefined) {
+    if (Avatar !== undefined) {
+      updateData.Avatar = Avatar.trim();
+    }
+
+    if (DateOfBirth !== undefined) {
+      updateData.DateOfBirth = DateOfBirth.trim();
+    }
+
+    if (Gender !== undefined) {
+      updateData.Gender = Gender.trim();
+    }
+
+    if (Phone !== undefined || Address !== undefined || DateOfBirth !== undefined || Gender !== undefined) {
       const prevInfo = existingUser.Information?.[0] || {};
       updateData.Information = [{
         Phone: Phone !== undefined ? Phone.trim() : (prevInfo.Phone || ''),
-        Address: Address !== undefined ? Address.trim() : (prevInfo.Address || '')
+        Address: Address !== undefined ? Address.trim() : (prevInfo.Address || ''),
+        DateOfBirth: DateOfBirth !== undefined ? DateOfBirth.trim() : (prevInfo.DateOfBirth || ''),
+        Gender: Gender !== undefined ? Gender.trim() : (prevInfo.Gender || '')
       }];
     }
 

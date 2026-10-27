@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // 1. Role Auth / Common
@@ -50,7 +49,7 @@ import AdminAccountsPage from './pages/admin/AdminAccountsPage';
 
 function App() {
   return (
-    <AuthProvider>
+    
       <Router>
         <Routes>
           {/* ========================================================
@@ -164,7 +163,6 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
-    </AuthProvider>
   );
 }
 

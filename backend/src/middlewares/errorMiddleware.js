@@ -80,6 +80,14 @@ export function notFound(req, res) {
 
 export function errorHandler(error, req, res, next) {
   if (res.headersSent) return next(error);
+  if (error.name === "MulterError") {
+    return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+      message:
+        error.code === "LIMIT_FILE_SIZE"
+          ? "Ảnh đại diện không được vượt quá 5 MB"
+          : "Dữ liệu tải ảnh không hợp lệ",
+    });
+  }
 
   if (error.code === 11000) {
     return res.status(409).json({
@@ -111,8 +119,8 @@ export function errorHandler(error, req, res, next) {
 
   const status =
     Number.isInteger(error.status) &&
-    error.status >= 400 &&
-    error.status <= 599
+      error.status >= 400 &&
+      error.status <= 599
       ? error.status
       : 500;
 

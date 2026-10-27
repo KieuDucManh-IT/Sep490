@@ -1,229 +1,316 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useState } from 'react';
 import BranchSidebar from '../../components/BranchSidebar';
+import ShopPagination from '../../components/ShopPagination';
+import SearchableSelect from '../../components/SearchableSelect';
+import { fetchCategories } from '../../services/categoryService';
+import {
+  fetchProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+} from '../../services/productService';
 import '../../styles/ShopDashboard.css';
+import '../../styles/ShopProducts.css';
 
-export default function WarehouseProductsPage() {
-  const navigate = useNavigate();
-  const [activeCategory, setActiveCategory] = useState('Tất cả (42)');
 
-  const products = [
-    {
-      id: 'SKU-TL-101',
-      title: 'Đầm Dạ Hội Lụa Satin Midnight Xếp Nếp',
-      brand: 'Christian Dior Paris Archive',
-      category: 'ĐẦM DẠ HỘI',
-      price: '250.000 đ / ngày',
-      deposit: 'Cọc Escrow: 700.000 đ',
-      resale: 'Bán: 12.000.000 đ',
-      variants: 'S (2), M (3), L (1) • Tổng: 6 chiếc khả dụng',
-      status: 'Đang Hoạt Động',
-      statusType: 'completed',
-      image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=120&q=80',
-    },
-    {
-      id: 'SKU-TL-105',
-      title: 'Áo Khoác Tweed Dệt Thủ Công Nút Ngọc Trai',
-      brand: 'Chanel Archive',
-      category: 'ÁO KHOÁC TWEED',
-      price: '220.000 đ / ngày',
-      deposit: 'Cọc Escrow: 500.000 đ',
-      resale: 'Bán: 6.200.000 đ',
-      variants: 'S (1), M (2) • Tổng: 3 chiếc khả dụng',
-      status: 'Đang Hoạt Động',
-      statusType: 'completed',
-      image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=120&q=80',
-    },
-    {
-      id: 'SKU-TL-103',
-      title: 'Bộ Suit Nữ Tuxedo Slim Fit Cắt May Định Hình',
-      brand: 'Yves Saint Laurent',
-      category: 'VEST & SUIT NỮ',
-      price: '180.000 đ / ngày',
-      deposit: 'Cọc Escrow: 800.000 đ',
-      resale: 'Bán: 8.500.000 đ',
-      variants: 'M (2), L (2) • Tổng: 4 bộ khả dụng',
-      status: 'Đang Hoạt Động',
-      statusType: 'completed',
-      image: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=120&q=80',
-    },
-    {
-      id: 'SKU-TL-108',
-      title: 'Đầm Xếp Nếp Bất Đối Xứng Tơ Tằm Thượng Hạng',
-      brand: 'Jacquemus',
-      category: 'ĐẦM DẠ HỘI',
-      price: '280.000 đ / ngày',
-      deposit: 'Cọc Escrow: 600.000 đ',
-      resale: 'Bán: 7.900.000 đ',
-      variants: 'S (0), M (1) • Chi còn 1 chiếc',
-      status: 'Tạm Hết Hàng',
-      statusType: 'return',
-      image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=120&q=80',
-    },
-    {
-      id: 'SKU-TL-112',
-      title: 'Túi Xách Mini Kelly Da Epsom Cổ Điển',
-      brand: 'Hermès Archive',
-      category: 'PHỤ KIỆN CAO CẤP',
-      price: '350.000 đ / ngày',
-      deposit: 'Cọc Escrow: 1.500.000 đ',
-      resale: 'Không mở bán',
-      variants: 'Gold Brown: 1 • Kho an toàn: 1 túi',
-      status: 'Đang Hoạt Động',
-      statusType: 'completed',
-      image: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=120&q=80',
-    },
-  ];
+const blankProduct = {
+  sku: '', name: '', brand: '', material: '', categoryId: '', tag: 'sale',
+  salePrice: '', rentalPricePerDay: '', deposit: '0', discount: '0', images: '',
+};
+
+//duc 2026-10-16: Chuyển form string thành payload đúng kiểu dữ liệu backend yêu cầu.
+const toPayload = (form, categories) => {
+  const catObj = categories.find((c) => c._id === form.categoryId);
+  const categoryArr = catObj ? [catObj.name] : (form.categoryId ? [form.categoryId] : []);
+  return {
+    sku: form.sku.trim(),
+    name: form.name.trim(),
+    ...(form.brand.trim() ? { brand: form.brand.trim() } : {}),
+    ...(form.material.trim() ? { material: form.material.trim() } : {}),
+    category: categoryArr,
+    tag: form.tag,
+    ...(form.salePrice !== '' ? { salePrice: Number(form.salePrice) } : {}),
+    ...(form.rentalPricePerDay !== '' ? { rentalPricePerDay: Number(form.rentalPricePerDay) } : {}),
+    deposit: Number(form.deposit || 0),
+    discount: Number(form.discount || 0),
+    images: form.images.split('\n').map((s) => s.trim()).filter(Boolean),
+  };
+};
+
+const TAG_LABELS = { sale: 'Bán', rental: 'Cho thuê', both: 'Bán & Cho thuê' };
+const STATUS_LABELS = { pending: 'Chờ duyệt', active: 'Đang bán', inactive: 'Ẩn', rejected: 'Từ chối' };
+
+//duc 2026-10-16: Hiển thị danh sách và thao tác CRUD product với phân trang, lọc nhãn và loại.
+export default function ShopProductsPage() {
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [pageSize, setPageSize] = useState(10);
+  const [search, setSearch] = useState('');
+  const [filterTag, setFilterTag] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [page, setPage] = useState(1);
+  const [form, setForm] = useState(blankProduct);
+  const [editingId, setEditingId] = useState(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  //duc 2026-10-16: Tải category qua categoryService để hiện dropdown chọn loại.
+  const loadCategories = useCallback(async () => {
+    try {
+      const data = await fetchCategories();
+      setCategories(data);
+    } catch (_) { /* không block UI nếu categories lỗi */ }
+  }, []);
+
+  //duc 2026-10-16: Tải product qua productService với tìm kiếm, lọc và phân trang.
+  const loadProducts = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data, pagination: pg } = await fetchProducts({
+        search, tag: filterTag, status: filterStatus, page, limit: pageSize,
+      });
+      setProducts(data);
+      setPagination(pg);
+    } catch (err) {
+      setError(err.message || 'Không kết nối được backend');
+    } finally {
+      setLoading(false);
+    }
+  }, [search, filterTag, filterStatus, page, pageSize]);
+
+  useEffect(() => { loadCategories(); }, [loadCategories]);
+  useEffect(() => { setPage(1); }, [search, filterTag, filterStatus, filterCategory]);
+  useEffect(() => { loadProducts(); }, [loadProducts]);
+
+  //duc 2026-10-16: Lọc thêm theo loại (category) ở phía client vì backend lưu category dạng string[].
+  const visibleProducts = filterCategory
+    ? products.filter((p) => (p.category || []).includes(filterCategory))
+    : products;
+
+  const uniqueCategories = [...new Set(products.flatMap((p) => p.category || []))].filter(Boolean);
+
+  //duc 2026-10-16: Mở form tạo mới hoặc điền dữ liệu product để chỉnh sửa.
+  const openForm = (product) => {
+    setError('');
+    setNotice('');
+    setEditingId(product?._id || null);
+    if (product) {
+      const catName = (product.category || [])[0] || '';
+      const catObj = categories.find((c) => c.name === catName);
+      setForm({
+        sku: product.sku || '', name: product.name || '', brand: product.brand || '',
+        material: product.material || '', categoryId: catObj?._id || catName,
+        tag: product.tag || 'sale', salePrice: product.salePrice ?? '',
+        rentalPricePerDay: product.rentalPricePerDay ?? '', deposit: product.deposit ?? 0,
+        discount: product.discount ?? 0, images: (product.images || []).join('\n'),
+      });
+    } else {
+      setForm(blankProduct);
+    }
+    setIsFormOpen(true);
+  };
+
+  //duc 2026-10-16: Gửi create/update product qua productService, sau đó tải lại danh sách.
+  const saveProduct = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const payload = toPayload(form, categories);
+      if (editingId) {
+        await updateProduct(editingId, payload);
+        setNotice('Đã cập nhật sản phẩm.');
+      } else {
+        await createProduct(payload);
+        setNotice('Đã tạo sản phẩm mới.');
+      }
+      setIsFormOpen(false);
+      await loadProducts();
+    } catch (err) {
+      setError(err.message || 'Không lưu được sản phẩm');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  //duc 2026-10-16: Xóa mềm product sau khi chủ shop xác nhận.
+  const removeProduct = async (product) => {
+    if (!window.confirm(`Xóa sản phẩm "${product.name}"?`)) return;
+    setError('');
+    try {
+      await deleteProduct(product._id);
+      setNotice('Đã xóa sản phẩm.');
+      await loadProducts();
+    } catch (err) {
+      setError(err.message || 'Không xóa được sản phẩm');
+    }
+  };
+
+  const updateField = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   return (
     <div className="shop-dashboard-layout">
-      {/* Reusable Shop Sidebar */}
       <BranchSidebar />
-
-      {/* Main Content Area */}
-      <div className="shop-main-area">
-        {/* Top Header */}
-        <header className="shop-top-navbar">
-          <div style={{ fontSize: '12px', color: '#6B7280' }}>
-            Trang Chủ Shop &gt; <strong>Quản Lý Sản Phẩm</strong>
+      <main className="shop-main-content shop-products-page">
+        <header className="shop-header">
+          <div>
+            <h1>Sản phẩm</h1>
+            <p>Quản lý sản phẩm của gian hàng</p>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <span style={{ fontSize: '11px', background: '#ECFDF5', color: '#059669', padding: '4px 12px', borderRadius: '9999px', fontWeight: 600 }}>
-              ● ĐANG HOẠT ĐỘNG
-            </span>
-            <span style={{ fontSize: '18px', cursor: 'pointer' }}>🔔</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img
-                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80"
-                alt="Avatar"
-                style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
-              />
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>Lê Bảo Trâm</div>
-                <div style={{ fontSize: '10px', color: '#6B7280' }}>Chủ Gian Hàng</div>
-              </div>
-            </div>
-          </div>
+          <button className="shop-product-primary" onClick={() => openForm(null)}>+ Thêm sản phẩm</button>
         </header>
 
-        {/* Scroll Content */}
-        <div className="shop-content-scroll">
-          {/* Action Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '32px', margin: '0 0 4px 0' }}>
-                Danh Sách Trang Phục Cho Thuê & Thanh Lý
-              </h1>
-              <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
-                Quản lý kho trang phục cho thuê, cấu hình cọc Escrow, cập nhật giá thanh lý và phân loại size.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="btn-secondary" style={{ fontSize: '11px', padding: '8px 16px' }} onClick={() => navigate('/shop/pricing')}>
-                🏷️ CẤU HÌNH BẢNG GIÁ THUÊ
-              </button>
-              <button className="btn-primary" style={{ fontSize: '11px', padding: '8px 16px' }} onClick={() => navigate('/shop/products/new')}>
-                ➕ THÊM SẢN PHẨM MỚI
-              </button>
-            </div>
-          </div>
-
-          {/* Filter Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {['Tất cả (42)', 'Đầm dạ hội (18)', 'Vest & Suit (12)', 'Áo khoác (8)', 'Phụ kiện (4)'].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  style={{
-                    border: 'none',
-                    background: activeCategory === cat ? '#171717' : '#F3F4F6',
-                    color: activeCategory === cat ? '#FFF' : '#4B5563',
-                    padding: '6px 14px',
-                    borderRadius: '9999px',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            <input
-              type="text"
-              placeholder="🔍 Tìm kiếm theo SKU, Tên sản phẩm, Thương hiệu..."
-              style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #E5E7EB', fontSize: '12px', width: '280px' }}
-            />
-          </div>
-
-          {/* Table Products List */}
-          <div style={{ background: '#FFF', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', marginTop: '16px', overflow: 'hidden' }}>
-            <table className="shop-table">
-              <thead>
-                <tr>
-                  <th>SẢN PHẨM & THƯƠNG HIỆU</th>
-                  <th>PHÂN LOẠI</th>
-                  <th>GIÁ THUÊ NICK / NGÀY</th>
-                  <th>TIỀN CỌC ESCROW & BÁN</th>
-                  <th>TỒN KHO THEO SIZE</th>
-                  <th>TRẠNG THÁI</th>
-                  <th>THAO TÁC</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p, idx) => (
-                  <tr key={idx}>
-                    <td>
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                        <img src={p.image} alt="product" style={{ width: '44px', height: '56px', borderRadius: '6px', objectFit: 'cover' }} />
-                        <div>
-                          <div style={{ fontSize: '10px', color: 'var(--color-gold-deep)', fontWeight: 700 }}>{p.id}</div>
-                          <div style={{ fontSize: '13px', fontWeight: 700 }}>{p.title}</div>
-                          <div style={{ fontSize: '11px', color: '#6B7280' }}>{p.brand}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '11px', background: '#F3F4F6', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                        {p.category}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#171717' }}>{p.price}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: '11px', color: '#059669', fontWeight: 600 }}>✔ {p.deposit}</div>
-                      <div style={{ fontSize: '11px', color: '#6B7280' }}>{p.resale}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: '12px', color: '#4B5563' }}>{p.variants}</div>
-                    </td>
-                    <td>
-                      <span className={`status-tag status-${p.statusType}`}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button className="btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }} onClick={() => navigate('/shop/inventory')}>
-                          KHO
-                        </button>
-                        <button className="btn-primary" style={{ fontSize: '10px', padding: '4px 8px' }} onClick={() => navigate('/shop/pricing')}>
-                          SỬA GIÁ
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+        <section className="shop-products-panel">
+          {/* Toolbar */}
+          <div className="shop-products-toolbar">
+            <strong>{pagination.total} sản phẩm</strong>
+            <div className="shop-products-filters">
+              <input
+                aria-label="Tìm sản phẩm"
+                placeholder="Tìm theo tên, SKU, thương hiệu"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <select value={filterTag} onChange={(e) => setFilterTag(e.target.value)} aria-label="Lọc nhãn">
+                <option value="">Tất cả nhãn</option>
+                <option value="sale">Bán</option>
+                <option value="rental">Cho thuê</option>
+                <option value="both">Bán &amp; Cho thuê</option>
+              </select>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} aria-label="Lọc trạng thái">
+                <option value="">Tất cả trạng thái</option>
+                <option value="pending">Chờ duyệt</option>
+                <option value="active">Đang bán</option>
+                <option value="inactive">Ẩn</option>
+                <option value="rejected">Từ chối</option>
+              </select>
+              <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} aria-label="Lọc loại">
+                <option value="">Tất cả loại</option>
+                {uniqueCategories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </div>
           </div>
-        </div>
-      </div>
+
+          {notice && <div className="shop-products-notice">{notice}</div>}
+          {error && <div className="shop-products-error">{error}</div>}
+
+          {loading ? (
+            <p className="shop-products-empty">Đang tải sản phẩm…</p>
+          ) : visibleProducts.length === 0 ? (
+            <p className="shop-products-empty">Chưa có sản phẩm. Hãy thêm sản phẩm đầu tiên.</p>
+          ) : (
+            <div className="shop-products-table-wrap">
+              <table className="shop-products-table">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th>Nhãn</th>
+                    <th>Loại</th>
+                    <th>Tổng SL</th>
+                    <th>Giá bán</th>
+                    <th>Giá thuê/ngày</th>
+                    <th>Trạng thái</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleProducts.map((product) => (
+                    <tr key={product._id}>
+                      <td>
+                        <strong>{product.name}</strong>
+                        <small>{product.sku}{product.brand ? ` · ${product.brand}` : ''}</small>
+                      </td>
+                      <td>
+                        <span className={`shop-tag-badge tag-${product.tag}`}>
+                          {TAG_LABELS[product.tag] || product.tag}
+                        </span>
+                      </td>
+                      <td>{(product.category || []).join(', ') || '—'}</td>
+                      <td><strong>{product.totalQuantity ?? 0}</strong></td>
+                      <td>{product.salePrice == null ? '—' : `${Number(product.salePrice).toLocaleString('vi-VN')} ₫`}</td>
+                      <td>{product.rentalPricePerDay == null ? '—' : `${Number(product.rentalPricePerDay).toLocaleString('vi-VN')} ₫`}</td>
+                      <td>
+                        <span className={`shop-product-status status-${product.status}`}>
+                          {STATUS_LABELS[product.status] || product.status}
+                        </span>
+                      </td>
+                      <td className="shop-product-actions">
+                        <button onClick={() => openForm(product)}>Sửa</button>
+                        <button className="shop-product-delete" onClick={() => removeProduct(product)}>Xóa</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Phân trang */}
+          <ShopPagination page={pagination.page} pages={pagination.pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+        </section>
+
+        {/* Modal thêm/sửa sản phẩm */}
+        {isFormOpen && (
+          <div
+            className="shop-product-modal-backdrop"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setIsFormOpen(false); }}
+          >
+            <form className="shop-product-modal" onSubmit={saveProduct}>
+              <div className="shop-product-modal-heading">
+                <h2>{editingId ? 'Sửa sản phẩm' : 'Thêm sản phẩm'}</h2>
+                <button type="button" aria-label="Đóng" onClick={() => setIsFormOpen(false)}>×</button>
+              </div>
+              {error && <div className="shop-products-error">{error}</div>}
+              <div className="shop-product-form-grid">
+                <label>SKU<input name="sku" value={form.sku} onChange={updateField} required /></label>
+                <label>Tên sản phẩm<input name="name" value={form.name} onChange={updateField} required /></label>
+                <label>
+                  Nhãn
+                  <select name="tag" value={form.tag} onChange={updateField}>
+                    <option value="sale">Bán</option>
+                    <option value="rental">Cho thuê</option>
+                    <option value="both">Bán và cho thuê</option>
+                  </select>
+                </label>
+                <label>
+                  Loại (Danh mục)
+                  <SearchableSelect value={form.categoryId} onChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))} options={categories.map((category) => ({ value: category._id, label: category.name }))} placeholder="Chọn loại" searchPlaceholder="Tìm loại sản phẩm" emptyText="Chưa có danh mục nào" />
+                </label>
+                <label>Thương hiệu<input name="brand" value={form.brand} onChange={updateField} /></label>
+                <label>Chất liệu<input name="material" value={form.material} onChange={updateField} /></label>
+                <label>
+                  Giá bán
+                  <input name="salePrice" type="number" min="0" value={form.salePrice} onChange={updateField} required={form.tag !== 'rental'} />
+                </label>
+                <label>
+                  Giá thuê/ngày
+                  <input name="rentalPricePerDay" type="number" min="0" value={form.rentalPricePerDay} onChange={updateField} required={form.tag !== 'sale'} />
+                </label>
+                <label>Tiền cọc<input name="deposit" type="number" min="0" value={form.deposit} onChange={updateField} /></label>
+                <label>Giảm giá (%)<input name="discount" type="number" min="0" max="100" value={form.discount} onChange={updateField} /></label>
+                <label className="shop-product-form-wide">
+                  Ảnh <small>(mỗi URL một dòng)</small>
+                  <textarea name="images" rows="2" value={form.images} onChange={updateField} />
+                </label>
+              </div>
+              <div className="shop-product-modal-actions">
+                <button type="button" onClick={() => setIsFormOpen(false)}>Hủy</button>
+                <button className="shop-product-primary" disabled={saving}>
+                  {saving ? 'Đang lưu…' : 'Lưu sản phẩm'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

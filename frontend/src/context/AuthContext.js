@@ -11,6 +11,8 @@ import {
   loginGoogleApi,
   getMeApi,
   logoutApi,
+  updateAvatarApi,
+  updateProfileApi,
 } from "../services/authApi";
 
 const AuthContext = createContext(null);
@@ -20,6 +22,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState("");
 
+  // Khôi phục tài khoản từ cookie.
   const refreshUser = useCallback(async () => {
     try {
       const data = await getMeApi();
@@ -31,7 +34,6 @@ export function AuthProvider({ children }) {
         setUser(null);
         setAuthError("");
       } else {
-        // Lỗi mạng không xóa cookie đăng nhập.
         setAuthError(
           error.message || "Không thể kết nối đến server"
         );
@@ -41,7 +43,6 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Khôi phục tài khoản từ cookie khi mở hoặc reload trang.
   useEffect(() => {
     refreshUser();
   }, [refreshUser]);
@@ -72,6 +73,33 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  // Cập nhật ảnh đại diện.
+  const updateAvatar = async (file) => {
+    if (!file) {
+      throw new Error("Vui lòng chọn ảnh đại diện");
+    }
+
+    const data = await updateAvatarApi(file);
+
+    setUser(data.user);
+    setAuthError("");
+
+    return data;
+  };
+
+  // Cập nhật họ tên, số điện thoại và địa chỉ.
+  // Hàm này phải nằm BÊN TRONG AuthProvider.
+  const updateProfile = async (payload) => {
+    const data = await updateProfileApi(payload);
+
+    setUser(data.user);
+    setAuthError("");
+
+    // UserProfilePage cần cả data.user và data.message.
+    return data;
+  };
+
+  // Đăng xuất.
   const logout = async () => {
     await logoutApi();
 
@@ -89,6 +117,8 @@ export function AuthProvider({ children }) {
         loginGoogle,
         logout,
         refreshUser,
+        updateAvatar,
+        updateProfile,
       }}
     >
       {children}

@@ -138,7 +138,13 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   role="button"
                   tabIndex={0}
                 >
-                  <span className="admin-dropdown-icon shop">🏪</span>
+                  <span className="admin-dropdown-icon shop">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 9l2-5h14l2 5" />
+                      <path d="M21 9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9" />
+                      <path d="M10 13a2 2 0 0 0 4 0" />
+                    </svg>
+                  </span>
                   <div className="admin-dropdown-content">
                     <div className="admin-dropdown-item-title">Mạng lưới Chi Nhánh & Kho VESTORA</div>
                     <div className="admin-dropdown-item-desc">Kiểm tra thông tin hoạt động và tồn kho các chi nhánh</div>
@@ -152,7 +158,11 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   role="button"
                   tabIndex={0}
                 >
-                  <span className="admin-dropdown-icon product">👗</span>
+                  <span className="admin-dropdown-icon product">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z" />
+                    </svg>
+                  </span>
                   <div className="admin-dropdown-content">
                     <div className="admin-dropdown-item-title">Trang phục dạ hội chờ kiểm duyệt</div>
                     <div className="admin-dropdown-item-desc">Kiểm định tiêu chuẩn ảnh Haute Couture & giá cọc</div>
@@ -166,7 +176,11 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   role="button"
                   tabIndex={0}
                 >
-                  <span className="admin-dropdown-icon dispute">⚖️</span>
+                  <span className="admin-dropdown-icon dispute">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  </span>
                   <div className="admin-dropdown-content">
                     <div className="admin-dropdown-item-title">Yêu cầu hoàn cọc Escrow PayOS</div>
                     <div className="admin-dropdown-item-desc">Đơn hàng đã hoàn tất trả đồ an toàn tại showroom</div>
@@ -180,7 +194,12 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   role="button"
                   tabIndex={0}
                 >
-                  <span className="admin-dropdown-icon account">{isOps ? '🏬' : '👤'}</span>
+                  <span className="admin-dropdown-icon account">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                  </span>
                   <div className="admin-dropdown-content">
                     <div className="admin-dropdown-item-title">{isOps ? 'Giám sát chi nhánh showroom mới' : 'Xác thực tài khoản người dùng KYC'}</div>
                     <div className="admin-dropdown-item-desc">{isOps ? 'Chi nhánh cập nhật tọa độ GPS bản đồ' : 'Cập nhật hồ sơ định danh điện tử hoàn tất'}</div>
@@ -252,76 +271,65 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
               </div>
 
               <div className="admin-dropdown-menu">
-                {isOps ? (
-                  <>
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/ops/shops')}
-                    >
-                      <span className="admin-dropdown-menu-icon">🏪</span>
-                      <span>Quản Lý Gian Hàng (Manage Shops)</span>
-                    </button>
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/accounts')}
+                >
+                  <span className="admin-dropdown-menu-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                  </span>
+                  <span>Quản Lý Danh Sách & Phân Quyền Tài Khoản</span>
+                </button>
 
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/dashboard')}
+                >
+                  <span className="admin-dropdown-menu-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                    </svg>
+                  </span>
+                  <span>Dashboard Tổng Quan Hệ Thống</span>
+                </button>
 
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/ops/moderation')}
-                    >
-                      <span className="admin-dropdown-menu-icon">👗</span>
-                      <span>Kiểm Duyệt Sản Phẩm Đăng Tải</span>
-                    </button>
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/shops')}
+                >
+                  <span className="admin-dropdown-menu-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 9l2-5h14l2 5" />
+                      <path d="M21 9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9" />
+                      <path d="M10 13a2 2 0 0 0 4 0" />
+                    </svg>
+                  </span>
+                  <span>Phê Duyệt Shop Owner & Showroom</span>
+                </button>
 
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/ops/disputes')}
-                    >
-                      <span className="admin-dropdown-menu-icon">⚖️</span>
-                      <span>Xử Lý Tranh Chấp & Khiếu Nại</span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/admin/accounts')}
-                    >
-                      <span className="admin-dropdown-menu-icon">👤</span>
-                      <span>Quản Lý Danh Sách & Phân Quyền Tài Khoản</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/admin/dashboard')}
-                    >
-                      <span className="admin-dropdown-menu-icon">📊</span>
-                      <span>Dashboard Tổng Quan Hệ Thống</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/admin/shops')}
-                    >
-                      <span className="admin-dropdown-menu-icon">🏪</span>
-                      <span>Quản Lý Gian Hàng (Manage Shops)</span>
-                    </button>
-
-
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/admin/analytics')}
-                    >
-                      <span className="admin-dropdown-menu-icon">📈</span>
-                      <span>Báo Cáo Doanh Thu & Thống Kê Sàn</span>
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  className="admin-dropdown-menu-item"
+                  onClick={() => handleNav('/admin/analytics')}
+                >
+                  <span className="admin-dropdown-menu-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="20" x2="18" y2="10" />
+                      <line x1="12" y1="20" x2="12" y2="4" />
+                      <line x1="6" y1="20" x2="6" y2="14" />
+                    </svg>
+                  </span>
+                  <span>Báo Cáo Doanh Thu & Thống Kê Sàn</span>
+                </button>
 
                 <div className="admin-dropdown-divider" />
 
@@ -330,7 +338,13 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   className="admin-dropdown-menu-item"
                   onClick={() => handleNav('/')}
                 >
-                  <span className="admin-dropdown-menu-icon">🛍️</span>
+                  <span className="admin-dropdown-menu-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                      <line x1="3" y1="6" x2="21" y2="6" />
+                      <path d="M16 10a4 4 0 0 1-8 0" />
+                    </svg>
+                  </span>
                   <span>Về Trang Mua Sắm VESTORA</span>
                 </button>
 
@@ -339,7 +353,13 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   className="admin-dropdown-menu-item logout"
                   onClick={handleLogout}
                 >
-                  <span className="admin-dropdown-menu-icon">🚪</span>
+                  <span className="admin-dropdown-menu-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                  </span>
                   <span>Đăng Xuất Khỏi Hệ Thống</span>
                 </button>
               </div>

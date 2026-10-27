@@ -184,3 +184,6 @@
     display: none;
   }
 }
+ .vestora-navbar .user-display-name {
+  white-space: nowrap;
+}

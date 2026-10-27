@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { Shop } from '../models/Shop.js';
-import { User } from '../models/User.js';
+import { User } from '../models/system/User.js';
 
 export const applyShop = async (req, res) => {
   try {

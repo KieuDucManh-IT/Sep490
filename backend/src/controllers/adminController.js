@@ -1,5 +1,5 @@
 import { Shop } from '../models/Shop.js';
-import { User } from '../models/User.js';
+import { User } from '../models/system/User.js';
 
 // Tổng quan Dashboard Admin Analytics
 export const getAdminMetrics = async (req, res) => {

@@ -41,7 +41,7 @@ export async function verifyEmailConnection() {
 }
 
 export async function sendEmail(to, subject, text, html) {
-  const info = await getTransporter().sendMail({
+  const mailOptions = {
     from: {
       name: "VESTORA",
       address: (
@@ -51,8 +51,13 @@ export async function sendEmail(to, subject, text, html) {
     to,
     subject,
     text,
-    html,
-  });
+  };
+
+  if (html) {
+    mailOptions.html = html;
+  }
+
+  const info = await getTransporter().sendMail(mailOptions);
 
   if (!info.accepted?.length || info.rejected?.length) {
     const error = new Error("SMTP không chấp nhận người nhận");

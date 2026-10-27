@@ -1670,3 +1670,185 @@
   background: #1D4ED8;
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
 }
+
+/* ==========================================================
+   ADD USER MODAL STYLES (MATCH DESIGN EXACTLY)
+   ========================================================== */
+.admin-acc-modal-card.admin-acc-add-user-modal {
+  max-width: 800px;
+  width: 95%;
+  max-height: 92vh;
+  border-radius: 18px;
+  background: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+}
+
+.admin-acc-add-modal-body {
+  padding: 22px 28px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  flex: 1 1 auto;
+}
+
+.admin-acc-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.admin-acc-section-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2563EB;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.admin-acc-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1E293B;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-acc-section-sub {
+  font-weight: 400;
+  color: #64748B;
+  font-size: 13.5px;
+}
+
+.admin-acc-form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 22px;
+}
+
+.admin-acc-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 38px;
+}
+
+.admin-acc-toggle-switch {
+  width: 44px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #CBD5E1;
+  border: none;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.25s ease;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.admin-acc-toggle-switch.active {
+  background: #22C55E;
+}
+
+.admin-acc-toggle-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(0px);
+}
+
+.admin-acc-toggle-switch.active .admin-acc-toggle-thumb {
+  transform: translateX(20px);
+}
+
+.admin-acc-toggle-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+
+.admin-acc-input-eye-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+  z-index: 2;
+}
+
+.admin-acc-input-eye-btn:hover {
+  color: #475569;
+}
+
+.admin-acc-pwd-requirement-box {
+  background: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 9px;
+  padding: 10px 14px;
+  margin-top: 10px;
+}
+
+.admin-acc-pwd-requirement-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #1E40AF;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.admin-acc-pwd-requirement-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #1E3A8A;
+}
+
+.admin-acc-notify-banner {
+  background: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #1E40AF;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.admin-acc-notify-banner svg {
+  color: #2563EB;
+  flex-shrink: 0;
+}
+

@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import AdminSidebar from '../../components/AdminSidebar';
-import AdminTopHeader from '../../components/AdminTopHeader';
+import OwnerSidebar from '../../components/OwnerSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import {
   getAdminShopsStatsApi,
   getAdminShopsListApi,
-  approveShopApi,
-  rejectShopApi,
   toggleSuspendShopApi,
 } from '../../services/shopApi';
 import '../../styles/AdminShops.css';
@@ -23,9 +21,9 @@ const getAdminId = () => {
 };
 
 const STATUS_TABS = [
-  { key: 'PENDING',  label: 'Chờ Phê Duyệt' },
-  { key: 'REJECTED', label: 'Đã Từ Chối' },
-  { key: 'ACTIVE',   label: 'Đã Phê Duyệt' },
+  { key: 'ALL',       label: 'Tất cả Chi Nhánh' },
+  { key: 'ACTIVE',    label: 'Đang Hoạt Động' },
+  { key: 'SUSPENDED', label: 'Tạm Ngưng' },
 ];
 
 const CITIES = [
@@ -1297,14 +1295,14 @@ function ShopCard({ app, onApprove, onReject, onSuspend, onReactivate, onViewDoc
   );
 }
 
-export default function AdminShopsPage() {
+export default function OwnerShopsPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(
-    tabParam && ['PENDING', 'ACTIVE', 'REJECTED'].includes(tabParam)
+    tabParam && ['ALL', 'ACTIVE', 'SUSPENDED'].includes(tabParam)
       ? tabParam
-      : 'PENDING'
+      : 'ALL'
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [cityFilter, setCityFilter] = useState('ALL');
@@ -1411,41 +1409,8 @@ export default function AdminShopsPage() {
     fetchShops();
   }, [fetchShops]);
 
-  const handleApprove = async (shop, customNotes = '') => {
-    try {
-      const adminId = getAdminId();
-      const data = await approveShopApi(shop._id, {
-        adminId,
-        notes: customNotes.trim() || 'Đã thẩm định thông tin ĐKKD và CCCD hợp lệ.',
-      });
-      if (!data.success) throw new Error(data.message);
-
-      showToast(`Đã phê duyệt gian hàng "${shop.name}" thành công!`);
-      await fetchShops();
-      await fetchCounts();
-    } catch (err) {
-      showToast('Lỗi phê duyệt: ' + err.message, 'error');
-    }
-  };
-
-  const handleRejectConfirm = async (shopId, rejectionReason, notes) => {
-    try {
-      const adminId = getAdminId();
-      const data = await rejectShopApi(shopId, {
-        adminId,
-        rejectionReason,
-        notes,
-      });
-      if (!data.success) throw new Error(data.message);
-
-      setRejectTarget(null);
-      showToast('Đã từ chối hồ sơ gian hàng.');
-      await fetchShops();
-      await fetchCounts();
-    } catch (err) {
-      showToast('Lỗi từ chối: ' + err.message, 'error');
-    }
-  };
+  const handleApprove = async () => {};
+  const handleRejectConfirm = async () => { setRejectTarget(null); };
 
   const handleSuspendConfirm = async (shopId, reason, notes) => {
     try {
@@ -1554,15 +1519,15 @@ export default function AdminShopsPage() {
 
   return (
     <div className="admin-shops-layout">
-      <AdminSidebar
+      <OwnerSidebar
         isCollapsed={isSidebarCollapsed}
         onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
       />
 
       <div className="admin-shops-viewport">
-        <AdminTopHeader
+        <OwnerTopHeader
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-          breadcrumb="Phê Duyệt Shop Mới (Shop Applications)"
+          breadcrumb="Quản Lý Gian Hàng & Chi Nhánh"
         />
 
         <main className="admin-shops-content">
@@ -1574,16 +1539,16 @@ export default function AdminShopsPage() {
             </div>
 
             <div className="admin-shops-live-pill">
-              THẨM ĐỊNH HỒ SƠ TRỰC TUYẾN
+              GIÁM SÁT HOẠT ĐỘNG GIAN HÀNG
             </div>
           </div>
 
           <div className="admin-shops-title-block">
             <h1 className="admin-shops-page-title">
-              Phê Duyệt Hồ Sơ Gian Hàng (Shop Applications)
+              Quản Lý & Phê Duyệt Gian Hàng
             </h1>
             <p className="admin-shops-page-sub">
-              Thẩm định hồ sơ đăng ký mở shop của đối tác, đối soát giấy phép kinh doanh (ĐKKD) và ảnh CCCD 2 mặt của chủ shop.
+              Theo dõi mạng lưới gian hàng, thẩm định hồ sơ đối tác mở shop và điều phối trạng thái hoạt động trên toàn hệ thống VESTORA.
             </p>
           </div>
 

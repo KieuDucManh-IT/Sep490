@@ -100,17 +100,52 @@ export const updateShopInfoApi = async (shopId, shopData) => {
   });
 };
 
-export const approveShopApi = async (shopId, payload) => {
-  return fetchJson(`/api/admin/shops/${shopId}/approve`, {
+// =====================================================================
+// BRANCH MANAGEMENT APIS (Single-Brand Multi-Branch Model)
+// =====================================================================
+
+export const createBranchApi = async (branchData) => {
+  return fetchJson('/api/shops', {
+    method: 'POST',
+    body: JSON.stringify(branchData),
+  });
+};
+
+export const deleteBranchApi = async (branchId) => {
+  return fetchJson(`/api/shops/${branchId}`, {
+    method: 'DELETE',
+  });
+};
+
+export const getBranchManagersApi = async () => {
+  return fetchJson('/api/shops/managers');
+};
+
+export const updateBranchInfoApi = updateShopInfoApi;
+export const getBranchesListApi = getShopsListApi;
+
+
+// Operations Staff (OPS) Dedicated APIs
+export const getOpsShopsStatsApi = async () => {
+  return fetchJson('/api/ops/shops/stats');
+};
+
+export const getOpsShopsListApi = async (params = {}) => {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => {
+    if (val !== undefined && val !== null && val !== '') {
+      qs.set(key, String(val));
+    }
+  });
+  const queryString = qs.toString() ? `?${qs.toString()}` : '';
+  return fetchJson(`/api/ops/shops${queryString}`);
+};
+
+export const updateShopOperatingStatusApi = async (shopId, payload) => {
+  return fetchJson(`/api/ops/shops/${shopId}/operating-status`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
 };
 
-export const rejectShopApi = async (shopId, payload) => {
-  return fetchJson(`/api/admin/shops/${shopId}/reject`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
-};
 

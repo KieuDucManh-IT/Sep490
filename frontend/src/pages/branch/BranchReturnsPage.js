@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import ShopSidebar from '../../components/ShopSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopReturnsPage() {
+export default function BranchReturnsPage() {
   const [returns, setReturns] = useState([
     {
       id: 'RET-881',
@@ -48,7 +48,7 @@ export default function ShopReturnsPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar */}
-      <ShopSidebar />
+      <BranchSidebar />
 
       {/* Main Area */}
       <main className="shop-main-content">

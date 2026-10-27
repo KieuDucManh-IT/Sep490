@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom';
 import {
   Row,
   Col,
-  Card,
   Form,
   Button,
   Spinner,
 } from 'react-bootstrap';
-import ShopSidebar from '../../components/ShopSidebar';
+import OwnerSidebar from '../../components/OwnerSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
+import LeafletMapPicker from '../../components/LeafletMapPicker';
 import { useAuth } from '../../context/AuthContext';
 import {
   getMyShopApi,
@@ -63,6 +64,39 @@ const FALLBACK_PROVINCES = [
   { code: 96, name: 'Tỉnh Cà Mau' },
 ];
 
+const PROVINCE_DEFAULT_COORDS = {
+  'Hà Nội': { lat: 21.028511, lng: 105.854167 },
+  'Thành phố Hà Nội': { lat: 21.028511, lng: 105.854167 },
+  'Hồ Chí Minh': { lat: 10.776889, lng: 106.700806 },
+  'Thành phố Hồ Chí Minh': { lat: 10.776889, lng: 106.700806 },
+  'Đà Nẵng': { lat: 16.054407, lng: 108.202167 },
+  'Thành phố Đà Nẵng': { lat: 16.054407, lng: 108.202167 },
+  'Hải Phòng': { lat: 20.844912, lng: 106.688084 },
+  'Thành phố Hải Phòng': { lat: 20.844912, lng: 106.688084 },
+  'Cần Thơ': { lat: 10.045162, lng: 105.746857 },
+  'Thành phố Cần Thơ': { lat: 10.045162, lng: 105.746857 },
+  'Bình Dương': { lat: 10.980461, lng: 106.651871 },
+  'Đồng Nai': { lat: 10.957413, lng: 106.842713 },
+  'Thành phố Đồng Nai': { lat: 10.957413, lng: 106.842713 },
+  'Quảng Ninh': { lat: 20.950454, lng: 107.073364 },
+  'Thành phố Quảng Ninh': { lat: 20.950454, lng: 107.073364 },
+  'Khánh Hòa': { lat: 12.238791, lng: 109.196749 },
+  'Thừa Thiên Huế': { lat: 16.463713, lng: 107.590866 },
+  'Thành phố Huế': { lat: 16.463713, lng: 107.590866 },
+  'Lâm Đồng': { lat: 11.940419, lng: 108.458313 },
+};
+
+const getProvinceCoords = (name) => {
+  if (!name) return null;
+  const clean = cleanName(name);
+  for (const [key, coords] of Object.entries(PROVINCE_DEFAULT_COORDS)) {
+    if (cleanName(key) === clean || clean.includes(cleanName(key)) || cleanName(key).includes(clean)) {
+      return coords;
+    }
+  }
+  return null;
+};
+
 const DAY_OPTIONS = [
   'Thứ 2',
   'Thứ 3',
@@ -108,7 +142,7 @@ const formatOpeningHours = (fTime, tTime, fDay, tDay) => {
   return `${fTime || '09:00'} - ${tTime || '21:30'} (${dayStr})`;
 };
 
-export default function ShopSettingsPage() {
+export default function OwnerSettingsPage() {
   const { user } = useAuth();
   const formRef = useRef(null);
 
@@ -294,11 +328,18 @@ export default function ShopSettingsPage() {
 
     const prov = provinces.find((p) => String(p.code) === String(code));
     const provName = prov ? prov.name : '';
+    const fallbackCoords = getProvinceCoords(provName);
 
     setFormData((prev) => ({
       ...prev,
       city: provName,
       ward: '',
+      ...((!prev.latitude || !prev.longitude) && fallbackCoords
+        ? {
+            latitude: fallbackCoords.lat.toFixed(6),
+            longitude: fallbackCoords.lng.toFixed(6),
+          }
+        : {}),
     }));
 
     loadWardsForProvince(code, '');
@@ -317,10 +358,101 @@ export default function ShopSettingsPage() {
     }));
   };
 
-  // 4. LẤY GPS THIẾT BỊ VÀ TỰ ĐỘNG FILL TỈNH / THÀNH & PHƯỜNG / XÃ
+  const [isSyncingAddress, setIsSyncingAddress] = useState(false);
+
+  const handleMapLocationChange = useCallback(({ latitude, longitude }) => {
+    setFormData((prev) => ({
+      ...prev,
+      latitude,
+      longitude,
+    }));
+  }, []);
+
+  const handleSyncAddressFromPin = async () => {
+    const lat = parseFloat(formData.latitude);
+    const lng = parseFloat(formData.longitude);
+    if (isNaN(lat) || isNaN(lng)) {
+      showToast('Chưa có tọa độ ghim trên bản đồ để đối soát địa chỉ.', 'warning');
+      return;
+    }
+
+    setIsSyncingAddress(true);
+    try {
+      const geoRes = await reverseGeocodeApi(lat, lng);
+      if (geoRes?.success && geoRes.data) {
+        const { city: geoCity, ward: geoWard, street } = geoRes.data;
+        if (geoCity && provinces.length > 0) {
+          const cleanCityTarget = cleanName(geoCity);
+          const matchedProv = provinces.find((p) => {
+            const pClean = cleanName(p.name);
+            return pClean === cleanCityTarget || cleanCityTarget.includes(pClean) || pClean.includes(cleanCityTarget);
+          });
+
+          if (matchedProv) {
+            setSelectedProvCode(String(matchedProv.code));
+            setFormData((prev) => ({
+              ...prev,
+              city: matchedProv.name,
+              ...(street && !prev.address ? { address: street } : {}),
+            }));
+
+            const resWards = await fetch(`https://provinces.open-api.vn/api/v2/p/${matchedProv.code}?depth=2`);
+            const dataWards = await resWards.json();
+            const wardList = dataWards?.wards || [];
+            wardCache.current[matchedProv.code] = wardList;
+            setWards(wardList);
+
+            if (geoWard && wardList.length > 0) {
+              const cleanWardTarget = cleanName(geoWard);
+              const matchedWard = wardList.find((w) => {
+                const wClean = cleanName(w.name);
+                return wClean === cleanWardTarget || cleanWardTarget.includes(wClean) || wClean.includes(cleanWardTarget);
+              });
+              if (matchedWard) {
+                setSelectedWardCode(String(matchedWard.code));
+                setFormData((prev) => ({
+                  ...prev,
+                  ward: matchedWard.name,
+                }));
+              }
+            }
+            showToast(`Đã đồng bộ địa chỉ theo ghim: ${matchedProv.name}!`, 'success');
+            return;
+          }
+        }
+        showToast('Đã đối soát tọa độ vị trí ghim thành công.', 'success');
+      } else {
+        showToast('Không tìm thấy tên phường/xã tương ứng với vị trí này.', 'info');
+      }
+    } catch (_) {
+      showToast('Không thể kết nối đến máy chủ giải mã địa chỉ.', 'warning');
+    } finally {
+      setIsSyncingAddress(false);
+    }
+  };
+
+  // 4. LẤY GPS THIẾT BỊ VÀ TỰ ĐỘNG FILL TỈNH / THÀNH & PHƯỜNG / XÃ (Có Fallback Lớp 1)
   const handleGetDeviceLocation = () => {
+    // HTTPS Guard: Trình duyệt chặn Geolocation trên mạng LAN HTTP
+    if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
+      const fallback = getProvinceCoords(formData.city) || PROVINCE_DEFAULT_COORDS['Hồ Chí Minh'];
+      setFormData((prev) => ({
+        ...prev,
+        latitude: fallback.lat.toFixed(6),
+        longitude: fallback.lng.toFixed(6),
+      }));
+      showToast('Trình duyệt yêu cầu HTTPS để lấy GPS. Đã tự động định vị theo trung tâm Tỉnh/Thành.', 'info');
+      return;
+    }
+
     if (!navigator.geolocation) {
-      showToast('Trình duyệt của bạn không hỗ trợ định vị GPS.', 'warning');
+      const fallback = getProvinceCoords(formData.city) || PROVINCE_DEFAULT_COORDS['Hồ Chí Minh'];
+      setFormData((prev) => ({
+        ...prev,
+        latitude: fallback.lat.toFixed(6),
+        longitude: fallback.lng.toFixed(6),
+      }));
+      showToast('Trình duyệt không hỗ trợ định vị GPS. Đã định vị theo trung tâm Tỉnh/Thành.', 'info');
       return;
     }
 
@@ -343,7 +475,7 @@ export default function ShopSettingsPage() {
           try {
             const geoRes = await reverseGeocodeApi(latitude, longitude);
             if (geoRes?.success && geoRes.data) {
-              const { city: geoCity, ward: geoWard, street: geoStreet } = geoRes.data;
+              const { city: geoCity, ward: geoWard } = geoRes.data;
 
               // Đối soát và tự động fill Tỉnh/Thành
               if (geoCity && provinces.length > 0) {
@@ -402,6 +534,16 @@ export default function ShopSettingsPage() {
       },
       (err) => {
         setIsLocating(false);
+        const fallback = getProvinceCoords(formData.city);
+        if (fallback) {
+          setFormData((prev) => ({
+            ...prev,
+            latitude: fallback.lat.toFixed(6),
+            longitude: fallback.lng.toFixed(6),
+          }));
+          showToast(`Không nhận được tín hiệu GPS thiết bị. Đã chuyển sang tọa độ trung tâm ${formData.city}!`, 'info');
+          return;
+        }
         let msg = 'Không thể lấy vị trí hiện tại của thiết bị.';
         if (err.code === 1) msg = 'Quyền truy cập vị trí bị từ chối. Vui lòng cho phép truy cập GPS trên trình duyệt.';
         else if (err.code === 2) msg = 'Không nhận được tín hiệu định vị GPS.';
@@ -493,40 +635,52 @@ export default function ShopSettingsPage() {
     }
   };
 
-  const fullDisplayAddress = [formData.address, formData.ward, formData.city].filter(Boolean).join(', ') || 'Chưa cập nhật địa chỉ';
-  const hasGps = formData.latitude && formData.longitude && !isNaN(Number(formData.latitude)) && !isNaN(Number(formData.longitude));
   const isActive = Boolean(formData.isOpen);
-  const ownerFullName = shop?.ownerId?.FullName || shop?.ownerId?.fullName || user?.fullName || user?.FullName || '';
+  const isBranchManager = /branch_manager/i.test(user?.Role || '');
 
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar Navigation */}
-      <ShopSidebar />
+      {isBranchManager ? <BranchSidebar /> : <OwnerSidebar />}
 
       {/* Main Content Area */}
       <main className="shop-main-content">
         <div className="store-mgmt-container">
           {/* Breadcrumb Navigation */}
           <div className="store-mgmt-breadcrumb">
-            <Link to="/shop/dashboard">Trang Chủ Shop</Link>
-            <span>›</span>
-            <span>Gian Hàng</span>
-            <span>›</span>
-            <span style={{ color: '#171717', fontWeight: 600 }}>Quản Lý Thông Tin Cửa Hàng</span>
+            {isBranchManager ? (
+              <>
+                <Link to="/branch/dashboard">Vận Hành Chi Nhánh</Link>
+                <span>›</span>
+                <span style={{ color: '#171717', fontWeight: 600 }}>Hồ Sơ Showroom & Ghim Bản Đồ</span>
+              </>
+            ) : (
+              <>
+                <Link to="/owner/dashboard">Tổng Quan Chuỗi</Link>
+                <span>›</span>
+                <Link to="/owner/branches">Quản Lý Chi Nhánh</Link>
+                <span>›</span>
+                <span style={{ color: '#171717', fontWeight: 600 }}>Thông Tin Cửa Hàng</span>
+              </>
+            )}
           </div>
 
           {/* Top Header */}
-          <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4">
+          <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
             <div>
-              <h1 className="store-mgmt-title">Quản Lý Thông Tin Cửa Hàng</h1>
+              <h1 className="store-mgmt-title">
+                {isBranchManager ? 'Hồ Sơ Showroom Chi Nhánh & Ghim Map' : 'Quản Lý Thông Tin Cửa Hàng'}
+              </h1>
               <p className="store-mgmt-desc">
-                Quản lý hồ sơ thương hiệu, hotline liên hệ, địa chỉ showroom và vị trí trên bản đồ phục vụ giao nhận & khách ghé thử đồ trực tiếp.
+                {isBranchManager
+                  ? 'Cập nhật hotline, giờ mở cửa, giới thiệu và định vị tọa độ GPS showroom phục vụ khách thử đồ và giao hàng.'
+                  : 'Cập nhật thông tin thương hiệu, hotline liên hệ, địa chỉ và định vị showroom trên bản đồ trực quan.'}
               </p>
             </div>
 
             <div className="d-flex align-items-center gap-3">
-              <span className={`store-pill-active ${shop?.status !== 'ACTIVE' ? 'inactive' : ''}`}>
-                ● {shop?.status === 'ACTIVE' ? '1 GIAN HÀNG HOẠT ĐỘNG' : (shop?.status === 'SUSPENDED' ? 'GIAN HÀNG TẠM NGHỈ' : 'HỒ SƠ CHỜ DUYỆT')}
+              <span className={`store-pill-active ${!isActive ? 'inactive' : ''}`}>
+                ● {isActive ? 'ĐANG HOẠT ĐỘNG' : 'TẠM NGHỈ'}
               </span>
             </div>
           </div>
@@ -537,215 +691,152 @@ export default function ShopSettingsPage() {
               <div className="text-muted small">Đang tải hồ sơ cửa hàng từ hệ thống...</div>
             </div>
           ) : (
-            <Row className="g-4">
-              {/* ========================================================
-                  CỘT TRÁI (COL 7): SHOWROOM CARD & TIÊU CHUẨN THỬ ĐỒ VIP
-                  ======================================================== */}
-              <Col lg={7}>
-                {/* Unified Shop Information Card */}
-                <div className="store-showroom-card">
-                  {/* Header: Avatar, Name, Badges & Status Switch */}
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 border-bottom mb-3">
-                    <div className="d-flex align-items-center gap-3">
-                      <img
-                        src={formData.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'Shop')}&background=171717&color=fff&size=80`}
-                        alt={formData.name}
-                        style={{ width: '56px', height: '56px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #ECE7DD' }}
-                      />
+            <Form onSubmit={handleSubmit} ref={formRef}>
+              <Row className="g-4">
+                {/* ========================================================
+                    CỘT TRÁI (COL 6): THÔNG TIN GIAN HÀNG & ĐỊA CHỈ HÀNH CHÍNH
+                    ======================================================== */}
+                <Col lg={6}>
+                  {/* Card 1: Thông tin thương hiệu & Vận hành */}
+                  <div className="store-edit-panel mb-4">
+                    <div className="d-flex align-items-center justify-content-between pb-3 border-bottom mb-3 flex-wrap gap-2">
                       <div>
-                        <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                          <h4 className="fw-bold mb-0" style={{ fontSize: '18px', color: '#171717' }}>
-                            {formData.name || shop?.name || 'Showroom Trụ Sở Chính'}
-                          </h4>
-                          <span className="store-badge-hq">TRỤ SỞ CHÍNH</span>
+                        <h5 className="fw-bold mb-1" style={{ fontSize: '16px', color: '#171717' }}>
+                          Hồ Sơ Gian Hàng & Liên Hệ
+                        </h5>
+                        <div className="text-muted small" style={{ fontSize: '12px' }}>
+                          Thông tin nhận diện cửa hàng hiển thị với khách hàng
                         </div>
-                        <span className="badge bg-light text-muted border" style={{ fontSize: '11px' }}>
-                          {ownerFullName ? `Chủ sở hữu: ${ownerFullName}` : 'Gian Hàng Premium'}
+                      </div>
+
+                      {/* Trạng thái hoạt động switch */}
+                      <div className="d-flex align-items-center gap-2">
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#059669' : '#D97706' }}>
+                          ● {isActive ? 'ĐANG MỞ CỬA' : 'TẠM DỪNG'}
                         </span>
+                        <Form.Check
+                          type="switch"
+                          id="shop-active-switch"
+                          checked={formData.isOpen}
+                          onChange={(e) => setFormData({ ...formData, isOpen: e.target.checked })}
+                          title="Bật/Tắt trạng thái mở cửa đón khách"
+                        />
                       </div>
                     </div>
 
-                    <div className="d-flex align-items-center gap-2">
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#059669' : '#D97706' }}>
-                        ● {isActive ? 'ĐANG HOẠT ĐỘNG' : 'TẠM NGHỈ'}
-                      </span>
-                      <Form.Check
-                        type="switch"
-                        id="shop-active-switch"
-                        checked={formData.isOpen}
-                        onChange={(e) => setFormData({ ...formData, isOpen: e.target.checked })}
+                    {/* Logo/Ảnh đại diện & Tên gian hàng */}
+                    <div className="d-flex align-items-center gap-3 mb-3 p-3 rounded" style={{ background: '#FAF9F6', border: '1px solid #ECE7DD' }}>
+                      <img
+                        src={formData.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'Shop')}&background=18181B&color=F59E0B&size=100`}
+                        alt={formData.name}
+                        style={{ width: '56px', height: '56px', borderRadius: '12px', objectFit: 'cover', border: '2px solid #D97706', flexShrink: 0 }}
                       />
-                    </div>
-                  </div>
-
-                  {/* Mô tả phong cách gian hàng */}
-                  <div className="p-3 rounded mb-3" style={{ background: '#F9FAFB', border: '1px solid #F3F4F6' }}>
-                    <p className="text-secondary small mb-0" style={{ lineHeight: '1.6', fontSize: '13px' }}>
-                      {formData.description || 'Chưa có mô tả phong cách gian hàng. Hãy cập nhật phần giới thiệu để khách hàng hiểu rõ hơn về các bộ sưu tập của bạn.'}
-                    </p>
-                  </div>
-
-                  {/* Address & Contact Info Lines */}
-                  <div className="store-info-line">
-                    <span className="store-info-icon">📍</span>
-                    <div>
-                      <div className="fw-semibold text-dark">{fullDisplayAddress}</div>
-                      <div className="small text-muted" style={{ fontSize: '12px' }}>
-                        Tọa độ GPS: {hasGps ? `${Number(formData.latitude).toFixed(4)}° N, ${Number(formData.longitude).toFixed(4)}° E` : 'Chưa định vị tọa độ'}
+                      <div style={{ flex: 1 }}>
+                        <Form.Label className="small fw-semibold mb-1" style={{ fontSize: '11px', textTransform: 'uppercase', color: '#6B7280', letterSpacing: '0.5px' }}>
+                          LINK ẢNH ĐẠI DIỆN GIAN HÀNG
+                        </Form.Label>
+                        <Form.Control
+                          type="url"
+                          placeholder="https://... (URL ảnh đại diện)"
+                          value={formData.imageUrl}
+                          onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                          style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 12px' }}
+                        />
                       </div>
                     </div>
-                  </div>
 
-                  <div className="store-info-line">
-                    <span className="store-info-icon">🕒</span>
-                    <div style={{ fontSize: '13px', color: '#4B5563' }}>
-                      <span className="fw-semibold text-dark">{formData.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)'}</span> • Mở cửa đón khách thử đồ
-                    </div>
-                  </div>
+                    <Row className="g-3 mb-3">
+                      {/* Tên gian hàng */}
+                      <Col sm={7}>
+                        <Form.Group>
+                          <Form.Label className="small fw-semibold mb-1">
+                            TÊN GIAN HÀNG <span className="text-danger">*</span>
+                          </Form.Label>
+                          <Form.Control
+                            type="text"
+                            required
+                            placeholder="VD: Quý Tộc Boutique"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            style={{ fontSize: '13.5px', borderRadius: '8px', padding: '9px 12px' }}
+                          />
+                        </Form.Group>
+                      </Col>
 
-                  <div className="store-info-line">
-                    <span className="store-info-icon">📞</span>
-                    <div className="fw-semibold text-dark" style={{ fontSize: '13.5px' }}>
-                      Hotline: {formData.phone || shop?.phone || 'Chưa cập nhật'}
-                    </div>
-                  </div>
+                      {/* Hotline liên hệ */}
+                      <Col sm={5}>
+                        <Form.Group>
+                          <Form.Label className="small fw-semibold mb-1">
+                            HOTLINE LIÊN HỆ <span className="text-danger">*</span>
+                          </Form.Label>
+                          <Form.Control
+                            type="text"
+                            required
+                            placeholder="VD: 0908 123 456"
+                            value={formData.phone}
+                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            style={{ fontSize: '13.5px', borderRadius: '8px', padding: '9px 12px' }}
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
 
-                  {/* Card Footer */}
-                  <div className="d-flex align-items-center justify-content-end pt-3 border-top mt-2">
-                    <Button
-                      variant="outline-dark"
-                      size="sm"
-                      style={{ fontSize: '12px', fontWeight: 600, padding: '5px 14px', borderRadius: '6px' }}
-                      onClick={() => {
-                        if (formRef.current) {
-                          formRef.current.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }}
-                    >
-                      ✏️ Chỉnh Sửa
-                    </Button>
-                  </div>
-                </div>
-              </Col>
-
-              {/* ========================================================
-                  CỘT PHẢI (COL 5): FORM CẬP NHẬT THÔNG TIN CỬA HÀNG
-                  ======================================================== */}
-              <Col lg={5} ref={formRef}>
-                <div className="store-edit-panel">
-                  {/* Panel Header */}
-                  <div className="mb-2">
-                    <h5 className="fw-bold mb-1" style={{ fontSize: '17px', color: '#171717' }}>
-                      Cập Nhật Thông Tin Cửa Hàng
-                    </h5>
-                  </div>
-                  <p className="text-muted small mb-4" style={{ fontSize: '12.5px' }}>
-                    Thông tin vị trí hiển thị trên bản đồ tìm kiếm shop của khách hàng trên toàn nền tảng VESTORA.
-                  </p>
-
-                  <Form onSubmit={handleSubmit}>
-                    {/* Tên gian hàng */}
-                    <Form.Group className="mb-3">
-                      <Form.Label className="small fw-semibold mb-1">
-                        TÊN GIAN HÀNG <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Form.Control
-                        type="text"
-                        required
-                        placeholder="VD: Quý Tộc Boutique"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        style={{ fontSize: '13.5px', borderRadius: '8px', padding: '10px 14px' }}
-                      />
-                    </Form.Group>
-
-                    {/* Hotline liên hệ */}
-                    <Form.Group className="mb-3">
-                      <Form.Label className="small fw-semibold mb-1">
-                        HOTLINE LIÊN HỆ <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Form.Control
-                        type="text"
-                        required
-                        placeholder="VD: 0908 123 456"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        style={{ fontSize: '13px', borderRadius: '8px', padding: '9px 12px' }}
-                      />
-                    </Form.Group>
-
-                    {/* Thời gian mở cửa: 4 ô (2 ô time & 2 ô thứ dropdown) */}
+                    {/* Thời gian mở cửa */}
                     <Form.Group className="mb-3">
                       <Form.Label className="small fw-semibold mb-1">
                         THỜI GIAN MỞ CỬA <span className="text-danger">*</span>
                       </Form.Label>
                       <Row className="g-2">
-                        {/* 2 ô cho thời gian (type: time) */}
                         <Col sm={6}>
                           <div className="d-flex align-items-center gap-2">
                             <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
-                                TỪ GIỜ
-                              </div>
+                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>TỪ GIỜ</div>
                               <Form.Control
                                 type="time"
                                 required
                                 value={fromTime}
                                 onChange={(e) => handleTimeChange(e.target.value, toTime, fromDay, toDay)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '8px 10px' }}
-                                title="Từ giờ mở cửa"
+                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
+                                title="Giờ mở cửa"
                               />
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
-                                ĐẾN GIỜ
-                              </div>
+                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>ĐẾN GIỜ</div>
                               <Form.Control
                                 type="time"
                                 required
                                 value={toTime}
                                 onChange={(e) => handleTimeChange(fromTime, e.target.value, fromDay, toDay)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '8px 10px' }}
-                                title="Đến giờ đóng cửa"
+                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
+                                title="Giờ đóng cửa"
                               />
                             </div>
                           </div>
                         </Col>
 
-                        {/* 2 ô cho thứ (dropdown) */}
                         <Col sm={6}>
                           <div className="d-flex align-items-center gap-2">
                             <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
-                                TỪ THỨ
-                              </div>
+                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>TỪ THỨ</div>
                               <Form.Select
                                 value={fromDay}
                                 onChange={(e) => handleTimeChange(fromTime, toTime, e.target.value, toDay)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '8px 10px' }}
-                                title="Từ ngày trong tuần"
+                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
                               >
                                 {DAY_OPTIONS.map((d) => (
-                                  <option key={d} value={d}>
-                                    {d}
-                                  </option>
+                                  <option key={d} value={d}>{d}</option>
                                 ))}
                               </Form.Select>
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
-                                ĐẾN THỨ
-                              </div>
+                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>ĐẾN THỨ</div>
                               <Form.Select
                                 value={toDay}
                                 onChange={(e) => handleTimeChange(fromTime, toTime, fromDay, e.target.value)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '8px 10px' }}
-                                title="Đến ngày trong tuần"
+                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
                               >
                                 {DAY_OPTIONS.map((d) => (
-                                  <option key={d} value={d}>
-                                    {d}
-                                  </option>
+                                  <option key={d} value={d}>{d}</option>
                                 ))}
                               </Form.Select>
                             </div>
@@ -757,42 +848,40 @@ export default function ShopSettingsPage() {
                       </div>
                     </Form.Group>
 
-                    {/* Mô tả gian hàng */}
-                    <Form.Group className="mb-3">
+                    {/* Mô tả phong cách gian hàng */}
+                    <Form.Group className="mb-0">
                       <Form.Label className="small fw-semibold mb-1">
-                        MÔ TẢ GIAN HÀNG <span className="text-danger">*</span>
+                        MÔ TẢ GIỚI THIỆU GIAN HÀNG <span className="text-danger">*</span>
                       </Form.Label>
                       <Form.Control
                         as="textarea"
-                        rows={2}
+                        rows={3}
                         required
-                        placeholder="Giới thiệu phong cách thiết kế, trang phục dạ hội/vest..."
+                        placeholder="Mô tả phong cách thời trang, dòng sản phẩm chủ đạo (váy cưới, dạ hội, veston cao cấp)..."
                         value={formData.description}
                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        style={{ fontSize: '13px', borderRadius: '8px', padding: '10px 14px' }}
+                        style={{ fontSize: '13px', borderRadius: '8px', padding: '9px 12px', lineHeight: '1.5' }}
                       />
                     </Form.Group>
+                  </div>
 
-                    {/* Địa chỉ chi tiết */}
-                    <Form.Group className="mb-3">
-                      <Form.Label className="small fw-semibold mb-1">
-                        ĐỊA CHỈ ĐẦY ĐỦ (SỐ NHÀ, TÊN ĐƯỜNG)
-                      </Form.Label>
-                      <Form.Control
-                        type="text"
-                        placeholder="VD: 124 Nguyễn Trãi (không bắt buộc)"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        style={{ fontSize: '13.5px', borderRadius: '8px', padding: '10px 14px' }}
-                      />
-                    </Form.Group>
+                  {/* Card 2: Địa chỉ hành chính */}
+                  <div className="store-edit-panel">
+                    <div className="pb-2 border-bottom mb-3">
+                      <h5 className="fw-bold mb-1" style={{ fontSize: '16px', color: '#171717' }}>
+                        Địa Chỉ Trưng Bày & Đón Khách
+                      </h5>
+                      <div className="text-muted small" style={{ fontSize: '12px' }}>
+                        Địa chỉ chi tiết để khách hàng ghé showroom thử đồ và tiếp nhận hàng hóa
+                      </div>
+                    </div>
 
-                    {/* Tỉnh/Thành phố & Phường/Xã (API open-api.vn v2) */}
-                    <Row className="g-2 mb-3">
+                    {/* Tỉnh/Thành phố & Phường/Xã */}
+                    <Row className="g-3 mb-3">
                       <Col sm={6}>
                         <Form.Group>
                           <Form.Label className="small fw-semibold mb-1">
-                            THÀNH PHỐ / TỈNH <span className="text-danger">*</span>
+                            TỈNH / THÀNH PHỐ <span className="text-danger">*</span>
                           </Form.Label>
                           <Form.Select
                             value={selectedProvCode}
@@ -802,9 +891,7 @@ export default function ShopSettingsPage() {
                           >
                             <option value="">-- Chọn Tỉnh / Thành --</option>
                             {provinces.map((p) => (
-                              <option key={p.code} value={p.code}>
-                                {p.name}
-                              </option>
+                              <option key={p.code} value={p.code}>{p.name}</option>
                             ))}
                           </Form.Select>
                         </Form.Group>
@@ -829,90 +916,113 @@ export default function ShopSettingsPage() {
                                   : '-- Chọn Tỉnh trước --'}
                             </option>
                             {wards.map((w) => (
-                              <option key={w.code} value={w.code}>
-                                {w.name}
-                              </option>
+                              <option key={w.code} value={w.code}>{w.name}</option>
                             ))}
                           </Form.Select>
                         </Form.Group>
                       </Col>
                     </Row>
 
-                    {/* Vĩ độ & Kinh độ */}
-                    <Row className="g-2 mb-3">
-                      <Col sm={6}>
-                        <Form.Group>
-                          <Form.Label className="small fw-semibold mb-1">VĨ ĐỘ (LATITUDE)</Form.Label>
-                          <Form.Control
-                            type="number"
-                            step="any"
-                            placeholder="VD: 10.7712"
-                            value={formData.latitude}
-                            onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                            style={{ fontSize: '13px', borderRadius: '8px', padding: '9px 12px' }}
-                          />
-                        </Form.Group>
-                      </Col>
+                    {/* Địa chỉ chi tiết */}
+                    <Form.Group className="mb-0">
+                      <Form.Label className="small fw-semibold mb-1">
+                        ĐỊA CHỈ CHI TIẾT (SỐ NHÀ, TÊN ĐƯỜNG)
+                      </Form.Label>
+                      <Form.Control
+                        type="text"
+                        placeholder="VD: 124 Nguyễn Trãi"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        style={{ fontSize: '13.5px', borderRadius: '8px', padding: '9px 12px' }}
+                      />
+                    </Form.Group>
+                  </div>
+                </Col>
 
-                      <Col sm={6}>
-                        <Form.Group>
-                          <Form.Label className="small fw-semibold mb-1">KINH ĐỘ (LONGITUDE)</Form.Label>
-                          <Form.Control
-                            type="number"
-                            step="any"
-                            placeholder="VD: 106.6924"
-                            value={formData.longitude}
-                            onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                            style={{ fontSize: '13px', borderRadius: '8px', padding: '9px 12px' }}
-                          />
-                        </Form.Group>
-                      </Col>
-                    </Row>
-
-                    {/* Định vị vệ tinh bản đồ & nút GPS */}
-                    <div className="mb-3">
-                      <div className="d-flex align-items-center justify-content-between mb-2">
-                        <span className="small fw-bold text-uppercase" style={{ fontSize: '11px', letterSpacing: '0.5px', color: '#4B5563' }}>
-                          ĐỊNH VỊ VỆ TINH BẢN ĐỒ
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline-primary"
-                          size="sm"
-                          onClick={handleGetDeviceLocation}
-                          disabled={isLocating}
-                          style={{ fontSize: '12px', fontWeight: 600, padding: '4px 12px', borderRadius: '6px' }}
-                        >
-                          {isLocating ? (
-                            <>
-                              <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
-                              Đang định vị...
-                            </>
-                          ) : (
-                            '🎯 TỰ ĐỘNG ĐỊNH VỊ QUA GPS'
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Map Preview */}
-                      <div className="store-map-preview-box">
-                        <iframe
-                          title="Bản đồ vị trí showroom"
-                          width="100%"
-                          height="100%"
-                          style={{ border: 0, display: 'block' }}
-                          loading="lazy"
-                          src={`https://maps.google.com/maps?q=${formData.latitude || encodeURIComponent(fullDisplayAddress)},${formData.longitude || ''}&hl=vi&z=15&output=embed`}
-                        />
-                        <div className="store-map-overlay-badge">
-                          <span>📍</span>
-                          <span>{formData.city ? `${formData.city} - ĐÃ GHIM` : 'VỊ TRÍ SHOWROOM'}</span>
+                {/* ========================================================
+                    CỘT PHẢI (COL 6): TỌA ĐỘ VÀ BẢN ĐỒ VỊ TRÍ SHOWROOM
+                    ======================================================== */}
+                <Col lg={6}>
+                  <div className="store-edit-panel h-100 d-flex flex-column">
+                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 pb-2 border-bottom mb-3">
+                      <div>
+                        <h5 className="fw-bold mb-1" style={{ fontSize: '16px', color: '#171717' }}>
+                          Vị Trí Showroom Trên Bản Đồ
+                        </h5>
+                        <div className="text-muted small" style={{ fontSize: '12px' }}>
+                          Ghim tọa độ chính xác để hiển thị showroom trên bản đồ VESTORA
                         </div>
                       </div>
+
+                      <Button
+                        type="button"
+                        variant="outline-dark"
+                        size="sm"
+                        onClick={handleGetDeviceLocation}
+                        disabled={isLocating}
+                        className="d-inline-flex align-items-center gap-1"
+                        style={{ fontSize: '12px', fontWeight: 600, padding: '5px 12px', borderRadius: '8px' }}
+                      >
+                        {isLocating ? (
+                          <>
+                            <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
+                            Đang dò...
+                          </>
+                        ) : (
+                          <>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="22" y1="12" x2="18" y2="12" />
+                              <line x1="6" y1="12" x2="2" y2="12" />
+                              <line x1="12" y1="6" x2="12" y2="2" />
+                              <line x1="12" y1="22" x2="12" y2="18" />
+                            </svg>
+                            <span>Lấy GPS Thiết Bị</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Interactive Leaflet Map - Rộng rãi, chiều cao 380px */}
+                    <div className="mb-3 flex-grow-1" style={{ minHeight: '380px' }}>
+                      <LeafletMapPicker
+                        latitude={formData.latitude}
+                        longitude={formData.longitude}
+                        onChange={handleMapLocationChange}
+                        label={formData.name ? `${formData.name} - VỊ TRÍ SHOWROOM` : 'VỊ TRÍ SHOWROOM'}
+                        height="380px"
+                      />
+                    </div>
+
+                    {/* Bar trạng thái tọa độ & Sync button */}
+                    <div className="d-flex align-items-center justify-content-between p-2 rounded mb-3 flex-wrap gap-2" style={{ background: '#FAF9F6', border: '1px solid #ECE7DD' }}>
+                      <div className="d-flex align-items-center gap-2">
+                        <span style={{ fontSize: '14px' }}>📍</span>
+                        <span className="small text-muted" style={{ fontSize: '12px' }}>
+                          Tọa độ GPS: <strong style={{ color: '#171717', fontFamily: 'monospace' }}>
+                            {formData.latitude && formData.longitude
+                              ? `${Number(formData.latitude).toFixed(5)}° N, ${Number(formData.longitude).toFixed(5)}° E`
+                              : 'Chưa ghim tọa độ'}
+                          </strong>
+                        </span>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={handleSyncAddressFromPin}
+                        disabled={isSyncingAddress || !formData.latitude || !formData.longitude}
+                        className="d-inline-flex align-items-center gap-1"
+                        style={{ fontSize: '11.5px', fontWeight: 600, padding: '4px 10px', borderRadius: '6px' }}
+                        title="Giải mã vị trí ghim để tự động điền Tỉnh/Thành & Phường/Xã"
+                      >
+                        {isSyncingAddress ? 'Đang dò...' : '🔄 Điền địa chỉ theo ghim'}
+                      </Button>
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="d-flex align-items-center justify-content-end gap-2 pt-2 border-top">
+                    <div className="d-flex align-items-center justify-content-end gap-2 pt-3 border-top mt-auto">
                       <Button
                         type="button"
                         variant="outline-secondary"
@@ -938,10 +1048,10 @@ export default function ShopSettingsPage() {
                         )}
                       </Button>
                     </div>
-                  </Form>
-                </div>
-              </Col>
-            </Row>
+                  </div>
+                </Col>
+              </Row>
+            </Form>
           )}
         </div>
       </main>

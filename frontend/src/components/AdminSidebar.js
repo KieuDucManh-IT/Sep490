@@ -29,14 +29,6 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
         location.pathname === '/admin/manage-shops'
       ) ? 'active' : '';
     }
-    if (path.includes('/shop-applications')) {
-      return (
-        location.pathname === '/ops/shop-applications' ||
-        location.pathname === '/admin/shop-applications' ||
-        location.pathname === '/ops/shops/approvals' ||
-        location.pathname === '/admin/shops/approvals'
-      ) ? 'active' : '';
-    }
     if (path.includes('/moderation')) {
       return (location.pathname === '/ops/moderation' || location.pathname === '/admin/moderation') ? 'active' : '';
     }
@@ -135,21 +127,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
                 <path d="M10 13a2 2 0 0 0 4 0" />
               </svg>
             </span>
-            {!isCollapsed && <span>Quản Lý Gian Hàng</span>}
-          </Link>
-
-          <Link
-            to={isOps ? "/ops/shop-applications" : "/admin/shop-applications"}
-            className={`admin-shops-sidebar__link ${isActive(isOps ? '/ops/shop-applications' : '/admin/shop-applications')}`}
-            title="Phê Duyệt Shop"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                <polyline points="9 12 11 14 15 10" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Phê Duyệt Shop</span>}
+            {!isCollapsed && <span>{isOps ? 'Quản Lý Chi Nhánh' : 'Quản Lý Gian Hàng'}</span>}
           </Link>
 
           <Link

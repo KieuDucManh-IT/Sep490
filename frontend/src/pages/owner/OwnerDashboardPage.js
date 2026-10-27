@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AdminSidebar from '../../components/AdminSidebar';
+import OwnerSidebar from '../../components/OwnerSidebar';
 import '../../styles/AdminDashboard.css';
 
-export default function AdminDashboardPage() {
+export default function OwnerDashboardPage() {
   const navigate = useNavigate();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,7 +114,7 @@ export default function AdminDashboardPage() {
   return (
     <div className="admin-layout">
       {/* 1. TailAdmin Left Sidebar */}
-      <AdminSidebar
+      <OwnerSidebar
         isCollapsed={isSidebarCollapsed}
         onToggle={() => setIsSidebarCollapsed(prev => !prev)}
       />

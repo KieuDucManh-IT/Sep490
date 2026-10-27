@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import ShopSidebar from '../../components/ShopSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopSaleOrdersPage() {
+export default function BranchSaleOrdersPage() {
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -57,7 +57,7 @@ export default function ShopSaleOrdersPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar Navigation */}
-      <ShopSidebar />
+      <BranchSidebar />
 
       {/* Main Content Area */}
       <main className="shop-main-content">

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import ShopSidebar from '../../components/ShopSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopRentalOrdersPage() {
+export default function BranchRentalOrdersPage() {
   const [activeTab, setActiveTab] = useState('Tất Cả (72)');
 
   const rentalOrders = [
@@ -71,7 +71,7 @@ export default function ShopRentalOrdersPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Left Sidebar */}
-      <ShopSidebar />
+      <BranchSidebar />
 
       {/* Main Area */}
 

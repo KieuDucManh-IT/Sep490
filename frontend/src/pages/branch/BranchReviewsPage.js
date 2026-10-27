@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import ShopSidebar from '../../components/ShopSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopReviewsPage() {
+export default function BranchReviewsPage() {
   const [reviews, setReviews] = useState([
     {
       id: 'REV-101',
@@ -36,7 +36,7 @@ export default function ShopReviewsPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar */}
-      <ShopSidebar />
+      <BranchSidebar />
 
       {/* Main Area */}
       <main className="shop-main-content">

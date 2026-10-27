@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VESTORA – Luồng Thuê Quần Áo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8f9fa; padding: 20px; }
+
+  h1 {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: #111;
+    letter-spacing: 0.5px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 16px;
+  }
+
+  .swimlane-wrapper {
+    display: grid;
+    grid-template-columns: 160px 1fr 1fr 1fr 1fr;
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+    min-width: 900px;
+  }
+
+  /* Row label column */
+  .row-labels { background: #f3f4f6; border-right: 2px solid #ddd; }
+
+  /* Lane headers */
+  .lane-header {
+    padding: 12px 8px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: #fff;
+    border-right: 1px solid rgba(255,255,255,0.3);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .lane-header.customer  { background: #2563EB; }
+  .lane-header.system    { background: #7C3AED; }
+  .lane-header.shop      { background: #D97706; }
+  .lane-header.payment   { background: #059669; }
+  .row-label-header      { background: #374151; color: #fff; padding: 12px 8px; font-size: 11px; font-weight: 600; text-align: center; }
+
+  /* Grid body */
+  .swimlane-body {
+    display: contents;
+  }
+
+  .lane-col {
+    border-right: 1px solid #e5e7eb;
+    padding: 0;
+    position: relative;
+  }
+  .lane-col.customer { background: #EFF6FF; }
+  .lane-col.system   { background: #F5F3FF; }
+  .lane-col.shop     { background: #FFFBEB; }
+  .lane-col.payment  { background: #ECFDF5; }
+
+  /* Row sections */
+  .row-section {
+    display: contents;
+  }
+
+  .row-label-cell {
+    padding: 8px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #374151;
+    background: #f9fafb;
+    border-right: 2px solid #ddd;
+    border-bottom: 1px solid #e5e7eb;
+    writing-mode: horizontal-tb;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+  }
+
+  .cell {
+    padding: 10px 8px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 60px;
+    position: relative;
+  }
+
+  /* Node styles */
+  .node {
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    border: 1.5px solid;
+    line-height: 1.3;
+    max-width: 180px;
+    width: 100%;
+  }
+  .node.process    { background: #fff; border-color: #374151; color: #111; }
+  .node.notify     { background: #FFFBEB; border-color: #F59E0B; border-style: dashed; color: #92400E; }
+  .node.auto       { background: #F3F4F6; border-color: #9CA3AF; border-style: dashed; color: #4B5563; }
+  .node.cancel     { background: #FEF2F2; border-color: #DC2626; color: #DC2626; }
+  .node.payment-n  { background: #ECFDF5; border-color: #059669; color: #065F46; }
+  .node.end-node   { background: #111; color: #fff; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 10px; border: 3px solid #fff; box-shadow: 0 0 0 2px #111; }
+  .node.start-node { background: #111; color: #fff; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 10px; border: none; }
+
+  .diamond {
+    width: 120px;
+    height: 50px;
+    background: #fff;
+    border: 1.5px solid #374151;
+    transform: rotate(45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin: 8px auto;
+  }
+  .diamond span {
+    transform: rotate(-45deg);
+    font-size: 10px;
+    font-weight: 700;
+    color: #111;
+    text-align: center;
+    line-height: 1.2;
+    max-width: 80px;
+    display: block;
+  }
+
+  .arrow { font-size: 18px; color: #6B7280; text-align: center; }
+  .arrow-label { font-size: 10px; color: #6B7280; font-weight: 600; font-style: italic; }
+
+  /* Status badge */
+  .status-tag {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    display: inline-block;
+    margin-top: 2px;
+  }
+
+  .branch-note {
+    font-size: 9px;
+    color: #6B7280;
+    font-style: italic;
+    text-align: center;
+    margin-top: 2px;
+  }
+
+  .sep-line {
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(to right, #2563EB, #7C3AED, #D97706, #059669);
+    margin: 2px 0;
+    opacity: 0.3;
+  }
+
+  /* Cross-lane connector indicator */
+  .cross-arrow-right::after {
+    content: '→';
+    position: absolute;
+    right: -10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    color: #6B7280;
+    z-index: 5;
+  }
+  .cross-arrow-left::after {
+    content: '←';
+    position: absolute;
+    left: -10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    color: #6B7280;
+    z-index: 5;
+  }
+
+  /* Row spanning visual separator */
+  .phase-label {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, #1e3a5f, #2563EB);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 16px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  @media print {
+    body { padding: 0; background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<h1>VESTORA – Luồng Thuê Quần Áo</h1>
+<p class="subtitle">Swimlane Diagram · 4 Actors · Đã cập nhật đầy đủ</p>
+
+<div style="overflow-x:auto;">
+<div class="swimlane-wrapper">
+
+  <!-- HEADERS -->
+  <div class="row-label-header">Giai Đoạn</div>
+  <div class="lane-header customer">🧑 Customer</div>
+  <div class="lane-header system">⚙️ System</div>
+  <div class="lane-header shop">🏪 Shop</div>
+  <div class="lane-header payment">💳 Payment Gateway</div>
+
+  <!-- PHASE 1: KHÁM PHÁ SẢN PHẨM -->
+  <div class="phase-label">① Khám Phá Sản Phẩm</div>
+
+  <!-- Row 1 -->
+  <div class="row-label-cell">Bắt đầu<br>& Kiểm tra</div>
+  <div class="cell">
+    <div class="node start-node">▶</div>
+    <div class="arrow">↓</div>
+    <div class="node process">Xem Chi Tiết<br>Sản Phẩm</div>
+  </div>
+  <div class="cell">
+    <div class="node process">Kiểm Tra<br>Tình Trạng Hàng</div>
+    <div class="arrow">↓</div>
+    <div style="background:#fff;border:1.5px solid #374151;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;">
+      ◆ Còn Hàng?
+    </div>
+  </div>
+  <div class="cell">
+    <div class="node cancel">Thông Báo<br>Hết Hàng</div>
+    <div class="arrow-label">← Nếu KHÔNG</div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- Row 2 -->
+  <div class="row-label-cell">Chọn &<br>Xác nhận</div>
+  <div class="cell">
+    <div class="node process">Chọn SP, Kích Thước,<br>Ngày Thuê</div>
+    <div class="arrow">↓</div>
+    <div class="node process">Xác Nhận Chi Tiết<br>Đơn Hàng</div>
+  </div>
+  <div class="cell">
+    <div class="node process">Tính Phí Thuê +<br>Tiền Cọc + Phí Ship</div>
+    <div class="arrow-label">← Nếu CÓ hàng</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+
+  <!-- PHASE 2: TẠO ĐƠN & DUYỆT -->
+  <div class="phase-label">② Tạo Đơn & Duyệt</div>
+
+  <!-- Row 3 -->
+  <div class="row-label-cell">Tạo đơn<br>& Duyệt</div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="node process">Tạo Đơn Thuê<br><span class="status-tag" style="background:#FEF3C7;color:#92400E">CHỜ XỬ LÝ</span></div>
+  </div>
+  <div class="cell">
+    <div class="node process">Nhận Thông Báo<br>Đơn Hàng Mới</div>
+    <div class="arrow">↓</div>
+    <div style="background:#fff;border:1.5px solid #374151;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;">
+      ◆ Duyệt Đơn?
+    </div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- Row 4: Reject branch -->
+  <div class="row-label-cell">Reject /<br>Approve</div>
+  <div class="cell">
+    <div class="node cancel" style="font-size:10px">✕ Nhận Thông Báo<br>Đơn Bị Từ Chối</div>
+    <div class="node end-node" style="margin-top:6px">END</div>
+  </div>
+  <div class="cell">
+    <div class="node cancel">Hủy Đơn +<br>Thông Báo Khách</div>
+    <div class="arrow-label">← Nếu KHÔNG duyệt</div>
+  </div>
+  <div class="cell">
+    <div class="arrow-label" style="color:#059669">Nếu CÓ duyệt ↓</div>
+    <div class="node notify">🔔 Thông Báo Khách:<br>Đơn Đã Được Duyệt<br>– Vui Lòng Thanh Toán</div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- PHASE 3: THANH TOÁN -->
+  <div class="phase-label">③ Thanh Toán & Escrow</div>
+
+  <!-- Row 5: Lock slot -->
+  <div class="row-label-cell">Lock slot<br>30 phút</div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="node process">🔒 Khóa Suất<br>30 Phút</div>
+    <div class="arrow">↓ <span class="arrow-label">Hết TG</span></div>
+    <div class="node auto">⏱ Tự Động Hủy +<br>Giải Phóng Suất</div>
+    <div class="node end-node" style="margin-top:4px">END</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+
+  <!-- Row 6: Payment -->
+  <div class="row-label-cell">Thanh<br>toán</div>
+  <div class="cell">
+    <div style="background:#fff;border:1.5px solid #374151;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;">
+      ◆ Khách Thanh Toán?
+    </div>
+    <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;justify-content:center;">
+      <div style="font-size:9px;color:#DC2626;font-weight:700;">Không/Từ chối ↓</div>
+      <div style="font-size:9px;color:#D97706;font-weight:700;">Thất bại →</div>
+    </div>
+    <div class="node cancel" style="font-size:10px">Đơn Hàng Đã Hủy</div>
+    <div class="node end-node" style="margin-top:4px">END</div>
+  </div>
+  <div class="cell">
+    <div class="node auto">⟳ Thử Lại /<br>Giữ Suất +5 Phút</div>
+    <div class="branch-note">← Nếu thanh toán thất bại</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="node payment-n">Xử Lý Giao Dịch</div>
+    <div class="arrow">↓</div>
+    <div class="node payment-n">🔒 Nền Tảng Giữ<br>Tiền Đặt Cọc (Escrow)</div>
+    <div class="branch-note">← Nếu thanh toán thành công</div>
+  </div>
+
+  <!-- PHASE 4: CHUẨN BỊ & GIAO HÀNG -->
+  <div class="phase-label">④ Chuẩn Bị & Giao Hàng</div>
+
+  <!-- Row 7 -->
+  <div class="row-label-cell">Chuẩn bị<br>& Giao</div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="node process">Cập Nhật Trạng Thái:<br><span class="status-tag" style="background:#ECFDF5;color:#065F46">ĐÃ THANH TOÁN</span><br><span class="status-tag" style="background:#EEF2FF;color:#3730A3">ĐANG GIỮ TIỀN CỌC</span></div>
+  </div>
+  <div class="cell">
+    <div class="node process">Chuẩn Bị Sản Phẩm</div>
+    <div class="arrow">↓</div>
+    <div class="node process">Bàn Giao Cho<br>Đơn Vị Vận Chuyển</div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- Row 8: Shipping to customer -->
+  <div class="row-label-cell">Giao đến<br>khách</div>
+  <div class="cell">
+    <div class="node process">📦 Nhận Sản Phẩm</div>
+    <div class="arrow">↓</div>
+    <div class="node process">🔍 Kiểm Tra SP<br>Khi Nhận (Chất Lượng)</div>
+  </div>
+  <div class="cell">
+    <div class="node process"><span class="status-tag" style="background:#DBEAFE;color:#1D4ED8">ĐANG GIAO ĐẾN KHÁCH</span></div>
+    <div class="arrow">↓</div>
+    <div class="node notify">🔔 Thông Báo:<br>Kiện Hàng Đang<br>Được Giao</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+
+  <!-- PHASE 5: SỬ DỤNG & TRẢ HÀNG -->
+  <div class="phase-label">⑤ Sử Dụng & Trả Hàng</div>
+
+  <!-- Row 9: Use -->
+  <div class="row-label-cell">Sử dụng<br>& Nhắc</div>
+  <div class="cell">
+    <div class="node process">👗 Sử Dụng SP<br>Trong Thời Gian Thuê</div>
+  </div>
+  <div class="cell">
+    <div class="node notify">⚠️ Nhắc Nhở:<br>Hạn Trả Hàng<br>Vào Ngày Mai (Tự Động)</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+
+  <!-- Row 10: Return on time? -->
+  <div class="row-label-cell">Trả hàng<br>(đúng hạn?)</div>
+  <div class="cell">
+    <div style="background:#fff;border:1.5px solid #374151;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;">
+      ◆ Trả Hàng<br>Đúng Hạn?
+    </div>
+  </div>
+  <div class="cell">
+    <div class="node cancel">Áp Dụng Phí Phạt<br>Trả Muộn</div>
+    <div class="branch-note">← Nếu TRỄ HẠN</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="node cancel">Khấu Trừ Phí Phạt<br>Từ Tiền Đặt Cọc</div>
+    <div class="branch-note">← Nếu trễ hạn</div>
+  </div>
+
+  <!-- Row 11: Shipping back -->
+  <div class="row-label-cell">Gửi trả<br>về shop</div>
+  <div class="cell">
+    <div class="node process">Trả Sản Phẩm<br>(Gửi Lại / Tại Cửa Hàng)</div>
+  </div>
+  <div class="cell">
+    <div class="node process"><span class="status-tag" style="background:#FEF3C7;color:#92400E">ĐANG GỬI TRẢ</span></div>
+  </div>
+  <div class="cell">
+    <div class="node process">Nhận Sản Phẩm<br>Trả Lại</div>
+    <div class="arrow">↓</div>
+    <div class="node process">🎥 Kiểm Tra SP<br>(Ghi Bằng Chứng Video)</div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- PHASE 6: NGHIỆM THU & HOÀN CỌC -->
+  <div class="phase-label">⑥ Nghiệm Thu & Hoàn Cọc</div>
+
+  <!-- Row 12: Inspect result -->
+  <div class="row-label-cell">Kết quả<br>nghiệm thu</div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div style="background:#fff;border:1.5px solid #374151;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;">
+      ◆ Tình Trạng<br>Sản Phẩm?
+    </div>
+    <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;justify-content:center;">
+      <span style="font-size:9px;color:#059669;font-weight:700;">OK →</span>
+      <span style="font-size:9px;color:#D97706;font-weight:700;">Hư nhẹ ↓</span>
+      <span style="font-size:9px;color:#DC2626;font-weight:700;">Hư nặng →</span>
+    </div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- Row 13: Branch OK -->
+  <div class="row-label-cell">Nhánh OK<br>(nguyên vẹn)</div>
+  <div class="cell">
+    <div class="node notify">🔔 Thông Báo:<br>Hoàn Trả Toàn Bộ<br>Tiền Cọc</div>
+    <div class="arrow">↓</div>
+    <div class="node process">⭐ Đánh Giá SP<br>& Cửa Hàng</div>
+    <div class="arrow">↓</div>
+    <div class="node end-node">END</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="node payment-n">✅ Hoàn Trả 100%<br>Tiền Đặt Cọc</div>
+    <div class="branch-note">← Nếu OK</div>
+  </div>
+
+  <!-- Row 14: Branch Minor -->
+  <div class="row-label-cell">Nhánh<br>Hư nhẹ</div>
+  <div class="cell">
+    <div class="node notify">🔔 Thông Báo:<br>Hoàn Một Phần +<br>Lý Do Chi Tiết</div>
+    <div class="arrow">↓</div>
+    <div class="node process">⭐ Đánh Giá SP<br>& Cửa Hàng</div>
+    <div class="arrow">↓</div>
+    <div class="node end-node">END</div>
+  </div>
+  <div class="cell">
+    <div class="node process">Tính Toán<br>Khoản Khấu Trừ</div>
+  </div>
+  <div class="cell">
+    <div class="branch-note" style="color:#D97706;font-weight:700;font-size:10px">↑ Nhánh Hư Hỏng Nhẹ</div>
+  </div>
+  <div class="cell">
+    <div class="node payment-n" style="background:#FFFBEB;border-color:#F59E0B;color:#92400E;">⚠️ Hoàn Trả Một Phần<br>Tiền Đặt Cọc</div>
+  </div>
+
+  <!-- Row 15: Branch Major -->
+  <div class="row-label-cell">Nhánh<br>Hư nặng</div>
+  <div class="cell">
+    <div class="node notify" style="background:#FEF2F2;border-color:#DC2626;color:#DC2626;">🔔 Thông Báo:<br>Đơn Hàng Cần<br>Xử Lý Thêm</div>
+    <div class="arrow">↓</div>
+    <div class="node process">⭐ Đánh Giá SP<br>& Cửa Hàng</div>
+    <div class="arrow">↓</div>
+    <div class="node end-node">END</div>
+  </div>
+  <div class="cell">
+    <div class="branch-note" style="color:#DC2626;font-weight:700;font-size:10px;padding:8px;background:#FEF2F2;border-radius:6px;border:1px dashed #DC2626;">
+      ⚠️ Hư Hỏng Nặng /<br>Mất Hàng<br>→ Xem Luồng<br>Tranh Chấp riêng
+    </div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="node cancel">🔒 Giữ Nguyên<br>Toàn Bộ Tiền Cọc<br>(Escrow Frozen)</div>
+    <div class="branch-note">← Nếu hư nặng / mất</div>
+  </div>
+
+</div><!-- end swimlane-wrapper -->
+</div><!-- end overflow -->
+
+<div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:11px;">
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#fff;border:1.5px solid #374151;border-radius:3px;display:inline-block;"></span> Bước xử lý</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#FFFBEB;border:1.5px dashed #F59E0B;border-radius:3px;display:inline-block;"></span> Thông báo (🔔)</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#F3F4F6;border:1.5px dashed #9CA3AF;border-radius:3px;display:inline-block;"></span> Tự động (Hệ thống)</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#FEF2F2;border:1.5px solid #DC2626;border-radius:3px;display:inline-block;"></span> Hủy / Cảnh báo</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#ECFDF5;border:1.5px solid #059669;border-radius:3px;display:inline-block;"></span> Thanh toán / Escrow</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#111;border-radius:50%;display:inline-block;"></span> Bắt đầu / Kết thúc</span>
+</div>
+
+</body>
+</html>

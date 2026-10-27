@@ -52,7 +52,12 @@ const userSchema = new mongoose.Schema(
     Role: {
       type: String,
       enum: {
-        values: ["customer", "admin", "shop_owner", "operation_staff", "CUSTOMER", "ADMIN", "SHOP_OWNER", "OPERATION_STAFF"],
+        values: [
+          "customer", "admin", "owner", "branch_manager", "warehouse_manager", "warehouse_staff",
+          "shop_owner", "operation_staff",
+          "CUSTOMER", "ADMIN", "OWNER", "BRANCH_MANAGER", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF",
+          "SHOP_OWNER", "OPERATION_STAFF"
+        ],
         message: "Role không hợp lệ",
       },
       required: true,

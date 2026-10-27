@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { Row, Col, Card, Badge, Button, Form } from 'react-bootstrap';
-import ShopSidebar from '../../components/ShopSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopAnalyticsPage() {
+export default function BranchAnalyticsPage() {
   const [timeRange, setTimeRange] = useState('MONTH');
 
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar Navigation */}
-      <ShopSidebar />
+      <BranchSidebar />
 
       {/* Main Area */}
       <main className="shop-main-content">

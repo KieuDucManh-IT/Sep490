@@ -4,11 +4,13 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
+// 1. Role Auth / Common
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 
+// 2. Role Customer (UC-29..UC-42, UC-65..UC-74)
 import HomePage from './pages/customer/HomePage';
 import CatalogPage from './pages/customer/CatalogPage';
 import ProductDetailPage from './pages/customer/ProductDetailPage';
@@ -16,34 +18,44 @@ import CartPage from './pages/customer/CartPage';
 import FavoritesPage from './pages/customer/FavoritesPage';
 import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
-import RegisterShopPage from './pages/customer/RegisterShopPage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
 import WebcamTryOnPage from './pages/customer/WebcamTryOnPage';
 
-import ShopDashboardPage from './pages/shop/ShopDashboardPage';
-import ShopAnalyticsPage from './pages/shop/ShopAnalyticsPage';
-import ShopProductsPage from './pages/shop/ShopProductsPage';
-import ShopAddProductPage from './pages/shop/ShopAddProductPage';
-import ShopRentalOrdersPage from './pages/shop/ShopRentalOrdersPage';
-import ShopSaleOrdersPage from './pages/shop/ShopSaleOrdersPage';
-import ShopInventoryPage from './pages/shop/ShopInventoryPage';
-import ShopReturnsPage from './pages/shop/ShopReturnsPage';
-import ShopPricingPage from './pages/shop/ShopPricingPage';
-import ShopReviewsPage from './pages/shop/ShopReviewsPage';
-import ShopSettingsPage from './pages/shop/ShopSettingsPage';
+// 3. Role Branch Manager (UC-43..UC-52)
+import BranchDashboardPage from './pages/branch/BranchDashboardPage';
+import BranchRentalOrdersPage from './pages/branch/BranchRentalOrdersPage';
+import BranchSaleOrdersPage from './pages/branch/BranchSaleOrdersPage';
+import BranchReturnsPage from './pages/branch/BranchReturnsPage';
+import BranchReviewsPage from './pages/branch/BranchReviewsPage';
+import BranchAnalyticsPage from './pages/branch/BranchAnalyticsPage';
 
-import AdminDashboardPage from './pages/admin/AdminDashboardPage';
-import AdminShopsPage from './pages/admin/AdminShopsPage';
+// 4. Role Warehouse Manager (UC-15..UC-28)
+import WarehouseProductsPage from './pages/warehouse/WarehouseProductsPage';
+import WarehouseAddProductPage from './pages/warehouse/WarehouseAddProductPage';
+import WarehouseInventoryPage from './pages/warehouse/WarehouseInventoryPage';
+import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';
+
+// 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
+import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
+import OwnerBranchesPage from './pages/owner/OwnerBranchesPage';
+import OwnerShopsPage from './pages/owner/OwnerShopsPage';
+import OwnerPricingPage from './pages/owner/OwnerPricingPage';
+import OwnerAnalyticsPage from './pages/owner/OwnerAnalyticsPage';
+import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
+import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
+import OwnerBranchesListPage from './pages/owner/OwnerBranchesListPage';
+
+// 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
-import AdminModerationPage from './pages/admin/AdminModerationPage';
-import AdminDisputesPage from './pages/admin/AdminDisputesPage';
-import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <Routes>
+          {/* ========================================================
+              CUSTOMER PORTAL (Khách Hàng)
+              ======================================================== */}
           <Route path="/" element={<HomePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/product" element={<ProductDetailPage />} />
@@ -59,51 +71,95 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/register-shop" element={<RegisterShopPage />} />
-          <Route path="/customer/register-shop" element={<RegisterShopPage />} />
           <Route path="/try-on/photo" element={<PhotoTryOnPage />} />
           <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
           <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
           <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
+          {/* ========================================================
+              AUTHENTICATION (Đăng Nhập & Đăng Ký)
+              ======================================================== */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-          <Route path="/shop/dashboard" element={<ShopDashboardPage />} />
-          <Route path="/shop/analytics" element={<ShopAnalyticsPage />} />
-          <Route path="/shop/products" element={<ShopProductsPage />} />
-          <Route path="/shop/products/new" element={<ShopAddProductPage />} />
-          <Route path="/shop/rental-orders" element={<ShopRentalOrdersPage />} />
-          <Route path="/shop/sale-orders" element={<ShopSaleOrdersPage />} />
-          <Route path="/shop/inventory" element={<ShopInventoryPage />} />
-          <Route path="/shop/returns" element={<ShopReturnsPage />} />
-          <Route path="/shop/pricing" element={<ShopPricingPage />} />
-          <Route path="/shop/reviews" element={<ShopReviewsPage />} />
-          <Route path="/shop/settings" element={<ShopSettingsPage />} />
-          <Route path="/shop/branches" element={<ShopSettingsPage />} />
-          <Route path="/shop/address" element={<ShopSettingsPage />} />
-          <Route path="/shop/store-info" element={<ShopSettingsPage />} />
+          {/* ========================================================
+              ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Showroom)
+              ======================================================== */}
+          <Route path="/branch/dashboard" element={<BranchDashboardPage />} />
+          <Route path="/branch/rental-orders" element={<BranchRentalOrdersPage />} />
+          <Route path="/branch/sale-orders" element={<BranchSaleOrdersPage />} />
+          <Route path="/branch/returns" element={<BranchReturnsPage />} />
+          <Route path="/branch/reviews" element={<BranchReviewsPage />} />
+          <Route path="/branch/analytics" element={<BranchAnalyticsPage />} />
+          <Route path="/branch/settings" element={<OwnerSettingsPage />} />
+          <Route path="/branch/showroom" element={<OwnerSettingsPage />} />
 
-          {/* Operations Staff (OPS) Routes */}
-          <Route path="/ops/shops" element={<AdminShopsPage />} />
-          <Route path="/ops/manage-shops" element={<AdminShopsPage />} />
-          <Route path="/ops/shop-applications" element={<AdminShopsPage />} />
-          <Route path="/ops/shops/approvals" element={<AdminShopsPage />} />
-          <Route path="/ops/moderation" element={<AdminModerationPage />} />
-          <Route path="/ops/disputes" element={<AdminDisputesPage />} />
+          {/* ========================================================
+              ROLE: WAREHOUSE MANAGER (Quản Lý Kho & Sản Phẩm)
+              ======================================================== */}
+          <Route path="/warehouse/products" element={<WarehouseProductsPage />} />
+          <Route path="/warehouse/products/new" element={<WarehouseAddProductPage />} />
+          <Route path="/warehouse/inventory" element={<WarehouseInventoryPage />} />
+          <Route path="/warehouse/moderation" element={<WarehouseModerationPage />} />
 
-          {/* Administrator Routes */}
-          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-          <Route path="/admin/shops" element={<AdminShopsPage />} />
-          <Route path="/admin/manage-shops" element={<AdminShopsPage />} />
-          <Route path="/admin/shop-applications" element={<AdminShopsPage />} />
-          <Route path="/admin/shops/approvals" element={<AdminShopsPage />} />
+          {/* ========================================================
+              ROLE: SHOP OWNER / CEO (Chủ Chuỗi & Tài Chính Toàn Sàn)
+              ======================================================== */}
+          <Route path="/owner/dashboard" element={<OwnerDashboardPage />} />
+          <Route path="/owner/branches" element={<OwnerBranchesPage />} />
+          <Route path="/owner/manage-shops" element={<OwnerBranchesPage />} />
+          <Route path="/owner/shops" element={<OwnerBranchesPage />} />
+          <Route path="/owner/pricing" element={<OwnerPricingPage />} />
+          <Route path="/owner/analytics" element={<OwnerAnalyticsPage />} />
+          <Route path="/owner/disputes" element={<OwnerDisputesPage />} />
+          <Route path="/owner/settings" element={<OwnerSettingsPage />} />
+          <Route path="/owner/branches-list" element={<OwnerBranchesListPage />} />
+
+          {/* ========================================================
+              ROLE: SYSTEM ADMIN (Quản Trị Hệ Thống & Tài Khoản)
+              ======================================================== */}
           <Route path="/admin/accounts" element={<AdminAccountsPage />} />
-          <Route path="/admin/moderation" element={<AdminModerationPage />} />
-          <Route path="/admin/disputes" element={<AdminDisputesPage />} />
-          <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+          <Route path="/admin/dashboard" element={<OwnerDashboardPage />} />
+          <Route path="/admin/shops" element={<OwnerShopsPage />} />
+          <Route path="/admin/moderation" element={<WarehouseModerationPage />} />
+          <Route path="/admin/disputes" element={<OwnerDisputesPage />} />
+          <Route path="/admin/analytics" element={<OwnerAnalyticsPage />} />
+
+          {/* ========================================================
+              BACKWARD COMPATIBILITY REDIRECTS (Tương Thích Tuyệt Đối)
+              ======================================================== */}
+          <Route path="/owner" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/branch" element={<Navigate to="/branch/dashboard" replace />} />
+          <Route path="/branches" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/manage-shops" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/shop-owner" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/shop-owner/branches" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/branch-manager" element={<Navigate to="/branch/dashboard" replace />} />
+          <Route path="/branch/manage-shops" element={<Navigate to="/branch/settings" replace />} />
+          <Route path="/branch/branches" element={<Navigate to="/branch/settings" replace />} />
+
+          <Route path="/shop" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/shop/dashboard" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/shop/rental-orders" element={<Navigate to="/branch/rental-orders" replace />} />
+          <Route path="/shop/sale-orders" element={<Navigate to="/branch/sale-orders" replace />} />
+          <Route path="/shop/returns" element={<Navigate to="/branch/returns" replace />} />
+          <Route path="/shop/reviews" element={<Navigate to="/branch/reviews" replace />} />
+          <Route path="/shop/analytics" element={<Navigate to="/branch/analytics" replace />} />
+          <Route path="/shop/products" element={<Navigate to="/warehouse/products" replace />} />
+          <Route path="/shop/products/new" element={<Navigate to="/warehouse/products/new" replace />} />
+          <Route path="/shop/inventory" element={<Navigate to="/warehouse/inventory" replace />} />
+          <Route path="/shop/pricing" element={<Navigate to="/owner/pricing" replace />} />
+          <Route path="/shop/settings" element={<Navigate to="/owner/settings" replace />} />
+          <Route path="/shop/branches" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/shop/address" element={<Navigate to="/owner/settings" replace />} />
+          <Route path="/shop/store-info" element={<Navigate to="/owner/settings" replace />} />
+
+          <Route path="/ops/shops" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/ops/manage-shops" element={<Navigate to="/owner/branches" replace />} />
+          <Route path="/ops/moderation" element={<Navigate to="/warehouse/moderation" replace />} />
+          <Route path="/ops/disputes" element={<Navigate to="/owner/disputes" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -781,3 +781,42 @@
   border-left: 4px solid #F59E0B;
 }
 
+/* =========================================================
+   STORE & BRANCH MANAGEMENT 2-TAB BAR
+   ========================================================= */
+.store-tabs-nav {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid #E5E7EB;
+  margin-bottom: 28px;
+  overflow-x: auto;
+}
+
+.store-tab-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6B7280;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.store-tab-button:hover {
+  color: #111827;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.store-tab-button.active {
+  color: #111827;
+  border-bottom-color: #D97706;
+  background: rgba(217, 119, 6, 0.04);
+}
+

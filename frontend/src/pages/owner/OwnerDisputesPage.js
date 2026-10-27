@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import AdminSidebar from '../../components/AdminSidebar';
+import OwnerSidebar from '../../components/OwnerSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
 
-export default function AdminDisputesPage() {
+export default function OwnerDisputesPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [disputes, setDisputes] = useState([
     {
@@ -47,7 +47,7 @@ export default function AdminDisputesPage() {
   return (
     <div className="admin-layout">
       {/* 1. Sidebar */}
-      <AdminSidebar 
+      <OwnerSidebar 
         isCollapsed={isSidebarCollapsed} 
         onToggle={() => setIsSidebarCollapsed(prev => !prev)} 
       />

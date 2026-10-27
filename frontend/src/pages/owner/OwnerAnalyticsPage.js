@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import AdminSidebar from '../../components/AdminSidebar';
+import OwnerSidebar from '../../components/OwnerSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
 
-export default function AdminAnalyticsPage() {
+export default function OwnerAnalyticsPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [metrics, setMetrics] = useState({
-    users: { total: 11, customers: 9, shopOwners: 2 },
-    shops: { total: 8, pending: 6, active: 1, rejected: 1 },
+    users: { total: 11, customers: 9, staff: 2 },
+    branches: { total: 8, active: 7, suspended: 1 },
     platformRevenue: 125000000,
     escrowHolding: 45000000
   });
@@ -26,7 +26,7 @@ export default function AdminAnalyticsPage() {
   return (
     <div className="admin-layout">
       {/* 1. Sidebar */}
-      <AdminSidebar
+      <OwnerSidebar
         isCollapsed={isSidebarCollapsed}
         onToggle={() => setIsSidebarCollapsed(prev => !prev)}
       />
@@ -88,9 +88,9 @@ export default function AdminAnalyticsPage() {
             <div className="admin-card" style={{ borderLeft: '4px solid #C5A880' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>TÀI KHOẢN MONGODB THỰC TẾ</div>
+                  <div style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>TÀI KHOẢN HỆ THỐNG THỰC TẾ</div>
                   <div style={{ fontSize: '24px', fontWeight: 700, color: '#171717', margin: '4px 0' }}>{metrics.users?.total ?? 0} Người dùng</div>
-                  <div style={{ fontSize: '12px', color: '#10B981' }}>{metrics.users?.customers ?? 0} Khách hàng • {metrics.users?.shopOwners ?? 0} Chủ gian hàng</div>
+                  <div style={{ fontSize: '12px', color: '#10B981' }}>{metrics.users?.customers ?? 0} Khách hàng • {metrics.users?.staff ?? 0} Nhân sự vận hành</div>
                 </div>
                 <div style={{ fontSize: '32px' }}>👥</div>
               </div>
@@ -98,9 +98,9 @@ export default function AdminAnalyticsPage() {
             <div className="admin-card" style={{ borderLeft: '4px solid #10B981' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>GIAN HÀNG MONGODB THỰC TẾ</div>
-                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#171717', margin: '4px 0' }}>{metrics.shops?.total ?? 0} Showroom</div>
-                  <div style={{ fontSize: '12px', color: '#D97706' }}>{metrics.shops?.pending ?? 0} Chờ duyệt • {metrics.shops?.active ?? 0} Đang hoạt động</div>
+                  <div style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>HỆ THỐNG CHI NHÁNH & KHO VESTORA (UC-12)</div>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#171717', margin: '4px 0' }}>{metrics.branches?.total ?? 0} Điểm Showroom & Kho</div>
+                  <div style={{ fontSize: '12px', color: '#10B981' }}>{metrics.branches?.active ?? 0} Đang hoạt động • {metrics.branches?.suspended ?? 0} Tạm ngưng</div>
                 </div>
                 <div style={{ fontSize: '32px' }}>🏪</div>
               </div>

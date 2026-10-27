@@ -52,16 +52,49 @@ export default function Navbar() {
           RADAR SHOWROOM
         </Link>
 
-        <Link
-          to="/register-shop"
-          className={`navbar-link ${isActive("/register-shop") || isActive("/customer/register-shop") ? "active" : ""}`}
-        >
-          ĐĂNG KÝ SHOP
-        </Link>
+        {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
+          <>
+            <Link
+              to="/owner/branches"
+              className={`navbar-link ${isActive('/owner/branches') || isActive('/owner/manage-shops') ? 'active' : ''}`}
+              style={{ color: '#D97706', fontWeight: 600 }}
+            >
+              QUẢN LÝ CHI NHÁNH
+            </Link>
+            <Link
+              to="/owner/dashboard"
+              className={`navbar-link ${isActive('/owner/dashboard') ? 'active' : ''}`}
+            >
+              TỔNG QUAN CHUỖI
+            </Link>
+          </>
+        )}
 
-        {(user?.role === "shop_owner" || user?.Role === "SHOP_OWNER" || user?.Role === "shop_owner") && (
-          <Link to="/shop/dashboard" className={`navbar-link ${isActive("/shop/dashboard")}`}>
-            KÊNH CHỦ SHOP
+        {/branch_manager/i.test(user?.Role || user?.role || '') && (
+          <>
+            <Link
+              to="/branch/dashboard"
+              className={`navbar-link ${isActive('/branch/dashboard') ? 'active' : ''}`}
+              style={{ color: '#059669', fontWeight: 600 }}
+            >
+              VẬN HÀNH CHI NHÁNH
+            </Link>
+            <Link
+              to="/branch/settings"
+              className={`navbar-link ${isActive('/branch/settings') ? 'active' : ''}`}
+            >
+              SHOWROOM & BẢN ĐỒ
+            </Link>
+          </>
+        )}
+
+        {(user?.role === "operation_staff" || user?.Role === "OPERATION_STAFF" || user?.Role === "operation_staff" || user?.role === "admin" || user?.Role === "ADMIN") && (
+          <Link
+            to="/ops/shops"
+            className={`navbar-link ${isActive("/ops/shops") || isActive("/ops/manage-shops") ? "active" : ""}`}
+            style={{ color: '#059669', fontWeight: 600 }}
+          >
+            VẬN HÀNH OPS
           </Link>
         )}
 

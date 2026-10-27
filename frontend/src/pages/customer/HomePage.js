@@ -353,23 +353,23 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Merchant CTA Banner */}
+      {/* Showroom & Collection CTA Banner */}
       <section className="section-container" style={{ paddingTop: 0 }}>
         <div className="merchant-cta-banner">
           <div>
             <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '2px', color: 'var(--color-gold)', marginBottom: '8px' }}>
-              GIA TĂNG THU NHẬP TỪ TỦ ĐỒ
+              TRẢI NGHIỆM ĐẲNG CẤP VESTORA
             </div>
             <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '32px', marginBottom: '12px', color: '#FFF' }}>
-              Bạn Có Trang Phục Muốn Cho Thuê<br />Hoặc Thanh Lý?
+              Trải Nghiệm Trang Phục Cao Cấp<br />Tại Hệ Thống Showroom
             </h2>
             <p style={{ fontSize: '14px', color: '#A3A3A3', maxWidth: '480px' }}>
-              Đăng ký trở thành Chủ Gian Hàng trên VESTORA — Miễn phí mở shop, thanh toán bảo đảm qua PayOS và tiếp cận hàng nghìn khách hàng yêu thời trang mỗi ngày.
+              Khám phá bộ sưu tập trang phục thiết kế độc quyền, đặt lịch thuê online hoặc ghé ngay các chi nhánh VESTORA gần bạn để thử đồ trực tiếp.
             </p>
           </div>
 
-          <button className="btn-primary" onClick={() => navigate('/register-shop')}>
-            ĐĂNG KÝ MỞ SHOP ➔
+          <button className="btn-primary" onClick={() => navigate('/map')}>
+            TÌM SHOWROOM GẦN BẠN ➔
           </button>
         </div>
       </section>

@@ -8,6 +8,15 @@ const shopSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    managerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    isHQ: {
+      type: Boolean,
+      default: false,
+    },
     name: {
       type: String,
       required: [true, 'Tên gian hàng không được để trống'],
@@ -47,6 +56,17 @@ const shopSchema = new mongoose.Schema(
       min: [-180, 'Kinh độ không hợp lệ (-180 đến 180)'],
       max: [180, 'Kinh độ không hợp lệ (-180 đến 180)'],
     },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: undefined,
+      },
+    },
     imageUrl: { type: String, default: '' },
     openingHours: {
       type: String,
@@ -58,8 +78,8 @@ const shopSchema = new mongoose.Schema(
     idCardBackUrl: { type: String, default: '' },
     status: {
       type: String,
-      enum: ['PENDING', 'ACTIVE', 'REJECTED', 'SUSPENDED'],
-      default: 'PENDING',
+      enum: ['ACTIVE', 'SUSPENDED', 'PENDING', 'REJECTED'],
+      default: 'ACTIVE',
     },
     rejectionReason: { type: String, default: '' },
     notes: { type: String, default: '' },
@@ -74,14 +94,28 @@ const shopSchema = new mongoose.Schema(
 );
 
 shopSchema.index({ ownerId: 1, status: 1 });
+shopSchema.index({ managerId: 1 });
+shopSchema.index({ city: 1 });
 shopSchema.index({ status: 1, createdAt: -1 });
 shopSchema.index({ name: 1 });
+shopSchema.index({ location: '2dsphere' }, { sparse: true });
 
 shopSchema.pre('save', function () {
   if (this.status === 'REJECTED' && !this.rejectionReason?.trim()) {
     throw new Error('Lý do từ chối là bắt buộc khi từ chối hồ sơ.');
   }
+
+  // Synchronize GeoJSON location: strictly [longitude, latitude]
+  if (this.latitude != null && this.longitude != null && !isNaN(this.latitude) && !isNaN(this.longitude)) {
+    this.location = {
+      type: 'Point',
+      coordinates: [Number(this.longitude), Number(this.latitude)],
+    };
+  } else {
+    this.location = undefined;
+  }
 });
+
 
 export const Shop = mongoose.models.Shop || mongoose.model('Shop', shopSchema);
 export default Shop;

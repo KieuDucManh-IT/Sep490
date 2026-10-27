@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import ShopSidebar from '../../components/ShopSidebar';
+import OwnerSidebar from '../../components/OwnerSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopPricingPage() {
+export default function OwnerPricingPage() {
   const [pricingRules] = useState([
     {
       id: 'PR-01',
@@ -39,7 +39,7 @@ export default function ShopPricingPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar */}
-      <ShopSidebar />
+      <OwnerSidebar />
 
       {/* Main Area */}
       <main className="shop-main-content">

@@ -2,217 +2,7 @@ import mongoose from 'mongoose';
 import { Shop } from '../models/Shop.js';
 import { User } from '../models/User.js';
 
-export const applyShop = async (req, res) => {
-  try {
-    const {
-      ownerId,
-      ownerName = '',
-      ownerEmail = '',
-      name,
-      description,
-      phone,
-      address,
-      city = '',
-      district = '',
-      ward = '',
-      imageUrl = '',
-      businessLicenseUrl = '',
-      idCardFrontUrl = '',
-      idCardBackUrl = '',
-      latitude = null,
-      longitude = null,
-    } = req.body;
-
-    if (!name?.trim() || !description?.trim() || !phone?.trim() || !address?.trim() || !city?.trim() || !ward?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Vui lòng điền đầy đủ các thông tin bắt buộc (Tên gian hàng, mô tả, số điện thoại, tỉnh/thành phố, phường/xã, địa chỉ cụ thể).',
-      });
-    }
-
-    const trimmedName = name.trim();
-    if (trimmedName.length < 3 || trimmedName.length > 100) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tên gian hàng phải từ 3 đến 100 ký tự.',
-      });
-    }
-
-    const trimmedDesc = description.trim();
-    if (trimmedDesc.length < 10 || trimmedDesc.length > 1000) {
-      return res.status(400).json({
-        success: false,
-        message: 'Mô tả gian hàng phải từ 10 đến 1000 ký tự.',
-      });
-    }
-
-    const cleanPhone = phone.trim().replace(/\s+/g, '').replace(/^\+84/, '0');
-    const phoneRegex = /^(0[35789])[0-9]{8}$/;
-    if (!phoneRegex.test(cleanPhone)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Số điện thoại không hợp lệ. Vui lòng nhập số di động 10 chữ số của Việt Nam (bắt đầu bằng 03, 05, 07, 08, 09).',
-      });
-    }
-
-    const trimmedAddress = address.trim();
-    if (trimmedAddress.length < 3 || trimmedAddress.length > 255) {
-      return res.status(400).json({
-        success: false,
-        message: 'Địa chỉ gian hàng phải từ 3 đến 255 ký tự.',
-      });
-    }
-
-    if (!businessLicenseUrl?.trim() || !idCardFrontUrl?.trim() || !idCardBackUrl?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Vui lòng tải lên đầy đủ Giấy phép kinh doanh và ảnh CCCD 2 mặt để thẩm định.',
-      });
-    }
-
-    const cleanEmail = ownerEmail?.trim()?.toLowerCase() || '';
-    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Địa chỉ email liên hệ không đúng định dạng (VD: example@email.com).',
-      });
-    }
-
-    const parsedLat = (latitude !== undefined && latitude !== null && latitude !== '') ? Number(latitude) : null;
-    const parsedLng = (longitude !== undefined && longitude !== null && longitude !== '') ? Number(longitude) : null;
-    let validLat = null;
-    let validLng = null;
-    if (Number.isFinite(parsedLat)) {
-      if (parsedLat < -90 || parsedLat > 90) {
-        return res.status(400).json({ success: false, message: 'Vĩ độ không hợp lệ (phải từ -90 đến 90).' });
-      }
-      validLat = parsedLat;
-    }
-    if (Number.isFinite(parsedLng)) {
-      if (parsedLng < -180 || parsedLng > 180) {
-        return res.status(400).json({ success: false, message: 'Kinh độ không hợp lệ (phải từ -180 đến 180).' });
-      }
-      validLng = parsedLng;
-    }
-
-    let targetOwnerId = null;
-
-    if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {
-      const existingUser = await User.findById(ownerId);
-      if (existingUser) {
-        if (existingUser.Status === 'BANNED') {
-          return res.status(403).json({
-            success: false,
-            message: 'Tài khoản của bạn đã bị khóa, không thể đăng ký mở gian hàng.',
-          });
-        }
-        targetOwnerId = existingUser._id;
-      }
-    }
-
-    if (!targetOwnerId && cleanEmail) {
-      let existingUser = await User.findOne({ Email: cleanEmail });
-      if (existingUser) {
-        if (existingUser.Status === 'BANNED') {
-          return res.status(403).json({
-            success: false,
-            message: 'Tài khoản của bạn đã bị khóa, không thể đăng ký mở gian hàng.',
-          });
-        }
-        targetOwnerId = existingUser._id;
-      } else {
-        existingUser = await User.create({
-          Email: cleanEmail,
-          FullName: ownerName?.trim() || trimmedName,
-          Role: 'CUSTOMER',
-          Status: 'ACTIVE',
-        });
-        targetOwnerId = existingUser._id;
-      }
-    }
-
-    if (!targetOwnerId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Vui lòng cung cấp email liên hệ hợp lệ để nhận kết quả xét duyệt.',
-      });
-    }
-
-    if (ownerName?.trim()) {
-      await User.findByIdAndUpdate(targetOwnerId, {
-        $set: { FullName: ownerName.trim() },
-      });
-    }
-
-    const existingShop = await Shop.findOne({
-      ownerId: targetOwnerId,
-      status: { $in: ['PENDING', 'ACTIVE'] },
-    });
-
-    if (existingShop) {
-      return res.status(400).json({
-        success: false,
-        message:
-          existingShop.status === 'ACTIVE'
-            ? `Tài khoản của bạn đã có gian hàng "${existingShop.name}" đang hoạt động.`
-            : `Tài khoản của bạn đã có hồ sơ gian hàng "${existingShop.name}" đang chờ xét duyệt.`,
-        data: {
-          existingShopId: existingShop._id,
-          shop: existingShop,
-        },
-      });
-    }
-
-    const escapedName = trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const duplicateNameShop = await Shop.findOne({
-      name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
-      status: { $in: ['PENDING', 'ACTIVE'] },
-    });
-
-    if (duplicateNameShop && String(duplicateNameShop.ownerId) !== String(targetOwnerId)) {
-      return res.status(400).json({
-        success: false,
-        message: `Tên gian hàng "${trimmedName}" đã được sử dụng hoặc đang chờ xét duyệt bởi người khác. Vui lòng chọn tên khác.`,
-      });
-    }
-
-    const shop = new Shop({
-      ownerId: targetOwnerId,
-      name: trimmedName,
-      description: trimmedDesc,
-      phone: cleanPhone,
-      address: trimmedAddress,
-      city: city.trim(),
-      district: district.trim(),
-      ward: ward.trim(),
-      latitude: validLat,
-      longitude: validLng,
-      imageUrl: imageUrl?.trim() || '',
-      businessLicenseUrl: businessLicenseUrl.trim(),
-      idCardFrontUrl: idCardFrontUrl.trim(),
-      idCardBackUrl: idCardBackUrl.trim(),
-      status: 'PENDING',
-    });
-
-    await shop.save();
-    await shop.populate('ownerId', 'FullName Email Role Status fullName email');
-
-    return res.status(201).json({
-      success: true,
-      message: 'Hồ sơ đăng ký gian hàng đã được gửi thành công và đang chờ xét duyệt.',
-      data: {
-        applicationCode: shop._id,
-        shopName: shop.name,
-        status: shop.status,
-        submittedAt: shop.createdAt,
-        shop,
-      },
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message || 'Có lỗi xảy ra, vui lòng thử lại sau.' });
-  }
-};
-
+// UC-12: Manage Shop Information, Branches and Warehouses
 export const getShopApplications = async (req, res) => {
   try {
     const { status, search = '', ownerId, city = '', page = 1, limit = 10 } = req.query;
@@ -264,8 +54,9 @@ export const getShopApplications = async (req, res) => {
     const [shops, total] = await Promise.all([
       Shop.find(filter)
         .populate('ownerId', 'FullName Email Role Status Information fullName email createdAt updatedAt')
+        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .populate('reviewedBy', 'FullName Email fullName email')
-        .sort({ createdAt: -1 })
+        .sort({ isHQ: -1, createdAt: -1 })
         .skip(skip)
         .limit(safeLimit)
         .lean(),
@@ -362,6 +153,7 @@ export const getShopById = async (req, res) => {
 
     const shop = await Shop.findById(req.params.id)
       .populate('ownerId', 'FullName Email Role Status Information fullName email phone createdAt updatedAt')
+      .populate('managerId', 'FullName Email Role Status Information Avatar phone')
       .populate('reviewedBy', 'FullName Email fullName email')
       .lean();
 
@@ -375,112 +167,7 @@ export const getShopById = async (req, res) => {
   }
 };
 
-export const approveShop = async (req, res) => {
-  try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ success: false, message: 'Mã hồ sơ gian hàng không hợp lệ.' });
-    }
 
-    const { adminId, notes = '' } = req.body;
-    const shop = await Shop.findById(req.params.id);
-
-    if (!shop) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ gian hàng.' });
-    }
-
-    if (shop.status !== 'PENDING') {
-      return res.status(400).json({
-        success: false,
-        message: `Hồ sơ đang ở trạng thái "${shop.status}", không thể duyệt lại.`,
-      });
-    }
-
-    if (shop.ownerId) {
-      const owner = await User.findById(shop.ownerId);
-      if (owner) {
-        if (owner.Status === 'BANNED') {
-          return res.status(400).json({
-            success: false,
-            message: 'Không thể phê duyệt do tài khoản chủ sở hữu đang bị khóa.',
-          });
-        }
-        owner.Role = 'SHOP_OWNER';
-        await owner.save();
-      }
-    }
-
-    const validAdminId = (adminId && mongoose.Types.ObjectId.isValid(adminId)) ? adminId : null;
-
-    shop.status = 'ACTIVE';
-    shop.notes = typeof notes === 'string' ? notes.trim().slice(0, 500) : '';
-    shop.reviewedBy = validAdminId;
-    shop.reviewedAt = new Date();
-    shop.rejectionReason = '';
-
-    await shop.save();
-
-    return res.json({
-      success: true,
-      message: `Gian hàng "${shop.name}" đã được phê duyệt thành công.`,
-      data: { shopId: shop._id, status: shop.status, reviewedAt: shop.reviewedAt },
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message || 'Có lỗi xảy ra khi phê duyệt gian hàng.' });
-  }
-};
-
-export const rejectShop = async (req, res) => {
-  try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ success: false, message: 'Mã hồ sơ gian hàng không hợp lệ.' });
-    }
-
-    const { adminId, rejectionReason, notes = '' } = req.body;
-    const trimmedReason = rejectionReason?.trim();
-    if (!trimmedReason || trimmedReason.length < 5) {
-      return res.status(400).json({
-        success: false,
-        message: 'Vui lòng cung cấp lý do từ chối cụ thể (tối thiểu 5 ký tự).',
-      });
-    }
-
-    const shop = await Shop.findById(req.params.id);
-
-    if (!shop) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ gian hàng.' });
-    }
-
-    if (shop.status !== 'PENDING') {
-      return res.status(400).json({
-        success: false,
-        message: `Hồ sơ đang ở trạng thái "${shop.status}", không thể từ chối lại.`,
-      });
-    }
-
-    const validAdminId = (adminId && mongoose.Types.ObjectId.isValid(adminId)) ? adminId : null;
-
-    shop.status = 'REJECTED';
-    shop.rejectionReason = trimmedReason.slice(0, 500);
-    shop.notes = typeof notes === 'string' ? notes.trim().slice(0, 500) : '';
-    shop.reviewedBy = validAdminId;
-    shop.reviewedAt = new Date();
-
-    await shop.save();
-
-    return res.json({
-      success: true,
-      message: `Hồ sơ gian hàng "${shop.name}" đã bị từ chối.`,
-      data: {
-        shopId: shop._id,
-        status: shop.status,
-        rejectionReason: shop.rejectionReason,
-        reviewedAt: shop.reviewedAt,
-      },
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message || 'Có lỗi xảy ra khi từ chối hồ sơ.' });
-  }
-};
 
 export const toggleSuspendShop = async (req, res) => {
   try {
@@ -540,40 +227,152 @@ export const toggleSuspendShop = async (req, res) => {
   }
 };
 
+export const updateShopOperatingStatus = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Mã hồ sơ gian hàng không hợp lệ.' });
+    }
+
+    const { status, reason = '', notes = '', staffId, adminId } = req.body;
+    const allowedStatuses = ['ACTIVE', 'SUSPENDED', 'PENDING', 'REJECTED'];
+
+    if (!status || !allowedStatuses.includes(String(status).toUpperCase())) {
+      return res.status(400).json({
+        success: false,
+        message: `Trạng thái không hợp lệ. Cho phép: ${allowedStatuses.join(', ')}`,
+      });
+    }
+
+    const shop = await Shop.findById(req.params.id);
+    if (!shop) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy gian hàng.' });
+    }
+
+    const targetStatus = String(status).toUpperCase();
+    const reviewerId = (staffId && mongoose.Types.ObjectId.isValid(staffId))
+      ? staffId
+      : ((adminId && mongoose.Types.ObjectId.isValid(adminId)) ? adminId : null);
+
+    shop.status = targetStatus;
+    shop.reviewedBy = reviewerId;
+    shop.reviewedAt = new Date();
+
+    if (targetStatus === 'SUSPENDED' || targetStatus === 'REJECTED') {
+      const defaultReason = targetStatus === 'SUSPENDED'
+        ? 'Tạm ngưng hoạt động bởi Operations Staff.'
+        : 'Từ chối hồ sơ bởi Operations Staff.';
+      shop.rejectionReason = (reason && reason.trim()) ? reason.trim().slice(0, 500) : defaultReason;
+    } else {
+      shop.rejectionReason = '';
+    }
+
+    if (notes && typeof notes === 'string') {
+      shop.notes = notes.trim().slice(0, 500);
+    }
+
+    // Nếu kích hoạt gian hàng, cập nhật Role của chủ sở hữu thành SHOP_OWNER
+    if (targetStatus === 'ACTIVE' && shop.ownerId) {
+      const owner = await User.findById(shop.ownerId);
+      if (owner && owner.Role !== 'admin' && owner.Role !== 'ADMIN') {
+        owner.Role = 'SHOP_OWNER';
+        await owner.save();
+      }
+    }
+
+    await shop.save();
+
+    return res.json({
+      success: true,
+      message: `Đã cập nhật trạng thái vận hành của gian hàng "${shop.name}" thành ${targetStatus}.`,
+      data: {
+        shopId: shop._id,
+        name: shop.name,
+        status: shop.status,
+        rejectionReason: shop.rejectionReason,
+        notes: shop.notes,
+        reviewedAt: shop.reviewedAt,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Có lỗi xảy ra khi cập nhật trạng thái vận hành.' });
+  }
+};
+
 export const getMyShop = async (req, res) => {
   try {
-    const { ownerId } = req.query;
+    const { ownerId, managerId, branchId } = req.query;
     let shop = null;
 
-    if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {
+    if (branchId && mongoose.Types.ObjectId.isValid(branchId)) {
+      shop = await Shop.findById(branchId)
+        .populate('ownerId', 'FullName Email Role Status phone')
+        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+        .lean();
+    } else if (managerId && mongoose.Types.ObjectId.isValid(managerId)) {
       shop = await Shop.findOne({
-        ownerId,
+        managerId,
         status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
       })
         .populate('ownerId', 'FullName Email Role Status phone')
+        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+        .lean();
+    } else if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {
+      // First check if user is assigned as Branch Manager
+      shop = await Shop.findOne({
+        managerId: ownerId,
+        status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
+      })
+        .populate('ownerId', 'FullName Email Role Status phone')
+        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
 
+      // If not branch manager, find branch owned as Shop Owner
       if (!shop) {
-        return res.status(404).json({
-          success: false,
-          message: 'Chưa tìm thấy gian hàng nào liên kết với tài khoản này.',
-        });
-      }
-    } else {
-      shop = await Shop.findOne({ status: 'ACTIVE' })
-        .populate('ownerId', 'FullName Email Role Status phone')
-        .lean();
-      if (!shop) {
-        shop = await Shop.findOne()
+        shop = await Shop.findOne({
+          ownerId,
+          isHQ: true,
+          status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
+        })
           .populate('ownerId', 'FullName Email Role Status phone')
+          .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+          .lean();
+      }
+
+      if (!shop) {
+        shop = await Shop.findOne({
+          ownerId,
+          status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
+        })
+          .sort({ createdAt: 1 })
+          .populate('ownerId', 'FullName Email Role Status phone')
+          .populate('managerId', 'FullName Email Role Status Information Avatar phone')
           .lean();
       }
     }
 
     if (!shop) {
+      shop = await Shop.findOne({ isHQ: true, status: 'ACTIVE' })
+        .populate('ownerId', 'FullName Email Role Status phone')
+        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+        .lean();
+    }
+    if (!shop) {
+      shop = await Shop.findOne({ status: 'ACTIVE' })
+        .populate('ownerId', 'FullName Email Role Status phone')
+        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+        .lean();
+    }
+    if (!shop) {
+      shop = await Shop.findOne()
+        .populate('ownerId', 'FullName Email Role Status phone')
+        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+        .lean();
+    }
+
+    if (!shop) {
       return res.status(404).json({
         success: false,
-        message: 'Chưa tìm thấy gian hàng nào trên hệ thống.',
+        message: 'Chưa tìm thấy gian hàng / chi nhánh nào trên hệ thống.',
       });
     }
 
@@ -710,6 +509,8 @@ export const updateShopInfo = async (req, res) => {
       imageUrl,
       openingHours,
       status,
+      managerId,
+      isHQ,
     } = req.body;
 
     const shop = await Shop.findById(id);
@@ -811,8 +612,37 @@ export const updateShopInfo = async (req, res) => {
       shop.status = status;
     }
 
+    if (managerId !== undefined) {
+      if (!managerId || managerId === 'null' || managerId === 'none') {
+        shop.managerId = null;
+      } else if (mongoose.Types.ObjectId.isValid(managerId)) {
+        const mgrUser = await User.findById(managerId);
+        if (mgrUser) {
+          shop.managerId = mgrUser._id;
+          if (['customer', 'CUSTOMER'].includes(mgrUser.Role)) {
+            mgrUser.Role = 'BRANCH_MANAGER';
+            await mgrUser.save();
+          }
+        }
+      }
+    }
+
+    if (isHQ !== undefined) {
+      const boolHQ = Boolean(isHQ);
+      if (boolHQ) {
+        await Shop.updateMany(
+          { _id: { $ne: shop._id }, ownerId: shop.ownerId, isHQ: true },
+          { $set: { isHQ: false } }
+        );
+        shop.isHQ = true;
+      } else {
+        shop.isHQ = false;
+      }
+    }
+
     await shop.save();
     await shop.populate('ownerId', 'FullName Email Role Status phone');
+    await shop.populate('managerId', 'FullName Email Role Status Information Avatar phone');
 
     return res.json({
       success: true,
@@ -827,47 +657,325 @@ export const updateShopInfo = async (req, res) => {
   }
 };
 
+// =====================================================================
+// BRANCH MANAGEMENT CONTROLLERS (Single-Brand Multi-Branch Model)
+// =====================================================================
+
+export const createBranch = async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      phone,
+      address,
+      city,
+      district,
+      ward,
+      latitude,
+      longitude,
+      imageUrl,
+      openingHours,
+      managerId,
+      isHQ = false,
+      ownerId,
+    } = req.body;
+
+    const trimmedName = name?.trim();
+    if (!trimmedName || trimmedName.length < 3 || trimmedName.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tên chi nhánh là bắt buộc và phải từ 3 đến 100 ký tự.',
+      });
+    }
+
+    const cleanPhone = phone?.trim().replace(/\s+/g, '').replace(/^\+84/, '0');
+    const phoneRegex = /^(0[35789])[0-9]{8}$/;
+    if (!cleanPhone || !phoneRegex.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số điện thoại hotline chi nhánh không hợp lệ (10 số, đầu 03, 05, 07, 08, 09).',
+      });
+    }
+
+    if (!city || !city.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tỉnh/Thành phố của chi nhánh là bắt buộc.',
+      });
+    }
+
+    // Resolve ownerId
+    let resolvedOwnerId = ownerId && mongoose.Types.ObjectId.isValid(ownerId) ? ownerId : null;
+    if (!resolvedOwnerId) {
+      const shopOwner = await User.findOne({ Role: { $in: ['SHOP_OWNER', 'shop_owner', 'OWNER', 'owner'] } });
+      if (shopOwner) {
+        resolvedOwnerId = shopOwner._id;
+      } else {
+        const adminUser = await User.findOne({ Role: { $in: ['ADMIN', 'admin'] } });
+        if (adminUser) resolvedOwnerId = adminUser._id;
+      }
+    }
+
+    if (!resolvedOwnerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không tìm thấy tài khoản Shop Owner để liên kết chi nhánh.',
+      });
+    }
+
+    // Validate and link managerId if provided
+    let validManagerId = null;
+    if (managerId && mongoose.Types.ObjectId.isValid(managerId)) {
+      const managerUser = await User.findById(managerId);
+      if (managerUser) {
+        validManagerId = managerUser._id;
+        if (['customer', 'CUSTOMER'].includes(managerUser.Role)) {
+          managerUser.Role = 'BRANCH_MANAGER';
+          await managerUser.save();
+        }
+      }
+    }
+
+    // Coordinates validation
+    let validLat = null;
+    let validLng = null;
+    if (latitude !== undefined && latitude !== null && latitude !== '') {
+      const pLat = Number(latitude);
+      if (!isNaN(pLat) && pLat >= -90 && pLat <= 90) validLat = pLat;
+    }
+    if (longitude !== undefined && longitude !== null && longitude !== '') {
+      const pLng = Number(longitude);
+      if (!isNaN(pLng) && pLng >= -180 && pLng <= 180) validLng = pLng;
+    }
+
+    // If isHQ is true, reset other branches' isHQ
+    if (Boolean(isHQ)) {
+      await Shop.updateMany({ ownerId: resolvedOwnerId, isHQ: true }, { $set: { isHQ: false } });
+    }
+
+    const newBranch = new Shop({
+      ownerId: resolvedOwnerId,
+      managerId: validManagerId,
+      isHQ: Boolean(isHQ),
+      name: trimmedName,
+      description: description?.trim() || 'Showroom thời trang dạ tiệc và thiết kế cao cấp Vestora.',
+      phone: cleanPhone,
+      address: address?.trim() || '',
+      city: city.trim(),
+      district: district?.trim() || '',
+      ward: ward?.trim() || '',
+      latitude: validLat,
+      longitude: validLng,
+      imageUrl: imageUrl?.trim() || '',
+      openingHours: openingHours?.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
+      status: 'ACTIVE',
+    });
+
+    await newBranch.save();
+    await newBranch.populate('ownerId', 'FullName Email Role Status phone');
+    await newBranch.populate('managerId', 'FullName Email Role Status Information Avatar phone');
+
+    return res.status(201).json({
+      success: true,
+      message: `Khởi tạo chi nhánh "${newBranch.name}" thành công.`,
+      data: newBranch,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi khi khởi tạo chi nhánh mới.',
+    });
+  }
+};
+
+export const deleteBranch = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã chi nhánh không hợp lệ.',
+      });
+    }
+
+    const branch = await Shop.findById(id);
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy chi nhánh cần xóa.',
+      });
+    }
+
+    if (branch.isHQ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể xóa Trụ sở chính (HQ) của chuỗi. Hãy chỉ định chi nhánh khác làm HQ trước khi xóa.',
+      });
+    }
+
+    const totalBranches = await Shop.countDocuments();
+    if (totalBranches <= 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chuỗi phải duy trì ít nhất một chi nhánh hoạt động. Không thể xóa toàn bộ chi nhánh.',
+      });
+    }
+
+    await Shop.findByIdAndDelete(id);
+
+    return res.json({
+      success: true,
+      message: `Đã xóa chi nhánh "${branch.name}" khỏi hệ thống thành công.`,
+      deletedId: id,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi khi xóa chi nhánh.',
+    });
+  }
+};
+
+export const getBranchManagers = async (req, res) => {
+  try {
+    const users = await User.find(
+      {
+        Role: {
+          $in: [
+            'branch_manager',
+            'BRANCH_MANAGER',
+            'customer',
+            'CUSTOMER',
+            'warehouse_manager',
+            'WAREHOUSE_MANAGER',
+          ],
+        },
+        Status: { $in: ['active', 'ACTIVE'] },
+      },
+      'FullName Email Role Status Information Avatar createdAt'
+    ).lean();
+
+    const mapped = users.map((u) => {
+      let phone = '';
+      if (Array.isArray(u.Information) && u.Information.length > 0) {
+        phone = u.Information[0]?.Phone || '';
+      }
+      return {
+        _id: u._id,
+        FullName: u.FullName,
+        Email: u.Email,
+        Role: u.Role,
+        Status: u.Status,
+        Avatar: u.Avatar || '',
+        phone,
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: mapped,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi khi lấy danh sách quản lý chi nhánh.',
+    });
+  }
+};
+
+// =====================================================================
+// BOUNDED IN-MEMORY GEOCODING CACHE (Max 500 entries, 12h TTL)
+// =====================================================================
+const GEO_CACHE = new Map();
+const MAX_GEO_CACHE_SIZE = 500;
+const GEO_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+const getCachedGeo = (lat, lng) => {
+  const key = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
+  const entry = GEO_CACHE.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > GEO_CACHE_TTL_MS) {
+    GEO_CACHE.delete(key);
+    return null;
+  }
+  return entry.data;
+};
+
+const setCachedGeo = (lat, lng, data) => {
+  const key = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
+  if (GEO_CACHE.size >= MAX_GEO_CACHE_SIZE) {
+    const oldestKey = GEO_CACHE.keys().next().value;
+    if (oldestKey) GEO_CACHE.delete(oldestKey);
+  }
+  GEO_CACHE.set(key, { data, timestamp: Date.now() });
+};
+
 export const reverseGeocodeAddress = async (req, res) => {
   try {
     const { lat, lng, latitude, longitude } = req.query;
     const targetLat = parseFloat(lat || latitude);
     const targetLng = parseFloat(lng || longitude);
 
-    if (isNaN(targetLat) || isNaN(targetLng)) {
+    // 1. Strict Boundary & Number Validation
+    if (
+      isNaN(targetLat) ||
+      isNaN(targetLng) ||
+      targetLat < -90 ||
+      targetLat > 90 ||
+      targetLng < -180 ||
+      targetLng > 180
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Tọa độ vĩ độ hoặc kinh độ không hợp lệ.',
+        message: 'Tọa độ không hợp lệ (Vĩ độ phải từ -90 đến 90, Kinh độ từ -180 đến 180).',
       });
     }
 
-    // 1. Try BigDataCloud (Fast & accurate Vietnamese administrative names)
+    // 2. Check In-Memory Cache first
+    const cachedData = getCachedGeo(targetLat, targetLng);
+    if (cachedData) {
+      return res.json({
+        success: true,
+        source: 'cache',
+        data: {
+          ...cachedData,
+          latitude: targetLat,
+          longitude: targetLng,
+        },
+      });
+    }
+
+    // 3. Engine 1: BigDataCloud (Fast & accurate Vietnamese administrative names)
     try {
       const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${targetLat}&longitude=${targetLng}&localityLanguage=vi`;
-      const bdcRes = await fetch(bdcUrl, { signal: AbortSignal.timeout(4000) });
+      const bdcRes = await fetch(bdcUrl, { signal: AbortSignal.timeout(3500) });
       if (bdcRes.ok) {
         const d = await bdcRes.json();
         const city = d.principalSubdivision || d.city || '';
         const ward = d.locality || '';
         if (city) {
+          const payload = {
+            latitude: targetLat,
+            longitude: targetLng,
+            city,
+            ward,
+            district: d.locality || '',
+            country: d.countryName || 'Việt Nam',
+          };
+          setCachedGeo(targetLat, targetLng, payload);
           return res.json({
             success: true,
-            data: {
-              latitude: targetLat,
-              longitude: targetLng,
-              city,
-              ward,
-              district: d.locality || '',
-              country: d.countryName || 'Việt Nam',
-            },
+            source: 'bigdatacloud',
+            data: payload,
           });
         }
       }
-    } catch (_) { }
+    } catch (_) {}
 
-    // 2. Try Photon reverse geocoding
+    // 4. Engine 2: Photon reverse geocoding (OpenStreetMap Komoot)
     try {
       const photonUrl = `https://photon.komoot.io/reverse?lat=${targetLat}&lon=${targetLng}`;
-      const photonRes = await fetch(photonUrl, { signal: AbortSignal.timeout(4000) });
+      const photonRes = await fetch(photonUrl, { signal: AbortSignal.timeout(3500) });
       if (photonRes.ok) {
         const pData = await photonRes.json();
         const prop = pData?.features?.[0]?.properties;
@@ -875,28 +983,74 @@ export const reverseGeocodeAddress = async (req, res) => {
           const city = prop.city || prop.state || prop.county || '';
           const ward = prop.district || prop.locality || prop.name || '';
           const street = [prop.housenumber, prop.street].filter(Boolean).join(' ');
-          return res.json({
-            success: true,
-            data: {
+          if (city) {
+            const payload = {
               latitude: targetLat,
               longitude: targetLng,
               city,
               ward,
               district: prop.district || '',
               street,
-            },
+              country: prop.country || 'Việt Nam',
+            };
+            setCachedGeo(targetLat, targetLng, payload);
+            return res.json({
+              success: true,
+              source: 'photon',
+              data: payload,
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 5. Engine 3: OpenStreetMap Nominatim (Compliant User-Agent & Headers)
+    try {
+      const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?lat=${targetLat}&lon=${targetLng}&format=json&accept-language=vi`;
+      const nomRes = await fetch(nominatimUrl, {
+        signal: AbortSignal.timeout(3500),
+        headers: {
+          'User-Agent': 'Vestora-Platform/1.0 (contact: admin@vestora.vn)',
+          Accept: 'application/json',
+        },
+      });
+      if (nomRes.ok) {
+        const nomData = await nomRes.json();
+        const addr = nomData?.address;
+        if (addr) {
+          const city = addr.city || addr.state || addr.province || addr.county || '';
+          const ward = addr.suburb || addr.quarter || addr.neighbourhood || addr.village || '';
+          const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
+          const payload = {
+            latitude: targetLat,
+            longitude: targetLng,
+            city,
+            ward,
+            district: addr.city_district || addr.district || '',
+            street,
+            country: addr.country || 'Việt Nam',
+          };
+          setCachedGeo(targetLat, targetLng, payload);
+          return res.json({
+            success: true,
+            source: 'nominatim',
+            data: payload,
           });
         }
       }
-    } catch (_) { }
+    } catch (_) {}
 
+    // 6. Graceful Degradation: return raw coordinates
     return res.json({
       success: true,
+      source: 'fallback',
       data: {
         latitude: targetLat,
         longitude: targetLng,
         city: '',
         ward: '',
+        district: '',
+        street: '',
       },
     });
   } catch (err) {
@@ -906,5 +1060,6 @@ export const reverseGeocodeAddress = async (req, res) => {
     });
   }
 };
+
 
 

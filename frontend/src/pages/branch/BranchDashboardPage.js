@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ShopSidebar from '../../components/ShopSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopDashboardPage() {
+export default function BranchDashboardPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('TẤT CẢ (08)');
 
@@ -65,7 +65,7 @@ export default function ShopDashboardPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Reusable Shop Sidebar */}
-      <ShopSidebar />
+      <BranchSidebar />
 
       {/* Main Content Area */}
       <div className="shop-main-area">

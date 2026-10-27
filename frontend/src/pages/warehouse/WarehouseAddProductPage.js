@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Row, Col, Card, Form, Button } from 'react-bootstrap';
-import ShopSidebar from '../../components/ShopSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
 import '../../styles/ShopDashboard.css';
 
-export default function ShopAddProductPage() {
+export default function WarehouseAddProductPage() {
   const navigate = useNavigate();
   const [product, setProduct] = useState({
     name: 'Đầm Dạ Hội Haute Couture Kim Tuyến Rose',
@@ -29,7 +29,7 @@ export default function ShopAddProductPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar Navigation */}
-      <ShopSidebar />
+      <BranchSidebar />
 
       {/* Main Area */}
       <main className="shop-main-content">

@@ -1,10 +1,10 @@
 import { Shop } from '../models/Shop.js';
 import { User } from '../models/User.js';
 
-// Tổng quan Dashboard Admin Analytics
+// UC-64: View Chain-wide Statistics and Reports
 export const getAdminMetrics = async (req, res) => {
   try {
-    const [userFacet, shopFacet] = await Promise.all([
+    const [userFacet, branchFacet] = await Promise.all([
       User.aggregate([
         {
           $facet: {
@@ -28,19 +28,18 @@ export const getAdminMetrics = async (req, res) => {
       if (r._id) userRoles[r._id] = r.count;
     });
 
-    const shopStatuses = {};
-    (shopFacet?.[0]?.byStatus || []).forEach((s) => {
-      if (s._id) shopStatuses[s._id] = s.count;
+    const branchStatuses = {};
+    (branchFacet?.[0]?.byStatus || []).forEach((s) => {
+      if (s._id) branchStatuses[s._id] = s.count;
     });
 
     const totalUsers = userFacet?.[0]?.total?.[0]?.count || 0;
     const totalCustomers = userRoles.customer || 0;
-    const totalShopOwners = userRoles.shop_owner || 0;
+    const totalStaff = (userRoles.shop_owner || 0) + (userRoles.operation_staff || 0);
 
-    const totalShops = shopFacet?.[0]?.total?.[0]?.count || 0;
-    const pendingShops = shopStatuses.pending || 0;
-    const activeShops = shopStatuses.active || 0;
-    const rejectedShops = shopStatuses.rejected || 0;
+    const totalBranches = branchFacet?.[0]?.total?.[0]?.count || 0;
+    const activeBranches = branchStatuses.active || 0;
+    const suspendedBranches = branchStatuses.suspended || 0;
 
     res.json({
       success: true,
@@ -48,13 +47,12 @@ export const getAdminMetrics = async (req, res) => {
         users: {
           total: totalUsers,
           customers: totalCustomers,
-          shopOwners: totalShopOwners,
+          staff: totalStaff,
         },
-        shops: {
-          total: totalShops,
-          pending: pendingShops,
-          active: activeShops,
-          rejected: rejectedShops,
+        branches: {
+          total: totalBranches,
+          active: activeBranches,
+          suspended: suspendedBranches,
         },
         platformRevenue: 125000000,
         escrowHolding: 45000000,
@@ -66,18 +64,16 @@ export const getAdminMetrics = async (req, res) => {
   }
 };
 
-// Lấy danh sách cần kiểm duyệt (Shop pending)
+// UC-17: Review Internal Product Listings (Danh sách mẫu trang phục nội bộ cần kiểm duyệt)
 export const getPendingModeration = async (req, res) => {
   try {
-    const pendingShops = await Shop.find({ status: 'PENDING' }).sort({ createdAt: -1 }).lean();
-
+    // Trả về danh sách mẫu trang phục nội bộ cần kiểm duyệt trước khi niêm yết lên catalog
     res.json({
       success: true,
-      count: pendingShops.length,
+      count: 0,
       data: {
-        shops: pendingShops,
-        products: [] // Sẵn sàng mở rộng khi có sản phẩm cần duyệt
-      }
+        products: [],
+      },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

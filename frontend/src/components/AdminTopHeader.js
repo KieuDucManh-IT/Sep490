@@ -134,15 +134,15 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
               <div className="admin-dropdown-list">
                 <div
                   className="admin-dropdown-item notif"
-                  onClick={() => handleNav(isOps ? '/ops/shop-applications' : '/admin/shop-applications')}
+                  onClick={() => handleNav(isOps ? '/ops/shops' : '/admin/shops')}
                   role="button"
                   tabIndex={0}
                 >
                   <span className="admin-dropdown-icon shop">🏪</span>
                   <div className="admin-dropdown-content">
-                    <div className="admin-dropdown-item-title">Hồ sơ shop mới gửi phê duyệt</div>
-                    <div className="admin-dropdown-item-desc">Đã nhận hồ sơ ĐKKD & CCCD từ đối tác mới</div>
-                    <span className="admin-dropdown-time">Vừa xong • Nhấn để duyệt ngay</span>
+                    <div className="admin-dropdown-item-title">Mạng lưới Chi Nhánh & Kho VESTORA</div>
+                    <div className="admin-dropdown-item-desc">Kiểm tra thông tin hoạt động và tồn kho các chi nhánh</div>
+                    <span className="admin-dropdown-time">Hệ thống chuỗi VESTORA (UC-12)</span>
                   </div>
                 </div>
 
@@ -263,14 +263,6 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                       <span>Quản Lý Gian Hàng (Manage Shops)</span>
                     </button>
 
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/ops/shop-applications')}
-                    >
-                      <span className="admin-dropdown-menu-icon">📋</span>
-                      <span>Phê Duyệt Hồ Sơ Shop Mới</span>
-                    </button>
 
                     <button
                       type="button"
@@ -319,14 +311,6 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                       <span>Quản Lý Gian Hàng (Manage Shops)</span>
                     </button>
 
-                    <button
-                      type="button"
-                      className="admin-dropdown-menu-item"
-                      onClick={() => handleNav('/admin/shop-applications')}
-                    >
-                      <span className="admin-dropdown-menu-icon">📋</span>
-                      <span>Phê Duyệt Hồ Sơ Shop Mới</span>
-                    </button>
 
                     <button
                       type="button"

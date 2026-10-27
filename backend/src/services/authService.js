@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import User from "../models/User.js";
+import User from "../models/system/User.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import { registerOtpTemplate } from "../utils/registerOtpTemplate.js";
 import jwt from "jsonwebtoken";

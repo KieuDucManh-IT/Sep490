@@ -1,4 +1,4 @@
-import { User } from '../models/User.js';
+import { User } from '../models/system/User.js';
 import bcrypt from 'bcryptjs';
 
 // Lấy danh sách tài khoản

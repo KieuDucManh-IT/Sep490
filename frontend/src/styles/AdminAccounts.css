@@ -424,18 +424,19 @@
   border: 1px solid #E2E8F0;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .admin-acc-table-responsive {
   width: 100%;
   overflow-x: auto;
+  min-height: 380px;
 }
 
 .admin-acc-table {
   width: 100%;
-  min-width: 1200px;
-  table-layout: fixed;
+  min-width: 880px;
+  table-layout: auto;
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
@@ -443,7 +444,10 @@
 
 .admin-acc-table th:nth-child(2),
 .admin-acc-table td:nth-child(2) {
-  width: 32%;
+  width: 250px;
+  max-width: 250px;
+  min-width: 180px;
+  overflow: hidden;
 }
 
 .admin-acc-table th {
@@ -461,7 +465,7 @@
 /* Cột VAI TRÒ cố định độ rộng để SHOP OWNER luôn trên 1 dòng */
 .admin-acc-table th:nth-child(3),
 .admin-acc-table td:nth-child(3) {
-  min-width: 140px;
+  min-width: 135px;
   white-space: nowrap;
 }
 
@@ -487,6 +491,9 @@
   align-items: center;
   gap: 12px;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .admin-acc-avatar {
@@ -518,12 +525,14 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  max-width: calc(100% - 50px);
   overflow: hidden;
 }
 
 .admin-acc-user-name {
   display: block;
   width: 100%;
+  max-width: 100%;
   font-size: 13.5px;
   font-weight: 600;
   color: #0F172A;
@@ -541,6 +550,7 @@
 .admin-acc-user-email {
   display: block;
   width: 100%;
+  max-width: 100%;
   font-size: 12px;
   color: #64748B;
   overflow: hidden;
@@ -700,6 +710,74 @@
   background: #F1F5F9;
   color: #0F172A;
   border-color: #CBD5E1;
+}
+
+/* Action Dropdown Menu */
+.admin-acc-action-dropdown {
+  position: absolute;
+  right: 0;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 9px;
+  box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.16), 0 4px 10px -2px rgba(15, 23, 42, 0.08);
+  padding: 6px;
+  z-index: 100;
+  width: 195px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.admin-acc-action-dropdown.drop-up {
+  bottom: calc(100% + 6px);
+  top: auto;
+}
+
+.admin-acc-action-dropdown.drop-down {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+.admin-acc-action-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #334155;
+  transition: all 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.admin-acc-action-dropdown-item:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+}
+
+.admin-acc-action-dropdown-item.danger {
+  color: #DC2626;
+}
+
+.admin-acc-action-dropdown-item.danger:hover {
+  background: #FEF2F2;
+  color: #B91C1C;
+}
+
+.admin-acc-action-dropdown-item.success {
+  color: #059669;
+}
+
+.admin-acc-action-dropdown-item.success:hover {
+  background: #ECFDF5;
+  color: #047857;
 }
 
 /* Pagination Row */

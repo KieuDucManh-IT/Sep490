@@ -119,9 +119,9 @@ export default function AdminAccountsPage() {
     type: 'SYSTEM'
   });
 
-  // Pagination
+  // Pagination (mặc định hiển thị 5 tài khoản / trang)
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(5);
 
   // Close row action dropdown when clicking outside
   useEffect(() => {
@@ -915,25 +915,7 @@ export default function AdminAccountsPage() {
               <option value="PENDING">Chờ duyệt</option>
             </select>
 
-            {/* Extra Filter & Reset */}
-            <button
-              type="button"
-              className="btn-acc-filter-extra"
-              onClick={() => showToast(`Đang hiển thị ${filteredUsers.length} người dùng thật từ MongoDB Atlas.`, 'info')}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="4" y1="21" x2="4" y2="14" />
-                <line x1="4" y1="10" x2="4" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="12" />
-                <line x1="12" y1="8" x2="12" y2="3" />
-                <line x1="20" y1="21" x2="20" y2="16" />
-                <line x1="20" y1="12" x2="20" y2="3" />
-                <line x1="1" y1="14" x2="7" y2="14" />
-                <line x1="9" y1="8" x2="15" y2="8" />
-                <line x1="17" y1="16" x2="23" y2="16" />
-              </svg>
-              <span>Bộ lọc khác</span>
-            </button>
+
 
             <button
               type="button"
@@ -1020,9 +1002,11 @@ export default function AdminAccountsPage() {
                         Đang đồng bộ danh sách tài khoản từ máy chủ MongoDB Atlas...
                       </td>
                     </tr>
-                  ) : paginatedUsers.map((u) => {
+                  ) : paginatedUsers.map((u, index) => {
                     const isRowSelected = selectedUser && selectedUser.id === u.id;
                     const isChecked = selectedIds.includes(u.id);
+                    // Khi danh sách ngắn (như 5 dòng), các dòng từ giữa trở xuống sẽ bung menu lên trên (drop-up)
+                    const isNearBottom = index >= Math.max(1, paginatedUsers.length - 3);
 
                     return (
                       <tr
@@ -1033,7 +1017,11 @@ export default function AdminAccountsPage() {
                           setActiveDrawerTab('INFO');
                           setDrawerOpen(true);
                         }}
-                        style={{ cursor: 'pointer' }}
+                        style={{
+                          cursor: 'pointer',
+                          position: openActionId === u.id ? 'relative' : 'static',
+                          zIndex: openActionId === u.id ? 25 : 1
+                        }}
                       >
                         {/* Checkbox */}
                         <td onClick={(e) => e.stopPropagation()}>
@@ -1059,8 +1047,8 @@ export default function AdminAccountsPage() {
                               </div>
                             )}
                             <div className="admin-acc-user-meta">
-                              <span className="admin-acc-user-name">{u.name}</span>
-                              <span className="admin-acc-user-email">{u.email}</span>
+                              <span className="admin-acc-user-name" title={u.name}>{u.name}</span>
+                              <span className="admin-acc-user-email" title={u.email}>{u.email}</span>
                             </div>
                           </div>
                         </td>
@@ -1155,37 +1143,11 @@ export default function AdminAccountsPage() {
                             {openActionId === u.id && (
                               <div
                                 ref={actionMenuRef}
-                                style={{
-                                  position: 'absolute',
-                                  right: 0,
-                                  top: '110%',
-                                  background: '#FFFFFF',
-                                  border: '1px solid #E2E8F0',
-                                  borderRadius: '8px',
-                                  boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
-                                  padding: '6px',
-                                  zIndex: 50,
-                                  width: '190px',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '2px',
-                                  textAlign: 'left'
-                                }}
+                                className={`admin-acc-action-dropdown ${isNearBottom ? 'drop-up' : 'drop-down'}`}
                               >
                                 <button
                                   type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
+                                  className="admin-acc-action-dropdown-item"
                                   onClick={() => {
                                     setSelectedUser(u);
                                     setDrawerOpen(true);
@@ -1202,18 +1164,7 @@ export default function AdminAccountsPage() {
                                 {!isUserAdmin(u) && (
                                   <button
                                     type="button"
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '8px',
-                                      padding: '8px 10px',
-                                      fontSize: '12px',
-                                      background: 'none',
-                                      border: 'none',
-                                      borderRadius: '5px',
-                                      cursor: 'pointer',
-                                      color: '#334155'
-                                    }}
+                                    className="admin-acc-action-dropdown-item"
                                     onClick={() => openEditModalForUser(u)}
                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1227,18 +1178,7 @@ export default function AdminAccountsPage() {
                                 {!isUserAdmin(u) && (
                                   <button
                                     type="button"
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '8px',
-                                      padding: '8px 10px',
-                                      fontSize: '12px',
-                                      background: 'none',
-                                      border: 'none',
-                                      borderRadius: '5px',
-                                      cursor: 'pointer',
-                                      color: u.status === 'LOCKED' ? '#059669' : '#DC2626'
-                                    }}
+                                    className={`admin-acc-action-dropdown-item ${u.status === 'LOCKED' ? 'success' : 'danger'}`}
                                     onClick={() => {
                                       handleToggleLock(u.id);
                                       setOpenActionId(null);
@@ -1254,18 +1194,7 @@ export default function AdminAccountsPage() {
 
                                 <button
                                   type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
+                                  className="admin-acc-action-dropdown-item"
                                   onClick={() => openResetPasswordModal(u)}
                                 >
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1279,18 +1208,7 @@ export default function AdminAccountsPage() {
                                 {!isUserAdmin(u) && (
                                   <button
                                     type="button"
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '8px',
-                                      padding: '8px 10px',
-                                      fontSize: '12px',
-                                      background: 'none',
-                                      border: 'none',
-                                      borderRadius: '5px',
-                                      cursor: 'pointer',
-                                      color: '#334155'
-                                    }}
+                                    className="admin-acc-action-dropdown-item"
                                     onClick={() => {
                                       setSelectedUser(u);
                                       setShowNotifyModal(true);

@@ -6,6 +6,7 @@ const storageLocationSchema = new mongoose.Schema({
   code: { type: String, required: true, trim: true },
   name: { type: String, required: true, trim: true },
   type: { type: String, required: true, enum: ['zone', 'row', 'shelf', 'temporary_area'] },
+  maxCapacity: { type: Number, min: 0, validate: Number.isInteger, default: null },
   status: { type: String, default: 'active', enum: ['active', 'inactive'] },
 }, { timestamps: true });
 

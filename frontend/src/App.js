@@ -34,6 +34,8 @@ import AdminAccountsPage from './pages/admin/AdminAccountsPage';
 import AdminModerationPage from './pages/admin/AdminModerationPage';
 import AdminDisputesPage from './pages/admin/AdminDisputesPage';
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
+import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
+import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 
 function App() {
   return (
@@ -75,6 +77,11 @@ function App() {
           <Route path="/shop/reviews" element={<ShopReviewsPage />} />
           <Route path="/shop/settings" element={<ShopSettingsPage />} />
           <Route path="/shop/branches" element={<ShopBranchesPage />} />
+
+          <Route path="/warehousemanager" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
+          <Route path="/warehousemanager/:resource" element={<WarehouseManagerPage />} />
+          <Route path="/warehousemanager/slips/:kind" element={<WarehousePlaceholderPage />} />
+          <Route path="/warehousemanager/reports/:kind" element={<WarehousePlaceholderPage />} />
 
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/shops" element={<AdminShopsPage />} />

@@ -1,0 +1,4 @@
+import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
+import { validateProductVariant } from '../../validations/masterdata/productVariantValidation.js';
+import { createCrudService } from './createCrudService.js';
+export const productVariantService = createCrudService(ProductVariant, validateProductVariant, ['productId']);

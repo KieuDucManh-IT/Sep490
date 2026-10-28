@@ -43,6 +43,12 @@ export default function AdminAccountsPage() {
     return r === 'admin';
   };
 
+  const isCustomer = (u) => {
+    if (!u) return false;
+    const r = (u.role || u.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+    return r === 'customer';
+  };
+
   const isSelf = (u) => {
     if (!u || !currentUser) return false;
     const currentId = currentUser.id || currentUser._id;
@@ -54,6 +60,12 @@ export default function AdminAccountsPage() {
   };
 
   const cannotLock = (u) => isUserAdmin(u) || isSelf(u);
+
+  const isGoogleUser = (u) => {
+    if (!u) return false;
+    const provider = (u.authProvider || u.AuthProvider || '').toLowerCase();
+    return provider === 'google' || Boolean(u.googleId || u.GoogleId);
+  };
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,6 +125,7 @@ export default function AdminAccountsPage() {
   const avatarFileInputRef = useRef(null);
 
   const [resetPwdValue, setResetPwdValue] = useState('');
+  const [isResettingPwd, setIsResettingPwd] = useState(false);
   const [notifyForm, setNotifyForm] = useState({
     title: '',
     message: '',
@@ -206,7 +219,9 @@ export default function AdminAccountsPage() {
             totalOrders: Math.floor(Math.random() * 8) + 1,
             totalDeposit: `${(Math.floor(Math.random() * 10) + 1) * 2}.000.000 đ`,
             rating: u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)',
-            violations: u.WarningsCount || 0
+            violations: u.WarningsCount || 0,
+            authProvider: (u.AuthProvider || (u.GoogleId ? 'google' : 'local')).toLowerCase(),
+            googleId: u.GoogleId || ''
           };
         });
 
@@ -452,6 +467,10 @@ export default function AdminAccountsPage() {
       showToast('Tài khoản Quản trị viên (Admin) duy nhất của hệ thống được bảo vệ và không thể chỉnh sửa!', 'warning');
       return;
     }
+    if (isCustomer(user)) {
+      showToast('Tài khoản khách hàng (Customer) không hỗ trợ chỉnh sửa!', 'warning');
+      return;
+    }
     setEditForm({
       name: user.name || '',
       email: user.email || '',
@@ -666,10 +685,63 @@ export default function AdminAccountsPage() {
 
   // Open Reset Password Modal
   const openResetPasswordModal = (user) => {
+    if (!user) return;
+    if (isUserAdmin(user)) {
+      showToast('Không thể đặt lại mật khẩu cho tài khoản Quản trị viên (Admin)!', 'warning');
+      return;
+    }
+    if (isCustomer(user)) {
+      showToast('Tài khoản khách hàng (Customer) không hỗ trợ đặt lại mật khẩu từ Quản trị viên!', 'warning');
+      return;
+    }
+    if (isGoogleUser(user)) {
+      showToast('Tài khoản đăng nhập bằng Google không hỗ trợ đặt lại mật khẩu!', 'warning');
+      return;
+    }
     setSelectedUser(user);
     setResetPwdValue('Vestora@' + Math.floor(1000 + Math.random() * 9000));
     setShowResetPwdModal(true);
     setOpenActionId(null);
+  };
+
+  // Handle Confirm Reset Password via Backend API (saves DB, sends email & requires change)
+  const handleConfirmResetPassword = async () => {
+    if (!selectedUser) return;
+    if (isCustomer(selectedUser)) {
+      showToast('Tài khoản khách hàng (Customer) không hỗ trợ đặt lại mật khẩu từ Quản trị viên!', 'warning');
+      return;
+    }
+    if (isGoogleUser(selectedUser)) {
+      showToast('Tài khoản đăng nhập bằng Google không hỗ trợ đặt lại mật khẩu!', 'warning');
+      return;
+    }
+    const cleanPwd = (resetPwdValue || '').trim();
+    if (!cleanPwd || cleanPwd.length < 6) {
+      showToast('Mật khẩu mới phải có ít nhất 6 ký tự!', 'error');
+      return;
+    }
+
+    setIsResettingPwd(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${selectedUser.id}/reset-password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: cleanPwd })
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast(json.message || `Đã đặt lại mật khẩu và gửi email thành công tới ${selectedUser.email}!`, 'success');
+        setShowResetPwdModal(false);
+        await fetchUsers();
+      } else {
+        showToast(json.message || 'Lỗi khi đặt lại mật khẩu', 'error');
+      }
+    } catch (err) {
+      console.error('Lỗi khi đặt lại mật khẩu:', err);
+      showToast('Không thể kết nối máy chủ khi đặt lại mật khẩu', 'error');
+    } finally {
+      setIsResettingPwd(false);
+    }
   };
 
   // Reset Filters
@@ -1161,7 +1233,7 @@ export default function AdminAccountsPage() {
                                   <span>Xem chi tiết</span>
                                 </button>
 
-                                {!isUserAdmin(u) && (
+                                {!isUserAdmin(u) && !isCustomer(u) && (
                                   <button
                                     type="button"
                                     className="admin-acc-action-dropdown-item"
@@ -1192,20 +1264,39 @@ export default function AdminAccountsPage() {
                                   </button>
                                 )}
 
-                                <button
-                                  type="button"
-                                  className="admin-acc-action-dropdown-item"
-                                  onClick={() => openResetPasswordModal(u)}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="16" r="1" />
-                                    <rect x="3" y="10" width="18" height="12" rx="2" />
-                                    <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                                  </svg>
-                                  <span>Đặt lại mật khẩu</span>
-                                </button>
+                                {!isUserAdmin(u) && !isCustomer(u) && (
+                                  !isGoogleUser(u) ? (
+                                    <button
+                                      type="button"
+                                      className="admin-acc-action-dropdown-item"
+                                      onClick={() => openResetPasswordModal(u)}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="12" cy="16" r="1" />
+                                        <rect x="3" y="10" width="18" height="12" rx="2" />
+                                        <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                                      </svg>
+                                      <span>Đặt lại mật khẩu</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="admin-acc-action-dropdown-item"
+                                      disabled
+                                      style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                                      title="Tài khoản đăng nhập bằng Google không hỗ trợ đặt lại mật khẩu"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="12" cy="16" r="1" />
+                                        <rect x="3" y="10" width="18" height="12" rx="2" />
+                                        <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                                      </svg>
+                                      <span>Đăng nhập Google (Không đổi MK)</span>
+                                    </button>
+                                  )
+                                )}
 
-                                {!isUserAdmin(u) && (
+                                {!isUserAdmin(u) && !isCustomer(u) && (
                                   <button
                                     type="button"
                                     className="admin-acc-action-dropdown-item"
@@ -1525,8 +1616,8 @@ export default function AdminAccountsPage() {
                     </div>
                   </div>
 
-                  {/* Section 3: Thống kê (Chỉ hiển thị cho người dùng thông thường, ẩn hoàn toàn đối với Admin) */}
-                  {!isUserAdmin(selectedUser) && (
+                  {/* Section 3: Thống kê (Chỉ hiển thị riêng cho vai trò Customer, các role khác ẩn hoàn toàn) */}
+                  {isCustomer(selectedUser) && (
                     <div>
                       <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
                         Thống kê hệ thống
@@ -1589,7 +1680,7 @@ export default function AdminAccountsPage() {
 
                     <div className="admin-acc-quick-actions">
                       <div className="admin-acc-btn-row">
-                        {!isUserAdmin(selectedUser) && (
+                        {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && (
                           <button
                             type="button"
                             className="btn-acc-action-primary"
@@ -1617,18 +1708,20 @@ export default function AdminAccountsPage() {
                           </button>
                         )}
 
-                        <button
-                          type="button"
-                          className="btn-acc-action-secondary"
-                          onClick={() => openResetPasswordModal(selectedUser)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="16" r="1" />
-                            <rect x="3" y="10" width="18" height="12" rx="2" />
-                            <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                          </svg>
-                          <span>Đặt lại mật khẩu</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && !isGoogleUser(selectedUser) && (
+                          <button
+                            type="button"
+                            className="btn-acc-action-secondary"
+                            onClick={() => openResetPasswordModal(selectedUser)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="16" r="1" />
+                              <rect x="3" y="10" width="18" height="12" rx="2" />
+                              <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                            </svg>
+                            <span>Đặt lại mật khẩu</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="admin-acc-btn-row-2">
@@ -1644,7 +1737,7 @@ export default function AdminAccountsPage() {
                           <span>Xem lịch sử hoạt động</span>
                         </button>
 
-                        {!isUserAdmin(selectedUser) && (
+                        {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && (
                           <button
                             type="button"
                             className="btn-acc-action-secondary"
@@ -2506,27 +2599,46 @@ export default function AdminAccountsPage() {
             </div>
 
             <div className="admin-acc-modal-body">
-              <p style={{ fontSize: '13px', color: '#64748B', margin: 0 }}>
-                Hệ thống sẽ tạo mật khẩu ngẫu nhiên hoặc bạn có thể nhập mật khẩu tùy chỉnh. Người dùng sẽ nhận được email thông báo đổi mật khẩu mới.
-              </p>
+              <div style={{
+                backgroundColor: '#F0FDF4',
+                border: '1px solid #BBF7D0',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '14px',
+                fontSize: '13px',
+                color: '#166534',
+                lineHeight: '1.5'
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <i className="fa-solid fa-paper-plane" />
+                  Gửi email tự động & Bắt buộc đổi mật khẩu
+                </div>
+                Hệ thống sẽ cập nhật mật khẩu mới và tự động gửi email thông báo tới <strong>{selectedUser.email}</strong>. Khi người dùng đăng nhập bằng mật khẩu này, hệ thống sẽ yêu cầu đổi mật khẩu mới để bảo mật.
+              </div>
 
               <div className="admin-acc-form-group">
-                <label className="admin-acc-form-label">Mật khẩu mới</label>
+                <label className="admin-acc-form-label">Mật khẩu mới khởi tạo *</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
                     className="admin-acc-form-input"
                     value={resetPwdValue}
+                    disabled={isResettingPwd}
                     onChange={(e) => setResetPwdValue(e.target.value)}
+                    placeholder="Nhập mật khẩu mới..."
                   />
                   <button
                     type="button"
                     className="btn-acc-outline"
+                    disabled={isResettingPwd}
                     onClick={() => setResetPwdValue('Vestora@' + Math.floor(1000 + Math.random() * 9000))}
                   >
                     Tạo lại
                   </button>
                 </div>
+                <small style={{ color: '#64748B', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  Gợi ý: Mật khẩu nên gồm ít nhất 8 ký tự, có chữ hoa, chữ thường và số.
+                </small>
               </div>
             </div>
 
@@ -2534,6 +2646,7 @@ export default function AdminAccountsPage() {
               <button
                 type="button"
                 className="btn-acc-outline"
+                disabled={isResettingPwd}
                 onClick={() => setShowResetPwdModal(false)}
               >
                 Hủy
@@ -2541,13 +2654,20 @@ export default function AdminAccountsPage() {
               <button
                 type="button"
                 className="btn-acc-primary"
-                onClick={() => {
-                  alert(`Đã đặt lại mật khẩu mới cho ${selectedUser.email}: ${resetPwdValue}`);
-                  setShowResetPwdModal(false);
-                }}
+                disabled={isResettingPwd}
+                onClick={handleConfirmResetPassword}
               >
-                <i className="fa-solid fa-key" style={{ marginRight: '6px' }} />
-                Cập nhật mật khẩu
+                {isResettingPwd ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: '6px' }} />
+                    Đang xử lý & Gửi email...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-key" style={{ marginRight: '6px' }} />
+                    Cập nhật & Gửi email mật khẩu
+                  </>
+                )}
               </button>
             </div>
           </div>

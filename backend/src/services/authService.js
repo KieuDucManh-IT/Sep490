@@ -73,6 +73,7 @@ export function toPublicUser(user) {
     avatar: user.Avatar || "",
     information: user.Information || [],
     authProvider: user.AuthProvider,
+    mustChangePassword: Boolean(user.MustChangePassword),
   };
 }
 
@@ -739,6 +740,7 @@ export async function resetPassword(data = {}) {
 
     // Dùng phương thức băm mật khẩu sẵn có trong User.js.
     await user.setPassword(data.password);
+    user.MustChangePassword = false;
     await user.save();
 
     // Chỉ dùng quyền đặt lại mật khẩu một lần.
@@ -831,6 +833,7 @@ export async function changePassword(userId, data = {}) {
     {
       $set: {
         PasswordHash: user.PasswordHash,
+        MustChangePassword: false,
       },
     },
     {

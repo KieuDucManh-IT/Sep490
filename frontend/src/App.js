@@ -33,11 +33,13 @@ import ShopSettingsPage from './pages/shop/ShopSettingsPage';
 import ShopBranchesPage from './pages/shop/ShopBranchesPage';
 
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
+import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 
 function App() {
   return (
     
       <Router>
+        <ForceChangePasswordModal />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/catalog" element={<CatalogPage />} />

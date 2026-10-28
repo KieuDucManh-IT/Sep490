@@ -75,6 +75,43 @@ function buildNewStaffEmailText(user, rawPassword) {
   ].join('\n');
 }
 
+// Mẫu email thông báo đặt lại mật khẩu cho người dùng và yêu cầu đổi mật khẩu
+function buildResetPasswordEmailText(user, newPassword) {
+  const name = user.FullName || user.Email;
+  const resetTime = new Date().toLocaleString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour12: false
+  });
+
+  return [
+    'VESTORA',
+    '--------------------------------------------------',
+    `Xin chào ${name},`,
+    '',
+    `Mật khẩu tài khoản VESTORA của bạn vừa được Quản trị viên đặt lại vào lúc ${resetTime}.`,
+    '',
+    'THÔNG TIN ĐĂNG NHẬP MỚI:',
+    `- Địa chỉ Email: ${user.Email}`,
+    `- Mật khẩu mới (tạm thời): ${newPassword}`,
+    '',
+    'LƯU Ý QUAN TRỌNG VỀ BẢO MẬT (BẮT BUỘC):',
+    '• Đây là mật khẩu tạm thời do Quản trị viên hệ thống cấp.',
+    '• Vì lý do an toàn bảo mật, bạn BẮT BUỘC phải đăng nhập và ĐỔI LẠI MẬT KHẨU ngay khi truy cập hệ thống.',
+    '• Tuyệt đối không chia sẻ mật khẩu tạm thời này cho bất kỳ ai khác.',
+    '',
+    'Nếu bạn không yêu cầu hoặc có thắc mắc, vui lòng liên hệ ngay với Ban Quản trị VESTORA:',
+    '- Email hỗ trợ: support@vestora.vn',
+    '- Hotline: 1800-VESTORA',
+    '',
+    'Đây là thư tự động, vui lòng không trả lời trực tiếp email này.',
+    '',
+    'Trân trọng,',
+    'Ban Quản trị VESTORA',
+    '',
+    '© VESTORA. All rights reserved.'
+  ].join('\n');
+}
+
 // Lấy danh sách tài khoản
 export const getUsers = async (req, res) => {
   try {
@@ -277,6 +314,7 @@ export const createUser = async (req, res) => {
       Role: normalizeRole(Role),
       Status: (Status || 'active').toLowerCase(),
       PasswordHash: passwordHash,
+      MustChangePassword: true,
       AuthProvider: 'local',
       Avatar: Avatar ? Avatar.trim() : '',
       DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
@@ -414,4 +452,90 @@ export const updateUser = async (req, res) => {
     res.status(500).json({ success: false, message: error.message || 'Lỗi hệ thống khi cập nhật tài khoản' });
   }
 };
+
+// Đặt lại mật khẩu từ Admin Console, gửi email và yêu cầu đổi mật khẩu
+export const resetUserPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { password } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    }
+
+    // Bảo vệ tài khoản Quản trị viên
+    const isTargetAdmin = user.Role && user.Role.toLowerCase() === 'admin';
+    if (isTargetAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể đặt lại mật khẩu cho tài khoản Quản trị viên (Admin) qua tính năng này!'
+      });
+    }
+
+    // Không cho phép đặt lại mật khẩu đối với tài khoản đăng nhập Google
+    const isGoogleAccount = (user.AuthProvider && user.AuthProvider.toLowerCase() === 'google') || Boolean(user.GoogleId);
+    if (isGoogleAccount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tài khoản đăng nhập bằng Google không hỗ trợ đặt lại mật khẩu qua hệ thống VESTORA!'
+      });
+    }
+
+    // Không cho phép đặt lại mật khẩu đối với khách hàng (Customer)
+    const cleanRole = (user.Role || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+    if (cleanRole === 'customer') {
+      return res.status(400).json({
+        success: false,
+        message: 'Chức năng đặt lại mật khẩu từ Quản trị viên chỉ áp dụng cho tài khoản nhân viên/quản trị, không áp dụng cho khách hàng (Customer)!'
+      });
+    }
+
+    const rawPassword = (password || '').trim() || `Vestora@${Math.floor(1000 + Math.random() * 9000)}`;
+
+    if (rawPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mật khẩu mới phải có tối thiểu 6 ký tự'
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(rawPassword, salt);
+
+    user.PasswordHash = passwordHash;
+    user.MustChangePassword = true;
+    await user.save();
+
+    // Gửi email thông báo mật khẩu mới và yêu cầu đổi mật khẩu
+    let emailSent = false;
+    try {
+      await sendEmail(
+        user.Email,
+        '[VESTORA] Thông báo đặt lại mật khẩu và yêu cầu đổi mật khẩu mới',
+        buildResetPasswordEmailText(user, rawPassword)
+      );
+      emailSent = true;
+    } catch (emailErr) {
+      console.error('Gửi email đặt lại mật khẩu thất bại:', emailErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: emailSent
+        ? `Đã đặt lại mật khẩu và gửi email thành công tới ${user.Email}!`
+        : `Đã đặt lại mật khẩu cho ${user.Email} (nhưng gửi email thông báo thất bại: hệ thống chưa kết nối SMTP)!`,
+      data: {
+        id: user._id,
+        email: user.Email,
+        mustChangePassword: true,
+        emailSent
+      }
+    });
+  } catch (error) {
+    console.error('Error in resetUserPassword:', error);
+    res.status(500).json({ success: false, message: error.message || 'Lỗi hệ thống khi đặt lại mật khẩu' });
+  }
+};
+
 

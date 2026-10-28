@@ -5,7 +5,8 @@ import {
   toggleLockUser, 
   getUserStats,
   createUser,
-  updateUser
+  updateUser,
+  resetUserPassword
 } from '../controllers/userController.js';
 
 const router = express.Router();
@@ -16,5 +17,7 @@ router.post('/', createUser);
 router.get('/:id', getUserById);
 router.put('/:id', updateUser);
 router.patch('/:id/toggle-lock', toggleLockUser);
+router.patch('/:id/reset-password', resetUserPassword);
+router.post('/:id/reset-password', resetUserPassword);
 
 export default router;

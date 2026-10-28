@@ -24,7 +24,7 @@ export default function ContactPage() {
       <main className="contact-main-container">
         <header className="contact-header-section">
           <span className="contact-subtitle">KẾT NỐI VỚI CHÚNG TÔI</span>
-          <h1 className="contact-title">Liên Hệ Min.De & VESTORA</h1>
+          <h1 className="contact-title">Liên Hệ VESTORA</h1>
           <p className="contact-lead">
             Chúng tôi luôn sẵn sàng lắng nghe, hỗ trợ giải đáp mọi thắc mắc và hợp tác cùng bạn.
           </p>
@@ -58,7 +58,7 @@ export default function ContactPage() {
                   <div className="point-icon"><i className="fa-solid fa-envelope"></i></div>
                   <div>
                     <strong>Email hỗ trợ</strong>
-                    <p>support@vestora.vn / contact@minde.vn</p>
+                    <p>support@vestora.vn</p>
                   </div>
                 </div>
 

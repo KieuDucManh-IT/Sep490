@@ -50,7 +50,7 @@ export default function BlogPage() {
       <main className="blog-main-container">
         <header className="blog-header-section">
           <span className="blog-tagline">TIN TỨC & GỢI Ý PHONG CÁCH</span>
-          <h1 className="blog-main-title">Blog Min.De</h1>
+          <h1 className="blog-main-title">Blog VESTORA</h1>
           <p className="blog-subtext">
             Cập nhật xu hướng thời trang mới nhất, cẩm nang phối đồ và câu chuyện thời trang bền vững.
           </p>

@@ -11,7 +11,7 @@ export default function AboutPage() {
         {/* Hero Section */}
         <section className="about-hero-section">
           <span className="about-subtitle">VỀ CHÚNG TÔI</span>
-          <h1 className="about-title">Câu Chuyện Về Min.De & VESTORA</h1>
+          <h1 className="about-title">Câu Chuyện Về VESTORA</h1>
           <p className="about-lead">
             Nền tảng tiên phong kết hợp công nghệ AI thử đồ và thời trang tuần hoàn,
             mang đến giải pháp thuê và mua sắm thông minh, sang trọng và bền vững.

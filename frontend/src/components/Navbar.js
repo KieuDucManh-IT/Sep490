@@ -50,13 +50,13 @@ export default function Navbar() {
             Trang Chủ
           </Link>
 
-          {/* Về Min.De */}
+          {/* Về VESTORA */}
           <div className="nav-dropdown-item">
             <Link to="/about" className={`navbar-link ${isActive("/about")}`}>
-              Về Vestora <i className="fa-solid fa-chevron-down nav-arrow"></i>
+              Về VESTORA <i className="fa-solid fa-chevron-down nav-arrow"></i>
             </Link>
             <div className="nav-dropdown-menu">
-              <Link to="/about" className="nav-sublink">Giới thiệu Min.De</Link>
+              <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
               <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
               <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
             </div>
@@ -75,9 +75,9 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Blog Min.De */}
+          {/* Blog VESTORA */}
           <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
-            Blog Vestora
+            Blog VESTORA
           </Link>
 
           {/* Liên Hệ */}
@@ -173,6 +173,13 @@ export default function Navbar() {
                     onClick={() => setDropdownOpen(false)}
                   >
                     <i className="fa-regular fa-heart menu-icon"></i> Sản phẩm yêu thích
+                  </Link>
+                  <Link
+                    to="/wardrobe"
+                    className="menu-item"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles menu-icon"></i> Tủ đồ cá nhân (AI)
                   </Link>
                   {user.role === "shop_owner" && (
                     <Link

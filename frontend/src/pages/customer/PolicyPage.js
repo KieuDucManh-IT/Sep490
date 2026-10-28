@@ -12,7 +12,7 @@ export default function PolicyPage() {
       <main className="policy-main-container">
         <header className="policy-header-section">
           <span className="policy-subtitle">CHÍNH SÁCH & QUY ĐỊNH</span>
-          <h1 className="policy-title">Chính Sách Hoạt Động Min.De</h1>
+          <h1 className="policy-title">Chính Sách Hoạt Động VESTORA</h1>
           <p className="policy-lead">
             Minh bạch, an toàn và bảo vệ quyền lợi tối đa cho khách hàng và đối tác cho thuê.
           </p>

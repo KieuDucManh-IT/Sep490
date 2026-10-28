@@ -3,7 +3,7 @@ import { Navigate, useLocation } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
 
-export default function ProtectedRoute({ children }) {
+export default function ProtectedRoute({ children, allowedRoles }) {
   const location = useLocation();
 
   const {
@@ -37,6 +37,11 @@ export default function ProtectedRoute({ children }) {
         state={{ from: location.pathname }}
       />
     );
+  }
+
+  const userRole = (user.role || user.Role || '').toUpperCase();
+  if (allowedRoles?.length && !allowedRoles.includes(userRole)) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

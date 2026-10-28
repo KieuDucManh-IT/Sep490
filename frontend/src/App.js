@@ -32,17 +32,14 @@ import ShopReviewsPage from './pages/shop/ShopReviewsPage';
 import ShopSettingsPage from './pages/shop/ShopSettingsPage';
 import ShopBranchesPage from './pages/shop/ShopBranchesPage';
 
-import AdminDashboardPage from './pages/admin/AdminDashboardPage';
-import AdminShopsPage from './pages/admin/AdminShopsPage';
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
-import AdminModerationPage from './pages/admin/AdminModerationPage';
-import AdminDisputesPage from './pages/admin/AdminDisputesPage';
-import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
+import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 
 function App() {
   return (
     
       <Router>
+        <ForceChangePasswordModal />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
@@ -84,12 +81,9 @@ function App() {
           <Route path="/shop/settings" element={<ShopSettingsPage />} />
           <Route path="/shop/branches" element={<ShopBranchesPage />} />
 
-          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-          <Route path="/admin/shops" element={<AdminShopsPage />} />
-          <Route path="/admin/accounts" element={<AdminAccountsPage />} />
-          <Route path="/admin/moderation" element={<AdminModerationPage />} />
-          <Route path="/admin/disputes" element={<AdminDisputesPage />} />
-          <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+          <Route path="/admin/accounts" element={<ProtectedRoute allowedRoles={["ADMIN"]}><AdminAccountsPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<Navigate to="/admin/accounts" replace />} />
+          <Route path="/admin/*" element={<Navigate to="/admin/accounts" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

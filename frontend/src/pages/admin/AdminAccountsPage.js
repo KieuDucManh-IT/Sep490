@@ -1,19 +1,71 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
 import '../../styles/AdminAccounts.css';
+import { validateEditForm } from '../../utils/userValidation';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+
+const ROLE_LABELS = {
+  customer: 'customer',
+  shopOwner: 'shopOwner',
+  brandmanager: 'brandmanager',
+  warehouseManager: 'warehouseManager',
+  warehousestaff: 'warehousestaff',
+  admin: 'admin'
+};
 
 export default function AdminAccountsPage() {
+  const { user: currentUser } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // ── Toast system ──────────────────────────────────────────────────────────
+  const [toasts, setToasts] = useState([]);
+  const showToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  };
+  const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeDrawerTab, setActiveDrawerTab] = useState('INFO');
   const [isLoading, setIsLoading] = useState(true);
   const [backendStats, setBackendStats] = useState(null);
+
+  // Helper functions: Bảo vệ tài khoản Quản trị viên và tài khoản hiện tại đang đăng nhập
+  const isUserAdmin = (u) => {
+    if (!u) return false;
+    const r = (u.role || u.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+    return r === 'admin';
+  };
+
+  const isCustomer = (u) => {
+    if (!u) return false;
+    const r = (u.role || u.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+    return r === 'customer';
+  };
+
+  const isSelf = (u) => {
+    if (!u || !currentUser) return false;
+    const currentId = currentUser.id || currentUser._id;
+    const currentEmail = (currentUser.email || currentUser.Email || '').toLowerCase();
+    return (
+      (currentId && (u.id === currentId || u._id === currentId)) ||
+      (currentEmail && u.email && u.email.toLowerCase() === currentEmail)
+    );
+  };
+
+  const cannotLock = (u) => isUserAdmin(u) || isSelf(u);
+
+  const isGoogleUser = (u) => {
+    if (!u) return false;
+    const provider = (u.authProvider || u.AuthProvider || '').toLowerCase();
+    return provider === 'google' || Boolean(u.googleId || u.GoogleId);
+  };
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,35 +86,55 @@ export default function AdminAccountsPage() {
   const [showResetPwdModal, setShowResetPwdModal] = useState(false);
   const [showNotifyModal, setShowNotifyModal] = useState(false);
 
+  // Modal lý do khóa tài khoản
+  const [showLockReasonModal, setShowLockReasonModal] = useState(false);
+  const [lockReasonTarget, setLockReasonTarget] = useState(null); // userId
+  const [lockReasonText, setLockReasonText] = useState('');
+  const [isLocking, setIsLocking] = useState(false);
+
   // Forms
   const [addForm, setAddForm] = useState({
     name: '',
     email: '',
     phone: '',
-    role: 'CUSTOMER',
+    role: '',
     status: 'ACTIVE',
-    password: ''
+    shopId: '',
+    password: '',
+    confirmPassword: '',
+    permissionGroup: '',
+    note: ''
   });
+  const [addFormErrors, setAddFormErrors] = useState({});
+  const [showAddPwd, setShowAddPwd] = useState(false);
+  const [showAddConfirmPwd, setShowAddConfirmPwd] = useState(false);
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
 
   const [editForm, setEditForm] = useState({
     name: '',
+    email: '',
     phone: '',
+    address: '',
     dob: '',
     gender: 'Nữ',
-    role: 'CUSTOMER',
+    avatar: '',
+    role: 'customer',
     status: 'ACTIVE'
   });
+  const [editFormErrors, setEditFormErrors] = useState({});
+  const avatarFileInputRef = useRef(null);
 
   const [resetPwdValue, setResetPwdValue] = useState('');
+  const [isResettingPwd, setIsResettingPwd] = useState(false);
   const [notifyForm, setNotifyForm] = useState({
     title: '',
     message: '',
     type: 'SYSTEM'
   });
 
-  // Pagination
+  // Pagination (mặc định hiển thị 5 tài khoản / trang)
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(5);
 
   // Close row action dropdown when clicking outside
   useEffect(() => {
@@ -92,17 +164,37 @@ export default function AdminAccountsPage() {
       }
 
       if (usersJson.success && Array.isArray(usersJson.data)) {
+        // Chuẩn hóa role từ DB sang đúng danh sách 6 vai trò người dùng yêu cầu:
+        // shopOwner, brandmanager, admin, customer, warehousestaff, warehouseManager
+        const normalizeRole = (raw) => {
+          const r = (raw || 'customer').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+          if (r === 'admin') return 'admin';
+          if (r === 'shopowner') return 'shopOwner';
+          if (r === 'brandmanager') return 'brandmanager';
+          if (r === 'warehousemanager') return 'warehouseManager';
+          if (r === 'warehousestaff') return 'warehousestaff';
+          return 'customer';
+        };
+
+        const roleColor = (role) => {
+          if (role === 'admin') return '#4338CA';
+          if (role === 'shopOwner') return '#C2410C';
+          if (role === 'brandmanager') return '#7E22CE';
+          if (role === 'warehouseManager') return '#0E7490';
+          if (role === 'warehousestaff') return '#047857';
+          return '#0369A1'; // customer
+        };
+
         const mapped = usersJson.data.map(u => {
-          const roleUpper = (u.Role || 'CUSTOMER').toUpperCase().replace('_', ' ');
+          const role = normalizeRole(u.Role);
           const statusUpper = (u.Status || 'ACTIVE').toUpperCase();
           const phone = u.Information?.[0]?.Phone || u.Infomation?.[0]?.Phone || '';
           const address = u.Information?.[0]?.Address || u.Infomation?.[0]?.Address || '';
 
-          // Determine verification badge
           let verifyStatus = 'VERIFIED';
           if (u.IsVerified === false) {
             verifyStatus = 'UNVERIFIED';
-          } else if (u.Role?.toLowerCase() === 'shop_owner' && !u.IsVerified) {
+          } else if (role === 'shopOwner' && !u.IsVerified) {
             verifyStatus = 'PENDING';
           }
 
@@ -111,7 +203,7 @@ export default function AdminAccountsPage() {
             displayId: `#${String(u.UserId || u._id).slice(-6).toUpperCase()}`,
             name: u.FullName || u.Email?.split('@')[0] || 'Người dùng VESTORA',
             email: u.Email,
-            role: roleUpper,
+            role,
             verified: verifyStatus,
             status: statusUpper,
             joinDate: u.createdAt ? new Date(u.createdAt).toLocaleDateString('vi-VN') : '—',
@@ -119,7 +211,7 @@ export default function AdminAccountsPage() {
             lastLogin: u.updatedAt ? new Date(u.updatedAt).toLocaleString('vi-VN') : 'Mới tạo',
             avatar: u.Avatar || null,
             letter: (u.FullName || u.Email || 'U').charAt(0).toUpperCase(),
-            letterColor: roleUpper === 'ADMIN' ? '#2563EB' : roleUpper.includes('SHOP') ? '#EA580C' : '#3B82F6',
+            letterColor: roleColor(role),
             phone: phone || 'Chưa cập nhật',
             address: address || 'Chưa cập nhật',
             dob: '15/08/2000',
@@ -127,17 +219,13 @@ export default function AdminAccountsPage() {
             totalOrders: Math.floor(Math.random() * 8) + 1,
             totalDeposit: `${(Math.floor(Math.random() * 10) + 1) * 2}.000.000 đ`,
             rating: u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)',
-            violations: u.WarningsCount || 0
+            violations: u.WarningsCount || 0,
+            authProvider: (u.AuthProvider || (u.GoogleId ? 'google' : 'local')).toLowerCase(),
+            googleId: u.GoogleId || ''
           };
         });
 
-        setUsers(mapped);
-
-        // Open drawer for the first real user if not already selected
-        if (mapped.length > 0) {
-          setSelectedUser(prev => prev ? mapped.find(m => m.id === prev.id) || mapped[0] : mapped[0]);
-          setDrawerOpen(true);
-        }
+        setUsers(mapped.sort((a, b) => Number(b.role === 'admin') - Number(a.role === 'admin')));
       }
     } catch (err) {
       console.error('Lỗi khi tải dữ liệu người dùng từ backend:', err);
@@ -186,10 +274,9 @@ export default function AdminAccountsPage() {
 
       // Role filter
       if (roleFilter !== 'ALL') {
-        if (roleFilter === 'ADMIN' && u.role !== 'ADMIN') return false;
-        if (roleFilter === 'CUSTOMER' && u.role !== 'CUSTOMER') return false;
-        if (roleFilter === 'SHOP_OWNER' && !u.role.includes('SHOP')) return false;
-        if (roleFilter === 'STAFF' && u.role !== 'STAFF') return false;
+        const filterKey = roleFilter.toLowerCase().replace(/[_\s-]/g, '');
+        const userRoleKey = (u.role || '').toLowerCase().replace(/[_\s-]/g, '');
+        if (userRoleKey !== filterKey) return false;
       }
 
       // Status filter
@@ -236,40 +323,101 @@ export default function AdminAccountsPage() {
 
   // Toggle Lock/Unlock User with Backend API
   const handleToggleLock = async (userId) => {
+    const target = users.find(u => u.id === userId);
+    if (cannotLock(target)) {
+      showToast(
+        isSelf(target)
+          ? 'Bạn không thể tự khóa tài khoản của chính mình!'
+          : 'Không thể khóa tài khoản Quản trị viên!',
+        'error'
+      );
+      return;
+    }
+
+    const isCurrentlyLocked = target?.status === 'LOCKED';
+
+    // Nếu đang MỞ KHÓA — không cần lý do, thực hiện ngay
+    if (isCurrentlyLocked) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, { method: 'PATCH' });
+        const json = await res.json();
+        if (json.success) {
+          setUsers(prev => prev.map(u =>
+            u.id === userId ? { ...u, status: 'ACTIVE' } : u
+          ));
+          if (selectedUser?.id === userId) setSelectedUser(prev => ({ ...prev, status: 'ACTIVE' }));
+          showToast('Đã mở khóa tài khoản thành công', 'success');
+        } else {
+          showToast(json.message || 'Không thể mở khóa tài khoản', 'error');
+        }
+      } catch (e) {
+        console.error('Lỗi mở khóa:', e);
+        showToast('Lỗi kết nối máy chủ', 'error');
+      }
+      return;
+    }
+
+    // Nếu đang KHÓA — mở modal nhập lý do
+    setLockReasonTarget(userId);
+    setLockReasonText('');
+    setShowLockReasonModal(true);
+  };
+
+  // Xác nhận khóa sau khi đã nhập lý do
+  const confirmLockWithReason = async () => {
+    const reason = lockReasonText.trim();
+    if (!reason || reason.length < 5) {
+      showToast('Vui lòng nhập lý do khóa (tối thiểu 5 ký tự).', 'warning');
+      return;
+    }
+    setIsLocking(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, { method: 'PATCH' });
+      const res = await fetch(`${API_BASE_URL}/users/${lockReasonTarget}/toggle-lock`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
       const json = await res.json();
       if (json.success) {
-        // Update local state
-        setUsers(prev => prev.map(u => {
-          if (u.id === userId) {
-            const nextStatus = u.status === 'LOCKED' ? 'ACTIVE' : 'LOCKED';
-            return { ...u, status: nextStatus };
-          }
-          return u;
-        }));
-
-        if (selectedUser && selectedUser.id === userId) {
-          setSelectedUser(prev => ({
-            ...prev,
-            status: prev.status === 'LOCKED' ? 'ACTIVE' : 'LOCKED'
-          }));
-        }
+        setUsers(prev => prev.map(u =>
+          u.id === lockReasonTarget ? { ...u, status: 'LOCKED' } : u
+        ));
+        if (selectedUser?.id === lockReasonTarget) setSelectedUser(prev => ({ ...prev, status: 'LOCKED' }));
+        setShowLockReasonModal(false);
+        setLockReasonTarget(null);
+        setLockReasonText('');
+        showToast('Đã khóa tài khoản và gửi email thông báo', 'success');
+      } else {
+        showToast(json.message || 'Không thể khóa tài khoản', 'error');
       }
     } catch (e) {
-      console.error('Lỗi khi khóa/mở khóa tài khoản:', e);
+      console.error('Lỗi khóa tài khoản:', e);
+      showToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setIsLocking(false);
     }
   };
 
   // Bulk Actions
   const handleBulkLock = async () => {
-    for (const id of selectedIds) {
+    const safeIds = selectedIds.filter(id => {
+      const u = users.find(user => user.id === id);
+      return !cannotLock(u);
+    });
+
+    if (safeIds.length === 0) {
+      showToast('Không có tài khoản nào hợp lệ để khóa (Tài khoản Quản trị viên và tài khoản hiện tại được bảo vệ).', 'warning');
+      return;
+    }
+
+    for (const id of safeIds) {
       const user = users.find(u => u.id === id);
       if (user && user.status !== 'LOCKED') {
         await handleToggleLock(id);
       }
     }
     setSelectedIds([]);
+    showToast('Đã thực hiện khóa các tài khoản được chọn.', 'success');
   };
 
   const handleBulkUnlock = async () => {
@@ -280,6 +428,7 @@ export default function AdminAccountsPage() {
       }
     }
     setSelectedIds([]);
+    showToast('Đã thực hiện mở khóa các tài khoản được chọn.', 'success');
   };
 
   // Export list to CSV
@@ -308,27 +457,101 @@ export default function AdminAccountsPage() {
     link.download = `Danh_Sach_Nguoi_Dung_VESTORA_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+    showToast(`Đã xuất ${listToExport.length} tài khoản ra file CSV!`, 'success');
   };
 
   // Open Edit Modal
   const openEditModalForUser = (user) => {
+    if (!user) return;
+    if (isUserAdmin(user)) {
+      showToast('Tài khoản Quản trị viên (Admin) duy nhất của hệ thống được bảo vệ và không thể chỉnh sửa!', 'warning');
+      return;
+    }
+    if (isCustomer(user)) {
+      showToast('Tài khoản khách hàng (Customer) không hỗ trợ chỉnh sửa!', 'warning');
+      return;
+    }
     setEditForm({
-      name: user.name,
-      phone: user.phone !== 'Chưa cập nhật' ? user.phone : '',
-      dob: user.dob || '15/08/2000',
+      name: user.name || '',
+      email: user.email || '',
+      phone: user.phone && user.phone !== 'Chưa cập nhật' ? user.phone : '',
+      address: user.address && user.address !== 'Chưa cập nhật' ? user.address : '',
+      dob: user.dob && user.dob !== '—' ? user.dob : '15/08/2000',
       gender: user.gender || 'Nữ',
-      role: user.role,
-      status: user.status
+      avatar: user.avatar || '',
+      role: ['shopOwner', 'brandmanager', 'warehouseManager', 'warehousestaff'].includes(user.role)
+        ? user.role
+        : 'warehousestaff',
+      status: user.status || 'ACTIVE'
     });
+    setEditFormErrors({});
     setSelectedUser(user);
     setShowEditModal(true);
     setOpenActionId(null);
   };
 
-  // Save Edit User with Backend API
+  // Avatar upload file handler
+  const handleAvatarFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Vui lòng chọn file hình ảnh hợp lệ (PNG, JPG, WEBP)!', 'error');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Kích thước ảnh không được vượt quá 5MB!', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEditForm(prev => ({ ...prev, avatar: reader.result }));
+      if (editFormErrors.avatar) setEditFormErrors(prev => ({ ...prev, avatar: null }));
+      showToast('Đã tải ảnh đại diện lên!', 'success');
+    };
+    reader.onerror = () => {
+      showToast('Không thể đọc file ảnh đã chọn', 'error');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Gỡ avatar quay về chữ cái đại diện
+  const handleRemoveAvatar = () => {
+    setEditForm(prev => ({ ...prev, avatar: '' }));
+    showToast('Đã gỡ ảnh đại diện (sử dụng chữ cái mặc định)', 'info');
+  };
+
+  // Save Edit User with Backend API & Validation
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!selectedUser) return;
+
+    if (cannotLock(selectedUser) && editForm.status === 'LOCKED') {
+      showToast(
+        isSelf(selectedUser)
+          ? 'Bạn không thể tự khóa tài khoản của chính mình!'
+          : 'Không thể chuyển tài khoản Quản trị viên (Admin) sang trạng thái Tạm khóa!',
+        'warning'
+      );
+      return;
+    }
+
+    if (editForm.role === 'admin' || editForm.role === 'customer') {
+      showToast('Không thể cập nhật nhân viên sang vai trò Quản trị viên (Admin) hoặc Khách hàng (Customer)!', 'error');
+      return;
+    }
+
+    // Validate using reusable frontend validation module
+    const validation = validateEditForm(editForm);
+    if (!validation.isValid) {
+      setEditFormErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      showToast(firstError, 'error');
+      return;
+    }
+    setEditFormErrors({});
 
     try {
       const res = await fetch(`${API_BASE_URL}/users/${selectedUser.id}`, {
@@ -336,42 +559,103 @@ export default function AdminAccountsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           FullName: editForm.name,
-          Role: editForm.role.toLowerCase().replace(' ', '_'),
+          Role: editForm.role,
           Status: editForm.status.toLowerCase(),
-          Phone: editForm.phone
+          Phone: editForm.phone,
+          Address: editForm.address,
+          DateOfBirth: editForm.dob,
+          Gender: editForm.gender,
+          Avatar: editForm.avatar
         })
       });
       const json = await res.json();
       if (json.success) {
         await fetchUsers();
+        setSelectedUser(prev => prev ? {
+          ...prev,
+          name: editForm.name,
+          phone: editForm.phone || 'Chưa cập nhật',
+          address: editForm.address || 'Chưa cập nhật',
+          dob: editForm.dob,
+          gender: editForm.gender,
+          avatar: editForm.avatar || null,
+          role: editForm.role,
+          status: editForm.status
+        } : null);
         setShowEditModal(false);
+        showToast('Đã cập nhật thông tin hồ sơ thành công!', 'success');
       } else {
-        alert(json.message || 'Lỗi khi cập nhật thông tin');
+        showToast(json.message || 'Lỗi khi cập nhật thông tin', 'error');
       }
     } catch (err) {
       console.error('Lỗi cập nhật người dùng:', err);
+      showToast('Không thể kết nối máy chủ khi cập nhật thông tin', 'error');
     }
   };
 
   // Create New User with Backend API
   const handleCreateUser = async (e) => {
     e.preventDefault();
-    if (!addForm.name || !addForm.email) {
-      alert('Vui lòng nhập họ tên và email!');
+
+    // Xác thực toàn diện theo form thiết kế
+    const errors = {};
+    if (!addForm.name || !addForm.name.trim()) {
+      errors.name = 'Họ và tên không được để trống';
+    } else if (addForm.name.trim().length < 2) {
+      errors.name = 'Họ và tên phải có ít nhất 2 ký tự';
+    } else if (addForm.name.trim().length > 25) {
+      errors.name = 'Họ và tên không được vượt quá 25 ký tự';
+    }
+
+    if (!addForm.email || !addForm.email.trim()) {
+      errors.email = 'Email tài khoản không được để trống';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addForm.email.trim())) {
+      errors.email = 'Email không đúng định dạng';
+    }
+
+    if (!addForm.phone || !addForm.phone.trim()) {
+      errors.phone = 'Vui lòng nhập số điện thoại';
+    } else {
+      const cleanPhone = addForm.phone.replace(/[\s.-]/g, '');
+      if (!/^(0|\+84)[0-9]{9}$/.test(cleanPhone)) {
+        errors.phone = 'Số điện thoại không hợp lệ (cần 10 chữ số)';
+      }
+    }
+
+    if (!addForm.role) {
+      errors.role = 'Vui lòng chọn vai trò';
+    }
+
+    if (!addForm.password) {
+      errors.password = 'Vui lòng nhập mật khẩu';
+    } else if (addForm.password.length < 8) {
+      errors.password = 'Mật khẩu phải có tối thiểu 8 ký tự';
+    }
+
+    if (!addForm.confirmPassword) {
+      errors.confirmPassword = 'Vui lòng xác nhận lại mật khẩu';
+    } else if (addForm.confirmPassword !== addForm.password) {
+      errors.confirmPassword = 'Mật khẩu xác nhận không trùng khớp';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setAddFormErrors(errors);
+      showToast('Vui lòng kiểm tra lại các trường thông tin!', 'warning');
       return;
     }
 
+    setIsSubmittingAdd(true);
     try {
       const res = await fetch(`${API_BASE_URL}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          FullName: addForm.name,
-          Email: addForm.email,
-          Role: addForm.role.toLowerCase().replace(' ', '_'),
+          FullName: addForm.name.trim(),
+          Email: addForm.email.trim(),
+          Role: addForm.role,
           Status: addForm.status.toLowerCase(),
-          Password: addForm.password || 'Vestora@2026',
-          Phone: addForm.phone
+          Password: addForm.password,
+          Phone: addForm.phone.trim()
         })
       });
       const json = await res.json();
@@ -382,24 +666,89 @@ export default function AdminAccountsPage() {
           name: '',
           email: '',
           phone: '',
-          role: 'CUSTOMER',
+          role: '',
           status: 'ACTIVE',
-          password: ''
+          shopId: '',
+          password: '',
+          confirmPassword: '',
+          permissionGroup: '',
+          note: ''
         });
+        setAddFormErrors({});
+        showToast('Đã tạo tài khoản người dùng mới thành công!', 'success');
       } else {
-        alert(json.message || 'Lỗi khi tạo tài khoản');
+        if (json.message && json.message.toLowerCase().includes('email')) {
+          setAddFormErrors(prev => ({ ...prev, email: 'Email đã tồn tại trong hệ thống' }));
+        }
+        showToast(json.message || 'Lỗi khi tạo tài khoản', 'error');
       }
     } catch (err) {
       console.error('Lỗi khi tạo người dùng mới:', err);
+      showToast('Không thể kết nối máy chủ khi tạo tài khoản', 'error');
+    } finally {
+      setIsSubmittingAdd(false);
     }
   };
 
   // Open Reset Password Modal
   const openResetPasswordModal = (user) => {
+    if (!user) return;
+    if (isUserAdmin(user)) {
+      showToast('Không thể đặt lại mật khẩu cho tài khoản Quản trị viên (Admin)!', 'warning');
+      return;
+    }
+    if (isCustomer(user)) {
+      showToast('Tài khoản khách hàng (Customer) không hỗ trợ đặt lại mật khẩu từ Quản trị viên!', 'warning');
+      return;
+    }
+    if (isGoogleUser(user)) {
+      showToast('Tài khoản đăng nhập bằng Google không hỗ trợ đặt lại mật khẩu!', 'warning');
+      return;
+    }
     setSelectedUser(user);
     setResetPwdValue('Vestora@' + Math.floor(1000 + Math.random() * 9000));
     setShowResetPwdModal(true);
     setOpenActionId(null);
+  };
+
+  // Handle Confirm Reset Password via Backend API (saves DB, sends email & requires change)
+  const handleConfirmResetPassword = async () => {
+    if (!selectedUser) return;
+    if (isCustomer(selectedUser)) {
+      showToast('Tài khoản khách hàng (Customer) không hỗ trợ đặt lại mật khẩu từ Quản trị viên!', 'warning');
+      return;
+    }
+    if (isGoogleUser(selectedUser)) {
+      showToast('Tài khoản đăng nhập bằng Google không hỗ trợ đặt lại mật khẩu!', 'warning');
+      return;
+    }
+    const cleanPwd = (resetPwdValue || '').trim();
+    if (!cleanPwd || cleanPwd.length < 6) {
+      showToast('Mật khẩu mới phải có ít nhất 6 ký tự!', 'error');
+      return;
+    }
+
+    setIsResettingPwd(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${selectedUser.id}/reset-password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: cleanPwd })
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast(json.message || `Đã đặt lại mật khẩu và gửi email thành công tới ${selectedUser.email}!`, 'success');
+        setShowResetPwdModal(false);
+        await fetchUsers();
+      } else {
+        showToast(json.message || 'Lỗi khi đặt lại mật khẩu', 'error');
+      }
+    } catch (err) {
+      console.error('Lỗi khi đặt lại mật khẩu:', err);
+      showToast('Không thể kết nối máy chủ khi đặt lại mật khẩu', 'error');
+    } finally {
+      setIsResettingPwd(false);
+    }
   };
 
   // Reset Filters
@@ -411,7 +760,7 @@ export default function AdminAccountsPage() {
   };
 
   return (
-    <div className="admin-layout">
+    <div className="admin-layout" style={{ backgroundColor: '#FBF9F5' }}>
       {/* 1. TailAdmin Left Sidebar */}
       <AdminSidebar
         isCollapsed={isSidebarCollapsed}
@@ -419,7 +768,7 @@ export default function AdminAccountsPage() {
       />
 
       {/* 2. Main Viewport */}
-      <div className="admin-main-viewport">
+      <div className="admin-main-viewport" style={{ backgroundColor: '#FBF9F5' }}>
         {/* Top Navbar */}
         <AdminTopHeader
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
@@ -427,21 +776,14 @@ export default function AdminAccountsPage() {
         />
 
         {/* 3. Accounts Management Body */}
-        <div className="admin-acc-page">
+        <div className="admin-acc-page" style={{ backgroundColor: '#FBF9F5' }}>
           {/* Breadcrumb & Hero */}
           <div className="admin-acc-header">
-            <div className="admin-acc-breadcrumb">
-              <span>Admin Console</span>
-              <span className="admin-acc-breadcrumb-sep">&gt;</span>
-              <span className="admin-acc-breadcrumb-active">Quản lý người dùng</span>
-            </div>
 
             <div className="admin-acc-hero">
               <div>
                 <h1 className="admin-acc-title">Quản lý tài khoản người dùng</h1>
-                <p className="admin-acc-desc">
-                  Quản lý danh sách tài khoản, quyền truy cập, xác minh danh tính và trạng thái hoạt động trực tiếp từ MongoDB.
-                </p>
+
               </div>
 
               <div className="admin-acc-hero-actions">
@@ -615,10 +957,12 @@ export default function AdminAccountsPage() {
               }}
             >
               <option value="ALL">Tất cả vai trò</option>
-              <option value="ADMIN">ADMIN</option>
-              <option value="CUSTOMER">CUSTOMER</option>
-              <option value="SHOP_OWNER">SHOP OWNER</option>
-              <option value="STAFF">STAFF</option>
+              <option value="customer">customer</option>
+              <option value="shopOwner">shopOwner</option>
+              <option value="brandmanager">brandmanager</option>
+              <option value="warehouseManager">warehouseManager</option>
+              <option value="warehousestaff">warehousestaff</option>
+              <option value="admin">admin</option>
             </select>
 
             {/* Status Select */}
@@ -650,25 +994,7 @@ export default function AdminAccountsPage() {
               <option value="PENDING">Chờ duyệt</option>
             </select>
 
-            {/* Extra Filter & Reset */}
-            <button
-              type="button"
-              className="btn-acc-filter-extra"
-              onClick={() => alert(`Đang hiển thị ${filteredUsers.length} người dùng thật từ MongoDB Atlas.`)}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="4" y1="21" x2="4" y2="14" />
-                <line x1="4" y1="10" x2="4" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="12" />
-                <line x1="12" y1="8" x2="12" y2="3" />
-                <line x1="20" y1="21" x2="20" y2="16" />
-                <line x1="20" y1="12" x2="20" y2="3" />
-                <line x1="1" y1="14" x2="7" y2="14" />
-                <line x1="9" y1="8" x2="15" y2="8" />
-                <line x1="17" y1="16" x2="23" y2="16" />
-              </svg>
-              <span>Bộ lọc khác</span>
-            </button>
+
 
             <button
               type="button"
@@ -740,7 +1066,7 @@ export default function AdminAccountsPage() {
                       />
                     </th>
                     <th>NGƯỜI DÙNG</th>
-                    <th>VAI TRÒ</th>
+                    <th style={{ minWidth: '135px', whiteSpace: 'nowrap' }}>VAI TRÒ</th>
                     <th>XÁC MINH</th>
                     <th>TRẠNG THÁI</th>
                     <th>NGÀY THAM GIA</th>
@@ -755,9 +1081,11 @@ export default function AdminAccountsPage() {
                         Đang đồng bộ danh sách tài khoản từ máy chủ MongoDB Atlas...
                       </td>
                     </tr>
-                  ) : paginatedUsers.map((u) => {
+                  ) : paginatedUsers.map((u, index) => {
                     const isRowSelected = selectedUser && selectedUser.id === u.id;
                     const isChecked = selectedIds.includes(u.id);
+                    // Khi danh sách ngắn (như 5 dòng), các dòng từ giữa trở xuống sẽ bung menu lên trên (drop-up)
+                    const isNearBottom = index >= Math.max(1, paginatedUsers.length - 3);
 
                     return (
                       <tr
@@ -765,9 +1093,14 @@ export default function AdminAccountsPage() {
                         className={isRowSelected ? 'selected' : ''}
                         onClick={() => {
                           setSelectedUser(u);
+                          setActiveDrawerTab('INFO');
                           setDrawerOpen(true);
                         }}
-                        style={{ cursor: 'pointer' }}
+                        style={{
+                          cursor: 'pointer',
+                          position: openActionId === u.id ? 'relative' : 'static',
+                          zIndex: openActionId === u.id ? 25 : 1
+                        }}
                       >
                         {/* Checkbox */}
                         <td onClick={(e) => e.stopPropagation()}>
@@ -793,19 +1126,15 @@ export default function AdminAccountsPage() {
                               </div>
                             )}
                             <div className="admin-acc-user-meta">
-                              <span className="admin-acc-user-name">{u.name}</span>
-                              <span className="admin-acc-user-email">{u.email}</span>
+                              <span className="admin-acc-user-name" title={u.name}>{u.name}</span>
+                              <span className="admin-acc-user-email" title={u.email}>{u.email}</span>
                             </div>
                           </div>
                         </td>
 
                         {/* Role */}
-                        <td>
-                          <span className={`role-pill ${
-                            u.role === 'ADMIN' ? 'admin' :
-                            u.role.includes('SHOP') ? 'shop-owner' :
-                            u.role === 'STAFF' ? 'staff' : 'customer'
-                          }`}>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <span className={`role-pill ${u.role}`}>
                             {u.role}
                           </span>
                         </td>
@@ -865,6 +1194,7 @@ export default function AdminAccountsPage() {
                               title="Xem chi tiết tài khoản"
                               onClick={() => {
                                 setSelectedUser(u);
+                                setActiveDrawerTab('INFO');
                                 setDrawerOpen(true);
                               }}
                             >
@@ -892,37 +1222,11 @@ export default function AdminAccountsPage() {
                             {openActionId === u.id && (
                               <div
                                 ref={actionMenuRef}
-                                style={{
-                                  position: 'absolute',
-                                  right: 0,
-                                  top: '110%',
-                                  background: '#FFFFFF',
-                                  border: '1px solid #E2E8F0',
-                                  borderRadius: '8px',
-                                  boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
-                                  padding: '6px',
-                                  zIndex: 50,
-                                  width: '190px',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '2px',
-                                  textAlign: 'left'
-                                }}
+                                className={`admin-acc-action-dropdown ${isNearBottom ? 'drop-up' : 'drop-down'}`}
                               >
                                 <button
                                   type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
+                                  className="admin-acc-action-dropdown-item"
                                   onClick={() => {
                                     setSelectedUser(u);
                                     setDrawerOpen(true);
@@ -936,105 +1240,86 @@ export default function AdminAccountsPage() {
                                   <span>Xem chi tiết</span>
                                 </button>
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
-                                  onClick={() => openEditModalForUser(u)}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                  </svg>
-                                  <span>Chỉnh sửa thông tin</span>
-                                </button>
+                                {!isUserAdmin(u) && !isCustomer(u) && (
+                                  <button
+                                    type="button"
+                                    className="admin-acc-action-dropdown-item"
+                                    onClick={() => openEditModalForUser(u)}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                    </svg>
+                                    <span>Chỉnh sửa thông tin</span>
+                                  </button>
+                                )}
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: u.status === 'LOCKED' ? '#059669' : '#DC2626'
-                                  }}
-                                  onClick={() => {
-                                    handleToggleLock(u.id);
-                                    setOpenActionId(null);
-                                  }}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                                  </svg>
-                                  <span>{u.status === 'LOCKED' ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản'}</span>
-                                </button>
+                                {!isUserAdmin(u) && (
+                                  <button
+                                    type="button"
+                                    className={`admin-acc-action-dropdown-item ${u.status === 'LOCKED' ? 'success' : 'danger'}`}
+                                    onClick={() => {
+                                      handleToggleLock(u.id);
+                                      setOpenActionId(null);
+                                    }}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                    </svg>
+                                    <span>{u.status === 'LOCKED' ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản'}</span>
+                                  </button>
+                                )}
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
-                                  onClick={() => openResetPasswordModal(u)}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="16" r="1" />
-                                    <rect x="3" y="10" width="18" height="12" rx="2" />
-                                    <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                                  </svg>
-                                  <span>Đặt lại mật khẩu</span>
-                                </button>
+                                {!isUserAdmin(u) && !isCustomer(u) && (
+                                  !isGoogleUser(u) ? (
+                                    <button
+                                      type="button"
+                                      className="admin-acc-action-dropdown-item"
+                                      onClick={() => openResetPasswordModal(u)}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="12" cy="16" r="1" />
+                                        <rect x="3" y="10" width="18" height="12" rx="2" />
+                                        <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                                      </svg>
+                                      <span>Đặt lại mật khẩu</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="admin-acc-action-dropdown-item"
+                                      disabled
+                                      style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                                      title="Tài khoản đăng nhập bằng Google không hỗ trợ đặt lại mật khẩu"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="12" cy="16" r="1" />
+                                        <rect x="3" y="10" width="18" height="12" rx="2" />
+                                        <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                                      </svg>
+                                      <span>Đăng nhập Google (Không đổi MK)</span>
+                                    </button>
+                                  )
+                                )}
 
-                                <button
-                                  type="button"
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px 10px',
-                                    fontSize: '12px',
-                                    background: 'none',
-                                    border: 'none',
-                                    borderRadius: '5px',
-                                    cursor: 'pointer',
-                                    color: '#334155'
-                                  }}
-                                  onClick={() => {
-                                    setSelectedUser(u);
-                                    setShowNotifyModal(true);
-                                    setOpenActionId(null);
-                                  }}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="22" y1="2" x2="11" y2="13" />
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                                  </svg>
-                                  <span>Gửi thông báo</span>
-                                </button>
+                                {!isUserAdmin(u) && !isCustomer(u) && (
+                                  <button
+                                    type="button"
+                                    className="admin-acc-action-dropdown-item"
+                                    onClick={() => {
+                                      setSelectedUser(u);
+                                      setShowNotifyModal(true);
+                                      setOpenActionId(null);
+                                    }}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <line x1="22" y1="2" x2="11" y2="13" />
+                                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                    </svg>
+                                    <span>Gửi thông báo</span>
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1109,6 +1394,7 @@ export default function AdminAccountsPage() {
                     fontSize: '12px'
                   }}
                 >
+                  <option value={5}>5</option>
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
@@ -1166,12 +1452,8 @@ export default function AdminAccountsPage() {
 
               <div className="admin-acc-drawer-name">{selectedUser.name}</div>
               <div className="admin-acc-drawer-email">{selectedUser.email}</div>
-              <span className={`role-pill ${
-                selectedUser.role === 'ADMIN' ? 'admin' :
-                selectedUser.role.includes('SHOP') ? 'shop-owner' :
-                selectedUser.role === 'STAFF' ? 'staff' : 'customer'
-              }`}>
-                {selectedUser.role}
+              <span className={`role-pill ${selectedUser.role}`}>
+                {ROLE_LABELS[selectedUser.role] || selectedUser.role}
               </span>
             </div>
 
@@ -1191,20 +1473,24 @@ export default function AdminAccountsPage() {
               >
                 Hoạt động
               </button>
-              <button
-                type="button"
-                className={`admin-acc-tab-btn ${activeDrawerTab === 'TRANSACTIONS' ? 'active' : ''}`}
-                onClick={() => setActiveDrawerTab('TRANSACTIONS')}
-              >
-                Giao dịch
-              </button>
-              <button
-                type="button"
-                className={`admin-acc-tab-btn ${activeDrawerTab === 'VIOLATIONS' ? 'active' : ''}`}
-                onClick={() => setActiveDrawerTab('VIOLATIONS')}
-              >
-                Vi phạm
-              </button>
+              {!isUserAdmin(selectedUser) && (
+                <>
+                  <button
+                    type="button"
+                    className={`admin-acc-tab-btn ${activeDrawerTab === 'TRANSACTIONS' ? 'active' : ''}`}
+                    onClick={() => setActiveDrawerTab('TRANSACTIONS')}
+                  >
+                    Giao dịch
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-acc-tab-btn ${activeDrawerTab === 'VIOLATIONS' ? 'active' : ''}`}
+                    onClick={() => setActiveDrawerTab('VIOLATIONS')}
+                  >
+                    Vi phạm
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Drawer Body Content */}
@@ -1215,17 +1501,19 @@ export default function AdminAccountsPage() {
                   <div>
                     <div className="admin-acc-sec-header">
                       <h4 className="admin-acc-sec-title">Thông tin cơ bản</h4>
-                      <button
-                        type="button"
-                        className="btn-acc-sec-edit"
-                        onClick={() => openEditModalForUser(selectedUser)}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                        <span>Chỉnh sửa</span>
-                      </button>
+                      {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && (
+                        <button
+                          type="button"
+                          className="btn-acc-sec-edit"
+                          onClick={() => openEditModalForUser(selectedUser)}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                          <span>Chỉnh sửa</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="admin-acc-kv-list">
@@ -1251,6 +1539,14 @@ export default function AdminAccountsPage() {
                       <div className="admin-acc-kv-row">
                         <span className="admin-acc-kv-key">Số điện thoại</span>
                         <span className="admin-acc-kv-val">{selectedUser.phone}</span>
+                      </div>
+                      <div className="admin-acc-kv-row">
+                        <span className="admin-acc-kv-key">Ngày sinh</span>
+                        <span className="admin-acc-kv-val">{selectedUser.dob || '15/08/2000'}</span>
+                      </div>
+                      <div className="admin-acc-kv-row">
+                        <span className="admin-acc-kv-key">Giới tính</span>
+                        <span className="admin-acc-kv-val">{selectedUser.gender || 'Nữ'}</span>
                       </div>
                       <div className="admin-acc-kv-row">
                         <span className="admin-acc-kv-key">Địa chỉ</span>
@@ -1287,17 +1583,19 @@ export default function AdminAccountsPage() {
                             <span className="dot" />
                             {selectedUser.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm khóa'}
                           </span>
-                          <button
-                            type="button"
-                            className={`btn-acc-lock-toggle ${selectedUser.status === 'LOCKED' ? 'unlock' : 'lock'}`}
-                            onClick={() => handleToggleLock(selectedUser.id)}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                            </svg>
-                            {selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}
-                          </button>
+                          {!isUserAdmin(selectedUser) && (
+                            <button
+                              type="button"
+                              className={`btn-acc-lock-toggle ${selectedUser.status === 'LOCKED' ? 'unlock' : 'lock'}`}
+                              onClick={() => handleToggleLock(selectedUser.id)}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                              </svg>
+                              {selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1310,74 +1608,64 @@ export default function AdminAccountsPage() {
                           Đã xác minh
                         </span>
                       </div>
+                    </div>
+                  </div>
 
-                      <div className="admin-acc-status-row">
-                        <span style={{ fontSize: '13px', color: '#475569' }}>KYC Định danh</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span className="verify-pill verified">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                              <polyline points="20 6 9 17 4 12" />
+                  {/* Section 3: Thống kê (Chỉ hiển thị riêng cho vai trò Customer, các role khác ẩn hoàn toàn) */}
+                  {isCustomer(selectedUser) && (
+                    <div>
+                      <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
+                        Thống kê hệ thống
+                      </h4>
+
+                      <div className="admin-acc-stats-grid">
+                        {/* Box 1 */}
+                        <div className="admin-acc-stat-box">
+                          <div className="admin-acc-stat-box-icon blue">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                              <line x1="3" y1="6" x2="21" y2="6" />
+                              <path d="M16 10a4 4 0 0 1-8 0" />
                             </svg>
-                            Đã định danh
-                          </span>
+                          </div>
+                          <div className="admin-acc-stat-box-label">Giao dịch thuê</div>
+                          <div className="admin-acc-stat-box-val">{selectedUser.totalOrders} đơn</div>
+                          <div className="admin-acc-stat-box-sub">{selectedUser.totalDeposit}</div>
+                        </div>
+
+                        {/* Box 2 */}
+                        <div className="admin-acc-stat-box">
+                          <div className="admin-acc-stat-box-icon green">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                              <polyline points="9 12 11 14 15 10" />
+                            </svg>
+                          </div>
+                          <div className="admin-acc-stat-box-label">Điểm uy tín Escrow</div>
+                          <div className="admin-acc-stat-box-val" style={{ color: '#059669' }}>
+                            {selectedUser.rating}
+                          </div>
+                          <div className="admin-acc-stat-box-sub">PayOS Bảo đảm</div>
+                        </div>
+
+                        {/* Box 3 */}
+                        <div className="admin-acc-stat-box">
+                          <div className="admin-acc-stat-box-icon red">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                              <line x1="12" y1="9" x2="12" y2="13" />
+                              <line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                          </div>
+                          <div className="admin-acc-stat-box-label">Vi phạm</div>
+                          <div className="admin-acc-stat-box-val" style={{ color: selectedUser.violations > 0 ? '#EF4444' : '#10B981' }}>
+                            {selectedUser.violations} lần
+                          </div>
+                          <div className="admin-acc-stat-box-sub">An toàn hợp đồng</div>
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Section 3: Thống kê */}
-                  <div>
-                    <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
-                      Thống kê hệ thống
-                    </h4>
-
-                    <div className="admin-acc-stats-grid">
-                      {/* Box 1 */}
-                      <div className="admin-acc-stat-box">
-                        <div className="admin-acc-stat-box-icon blue">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-                            <line x1="3" y1="6" x2="21" y2="6" />
-                            <path d="M16 10a4 4 0 0 1-8 0" />
-                          </svg>
-                        </div>
-                        <div className="admin-acc-stat-box-label">Giao dịch thuê</div>
-                        <div className="admin-acc-stat-box-val">{selectedUser.totalOrders} đơn</div>
-                        <div className="admin-acc-stat-box-sub">{selectedUser.totalDeposit}</div>
-                      </div>
-
-                      {/* Box 2 */}
-                      <div className="admin-acc-stat-box">
-                        <div className="admin-acc-stat-box-icon green">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                            <polyline points="9 12 11 14 15 10" />
-                          </svg>
-                        </div>
-                        <div className="admin-acc-stat-box-label">Điểm uy tín Escrow</div>
-                        <div className="admin-acc-stat-box-val" style={{ color: '#059669' }}>
-                          {selectedUser.rating}
-                        </div>
-                        <div className="admin-acc-stat-box-sub">PayOS Bảo đảm</div>
-                      </div>
-
-                      {/* Box 3 */}
-                      <div className="admin-acc-stat-box">
-                        <div className="admin-acc-stat-box-icon red">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                            <line x1="12" y1="9" x2="12" y2="13" />
-                            <line x1="12" y1="17" x2="12.01" y2="17" />
-                          </svg>
-                        </div>
-                        <div className="admin-acc-stat-box-label">Vi phạm</div>
-                        <div className="admin-acc-stat-box-val" style={{ color: selectedUser.violations > 0 ? '#EF4444' : '#10B981' }}>
-                          {selectedUser.violations} lần
-                        </div>
-                        <div className="admin-acc-stat-box-sub">An toàn hợp đồng</div>
-                      </div>
-                    </div>
-                  </div>
+                  )}
 
                   {/* Section 4: Thao tác nhanh */}
                   <div>
@@ -1387,42 +1675,48 @@ export default function AdminAccountsPage() {
 
                     <div className="admin-acc-quick-actions">
                       <div className="admin-acc-btn-row">
-                        <button
-                          type="button"
-                          className="btn-acc-action-primary"
-                          onClick={() => openEditModalForUser(selectedUser)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                          <span>Chỉnh sửa</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && (
+                          <button
+                            type="button"
+                            className="btn-acc-action-primary"
+                            onClick={() => openEditModalForUser(selectedUser)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            <span>Chỉnh sửa</span>
+                          </button>
+                        )}
 
-                        <button
-                          type="button"
-                          className={selectedUser.status === 'LOCKED' ? 'btn-acc-action-primary' : 'btn-acc-action-danger'}
-                          onClick={() => handleToggleLock(selectedUser.id)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                          </svg>
-                          <span>{selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && (
+                          <button
+                            type="button"
+                            className={selectedUser.status === 'LOCKED' ? 'btn-acc-action-primary' : 'btn-acc-action-danger'}
+                            onClick={() => handleToggleLock(selectedUser.id)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                            <span>{selectedUser.status === 'LOCKED' ? 'Mở khóa' : 'Tạm khóa'}</span>
+                          </button>
+                        )}
 
-                        <button
-                          type="button"
-                          className="btn-acc-action-secondary"
-                          onClick={() => openResetPasswordModal(selectedUser)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="16" r="1" />
-                            <rect x="3" y="10" width="18" height="12" rx="2" />
-                            <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                          </svg>
-                          <span>Đặt lại mật khẩu</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && !isGoogleUser(selectedUser) && (
+                          <button
+                            type="button"
+                            className="btn-acc-action-secondary"
+                            onClick={() => openResetPasswordModal(selectedUser)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="16" r="1" />
+                              <rect x="3" y="10" width="18" height="12" rx="2" />
+                              <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                            </svg>
+                            <span>Đặt lại mật khẩu</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="admin-acc-btn-row-2">
@@ -1438,17 +1732,19 @@ export default function AdminAccountsPage() {
                           <span>Xem lịch sử hoạt động</span>
                         </button>
 
-                        <button
-                          type="button"
-                          className="btn-acc-action-secondary"
-                          onClick={() => setShowNotifyModal(true)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="22" y1="2" x2="11" y2="13" />
-                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                          </svg>
-                          <span>Gửi thông báo</span>
-                        </button>
+                        {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && (
+                          <button
+                            type="button"
+                            className="btn-acc-action-secondary"
+                            onClick={() => setShowNotifyModal(true)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="22" y1="2" x2="11" y2="13" />
+                              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                            <span>Gửi thông báo</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1529,115 +1825,444 @@ export default function AdminAccountsPage() {
       )}
 
       {/* ==========================================================
-          MODAL: THÊM NGƯỜI DÙNG MỚI
+      {/* ==========================================================
+          MODAL: THÊM NGƯỜI DÙNG MỚI (CHUẨN FORM 3 PHẦN THIẾT KẾ)
           ========================================================== */}
       {showAddModal && (
         <div className="admin-acc-modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="admin-acc-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-acc-modal-head">
-              <h3 className="admin-acc-modal-title">Thêm người dùng mới vào hệ thống</h3>
+          <div className="admin-acc-modal-card admin-acc-add-user-modal" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="admin-acc-modal-head-rich">
+              <div className="admin-acc-modal-head-left">
+                <div className="admin-acc-modal-head-icon blue">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <line x1="19" y1="8" x2="19" y2="14" />
+                    <line x1="22" y1="11" x2="16" y2="11" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="admin-acc-modal-title-rich">Thêm người dùng mới vào hệ thống</h3>
+                  <p className="admin-acc-modal-sub-rich">
+                    Tạo tài khoản người dùng và phân quyền truy cập cho hệ thống VESTORA
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 className="admin-acc-drawer-close"
                 onClick={() => setShowAddModal(false)}
+                title="Đóng"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser}>
-              <div className="admin-acc-modal-body">
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Họ và tên *</label>
-                  <input
-                    type="text"
-                    required
-                    className="admin-acc-form-input"
-                    placeholder="VD: Nguyễn Văn Anh"
-                    value={addForm.name}
-                    onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                  />
-                </div>
-
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Email tài khoản *</label>
-                  <input
-                    type="email"
-                    required
-                    className="admin-acc-form-input"
-                    placeholder="VD: user@vestora.vn"
-                    value={addForm.email}
-                    onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                  />
-                </div>
-
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Số điện thoại</label>
-                  <input
-                    type="text"
-                    className="admin-acc-form-input"
-                    placeholder="VD: 0987 654 321"
-                    value={addForm.phone}
-                    onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Vai trò</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={addForm.role}
-                      onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
-                    >
-                      <option value="CUSTOMER">CUSTOMER</option>
-                      <option value="SHOP OWNER">SHOP OWNER</option>
-                      <option value="STAFF">STAFF</option>
-                      <option value="ADMIN">ADMIN</option>
-                    </select>
+            <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, overflow: 'hidden' }}>
+              <div className="admin-acc-modal-body admin-acc-add-modal-body">
+                {/* 1. THÔNG TIN CƠ BẢN */}
+                <div>
+                  <div className="admin-acc-section-head">
+                    <span className="admin-acc-section-num">1</span>
+                    <h4 className="admin-acc-section-title">Thông tin cơ bản</h4>
                   </div>
 
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Trạng thái ban đầu</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={addForm.status}
-                      onChange={(e) => setAddForm({ ...addForm, status: e.target.value })}
-                    >
-                      <option value="ACTIVE">Hoạt động</option>
-                      <option value="LOCKED">Tạm khóa</option>
-                    </select>
+                  <div className="admin-acc-form-grid-2">
+                    {/* Họ và tên * */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Họ và tên <span style={{ color: '#EF4444' }}>*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className={`admin-acc-form-input ${addFormErrors.name ? 'error' : ''}`}
+                        placeholder="Nhập họ và tên"
+                        value={addForm.name}
+                        onChange={(e) => {
+                          setAddForm({ ...addForm, name: e.target.value });
+                          if (addFormErrors.name) setAddFormErrors({ ...addFormErrors, name: '' });
+                        }}
+                      />
+                      {addFormErrors.name && (
+                        <span className="admin-acc-field-error">{addFormErrors.name}</span>
+                      )}
+                    </div>
+
+                    {/* Email tài khoản * */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Email tài khoản <span style={{ color: '#EF4444' }}>*</span>
+                      </label>
+                      <div className="admin-acc-input-wrap">
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect width="20" height="16" x="2" y="4" rx="2" />
+                            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                          </svg>
+                        </span>
+                        <input
+                          type="email"
+                          className={`admin-acc-form-input ${addFormErrors.email ? 'error' : ''}`}
+                          placeholder="Nhập email"
+                          value={addForm.email}
+                          onChange={(e) => {
+                            setAddForm({ ...addForm, email: e.target.value });
+                            if (addFormErrors.email) setAddFormErrors({ ...addFormErrors, email: '' });
+                          }}
+                        />
+                      </div>
+                      {addFormErrors.email && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px', color: '#EF4444', fontSize: '11.5px' }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                          </svg>
+                          <span>{addFormErrors.email}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Số điện thoại * */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Số điện thoại <span style={{ color: '#EF4444' }}>*</span>
+                      </label>
+                      <div className="admin-acc-input-wrap">
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                          </svg>
+                        </span>
+                        <input
+                          type="tel"
+                          className={`admin-acc-form-input ${addFormErrors.phone ? 'error' : ''}`}
+                          placeholder="Nhập số điện thoại"
+                          value={addForm.phone}
+                          onChange={(e) => {
+                            setAddForm({ ...addForm, phone: e.target.value });
+                            if (addFormErrors.phone) setAddFormErrors({ ...addFormErrors, phone: '' });
+                          }}
+                        />
+                      </div>
+                      <span className="admin-acc-field-hint">Định dạng: 0987 654 321</span>
+                      {addFormErrors.phone && (
+                        <span className="admin-acc-field-error">{addFormErrors.phone}</span>
+                      )}
+                    </div>
+
+                    {/* Vai trò * */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Vai trò <span style={{ color: '#EF4444' }}>*</span>
+                      </label>
+                      <div className="admin-acc-input-wrap">
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                        </span>
+                        <select
+                          className={`admin-acc-form-select ${addFormErrors.role ? 'error' : ''}`}
+                          value={addForm.role}
+                          onChange={(e) => {
+                            setAddForm({ ...addForm, role: e.target.value });
+                            if (addFormErrors.role) setAddFormErrors({ ...addFormErrors, role: '' });
+                          }}
+                        >
+                          <option value="">Chọn vai trò nhân viên</option>
+                          <option value="shopOwner">Chủ gian hàng (shopOwner)</option>
+                          <option value="brandmanager">Quản lý thương hiệu (brandmanager)</option>
+                          <option value="warehouseManager">Quản lý kho (warehouseManager)</option>
+                          <option value="warehousestaff">Nhân viên kho (warehousestaff)</option>
+                        </select>
+                      </div>
+                      {addFormErrors.role && (
+                        <span className="admin-acc-field-error">{addFormErrors.role}</span>
+                      )}
+                    </div>
+
+                    {/* Trạng thái tài khoản * */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Trạng thái tài khoản <span style={{ color: '#EF4444' }}>*</span>
+                      </label>
+                      <div className="admin-acc-toggle-wrap">
+                        <button
+                          type="button"
+                          className={`admin-acc-toggle-switch ${addForm.status === 'ACTIVE' ? 'active' : ''}`}
+                          onClick={() => setAddForm({ ...addForm, status: addForm.status === 'ACTIVE' ? 'LOCKED' : 'ACTIVE' })}
+                          role="switch"
+                          aria-checked={addForm.status === 'ACTIVE'}
+                        >
+                          <span className="admin-acc-toggle-thumb" />
+                        </button>
+                        <span
+                          className="admin-acc-toggle-label"
+                          onClick={() => setAddForm({ ...addForm, status: addForm.status === 'ACTIVE' ? 'LOCKED' : 'ACTIVE' })}
+                        >
+                          Kích hoạt ngay sau khi tạo
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Cửa hàng (nếu là nhân viên shop) */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Cửa hàng (nếu là nhân viên shop)
+                      </label>
+                      <div className="admin-acc-input-wrap">
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                            <polyline points="9 22 9 12 15 12 15 22" />
+                          </svg>
+                        </span>
+                        <select
+                          className="admin-acc-form-select"
+                          value={addForm.shopId || ''}
+                          onChange={(e) => setAddForm({ ...addForm, shopId: e.target.value })}
+                        >
+                          <option value="">Chọn chi nhánh</option>
+                          <option value="VESTORA_FLAGSHIP">VESTORA Flagship Store - Hà Nội</option>
+                          <option value="VESTORA_BOUTIQUE">VESTORA Boutique - TP. Hồ Chí Minh</option>
+                          <option value="VESTORA_ATELIER">VESTORA Atelier Showroom</option>
+                        </select>
+                      </div>
+                      <span className="admin-acc-field-hint">
+                        Chỉ áp dụng khi tạo tài khoản nhân viên cho cửa hàng
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Mật khẩu khởi tạo</label>
-                  <input
-                    type="password"
-                    className="admin-acc-form-input"
-                    placeholder="Mặc định: Vestora@2026"
-                    value={addForm.password}
-                    onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                  />
+                {/* 2. THÔNG TIN ĐĂNG NHẬP */}
+                <div>
+                  <div className="admin-acc-section-head">
+                    <span className="admin-acc-section-num">2</span>
+                    <h4 className="admin-acc-section-title">Thông tin đăng nhập</h4>
+                  </div>
+
+                  <div className="admin-acc-form-grid-2">
+                    {/* Mật khẩu * */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Mật khẩu <span style={{ color: '#EF4444' }}>*</span>
+                      </label>
+                      <div className="admin-acc-input-wrap">
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                          </svg>
+                        </span>
+                        <input
+                          type={showAddPwd ? 'text' : 'password'}
+                          className={`admin-acc-form-input ${addFormErrors.password ? 'error' : ''}`}
+                          placeholder="Nhập mật khẩu"
+                          value={addForm.password}
+                          onChange={(e) => {
+                            setAddForm({ ...addForm, password: e.target.value });
+                            if (addFormErrors.password) setAddFormErrors({ ...addFormErrors, password: '' });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="admin-acc-input-eye-btn"
+                          onClick={() => setShowAddPwd(!showAddPwd)}
+                          title={showAddPwd ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            {showAddPwd ? (
+                              <>
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                              </>
+                            ) : (
+                              <>
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </>
+                            )}
+                          </svg>
+                        </button>
+                      </div>
+                      {addFormErrors.password && (
+                        <span className="admin-acc-field-error">{addFormErrors.password}</span>
+                      )}
+
+                      {/* Hộp gợi ý tiêu chuẩn mật khẩu */}
+                      <div className="admin-acc-pwd-requirement-box">
+                        <div className="admin-acc-pwd-requirement-title">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                          </svg>
+                          <span>Mật khẩu cần có:</span>
+                        </div>
+                        <ul className="admin-acc-pwd-requirement-list">
+                          <li>Tối thiểu 8 ký tự</li>
+                          <li>Bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Xác nhận mật khẩu * */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">
+                        Xác nhận mật khẩu <span style={{ color: '#EF4444' }}>*</span>
+                      </label>
+                      <div className="admin-acc-input-wrap">
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                          </svg>
+                        </span>
+                        <input
+                          type={showAddConfirmPwd ? 'text' : 'password'}
+                          className={`admin-acc-form-input ${addFormErrors.confirmPassword ? 'error' : ''}`}
+                          placeholder="Nhập lại mật khẩu"
+                          value={addForm.confirmPassword}
+                          onChange={(e) => {
+                            setAddForm({ ...addForm, confirmPassword: e.target.value });
+                            if (addFormErrors.confirmPassword) setAddFormErrors({ ...addFormErrors, confirmPassword: '' });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="admin-acc-input-eye-btn"
+                          onClick={() => setShowAddConfirmPwd(!showAddConfirmPwd)}
+                          title={showAddConfirmPwd ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            {showAddConfirmPwd ? (
+                              <>
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                              </>
+                            ) : (
+                              <>
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </>
+                            )}
+                          </svg>
+                        </button>
+                      </div>
+                      {addFormErrors.confirmPassword && (
+                        <span className="admin-acc-field-error">{addFormErrors.confirmPassword}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. PHÂN QUYỀN VÀ GHI CHÚ */}
+                <div>
+                  <div className="admin-acc-section-head">
+                    <span className="admin-acc-section-num">3</span>
+                    <h4 className="admin-acc-section-title">
+                      Phân quyền và ghi chú <span className="admin-acc-section-sub">(tùy chọn)</span>
+                    </h4>
+                  </div>
+
+                  <div className="admin-acc-form-grid-2">
+                    {/* Nhóm quyền */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">Nhóm quyền</label>
+                      <div className="admin-acc-input-wrap">
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                          </svg>
+                        </span>
+                        <select
+                          className="admin-acc-form-select"
+                          value={addForm.permissionGroup || ''}
+                          onChange={(e) => setAddForm({ ...addForm, permissionGroup: e.target.value })}
+                        >
+                          <option value="">Chọn nhóm quyền</option>
+                          <option value="DEFAULT">Quyền mặc định theo vai trò</option>
+                          <option value="FULL_ACCESS">Toàn quyền vận hành</option>
+                          <option value="READ_ONLY">Chỉ xem dữ liệu (Read-only)</option>
+                          <option value="EDITOR">Biên tập nội dung & sản phẩm</option>
+                        </select>
+                      </div>
+                      <span className="admin-acc-field-hint">
+                        Quyền truy cập sẽ được thiết lập theo vai trò đã chọn
+                      </span>
+                    </div>
+
+                    {/* Ghi chú */}
+                    <div className="admin-acc-form-group">
+                      <label className="admin-acc-form-label">Ghi chú</label>
+                      <div className="admin-acc-input-wrap has-textarea" style={{ position: 'relative' }}>
+                        <span className="admin-acc-input-icon">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="8" y1="6" x2="21" y2="6" />
+                            <line x1="8" y1="12" x2="21" y2="12" />
+                            <line x1="8" y1="18" x2="21" y2="18" />
+                            <line x1="3" y1="6" x2="3.01" y2="6" />
+                            <line x1="3" y1="12" x2="3.01" y2="12" />
+                            <line x1="3" y1="18" x2="3.01" y2="18" />
+                          </svg>
+                        </span>
+                        <textarea
+                          className="admin-acc-form-textarea"
+                          rows={2}
+                          maxLength={500}
+                          placeholder="Nhập ghi chú (nếu có)"
+                          value={addForm.note || ''}
+                          onChange={(e) => setAddForm({ ...addForm, note: e.target.value })}
+                          style={{ minHeight: '68px', paddingBottom: '22px' }}
+                        />
+                        <span style={{ position: 'absolute', bottom: '6px', right: '12px', fontSize: '11px', color: '#94A3B8' }}>
+                          {(addForm.note || '').length}/500
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Banner Thông báo */}
+                <div className="admin-acc-notify-banner">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                  <span>
+                    Sau khi tạo, hệ thống sẽ tự động gửi email thông báo kèm mật khẩu đăng nhập cho nhân viên và hướng dẫn người dùng tự đổi lại mật khẩu trong lần truy cập đầu tiên.
+                  </span>
                 </div>
               </div>
 
-              <div className="admin-acc-modal-foot">
+              {/* Modal Footer */}
+              <div className="admin-acc-modal-foot-rich">
                 <button
                   type="button"
-                  className="btn-acc-outline"
+                  className="btn-acc-modal-cancel"
                   onClick={() => setShowAddModal(false)}
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="btn-acc-primary"
+                  className="btn-acc-modal-save"
+                  disabled={isSubmittingAdd}
+                  style={{ background: '#2563EB', padding: '9px 22px', gap: '8px' }}
                 >
-                  Xác nhận thêm
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  <span>{isSubmittingAdd ? 'Đang tạo...' : 'Tạo người dùng'}</span>
                 </button>
               </div>
             </form>
@@ -1648,113 +2273,337 @@ export default function AdminAccountsPage() {
       {/* ==========================================================
           MODAL: CHỈNH SỬA TÀI KHOẢN
           ========================================================== */}
+      {/* ==========================================================
+          MODAL: CHỈNH SỬA HỒ SƠ TÀI KHOẢN (TailAdmin Rich Edit Modal)
+          ========================================================== */}
       {showEditModal && selectedUser && (
         <div className="admin-acc-modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="admin-acc-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-acc-modal-head">
-              <h3 className="admin-acc-modal-title">Chỉnh sửa hồ sơ {selectedUser.name}</h3>
+          <div className="admin-acc-modal-card admin-acc-edit-card" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="admin-acc-modal-head-rich">
+              <div className="admin-acc-modal-head-left">
+                <div className="admin-acc-modal-head-icon blue">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="admin-acc-modal-title-rich">
+                    Chỉnh sửa thông tin nhân viên
+                  </h3>
+                  <p className="admin-acc-modal-sub-rich">
+                    Cập nhật thông tin cá nhân và vai trò phân công của nhân viên
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 className="admin-acc-drawer-close"
                 onClick={() => setShowEditModal(false)}
+                title="Đóng modal"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <i className="fa-solid fa-xmark" style={{ fontSize: '15px' }} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit}>
-              <div className="admin-acc-modal-body">
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Họ và tên *</label>
-                  <input
-                    type="text"
-                    required
-                    className="admin-acc-form-input"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  />
-                </div>
+            <form onSubmit={handleSaveEdit} className="admin-acc-edit-form">
+              <div className="admin-acc-modal-body admin-acc-edit-modal-body">
+                {/* 1. Phần Chỉnh Sửa Avatar */}
+                <div className="admin-acc-edit-avatar-box">
+                  <div className="admin-acc-edit-avatar-preview-wrap">
+                    {editForm.avatar ? (
+                      <img
+                        src={editForm.avatar}
+                        alt="Preview Avatar"
+                        className="admin-acc-edit-avatar-img"
+                      />
+                    ) : (
+                      <div
+                        className="admin-acc-edit-avatar-letter"
+                        style={{ background: selectedUser.letterColor || '#3B82F6' }}
+                      >
+                        {editForm.name ? editForm.name.charAt(0).toUpperCase() : 'U'}
+                      </div>
+                    )}
+                    <div className="admin-acc-edit-avatar-badge" title="Đổi ảnh đại diện">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    </div>
+                  </div>
 
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Số điện thoại</label>
-                  <input
-                    type="text"
-                    className="admin-acc-form-input"
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  />
+                  <div className="admin-acc-edit-avatar-actions">
+                    <div className="admin-acc-edit-avatar-title">
+                      <span>Ảnh đại diện người dùng</span>
+                    </div>
+                    <p className="admin-acc-edit-avatar-desc">
+                      Tải lên hình ảnh đại diện (PNG, JPG, WEBP tối đa 5MB)
+                    </p>
+                    <div className="admin-acc-edit-avatar-btns">
+                      <input
+                        type="file"
+                        ref={avatarFileInputRef}
+                        onChange={handleAvatarFileChange}
+                        accept="image/png, image/jpeg, image/jpg, image/webp"
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-upload-avatar"
+                        onClick={() => avatarFileInputRef.current?.click()}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="17 8 12 3 7 8" />
+                          <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <span>Tải ảnh mới</span>
+                      </button>
+                      {editForm.avatar && (
+                        <button
+                          type="button"
+                          className="btn-remove-avatar"
+                          onClick={handleRemoveAvatar}
+                        >
+                          Gỡ ảnh (dùng chữ cái)
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
+                {editFormErrors.avatar && (
+                  <span className="admin-acc-field-error">{editFormErrors.avatar}</span>
+                )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Ngày sinh</label>
+                {/* 2. Họ và tên * */}
+                <div className="admin-acc-form-group">
+                  <label className="admin-acc-form-label">
+                    Họ và tên <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <div className="admin-acc-input-wrap">
+                    <span className="admin-acc-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                    </span>
                     <input
                       type="text"
+                      required
                       className="admin-acc-form-input"
-                      value={editForm.dob}
-                      onChange={(e) => setEditForm({ ...editForm, dob: e.target.value })}
+                      placeholder="Nhập họ và tên đầy đủ"
+                      value={editForm.name}
+                      onChange={(e) => {
+                        setEditForm({ ...editForm, name: e.target.value });
+                        if (editFormErrors.name) setEditFormErrors(prev => ({ ...prev, name: null }));
+                      }}
                     />
+                  </div>
+                  {editFormErrors.name && (
+                    <span className="admin-acc-field-error">{editFormErrors.name}</span>
+                  )}
+                </div>
+
+                {/* 3. Row: Email * | Số điện thoại */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '14px' }}>
+                  <div className="admin-acc-form-group">
+                    <label className="admin-acc-form-label">
+                      Email <span style={{ color: '#EF4444' }}>*</span>
+                    </label>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                      </span>
+                      <input
+                        type="email"
+                        disabled
+                        className="admin-acc-form-input"
+                        value={editForm.email || selectedUser.email}
+                      />
+                    </div>
+                    <span className="admin-acc-field-hint">Email không thể chỉnh sửa</span>
+                  </div>
+
+                  <div className="admin-acc-form-group">
+                    <label className="admin-acc-form-label">Số điện thoại</label>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                        </svg>
+                      </span>
+                      <input
+                        type="text"
+                        className="admin-acc-form-input"
+                        placeholder="0912345678"
+                        value={editForm.phone}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, phone: e.target.value });
+                          if (editFormErrors.phone) setEditFormErrors(prev => ({ ...prev, phone: null }));
+                        }}
+                      />
+                    </div>
+                    {editFormErrors.phone && (
+                      <span className="admin-acc-field-error">{editFormErrors.phone}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Row: Vai trò nhân viên * (Chỉ cho phép các role nhân viên, trừ admin và customer) */}
+                <div className="admin-acc-form-group">
+                  <label className="admin-acc-form-label">
+                    Vai trò nhân viên <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <div className="admin-acc-input-wrap">
+                    <span className="admin-acc-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    </span>
+                    <select
+                      className={`admin-acc-form-select ${editFormErrors.role ? 'error' : ''}`}
+                      value={editForm.role}
+                      onChange={(e) => {
+                        setEditForm({ ...editForm, role: e.target.value });
+                        if (editFormErrors.role) setEditFormErrors(prev => ({ ...prev, role: null }));
+                      }}
+                    >
+                      <option value="shopOwner">Chủ gian hàng (shopOwner)</option>
+                      <option value="brandmanager">Quản lý thương hiệu (brandmanager)</option>
+                      <option value="warehouseManager">Quản lý kho (warehouseManager)</option>
+                      <option value="warehousestaff">Nhân viên kho (warehousestaff)</option>
+                    </select>
+                  </div>
+                  {editFormErrors.role && (
+                    <span className="admin-acc-field-error">{editFormErrors.role}</span>
+                  )}
+                  <span className="admin-acc-field-hint">
+                    Chỉ cập nhật vai trò phân công cho nhân viên (không bao gồm Quản trị viên và Khách hàng)
+                  </span>
+                </div>
+
+                {/* 4. Row: Ngày sinh | Giới tính */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div className="admin-acc-form-group">
+                    <label className="admin-acc-form-label">Ngày sinh</label>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                          <line x1="16" y1="2" x2="16" y2="6" />
+                          <line x1="8" y1="2" x2="8" y2="6" />
+                          <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                      </span>
+                      <input
+                        type="text"
+                        className="admin-acc-form-input"
+                        placeholder="15/08/2000"
+                        value={editForm.dob}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, dob: e.target.value });
+                          if (editFormErrors.dob) setEditFormErrors(prev => ({ ...prev, dob: null }));
+                        }}
+                      />
+                    </div>
+                    {editFormErrors.dob && (
+                      <span className="admin-acc-field-error">{editFormErrors.dob}</span>
+                    )}
                   </div>
 
                   <div className="admin-acc-form-group">
                     <label className="admin-acc-form-label">Giới tính</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={editForm.gender}
-                      onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
-                    >
-                      <option value="Nam">Nam</option>
-                      <option value="Nữ">Nữ</option>
-                      <option value="Khác">Khác</option>
-                    </select>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="9" r="5" />
+                          <line x1="12" y1="14" x2="12" y2="21" />
+                          <line x1="9" y1="18" x2="15" y2="18" />
+                        </svg>
+                      </span>
+                      <select
+                        className="admin-acc-form-select"
+                        value={editForm.gender}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, gender: e.target.value });
+                          if (editFormErrors.gender) setEditFormErrors(prev => ({ ...prev, gender: null }));
+                        }}
+                      >
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                      </select>
+                    </div>
+                    {editFormErrors.gender && (
+                      <span className="admin-acc-field-error">{editFormErrors.gender}</span>
+                    )}
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Vai trò</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={editForm.role}
-                      onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                    >
-                      <option value="CUSTOMER">CUSTOMER</option>
-                      <option value="SHOP OWNER">SHOP OWNER</option>
-                      <option value="STAFF">STAFF</option>
-                      <option value="ADMIN">ADMIN</option>
-                    </select>
+                {/* 5. Địa chỉ */}
+                <div className="admin-acc-form-group">
+                  <label className="admin-acc-form-label">Địa chỉ</label>
+                  <div className="admin-acc-input-wrap has-textarea">
+                    <span className="admin-acc-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                    </span>
+                    <textarea
+                      rows={2}
+                      className="admin-acc-form-textarea"
+                      placeholder="123 Nguyễn Văn Cừ, Quận Long Biên, Hà Nội"
+                      value={editForm.address}
+                      onChange={(e) => {
+                        setEditForm({ ...editForm, address: e.target.value });
+                        if (editFormErrors.address) setEditFormErrors(prev => ({ ...prev, address: null }));
+                      }}
+                    />
                   </div>
+                  {editFormErrors.address && (
+                    <span className="admin-acc-field-error">{editFormErrors.address}</span>
+                  )}
+                </div>
 
-                  <div className="admin-acc-form-group">
-                    <label className="admin-acc-form-label">Trạng thái</label>
-                    <select
-                      className="admin-acc-form-select"
-                      value={editForm.status}
-                      onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    >
-                      <option value="ACTIVE">Hoạt động</option>
-                      <option value="LOCKED">Tạm khóa</option>
-                    </select>
-                  </div>
+                {/* 6. Info Banner Alert */}
+                <div className="admin-acc-edit-info-alert">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                  <span>Các trường có dấu <strong style={{ color: '#EF4444' }}>*</strong> là bắt buộc. Email không thể thay đổi.</span>
                 </div>
               </div>
 
-              <div className="admin-acc-modal-foot">
+              {/* Modal Footer */}
+              <div className="admin-acc-modal-foot-rich">
                 <button
                   type="button"
-                  className="btn-acc-outline"
+                  className="btn-acc-modal-cancel"
                   onClick={() => setShowEditModal(false)}
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="btn-acc-primary"
+                  className="btn-acc-modal-save"
                 >
-                  Lưu thay đổi
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  <span>Lưu thay đổi</span>
                 </button>
               </div>
             </form>
@@ -1774,36 +2623,53 @@ export default function AdminAccountsPage() {
                 type="button"
                 className="admin-acc-drawer-close"
                 onClick={() => setShowResetPwdModal(false)}
+                title="Đóng"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <i className="fa-solid fa-xmark" style={{ fontSize: '15px' }} />
               </button>
             </div>
 
             <div className="admin-acc-modal-body">
-              <p style={{ fontSize: '13px', color: '#64748B', margin: 0 }}>
-                Hệ thống sẽ tạo mật khẩu ngẫu nhiên hoặc bạn có thể nhập mật khẩu tùy chỉnh. Người dùng sẽ nhận được email thông báo đổi mật khẩu mới.
-              </p>
+              <div style={{
+                backgroundColor: '#F0FDF4',
+                border: '1px solid #BBF7D0',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '14px',
+                fontSize: '13px',
+                color: '#166534',
+                lineHeight: '1.5'
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <i className="fa-solid fa-paper-plane" />
+                  Gửi email tự động & Bắt buộc đổi mật khẩu
+                </div>
+                Hệ thống sẽ cập nhật mật khẩu mới và tự động gửi email thông báo tới <strong>{selectedUser.email}</strong>. Khi người dùng đăng nhập bằng mật khẩu này, hệ thống sẽ yêu cầu đổi mật khẩu mới để bảo mật.
+              </div>
 
               <div className="admin-acc-form-group">
-                <label className="admin-acc-form-label">Mật khẩu mới</label>
+                <label className="admin-acc-form-label">Mật khẩu mới khởi tạo *</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
                     className="admin-acc-form-input"
                     value={resetPwdValue}
+                    disabled={isResettingPwd}
                     onChange={(e) => setResetPwdValue(e.target.value)}
+                    placeholder="Nhập mật khẩu mới..."
                   />
                   <button
                     type="button"
                     className="btn-acc-outline"
+                    disabled={isResettingPwd}
                     onClick={() => setResetPwdValue('Vestora@' + Math.floor(1000 + Math.random() * 9000))}
                   >
                     Tạo lại
                   </button>
                 </div>
+                <small style={{ color: '#64748B', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  Gợi ý: Mật khẩu nên gồm ít nhất 8 ký tự, có chữ hoa, chữ thường và số.
+                </small>
               </div>
             </div>
 
@@ -1811,6 +2677,7 @@ export default function AdminAccountsPage() {
               <button
                 type="button"
                 className="btn-acc-outline"
+                disabled={isResettingPwd}
                 onClick={() => setShowResetPwdModal(false)}
               >
                 Hủy
@@ -1818,12 +2685,20 @@ export default function AdminAccountsPage() {
               <button
                 type="button"
                 className="btn-acc-primary"
-                onClick={() => {
-                  alert(`Đã đặt lại mật khẩu mới cho ${selectedUser.email}: ${resetPwdValue}`);
-                  setShowResetPwdModal(false);
-                }}
+                disabled={isResettingPwd}
+                onClick={handleConfirmResetPassword}
               >
-                Cập nhật mật khẩu
+                {isResettingPwd ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: '6px' }} />
+                    Đang xử lý & Gửi email...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-key" style={{ marginRight: '6px' }} />
+                    Cập nhật & Gửi email mật khẩu
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1842,11 +2717,9 @@ export default function AdminAccountsPage() {
                 type="button"
                 className="admin-acc-drawer-close"
                 onClick={() => setShowNotifyModal(false)}
+                title="Đóng"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <i className="fa-solid fa-xmark" style={{ fontSize: '15px' }} />
               </button>
             </div>
 
@@ -1899,17 +2772,348 @@ export default function AdminAccountsPage() {
                 type="button"
                 className="btn-acc-primary"
                 onClick={() => {
-                  alert(`Đã gửi thông báo thành công tới ${selectedUser.email}!`);
+                  showToast(`Đã gửi thông báo thành công tới ${selectedUser.email}!`, 'success');
                   setShowNotifyModal(false);
                   setNotifyForm({ title: '', message: '', type: 'SYSTEM' });
                 }}
               >
+                <i className="fa-solid fa-paper-plane" style={{ marginRight: '6px' }} />
                 Gửi thông báo
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ========== MODAL: Lý Do Khóa Tài Khoản (Theme Sáng + Font Awesome) ========== */}
+      {showLockReasonModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(15, 23, 42, 0.45)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            boxSizing: 'border-box'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isLocking) setShowLockReasonModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: '16px',
+              border: '1px solid #E2E8F0',
+              width: '100%',
+              maxWidth: '490px',
+              boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.16)',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '20px 24px',
+                borderBottom: '1px solid #F1F5F9',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                background: '#FFFFFF'
+              }}
+            >
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: '#FEE2E2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <i className="fa-solid fa-lock" style={{ color: '#DC2626', fontSize: '18px' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#0F172A', fontWeight: 700, fontSize: '16px', lineHeight: 1.3 }}>
+                  Khóa Tài Khoản
+                </div>
+                <div style={{ color: '#64748B', fontSize: '12.5px', marginTop: '3px' }}>
+                  Hệ thống sẽ gửi email thông báo lý do tới người dùng
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isLocking && setShowLockReasonModal(false)}
+                disabled={isLocking}
+                style={{
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '8px',
+                  cursor: isLocking ? 'not-allowed' : 'pointer',
+                  color: '#64748B',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Đóng"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px' }}>
+              <div
+                style={{
+                  background: '#FFF7ED',
+                  border: '1px solid #FFEDD5',
+                  borderRadius: '10px',
+                  padding: '14px 16px',
+                  marginBottom: '20px'
+                }}
+              >
+                <div
+                  style={{
+                    color: '#C2410C',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    marginBottom: '5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    letterSpacing: '0.3px'
+                  }}
+                >
+                  <i className="fa-solid fa-triangle-exclamation" style={{ color: '#EA580C', fontSize: '13px' }} />
+                  <span>LƯU Ý</span>
+                </div>
+                <div style={{ color: '#9A3412', fontSize: '13px', lineHeight: 1.6 }}>
+                  Người dùng sẽ nhận được email thông báo kèm lý do khóa ngay sau khi bạn xác nhận.
+                  Tài khoản bị khóa sẽ không thể đăng nhập cho đến khi được mở khóa.
+                </div>
+              </div>
+
+              <label
+                style={{
+                  display: 'block',
+                  color: '#334155',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}
+              >
+                Lý do khóa tài khoản <span style={{ color: '#DC2626' }}>*</span>
+              </label>
+              <textarea
+                rows={4}
+                value={lockReasonText}
+                onChange={(e) => setLockReasonText(e.target.value)}
+                placeholder="Vd: Vi phạm điều khoản sử dụng dịch vụ, giao dịch gian lận, phản ánh từ người dùng khác..."
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: '#FFFFFF',
+                  border: `1px solid ${lockReasonText.trim().length > 0 && lockReasonText.trim().length < 5 ? '#DC2626' : '#CBD5E1'
+                    }`,
+                  borderRadius: '10px',
+                  color: '#0F172A',
+                  fontSize: '13.5px',
+                  padding: '12px 14px',
+                  resize: 'vertical',
+                  lineHeight: 1.6,
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)'
+                }}
+              />
+              {lockReasonText.trim().length > 0 && lockReasonText.trim().length < 5 && (
+                <div
+                  style={{
+                    color: '#DC2626',
+                    fontSize: '12px',
+                    marginTop: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '12px' }} />
+                  <span>Lý do phải có ít nhất 5 ký tự.</span>
+                </div>
+              )}
+              <div style={{ color: '#94A3B8', fontSize: '11.5px', marginTop: '6px', textAlign: 'right' }}>
+                {lockReasonText.length} ký tự
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderTop: '1px solid #F1F5F9',
+                background: '#F8FAFC',
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end',
+                alignItems: 'center'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowLockReasonModal(false)}
+                disabled={isLocking}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '8px',
+                  border: '1px solid #CBD5E1',
+                  background: '#FFFFFF',
+                  color: '#475569',
+                  fontSize: '13px',
+                  cursor: isLocking ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                }}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={confirmLockWithReason}
+                disabled={isLocking || lockReasonText.trim().length < 5}
+                style={{
+                  padding: '10px 22px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: lockReasonText.trim().length >= 5 && !isLocking ? '#DC2626' : '#94A3B8',
+                  color: '#FFFFFF',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: lockReasonText.trim().length >= 5 && !isLocking ? 'pointer' : 'not-allowed',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow:
+                    lockReasonText.trim().length >= 5 && !isLocking
+                      ? '0 2px 8px rgba(220, 38, 38, 0.25)'
+                      : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {isLocking ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin" />
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-lock" />
+                    <span>Xác nhận khóa & Gửi email</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification Container */}
+      {toasts.length > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 99999,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            pointerEvents: 'none'
+          }}
+        >
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              style={{
+                pointerEvents: 'auto',
+                minWidth: '320px',
+                maxWidth: '440px',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                color: '#FFFFFF',
+                fontSize: '13.5px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 12px 30px -4px rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.1)',
+                background:
+                  t.type === 'success'
+                    ? 'linear-gradient(135deg, #065F46, #059669)'
+                    : t.type === 'error'
+                      ? 'linear-gradient(135deg, #991B1B, #DC2626)'
+                      : t.type === 'warning'
+                        ? 'linear-gradient(135deg, #92400E, #D97706)'
+                        : 'linear-gradient(135deg, #1E293B, #334155)',
+                borderLeft: `5px solid ${t.type === 'success'
+                  ? '#34D399'
+                  : t.type === 'error'
+                    ? '#F87171'
+                    : t.type === 'warning'
+                      ? '#FBBF24'
+                      : '#60A5FA'
+                  }`,
+                backdropFilter: 'blur(8px)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {t.type === 'success' && <i className="fa-solid fa-circle-check" style={{ color: '#34D399' }} />}
+                  {t.type === 'error' && <i className="fa-solid fa-circle-xmark" style={{ color: '#F87171' }} />}
+                  {t.type === 'warning' && <i className="fa-solid fa-triangle-exclamation" style={{ color: '#FBBF24' }} />}
+                  {(t.type === 'info' || (!['success', 'error', 'warning'].includes(t.type))) && (
+                    <i className="fa-solid fa-circle-info" style={{ color: '#60A5FA' }} />
+                  )}
+                </span>
+                <span style={{ lineHeight: 1.45 }}>{t.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeToast(t.id)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'rgba(255, 255, 255, 0.75)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  fontSize: '14px',
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Đóng thông báo"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+

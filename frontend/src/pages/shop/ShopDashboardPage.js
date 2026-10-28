@@ -108,10 +108,7 @@ export default function ShopDashboardPage() {
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="btn-primary" onClick={() => navigate('/shop/products/new')}>
-                ➕ THÊM SẢN PHẨM MỚI
-              </button>
-              <button className="btn-secondary" onClick={() => navigate('/shop/analytics')}>
+<button className="btn-secondary" onClick={() => navigate('/shop/analytics')}>
                 📈 BÁO CÁO DOANH THU
               </button>
             </div>
@@ -158,7 +155,7 @@ export default function ShopDashboardPage() {
               </div>
             </div>
 
-            <div className="stat-card-white" style={{ cursor: 'pointer' }} onClick={() => navigate('/shop/inventory')}>
+            <div className="stat-card-white" >
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="stat-card-title">CẢNH BÁO TỒN KHO</span>

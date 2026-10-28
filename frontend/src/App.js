@@ -21,13 +21,9 @@ import WebcamTryOnPage from './pages/customer/WebcamTryOnPage';
 
 import ShopDashboardPage from './pages/shop/ShopDashboardPage';
 import ShopAnalyticsPage from './pages/shop/ShopAnalyticsPage';
-import ShopProductsPage from './pages/shop/ShopProductsPage';
-import ShopAddProductPage from './pages/shop/ShopAddProductPage';
 import ShopRentalOrdersPage from './pages/shop/ShopRentalOrdersPage';
 import ShopSaleOrdersPage from './pages/shop/ShopSaleOrdersPage';
-import ShopInventoryPage from './pages/shop/ShopInventoryPage';
 import ShopReturnsPage from './pages/shop/ShopReturnsPage';
-import ShopPricingPage from './pages/shop/ShopPricingPage';
 import ShopReviewsPage from './pages/shop/ShopReviewsPage';
 import ShopSettingsPage from './pages/shop/ShopSettingsPage';
 import ShopBranchesPage from './pages/shop/ShopBranchesPage';
@@ -73,13 +69,9 @@ function App() {
 
           <Route path="/shop/dashboard" element={<ShopDashboardPage />} />
           <Route path="/shop/analytics" element={<ShopAnalyticsPage />} />
-          <Route path="/shop/products" element={<ShopProductsPage />} />
-          <Route path="/shop/products/new" element={<ShopAddProductPage />} />
           <Route path="/shop/rental-orders" element={<ShopRentalOrdersPage />} />
           <Route path="/shop/sale-orders" element={<ShopSaleOrdersPage />} />
-          <Route path="/shop/inventory" element={<ShopInventoryPage />} />
           <Route path="/shop/returns" element={<ShopReturnsPage />} />
-          <Route path="/shop/pricing" element={<ShopPricingPage />} />
           <Route path="/shop/reviews" element={<ShopReviewsPage />} />
           <Route path="/shop/settings" element={<ShopSettingsPage />} />
           <Route path="/shop/branches" element={<ShopBranchesPage />} />

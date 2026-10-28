@@ -22,6 +22,7 @@ import AboutPage from './pages/customer/AboutPage';
 import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
+import WardrobePage from './pages/customer/WardrobePage';
 
 import ShopDashboardPage from './pages/shop/ShopDashboardPage';
 import ShopAnalyticsPage from './pages/shop/ShopAnalyticsPage';
@@ -76,6 +77,8 @@ function App() {
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/policy" element={<PolicyPage />} />
           <Route path="/policy/:tab" element={<PolicyPage />} />
+          <Route path="/wardrobe" element={<WardrobePage />} />
+          <Route path="/my-wardrobe" element={<WardrobePage />} />
 
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />

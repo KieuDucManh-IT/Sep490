@@ -98,16 +98,16 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Mặc Vào Dịp */}
+          {/* Tủ Đồ Cá Nhân */}
           <div className="nav-dropdown-item">
-            <Link to="/catalog?category=suggest" className={`navbar-link ${location.search.includes("category=suggest") ? "active" : ""}`}>
-              Mặc Vào Dịp <i className="fa-solid fa-chevron-down nav-arrow"></i>
+            <Link to="/wardrobe" className={`navbar-link ${isActive("/wardrobe")}`}>
+              Tủ Đồ Cá Nhân <i className="fa-solid fa-chevron-down nav-arrow"></i>
             </Link>
             <div className="nav-dropdown-menu">
-              <Link to="/catalog?occasion=party" className="nav-sublink">Dự tiệc & Dạ hội</Link>
-              <Link to="/catalog?occasion=work" className="nav-sublink">Công sở & Đi làm</Link>
-              <Link to="/catalog?occasion=casual" className="nav-sublink">Dạo phố & Du lịch</Link>
-              <Link to="/catalog?occasion=event" className="nav-sublink">Chụp ảnh & Sự kiện</Link>
+              <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
+              <Link to="/wardrobe?filter=ai-suggested" className="nav-sublink">Gợi ý AI Stylist</Link>
+              <Link to="/wardrobe?filter=tryon-history" className="nav-sublink">Đã thử qua AI / Camera</Link>
+              <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
             </div>
           </div>
         </nav>

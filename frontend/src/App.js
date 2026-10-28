@@ -18,6 +18,10 @@ import UserProfilePage from './pages/customer/UserProfilePage';
 import RegisterShopPage from './pages/customer/RegisterShopPage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
 import WebcamTryOnPage from './pages/customer/WebcamTryOnPage';
+import AboutPage from './pages/customer/AboutPage';
+import BlogPage from './pages/customer/BlogPage';
+import ContactPage from './pages/customer/ContactPage';
+import PolicyPage from './pages/customer/PolicyPage';
 
 import ShopDashboardPage from './pages/shop/ShopDashboardPage';
 import ShopAnalyticsPage from './pages/shop/ShopAnalyticsPage';
@@ -65,6 +69,13 @@ function App() {
           <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
           <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
           <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
+
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog/:id" element={<BlogPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/policy" element={<PolicyPage />} />
+          <Route path="/policy/:tab" element={<PolicyPage />} />
 
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />

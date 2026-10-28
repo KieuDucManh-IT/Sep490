@@ -1,80 +1,224 @@
-import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-
+import React, { useState, useRef, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
   const location = useLocation();
-  const { user, loading, authError, refreshUser } = useAuth();
-  const [failedAvatar, setFailedAvatar] = useState("");
+  const navigate = useNavigate();
+  const { user, loading, authError, logout, refreshUser } = useAuth();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
   const isActive = (path) => (location.pathname === path ? "active" : "");
   const avatarUrl = user?.avatar || "";
-  const showAvatar = Boolean(avatarUrl) && failedAvatar !== avatarUrl;
-  const avatarInitial = user?.fullName?.trim().charAt(0).toUpperCase() || "U";
+  const displayName = user?.fullName || "";
+  const avatarInitial = displayName ? displayName.trim().charAt(0).toUpperCase() : "N";
+
+  // Đóng dropdown khi click ra ngoài
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setDropdownOpen(false);
+      navigate("/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
 
   return (
     <header className="vestora-navbar">
-      <Link to="/" className="navbar-brand-logo">VESTORA</Link>
-
-      <nav className="navbar-menu-links">
-        <Link to="/" className={`navbar-link ${isActive("/")}`}>TRANG CHỦ</Link>
-        <Link to="/catalog" className={`navbar-link ${isActive("/catalog")}`}>DANH MỤC THUÊ</Link>
-        <Link to="/try-on/photo" className={`navbar-link ${isActive("/try-on/photo") || isActive("/try-on-photo") ? "active" : ""}`}>
-          THỬ ĐỒ ẢNH
-        </Link>
-        <Link to="/try-on/webcam" className={`navbar-link ${isActive("/try-on/webcam") || isActive("/try-on-webcam") ? "active" : ""}`}>
-          THỬ ĐỒ CAMERA
-        </Link>
-        <Link to="/map" className={`navbar-link ${isActive("/map")}`}>RADAR SHOWROOM</Link>
-        <Link
-          to="/register-shop"
-          className={`navbar-link ${isActive("/register-shop") || isActive("/customer/register-shop") ? "active" : ""}`}
-          style={{ color: "#8C6D3F", fontWeight: 600 }}
-        >
-          ĐĂNG KÝ SHOP
+      <div className="navbar-container">
+        {/* Brand Logo */}
+        <Link to="/" className="navbar-brand-logo">
+          VESTORA
         </Link>
 
-        {user?.role === "shop_owner" && (
-          <Link to="/shop/dashboard" className="navbar-link">KÊNH CHỦ SHOP</Link>
-        )}
-        {user?.role === "admin" && (
-          <Link to="/admin/dashboard" className="navbar-link">ADMIN HỆ THỐNG</Link>
-        )}
-      </nav>
-
-      <div className="navbar-actions">
-        <Link to="/favorites" className="navbar-icon-btn" title="Danh sách yêu thích" aria-label="Danh sách yêu thích">♡</Link>
-        <Link to="/cart" className="navbar-icon-btn" title="Giỏ hàng" aria-label="Giỏ hàng">🛒</Link>
-
-        {loading ? (
-          <span role="status">Đang tải...</span>
-        ) : user ? (
-          <Link to="/profile" className="user-profile-pill" title="Hồ sơ cá nhân">
-              {showAvatar ? (
-                <img
-                  key={avatarUrl}
-                  className="user-avatar-circle"
-                  src={avatarUrl}
-                  alt={`Ảnh đại diện của ${user.fullName || "người dùng"}`}
-                  onError={() => setFailedAvatar(avatarUrl)}
-                />
-              ) : (
-                <span className="user-avatar-circle" style={{ display: "grid", placeItems: "center", background: "#eee7dc", color: "#96723d", fontWeight: 700 }}>
-                  {avatarInitial}
-                </span>
-              )}
-            <span className="user-display-name">{user.fullName || "Thành viên"}</span>
+        {/* Menu Links with Dropdowns */}
+        <nav className="navbar-menu-links">
+          <Link to="/" className={`navbar-link ${isActive("/")}`}>
+            Trang Chủ
           </Link>
-        ) : authError ? (
-          <button type="button" onClick={refreshUser} className="btn-retry-auth">Thử lại kết nối</button>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Link to="/login" className="user-profile-pill">Đăng nhập</Link>
-            <Link to="/register" className="navbar-logout-btn" style={{ textDecoration: "none" }}>Đăng ký</Link>
+
+          {/* Về Min.De */}
+          <div className="nav-dropdown-item">
+            <Link to="/about" className={`navbar-link ${isActive("/about")}`}>
+              Về Vestora <i className="fa-solid fa-chevron-down nav-arrow"></i>
+            </Link>
+            <div className="nav-dropdown-menu">
+              <Link to="/about" className="nav-sublink">Giới thiệu Min.De</Link>
+              <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
+              <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
+            </div>
           </div>
-        )}
+
+          {/* Sản Phẩm */}
+          <div className="nav-dropdown-item">
+            <Link to="/catalog" className={`navbar-link ${isActive("/catalog")}`}>
+              Sản Phẩm <i className="fa-solid fa-chevron-down nav-arrow"></i>
+            </Link>
+            <div className="nav-dropdown-menu">
+              <Link to="/catalog" className="nav-sublink">Tất cả sản phẩm</Link>
+              <Link to="/catalog?type=rental" className="nav-sublink">Thuê trang phục</Link>
+              <Link to="/catalog?type=sale" className="nav-sublink">Mua bán đồ cũ</Link>
+              <Link to="/catalog?filter=new" className="nav-sublink">Sản phẩm mới về</Link>
+            </div>
+          </div>
+
+          {/* Blog Min.De */}
+          <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
+            Blog Vestora
+          </Link>
+
+          {/* Liên Hệ */}
+          <Link to="/contact" className={`navbar-link ${isActive("/contact")}`}>
+            Liên Hệ
+          </Link>
+
+          {/* Chính Sách */}
+          <div className="nav-dropdown-item">
+            <Link to="/policy" className={`navbar-link ${isActive("/policy")}`}>
+              Chính Sách <i className="fa-solid fa-chevron-down nav-arrow"></i>
+            </Link>
+            <div className="nav-dropdown-menu">
+              <Link to="/policy" className="nav-sublink">Chính sách thuê đồ</Link>
+              <Link to="/policy" className="nav-sublink">Thanh toán Escrow</Link>
+              <Link to="/policy" className="nav-sublink">Đổi trả & Hoàn cọc</Link>
+              <Link to="/policy" className="nav-sublink">Bảo mật thông tin</Link>
+            </div>
+          </div>
+
+          {/* Mặc Vào Dịp */}
+          <div className="nav-dropdown-item">
+            <Link to="/catalog?category=suggest" className={`navbar-link ${location.search.includes("category=suggest") ? "active" : ""}`}>
+              Mặc Vào Dịp <i className="fa-solid fa-chevron-down nav-arrow"></i>
+            </Link>
+            <div className="nav-dropdown-menu">
+              <Link to="/catalog?occasion=party" className="nav-sublink">Dự tiệc & Dạ hội</Link>
+              <Link to="/catalog?occasion=work" className="nav-sublink">Công sở & Đi làm</Link>
+              <Link to="/catalog?occasion=casual" className="nav-sublink">Dạo phố & Du lịch</Link>
+              <Link to="/catalog?occasion=event" className="nav-sublink">Chụp ảnh & Sự kiện</Link>
+            </div>
+          </div>
+        </nav>
+
+        {/* Action Icons & User Account */}
+        <div className="navbar-actions">
+          {/* Search Icon */}
+          <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
+            <i className="fa-solid fa-magnifying-glass"></i>
+          </Link>
+
+          {/* User Account / Login Button */}
+          {loading ? (
+            <span className="navbar-loading-text">...</span>
+          ) : user ? (
+            <div className="navbar-user-dropdown-container" ref={dropdownRef}>
+              <button
+                type="button"
+                className="user-profile-pill"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                aria-expanded={dropdownOpen}
+                aria-label="Menu tài khoản"
+              >
+                {avatarUrl ? (
+                  <img
+                    className="user-avatar-circle"
+                    src={avatarUrl}
+                    alt={`Avatar của ${displayName}`}
+                  />
+                ) : (
+                  <span className="user-avatar-circle">
+                    {avatarInitial}
+                  </span>
+                )}
+                <span className="user-display-name">{displayName || "Người dùng"}</span>
+                <i className={`fa-solid fa-chevron-down chevron-icon ${dropdownOpen ? "open" : ""}`}></i>
+              </button>
+
+              {dropdownOpen && (
+                <div className="navbar-user-menu">
+                  <div className="menu-user-header">
+                    <strong>{displayName}</strong>
+                    <small>{user.email}</small>
+                  </div>
+                  <div className="menu-divider"></div>
+                  <Link
+                    to="/profile"
+                    className="menu-item"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <i className="fa-regular fa-user menu-icon"></i> Tài khoản cá nhân
+                  </Link>
+                  <Link
+                    to="/cart"
+                    className="menu-item"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <i className="fa-solid fa-bag-shopping menu-icon"></i> Giỏ hàng & Đơn thuê
+                  </Link>
+                  <Link
+                    to="/favorites"
+                    className="menu-item"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <i className="fa-regular fa-heart menu-icon"></i> Sản phẩm yêu thích
+                  </Link>
+                  {user.role === "shop_owner" && (
+                    <Link
+                      to="/shop/dashboard"
+                      className="menu-item"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <i className="fa-solid fa-store menu-icon"></i> Quản lý gian hàng
+                    </Link>
+                  )}
+                  {user.role === "admin" && (
+                    <Link
+                      to="/admin/dashboard"
+                      className="menu-item"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <i className="fa-solid fa-shield-halved menu-icon"></i> Quản trị hệ thống
+                    </Link>
+                  )}
+                  <div className="menu-divider"></div>
+                  <button
+                    type="button"
+                    className="menu-item menu-item-logout"
+                    onClick={handleLogout}
+                  >
+                    <i className="fa-solid fa-arrow-right-from-bracket menu-icon"></i> Đăng xuất
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : authError ? (
+            <button type="button" onClick={refreshUser} className="btn-retry-auth">
+              Thử lại
+            </button>
+          ) : (
+            <Link to="/login" className="navbar-icon-btn" title="Đăng nhập tài khoản">
+              <i className="fa-regular fa-user"></i>
+            </Link>
+          )}
+
+          {/* Cart Icon with badge 0 */}
+          <Link to="/cart" className="navbar-icon-btn navbar-cart-btn" title="Giỏ hàng" aria-label="Giỏ hàng">
+            <i className="fa-solid fa-bag-shopping"></i>
+            <span className="cart-badge-count">0</span>
+          </Link>
+        </div>
       </div>
     </header>
   );

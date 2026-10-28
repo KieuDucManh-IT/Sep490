@@ -5,79 +5,95 @@ import '../styles/Footer.css';
 export default function Footer() {
   return (
     <footer className="vestora-footer">
-      <div className="footer-main-grid">
-        {/* Brand Column */}
-        <div className="footer-brand-col">
-          <div className="footer-logo">VESTORA</div>
-          <div className="footer-tagline">
-            VESTORA Haute Couture & Archive — Nền tảng lưu trữ, giám định độc lập và cho thuê trang phục dạ hội thảm đỏ cao cấp hàng đầu tại Việt Nam.
+      <div className="footer-container">
+        <div className="footer-top-grid">
+          {/* Brand Info */}
+          <div className="footer-brand-col">
+            <h3 className="footer-logo">VESTORA</h3>
+            <p className="footer-tagline">
+              Thời trang, thời điểm — Phong cách bền vững
+            </p>
+            <div className="footer-social-links">
+              <a href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook" className="social-icon-btn">
+                <i className="fa-brands fa-facebook-f"></i>
+              </a>
+              <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram" className="social-icon-btn">
+                <i className="fa-brands fa-instagram"></i>
+              </a>
+              <a href="https://tiktok.com" target="_blank" rel="noreferrer" aria-label="TikTok" className="social-icon-btn">
+                <i className="fa-brands fa-tiktok"></i>
+              </a>
+              <a href="https://youtube.com" target="_blank" rel="noreferrer" aria-label="YouTube" className="social-icon-btn">
+                <i className="fa-brands fa-youtube"></i>
+              </a>
+            </div>
           </div>
-          <div className="footer-escrow-badge">
-            <span>🛡️</span> BẢO CHỨNG KÝ QUỸ ESCROW QUỐC TẾ QUA PAYOS
+
+          {/* Col 1: Khám phá */}
+          <div className="footer-col">
+            <h4 className="footer-col-title">Khám phá</h4>
+            <ul className="footer-nav-list">
+              <li><Link to="/catalog?type=rental">Thuê đồ</Link></li>
+              <li><Link to="/catalog?type=sale">Mua đồ cũ</Link></li>
+              <li><Link to="/catalog">Sang nhượng thời trang</Link></li>
+              <li><Link to="/catalog?category=suggest">Gợi ý phong cách</Link></li>
+              <li><Link to="/map">Showroom gần bạn</Link></li>
+            </ul>
+          </div>
+
+          {/* Col 2: Hỗ trợ khách hàng */}
+          <div className="footer-col">
+            <h4 className="footer-col-title">Hỗ trợ khách hàng</h4>
+            <ul className="footer-nav-list">
+              <li><a href="#help">Trung tâm trợ giúp</a></li>
+              <li><a href="#return">Chính sách đổi trả</a></li>
+              <li><a href="#refund">Chính sách hoàn cọc</a></li>
+              <li><a href="#terms">Điều khoản sử dụng</a></li>
+              <li><a href="#privacy">Bảo mật thông tin</a></li>
+            </ul>
+          </div>
+
+          {/* Col 3: Dành cho shop */}
+          <div className="footer-col">
+            <h4 className="footer-col-title">Dành cho shop</h4>
+            <ul className="footer-nav-list">
+              <li><Link to="/register-shop">Đăng ký shop</Link></li>
+              <li><Link to="/login">Đăng nhập shop</Link></li>
+              <li><a href="#guide">Hướng dẫn đăng bán</a></li>
+              <li><a href="#commission">Chính sách hoa hồng</a></li>
+            </ul>
+          </div>
+
+          {/* Col 4: Liên hệ */}
+          <div className="footer-col footer-contact-col">
+            <h4 className="footer-col-title">Liên hệ</h4>
+            <div className="footer-contact-item">
+              <i className="fa-regular fa-envelope contact-fa-icon"></i>
+              <span>support@vestora.vn</span>
+            </div>
+            <div className="footer-contact-item">
+              <i className="fa-solid fa-phone contact-fa-icon"></i>
+              <span>1900 1234</span>
+            </div>
+            <div className="footer-contact-item">
+              <i className="fa-solid fa-location-dot contact-fa-icon"></i>
+              <span>Tầng 5, 123 Nguyễn Văn Cừ, Long Biên, Hà Nội</span>
+            </div>
           </div>
         </div>
 
-        {/* Column 1: Về VESTORA */}
-        <div>
-          <h4 className="footer-col-title">VỀ VESTORA</h4>
-          <ul className="footer-links-list">
-            <li><a href="#about">Di Sản & Triết Lý Nghệ Thuật</a></li>
-            <li><a href="#quy-chuan">Quy Chuẩn Giám Định IFAB Paris</a></li>
-            <li><a href="#network">Mạng Lưới Nhà Mốt Lưu Trữ</a></li>
-            <li><a href="#sustainability">Thời Trang Bền Vững Xanh Xì</a></li>
-          </ul>
-        </div>
-
-        {/* Column 2: Dịch Vụ Thượng Lưu */}
-        <div>
-          <h4 className="footer-col-title">DỊCH VỤ THƯỢNG LƯU</h4>
-          <ul className="footer-links-list">
-            <li><Link to="/catalog">Thuê Trang Phục Thảm Đỏ</Link></li>
-            <li><Link to="/try-on-photo">Phòng Thử Đồ Ảo AI 3D</Link></li>
-            <li><a href="#outfit">Phối Đồ & Phối Outfit</a></li>
-            <li><a href="#consign">Thẩm Định & Ký Gửi Trang Phục</a></li>
-          </ul>
-        </div>
-
-        {/* Column 3: Bảo Chứng & Pháp Lý */}
-        <div>
-          <h4 className="footer-col-title">BẢO CHỨNG & PHÁP LÝ</h4>
-          <ul className="footer-links-list">
-            <li><a href="#escrow">Cơ Chế Phong Tỏa Escrow</a></li>
-            <li><a href="#auth">Chứng Thư Xác Thực Số Hóa</a></li>
-            <li><a href="#insurance">Bảo Hiểm Tài Sản PayOS</a></li>
-            <li><a href="#compensation">Cam Kết Bồi Thường 200%</a></li>
-          </ul>
-        </div>
-
-        {/* Column 4: Salon Privé */}
-        <div className="salon-prive-box">
-          <div className="salon-prive-title">Salon Privé</div>
-          <div className="salon-prive-location">
-            <strong>Sài Gòn:</strong> Đồng Khởi, Quận 1
+        {/* Bottom Legal Bar */}
+        <div className="footer-bottom-row">
+          <p className="copyright-text">
+            © 2025 VESTORA. Tất cả quyền được bảo lưu.
+          </p>
+          <div className="footer-bottom-links">
+            <a href="#privacy">Chính sách bảo mật</a>
+            <span className="link-divider">|</span>
+            <a href="#terms">Điều khoản dịch vụ</a>
+            <span className="link-divider">|</span>
+            <a href="#refund">Chính sách hoàn cọc</a>
           </div>
-          <div className="salon-prive-location">
-            <strong>Hà Nội:</strong> Tràng Tiền, Hoàn Kiếm
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--color-gold)', marginTop: '8px', fontWeight: 600 }}>
-            Hotline VIP: 1800 8899
-          </div>
-          <div className="newsletter-input-group">
-            <input type="email" placeholder="Bản tin Privé..." />
-            <button aria-label="Đăng ký">➔</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Legal Bar */}
-      <div className="footer-bottom-bar">
-        <div>
-          © 2026 VESTORA Haute Couture & Archive. Nền tảng Cho Thuê & Sang Nhượng Thời Trang Cao Cấp.
-        </div>
-        <div className="footer-bottom-links">
-          <a href="#terms">Điều Khoản Khách Hàng</a>
-          <a href="#privacy">Chính Sách Bảo Mật</a>
-          <a href="#escrow-policy">Quy Chế Ký Quỹ Escrow</a>
         </div>
       </div>
     </footer>

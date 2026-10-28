@@ -16,6 +16,31 @@ export const ALLOWED_ROLES = [
   'admin'
 ];
 
+export const STAFF_ROLES = [
+  'shopOwner',
+  'brandmanager',
+  'warehouseManager',
+  'warehousestaff'
+];
+
+export const validateStaffRole = (role) => {
+  if (!role || typeof role !== 'string' || !role.trim()) {
+    return { isValid: false, message: 'Vui lòng chọn vai trò nhân viên' };
+  }
+  const clean = role.trim().toLowerCase().replace(/[_\s-]/g, '');
+  if (clean === 'admin') {
+    return { isValid: false, message: 'Không thể phân quyền Quản trị viên (Admin) cho nhân viên' };
+  }
+  if (clean === 'customer') {
+    return { isValid: false, message: 'Không thể chuyển vai trò nhân viên thành Khách hàng (Customer)' };
+  }
+  const valid = STAFF_ROLES.some(r => r.toLowerCase().replace(/[_\s-]/g, '') === clean);
+  if (!valid) {
+    return { isValid: false, message: 'Vai trò nhân viên không hợp lệ' };
+  }
+  return { isValid: true };
+};
+
 export const ALLOWED_GENDERS = ['Nam', 'Nữ', 'Khác'];
 
 /**
@@ -226,6 +251,11 @@ export const validateEditForm = (form = {}) => {
   if (form.avatar) {
     const avatarRes = validateAvatar(form.avatar);
     if (!avatarRes.isValid) errors.avatar = avatarRes.message;
+  }
+
+  if (form.role !== undefined && form.role !== null && form.role !== '') {
+    const roleRes = validateStaffRole(form.role);
+    if (!roleRes.isValid) errors.role = roleRes.message;
   }
 
   return {

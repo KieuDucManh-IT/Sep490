@@ -479,7 +479,9 @@ export default function AdminAccountsPage() {
       dob: user.dob && user.dob !== '—' ? user.dob : '15/08/2000',
       gender: user.gender || 'Nữ',
       avatar: user.avatar || '',
-      role: user.role === 'admin' ? 'customer' : user.role,
+      role: ['shopOwner', 'brandmanager', 'warehouseManager', 'warehousestaff'].includes(user.role)
+        ? user.role
+        : 'warehousestaff',
       status: user.status || 'ACTIVE'
     });
     setEditFormErrors({});
@@ -533,6 +535,11 @@ export default function AdminAccountsPage() {
           : 'Không thể chuyển tài khoản Quản trị viên (Admin) sang trạng thái Tạm khóa!',
         'warning'
       );
+      return;
+    }
+
+    if (editForm.role === 'admin' || editForm.role === 'customer') {
+      showToast('Không thể cập nhật nhân viên sang vai trò Quản trị viên (Admin) hoặc Khách hàng (Customer)!', 'error');
       return;
     }
 
@@ -1494,7 +1501,7 @@ export default function AdminAccountsPage() {
                   <div>
                     <div className="admin-acc-sec-header">
                       <h4 className="admin-acc-sec-title">Thông tin cơ bản</h4>
-                      {!isUserAdmin(selectedUser) && (
+                      {!isUserAdmin(selectedUser) && !isCustomer(selectedUser) && (
                         <button
                           type="button"
                           className="btn-acc-sec-edit"
@@ -2283,10 +2290,10 @@ export default function AdminAccountsPage() {
                 </div>
                 <div>
                   <h3 className="admin-acc-modal-title-rich">
-                    Chỉnh sửa hồ sơ {selectedUser.role === 'customer' ? 'khách hàng' : (ROLE_LABELS[selectedUser.role] || 'người dùng')}
+                    Chỉnh sửa thông tin nhân viên
                   </h3>
                   <p className="admin-acc-modal-sub-rich">
-                    Cập nhật thông tin cá nhân của {selectedUser.role === 'customer' ? 'khách hàng' : (ROLE_LABELS[selectedUser.role]?.toLowerCase() || 'người dùng')}
+                    Cập nhật thông tin cá nhân và vai trò phân công của nhân viên
                   </p>
                 </div>
               </div>
@@ -2445,6 +2452,42 @@ export default function AdminAccountsPage() {
                       <span className="admin-acc-field-error">{editFormErrors.phone}</span>
                     )}
                   </div>
+                </div>
+
+                {/* 4. Row: Vai trò nhân viên * (Chỉ cho phép các role nhân viên, trừ admin và customer) */}
+                <div className="admin-acc-form-group">
+                  <label className="admin-acc-form-label">
+                    Vai trò nhân viên <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <div className="admin-acc-input-wrap">
+                    <span className="admin-acc-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    </span>
+                    <select
+                      className={`admin-acc-form-select ${editFormErrors.role ? 'error' : ''}`}
+                      value={editForm.role}
+                      onChange={(e) => {
+                        setEditForm({ ...editForm, role: e.target.value });
+                        if (editFormErrors.role) setEditFormErrors(prev => ({ ...prev, role: null }));
+                      }}
+                    >
+                      <option value="shopOwner">Chủ gian hàng (shopOwner)</option>
+                      <option value="brandmanager">Quản lý thương hiệu (brandmanager)</option>
+                      <option value="warehouseManager">Quản lý kho (warehouseManager)</option>
+                      <option value="warehousestaff">Nhân viên kho (warehousestaff)</option>
+                    </select>
+                  </div>
+                  {editFormErrors.role && (
+                    <span className="admin-acc-field-error">{editFormErrors.role}</span>
+                  )}
+                  <span className="admin-acc-field-hint">
+                    Chỉ cập nhật vai trò phân công cho nhân viên (không bao gồm Quản trị viên và Khách hàng)
+                  </span>
                 </div>
 
                 {/* 4. Row: Ngày sinh | Giới tính */}

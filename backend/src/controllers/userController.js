@@ -376,12 +376,30 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    // Không cho phép nâng cấp bất kỳ ai thành Admin
-    if (Role && Role.toLowerCase() === 'admin') {
+    // Bảo vệ tài khoản Khách hàng: Không hỗ trợ chỉnh sửa tài khoản Customer qua trang quản lý này
+    const isTargetCustomer = existingUser.Role && existingUser.Role.toLowerCase() === 'customer';
+    if (isTargetCustomer) {
       return res.status(400).json({
         success: false,
-        message: 'Hệ thống chỉ duy trì 1 tài khoản Quản trị viên (Admin) duy nhất, không thể phân quyền vai trò này!'
+        message: 'Tài khoản khách hàng (Customer) không hỗ trợ chỉnh sửa thông tin qua chức năng này!'
       });
+    }
+
+    // Không cho phép nâng cấp bất kỳ ai thành Admin hoặc chuyển thành Customer
+    if (Role) {
+      const cleanRole = Role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+      if (cleanRole === 'admin') {
+        return res.status(400).json({
+          success: false,
+          message: 'Hệ thống chỉ duy trì 1 tài khoản Quản trị viên (Admin) duy nhất, không thể phân quyền vai trò này!'
+        });
+      }
+      if (cleanRole === 'customer') {
+        return res.status(400).json({
+          success: false,
+          message: 'Không thể chuyển vai trò của nhân viên thành Khách hàng (Customer)!'
+        });
+      }
     }
 
     // Validate dữ liệu đầu vào bằng reusable userValidation module
@@ -406,8 +424,6 @@ export const updateUser = async (req, res) => {
       else if (clean === 'brandmanager') updateData.Role = 'brandmanager';
       else if (clean === 'warehousemanager') updateData.Role = 'warehouseManager';
       else if (clean === 'warehousestaff') updateData.Role = 'warehousestaff';
-      else if (clean === 'admin') updateData.Role = 'admin';
-      else updateData.Role = 'customer';
     }
 
     if (Status !== undefined) {

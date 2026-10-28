@@ -1,6 +1,17 @@
-# Plans / Agent plans
+# AI Agent & Skill Generated Files (Plans, Journals, Reports)
 plans/
 *.plan.md
+plan.md
+docs/journals/
+docs/reports/
+docs/retros/
+docs/scenarios/
+docs/research/
+docs/summaries/
+docs/codebase-summary.md
+codebase-summary.md
+repomix-output.*
+.agents/
 
 # Dependencies
 node_modules/

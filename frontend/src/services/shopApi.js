@@ -100,10 +100,6 @@ export const updateShopInfoApi = async (shopId, shopData) => {
   });
 };
 
-// =====================================================================
-// BRANCH MANAGEMENT APIS (Single-Brand Multi-Branch Model)
-// =====================================================================
-
 export const createBranchApi = async (branchData) => {
   return fetchJson('/api/shops', {
     method: 'POST',
@@ -124,28 +120,30 @@ export const getBranchManagersApi = async () => {
 export const updateBranchInfoApi = updateShopInfoApi;
 export const getBranchesListApi = getShopsListApi;
 
+export const uploadShopImageApi = async (file, type = 'avatar') => {
+  const token = localStorage.getItem('token');
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', type);
 
-// Operations Staff (OPS) Dedicated APIs
-export const getOpsShopsStatsApi = async () => {
-  return fetchJson('/api/ops/shops/stats');
-};
-
-export const getOpsShopsListApi = async (params = {}) => {
-  const qs = new URLSearchParams();
-  Object.entries(params).forEach(([key, val]) => {
-    if (val !== undefined && val !== null && val !== '') {
-      qs.set(key, String(val));
-    }
+  const url = `${API_ROOT}/api/shops/upload-image`;
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
   });
-  const queryString = qs.toString() ? `?${qs.toString()}` : '';
-  return fetchJson(`/api/ops/shops${queryString}`);
-};
 
-export const updateShopOperatingStatusApi = async (shopId, payload) => {
-  return fetchJson(`/api/ops/shops/${shopId}/operating-status`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.message || `Lỗi tải ảnh lên (mã ${response.status})`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
 };
 
 

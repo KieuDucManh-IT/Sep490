@@ -1,13 +1,28 @@
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import sharp from 'sharp';
+import { v2 as cloudinary } from 'cloudinary';
 import { Shop } from '../models/Shop.js';
 import { User } from '../models/User.js';
+import {
+  validateObjectId,
+  validateCreateBranchInput,
+  validateUpdateShopAddressInput,
+  validateUpdateShopInfoInput,
+  validateOperatingStatus,
+  validateReverseGeocodeQuery,
+} from '../validations/shopValidation.js';
 
-// UC-12: Manage Shop Information, Branches and Warehouses
+/**
+ * Retrieve shop applications / branches list with status filters, search, and pagination
+ */
 export const getShopApplications = async (req, res) => {
   try {
     const { status, search = '', ownerId, city = '', page = 1, limit = 10 } = req.query;
 
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
     if (status) {
       const statusList = status
         .split(',')
@@ -55,7 +70,6 @@ export const getShopApplications = async (req, res) => {
       Shop.find(filter)
         .populate('ownerId', 'FullName Email Role Status Information fullName email createdAt updatedAt')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-        .populate('reviewedBy', 'FullName Email fullName email')
         .sort({ isHQ: -1, createdAt: -1 })
         .skip(skip)
         .limit(safeLimit)
@@ -75,6 +89,9 @@ export const getShopApplications = async (req, res) => {
   }
 };
 
+/**
+ * Retrieve statistical aggregates of shops grouped by operational status
+ */
 export const getShopStats = async (req, res) => {
   try {
     const today = new Date();
@@ -84,26 +101,16 @@ export const getShopStats = async (req, res) => {
       {
         $facet: {
           statusCounts: [
+            { $match: { isDeleted: { $ne: true } } },
             { $group: { _id: '$status', count: { $sum: 1 } } },
           ],
           total: [
+            { $match: { isDeleted: { $ne: true } } },
             { $count: 'count' },
           ],
           newToday: [
-            { $match: { status: 'PENDING', createdAt: { $gte: today } } },
+            { $match: { status: 'PENDING', isDeleted: { $ne: true }, createdAt: { $gte: today } } },
             { $count: 'count' },
-          ],
-          avgProcessing: [
-            { $match: { status: { $in: ['ACTIVE', 'REJECTED', 'SUSPENDED'] }, reviewedAt: { $ne: null } } },
-            {
-              $project: {
-                diffHours: {
-                  $divide: [{ $subtract: ['$reviewedAt', '$createdAt'] }, 3600000],
-                },
-              },
-            },
-            { $match: { diffHours: { $gt: 0 } } },
-            { $group: { _id: null, avgHours: { $avg: '$diffHours' } } },
           ],
         },
       },
@@ -120,11 +127,10 @@ export const getShopStats = async (req, res) => {
     const suspended = countsMap.SUSPENDED || 0;
     const total = facetResult?.total?.[0]?.count || 0;
     const newToday = facetResult?.newToday?.[0]?.count || 0;
-    const rawAvg = facetResult?.avgProcessing?.[0]?.avgHours || 0;
 
     const reviewed = active + rejected + suspended;
     const approvalRate = reviewed > 0 ? (((active + suspended) / reviewed) * 100).toFixed(1) : '0.0';
-    const avgProcessingHours = rawAvg > 0 ? (rawAvg < 0.1 ? '0.1' : rawAvg.toFixed(1)) : '0.0';
+    const avgProcessingHours = '0.0';
 
     return res.json({
       success: true,
@@ -145,16 +151,16 @@ export const getShopStats = async (req, res) => {
   }
 };
 
+/**
+ * Retrieve detailed shop profile by identifier
+ */
 export const getShopById = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ success: false, message: 'Mã hồ sơ gian hàng không hợp lệ.' });
-    }
+    validateObjectId(req.params.id, 'hồ sơ gian hàng');
 
-    const shop = await Shop.findById(req.params.id)
+    const shop = await Shop.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
       .populate('ownerId', 'FullName Email Role Status Information fullName email phone createdAt updatedAt')
       .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-      .populate('reviewedBy', 'FullName Email fullName email')
       .lean();
 
     if (!shop) {
@@ -163,23 +169,31 @@ export const getShopById = async (req, res) => {
 
     return res.json({ success: true, data: shop });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message || 'Không thể xem chi tiết gian hàng.' });
+    const status = error.statusCode || 500;
+    return res.status(status).json({ success: false, message: error.message || 'Không thể xem chi tiết gian hàng.' });
   }
 };
 
-
-
+/**
+ * Suspend or reactivate a showroom / branch
+ */
 export const toggleSuspendShop = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ success: false, message: 'Mã hồ sơ gian hàng không hợp lệ.' });
-    }
+    validateObjectId(req.params.id, 'hồ sơ gian hàng');
 
-    const { adminId, reason = '', notes = '' } = req.body;
-    const shop = await Shop.findById(req.params.id);
+    const shop = await Shop.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
 
     if (!shop) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy gian hàng.' });
+    }
+
+    const isOwner = req.user && shop.ownerId && shop.ownerId.toString() === req.user._id.toString();
+    const isAdminOrOps = req.user && ['admin', 'ADMIN', 'operation_staff', 'OPERATION_STAFF'].includes(req.user.Role);
+    if (req.user && !isOwner && !isAdminOrOps) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền thay đổi trạng thái chi nhánh này.',
+      });
     }
 
     if (!['ACTIVE', 'SUSPENDED'].includes(shop.status)) {
@@ -191,21 +205,6 @@ export const toggleSuspendShop = async (req, res) => {
 
     const nextStatus = shop.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
     shop.status = nextStatus;
-    shop.reviewedBy = (adminId && mongoose.Types.ObjectId.isValid(adminId)) ? adminId : null;
-    shop.reviewedAt = new Date();
-
-    if (nextStatus === 'SUSPENDED') {
-      const suspendReason = reason?.trim() || 'Tạm ngưng hoạt động theo quyết định của Bộ phận Vận hành (Operations Staff).';
-      shop.rejectionReason = suspendReason.slice(0, 500);
-      if (notes?.trim()) {
-        shop.notes = notes.trim().slice(0, 500);
-      }
-    } else {
-      shop.rejectionReason = '';
-      if (notes?.trim()) {
-        shop.notes = notes.trim().slice(0, 500);
-      }
-    }
 
     await shop.save();
 
@@ -218,59 +217,29 @@ export const toggleSuspendShop = async (req, res) => {
       data: {
         shopId: shop._id,
         status: shop.status,
-        rejectionReason: shop.rejectionReason,
-        reviewedAt: shop.reviewedAt,
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message || 'Có lỗi xảy ra khi thay đổi trạng thái gian hàng.' });
+    const status = error.statusCode || 500;
+    return res.status(status).json({ success: false, message: error.message || 'Có lỗi xảy ra khi thay đổi trạng thái gian hàng.' });
   }
 };
 
+/**
+ * Update shop operating lifecycle status (ACTIVE, SUSPENDED, PENDING, REJECTED)
+ */
 export const updateShopOperatingStatus = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ success: false, message: 'Mã hồ sơ gian hàng không hợp lệ.' });
-    }
+    validateObjectId(req.params.id, 'hồ sơ gian hàng');
+    const targetStatus = validateOperatingStatus(req.body.status);
 
-    const { status, reason = '', notes = '', staffId, adminId } = req.body;
-    const allowedStatuses = ['ACTIVE', 'SUSPENDED', 'PENDING', 'REJECTED'];
-
-    if (!status || !allowedStatuses.includes(String(status).toUpperCase())) {
-      return res.status(400).json({
-        success: false,
-        message: `Trạng thái không hợp lệ. Cho phép: ${allowedStatuses.join(', ')}`,
-      });
-    }
-
-    const shop = await Shop.findById(req.params.id);
+    const shop = await Shop.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!shop) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy gian hàng.' });
     }
 
-    const targetStatus = String(status).toUpperCase();
-    const reviewerId = (staffId && mongoose.Types.ObjectId.isValid(staffId))
-      ? staffId
-      : ((adminId && mongoose.Types.ObjectId.isValid(adminId)) ? adminId : null);
-
     shop.status = targetStatus;
-    shop.reviewedBy = reviewerId;
-    shop.reviewedAt = new Date();
 
-    if (targetStatus === 'SUSPENDED' || targetStatus === 'REJECTED') {
-      const defaultReason = targetStatus === 'SUSPENDED'
-        ? 'Tạm ngưng hoạt động bởi Operations Staff.'
-        : 'Từ chối hồ sơ bởi Operations Staff.';
-      shop.rejectionReason = (reason && reason.trim()) ? reason.trim().slice(0, 500) : defaultReason;
-    } else {
-      shop.rejectionReason = '';
-    }
-
-    if (notes && typeof notes === 'string') {
-      shop.notes = notes.trim().slice(0, 500);
-    }
-
-    // Nếu kích hoạt gian hàng, cập nhật Role của chủ sở hữu thành SHOP_OWNER
     if (targetStatus === 'ACTIVE' && shop.ownerId) {
       const owner = await User.findById(shop.ownerId);
       if (owner && owner.Role !== 'admin' && owner.Role !== 'ADMIN') {
@@ -288,9 +257,6 @@ export const updateShopOperatingStatus = async (req, res) => {
         shopId: shop._id,
         name: shop.name,
         status: shop.status,
-        rejectionReason: shop.rejectionReason,
-        notes: shop.notes,
-        reviewedAt: shop.reviewedAt,
       },
     });
   } catch (error) {
@@ -298,13 +264,16 @@ export const updateShopOperatingStatus = async (req, res) => {
   }
 };
 
+/**
+ * Retrieve shop profile associated with current user or fallback HQ
+ */
 export const getMyShop = async (req, res) => {
   try {
     const { ownerId, managerId, branchId } = req.query;
     let shop = null;
 
     if (branchId && mongoose.Types.ObjectId.isValid(branchId)) {
-      shop = await Shop.findById(branchId)
+      shop = await Shop.findOne({ _id: branchId, isDeleted: { $ne: true } })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
@@ -312,26 +281,27 @@ export const getMyShop = async (req, res) => {
       shop = await Shop.findOne({
         managerId,
         status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
+        isDeleted: { $ne: true },
       })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
     } else if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {
-      // First check if user is assigned as Branch Manager
       shop = await Shop.findOne({
         managerId: ownerId,
         status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
+        isDeleted: { $ne: true },
       })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
 
-      // If not branch manager, find branch owned as Shop Owner
       if (!shop) {
         shop = await Shop.findOne({
           ownerId,
           isHQ: true,
           status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
+          isDeleted: { $ne: true },
         })
           .populate('ownerId', 'FullName Email Role Status phone')
           .populate('managerId', 'FullName Email Role Status Information Avatar phone')
@@ -342,6 +312,7 @@ export const getMyShop = async (req, res) => {
         shop = await Shop.findOne({
           ownerId,
           status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
+          isDeleted: { $ne: true },
         })
           .sort({ createdAt: 1 })
           .populate('ownerId', 'FullName Email Role Status phone')
@@ -351,19 +322,19 @@ export const getMyShop = async (req, res) => {
     }
 
     if (!shop) {
-      shop = await Shop.findOne({ isHQ: true, status: 'ACTIVE' })
+      shop = await Shop.findOne({ isHQ: true, status: 'ACTIVE', isDeleted: { $ne: true } })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
     }
     if (!shop) {
-      shop = await Shop.findOne({ status: 'ACTIVE' })
+      shop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
     }
     if (!shop) {
-      shop = await Shop.findOne()
+      shop = await Shop.findOne({ isDeleted: { $ne: true } })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
@@ -388,66 +359,16 @@ export const getMyShop = async (req, res) => {
   }
 };
 
+/**
+ * Update showroom address details and GPS coordinates
+ */
 export const updateShopAddress = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Mã hồ sơ gian hàng không hợp lệ.',
-      });
-    }
+    validateObjectId(id, 'hồ sơ gian hàng');
+    const validatedData = validateUpdateShopAddressInput(req.body);
 
-    const {
-      address,
-      city = '',
-      district = '',
-      ward = '',
-      latitude,
-      longitude,
-      phone,
-    } = req.body;
-
-    if (!city?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tỉnh/Thành phố là bắt buộc.',
-      });
-    }
-
-    const trimmedAddress = address ? address.trim() : '';
-    if (trimmedAddress && trimmedAddress.length > 255) {
-      return res.status(400).json({
-        success: false,
-        message: 'Địa chỉ gian hàng không được vượt quá 255 ký tự.',
-      });
-    }
-
-    let validLat = null;
-    let validLng = null;
-    if (latitude !== undefined && latitude !== null && latitude !== '') {
-      const pLat = Number(latitude);
-      if (isNaN(pLat) || pLat < -90 || pLat > 90) {
-        return res.status(400).json({
-          success: false,
-          message: 'Vĩ độ (Latitude) không hợp lệ (phải từ -90 đến 90 theo BR-03.05).',
-        });
-      }
-      validLat = pLat;
-    }
-
-    if (longitude !== undefined && longitude !== null && longitude !== '') {
-      const pLng = Number(longitude);
-      if (isNaN(pLng) || pLng < -180 || pLng > 180) {
-        return res.status(400).json({
-          success: false,
-          message: 'Kinh độ (Longitude) không hợp lệ (phải từ -180 đến 180 theo BR-03.05).',
-        });
-      }
-      validLng = pLng;
-    }
-
-    const shop = await Shop.findById(id);
+    const shop = await Shop.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!shop) {
       return res.status(404).json({
         success: false,
@@ -455,19 +376,24 @@ export const updateShopAddress = async (req, res) => {
       });
     }
 
-    shop.address = trimmedAddress;
-    shop.city = city.trim();
-    shop.district = district ? district.trim() : '';
-    shop.ward = ward ? ward.trim() : '';
-    shop.latitude = validLat;
-    shop.longitude = validLng;
+    const isOwner = req.user && shop.ownerId && shop.ownerId.toString() === req.user._id.toString();
+    const isManager = req.user && shop.managerId && shop.managerId.toString() === req.user._id.toString();
+    const isAdmin = req.user && ['admin', 'ADMIN'].includes(req.user.Role);
+    if (req.user && !isOwner && !isManager && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền chỉnh sửa địa chỉ chi nhánh này.',
+      });
+    }
 
-    if (phone && phone.trim()) {
-      const cleanPhone = phone.trim().replace(/\s+/g, '').replace(/^\+84/, '0');
-      const phoneRegex = /^(0[35789])[0-9]{8}$/;
-      if (phoneRegex.test(cleanPhone)) {
-        shop.phone = cleanPhone;
-      }
+    shop.address = validatedData.address;
+    shop.city = validatedData.city;
+    shop.ward = validatedData.ward;
+    shop.latitude = validatedData.latitude;
+    shop.longitude = validatedData.longitude;
+
+    if (validatedData.phone) {
+      shop.phone = validatedData.phone;
     }
 
     await shop.save();
@@ -479,41 +405,24 @@ export const updateShopAddress = async (req, res) => {
       data: shop,
     });
   } catch (error) {
-    return res.status(500).json({
+    const status = error.statusCode || 500;
+    return res.status(status).json({
       success: false,
       message: error.message || 'Lỗi khi cập nhật địa chỉ gian hàng.',
     });
   }
 };
 
+/**
+ * Update comprehensive showroom / branch information
+ */
 export const updateShopInfo = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Mã hồ sơ gian hàng không hợp lệ.',
-      });
-    }
+    validateObjectId(id, 'hồ sơ gian hàng');
+    const validated = validateUpdateShopInfoInput(req.body);
 
-    const {
-      name,
-      description,
-      phone,
-      address,
-      city,
-      district,
-      ward,
-      latitude,
-      longitude,
-      imageUrl,
-      openingHours,
-      status,
-      managerId,
-      isHQ,
-    } = req.body;
-
-    const shop = await Shop.findById(id);
+    const shop = await Shop.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!shop) {
       return res.status(404).json({
         success: false,
@@ -521,102 +430,36 @@ export const updateShopInfo = async (req, res) => {
       });
     }
 
-    if (name !== undefined) {
-      const trimmedName = name?.trim();
-      if (!trimmedName || trimmedName.length < 3 || trimmedName.length > 100) {
-        return res.status(400).json({
-          success: false,
-          message: 'Tên gian hàng phải từ 3 đến 100 ký tự.',
-        });
-      }
-      shop.name = trimmedName;
+    const previousManagerId = shop.managerId ? shop.managerId.toString() : null;
+
+    const isOwner = req.user && shop.ownerId && shop.ownerId.toString() === req.user._id.toString();
+    const isManager = req.user && shop.managerId && shop.managerId.toString() === req.user._id.toString();
+    const isAdmin = req.user && ['admin', 'ADMIN'].includes(req.user.Role);
+    if (req.user && !isOwner && !isManager && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền cập nhật thông tin chi nhánh này.',
+      });
     }
 
-    if (description !== undefined) {
-      const trimmedDesc = description?.trim();
-      if (!trimmedDesc || trimmedDesc.length < 10 || trimmedDesc.length > 1000) {
-        return res.status(400).json({
-          success: false,
-          message: 'Mô tả gian hàng phải từ 10 đến 1000 ký tự.',
-        });
-      }
-      shop.description = trimmedDesc;
-    }
+    if (validated.name !== undefined) shop.name = validated.name;
+    if (validated.description !== undefined) shop.description = validated.description;
+    if (validated.phone !== undefined) shop.phone = validated.phone;
+    if (validated.address !== undefined) shop.address = validated.address;
+    if (validated.city !== undefined) shop.city = validated.city;
+    if (validated.ward !== undefined) shop.ward = validated.ward;
+    if (validated.latitude !== undefined) shop.latitude = validated.latitude;
+    if (validated.longitude !== undefined) shop.longitude = validated.longitude;
+    if (validated.imageUrl !== undefined) shop.imageUrl = validated.imageUrl;
+    if (validated.bannerUrl !== undefined) shop.bannerUrl = validated.bannerUrl;
+    if (validated.openingHours !== undefined) shop.openingHours = validated.openingHours;
+    if (validated.status !== undefined) shop.status = validated.status;
 
-    if (phone !== undefined) {
-      const cleanPhone = phone?.trim().replace(/\s+/g, '').replace(/^\+84/, '0');
-      const phoneRegex = /^(0[35789])[0-9]{8}$/;
-      if (!cleanPhone || !phoneRegex.test(cleanPhone)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Số điện thoại không hợp lệ (10 chữ số, bắt đầu bằng 03, 05, 07, 08, 09).',
-        });
-      }
-      shop.phone = cleanPhone;
-    }
-
-    if (address !== undefined) {
-      const trimmedAddress = address ? address.trim() : '';
-      if (trimmedAddress && trimmedAddress.length > 255) {
-        return res.status(400).json({
-          success: false,
-          message: 'Địa chỉ gian hàng không được vượt quá 255 ký tự.',
-        });
-      }
-      shop.address = trimmedAddress;
-    }
-
-    if (city !== undefined) shop.city = city ? city.trim() : '';
-    if (district !== undefined) shop.district = district ? district.trim() : '';
-    if (ward !== undefined) shop.ward = ward ? ward.trim() : '';
-
-    if (latitude !== undefined) {
-      if (latitude === null || latitude === '') {
-        shop.latitude = null;
-      } else {
-        const pLat = Number(latitude);
-        if (isNaN(pLat) || pLat < -90 || pLat > 90) {
-          return res.status(400).json({
-            success: false,
-            message: 'Vĩ độ (Latitude) không hợp lệ (phải từ -90 đến 90).',
-          });
-        }
-        shop.latitude = pLat;
-      }
-    }
-
-    if (longitude !== undefined) {
-      if (longitude === null || longitude === '') {
-        shop.longitude = null;
-      } else {
-        const pLng = Number(longitude);
-        if (isNaN(pLng) || pLng < -180 || pLng > 180) {
-          return res.status(400).json({
-            success: false,
-            message: 'Kinh độ (Longitude) không hợp lệ (phải từ -180 đến 180).',
-          });
-        }
-        shop.longitude = pLng;
-      }
-    }
-
-    if (imageUrl !== undefined) {
-      shop.imageUrl = imageUrl?.trim() || '';
-    }
-
-    if (openingHours !== undefined) {
-      shop.openingHours = openingHours?.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)';
-    }
-
-    if (status !== undefined && ['ACTIVE', 'SUSPENDED'].includes(status)) {
-      shop.status = status;
-    }
-
-    if (managerId !== undefined) {
-      if (!managerId || managerId === 'null' || managerId === 'none') {
+    if (validated.managerId !== undefined && (isOwner || isAdmin)) {
+      if (!validated.managerId) {
         shop.managerId = null;
-      } else if (mongoose.Types.ObjectId.isValid(managerId)) {
-        const mgrUser = await User.findById(managerId);
+      } else {
+        const mgrUser = await User.findById(validated.managerId);
         if (mgrUser) {
           shop.managerId = mgrUser._id;
           if (['customer', 'CUSTOMER'].includes(mgrUser.Role)) {
@@ -627,11 +470,10 @@ export const updateShopInfo = async (req, res) => {
       }
     }
 
-    if (isHQ !== undefined) {
-      const boolHQ = Boolean(isHQ);
-      if (boolHQ) {
+    if (validated.isHQ !== undefined && (isOwner || isAdmin)) {
+      if (validated.isHQ) {
         await Shop.updateMany(
-          { _id: { $ne: shop._id }, ownerId: shop.ownerId, isHQ: true },
+          { _id: { $ne: shop._id }, ownerId: shop.ownerId, isHQ: true, isDeleted: { $ne: true } },
           { $set: { isHQ: false } }
         );
         shop.isHQ = true;
@@ -641,6 +483,14 @@ export const updateShopInfo = async (req, res) => {
     }
 
     await shop.save();
+
+    if (previousManagerId) {
+      const currentManagerId = shop.managerId ? shop.managerId.toString() : null;
+      if (previousManagerId !== currentManagerId) {
+        await checkAndDemoteBranchManager(previousManagerId);
+      }
+    }
+
     await shop.populate('ownerId', 'FullName Email Role Status phone');
     await shop.populate('managerId', 'FullName Email Role Status Information Avatar phone');
 
@@ -650,69 +500,56 @@ export const updateShopInfo = async (req, res) => {
       data: shop,
     });
   } catch (error) {
-    return res.status(500).json({
+    const status = error.statusCode || 500;
+    return res.status(status).json({
       success: false,
       message: error.message || 'Lỗi khi cập nhật thông tin gian hàng.',
     });
   }
 };
 
-// =====================================================================
-// BRANCH MANAGEMENT CONTROLLERS (Single-Brand Multi-Branch Model)
-// =====================================================================
+/**
+ * Demote user to CUSTOMER if they no longer manage any active branches
+ */
+export const checkAndDemoteBranchManager = async (managerId) => {
+  try {
+    if (!managerId || !mongoose.Types.ObjectId.isValid(managerId)) return;
 
+    const remainingCount = await Shop.countDocuments({
+      managerId: managerId,
+      isDeleted: { $ne: true },
+    });
+
+    if (remainingCount === 0) {
+      const user = await User.findById(managerId);
+      if (user && ['branch_manager', 'BRANCH_MANAGER'].includes(user.Role)) {
+        user.Role = 'CUSTOMER';
+        await user.save();
+      }
+    }
+  } catch (err) {
+    console.error('Lỗi khi kiểm tra và hạ cấp Branch Manager:', err);
+  }
+};
+
+/**
+ * Create a new showroom branch in the brand network
+ */
 export const createBranch = async (req, res) => {
   try {
-    const {
-      name,
-      description,
-      phone,
-      address,
-      city,
-      district,
-      ward,
-      latitude,
-      longitude,
-      imageUrl,
-      openingHours,
-      managerId,
-      isHQ = false,
-      ownerId,
-    } = req.body;
+    const validated = validateCreateBranchInput(req.body);
 
-    const trimmedName = name?.trim();
-    if (!trimmedName || trimmedName.length < 3 || trimmedName.length > 100) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tên chi nhánh là bắt buộc và phải từ 3 đến 100 ký tự.',
-      });
+    let resolvedOwnerId = req.user?._id;
+    const userRole = (req.user?.Role || '').toLowerCase();
+    if (['admin'].includes(userRole) && validated.ownerId) {
+      resolvedOwnerId = validated.ownerId;
     }
-
-    const cleanPhone = phone?.trim().replace(/\s+/g, '').replace(/^\+84/, '0');
-    const phoneRegex = /^(0[35789])[0-9]{8}$/;
-    if (!cleanPhone || !phoneRegex.test(cleanPhone)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Số điện thoại hotline chi nhánh không hợp lệ (10 số, đầu 03, 05, 07, 08, 09).',
-      });
-    }
-
-    if (!city || !city.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tỉnh/Thành phố của chi nhánh là bắt buộc.',
-      });
-    }
-
-    // Resolve ownerId
-    let resolvedOwnerId = ownerId && mongoose.Types.ObjectId.isValid(ownerId) ? ownerId : null;
     if (!resolvedOwnerId) {
-      const shopOwner = await User.findOne({ Role: { $in: ['SHOP_OWNER', 'shop_owner', 'OWNER', 'owner'] } });
-      if (shopOwner) {
-        resolvedOwnerId = shopOwner._id;
+      if (validated.ownerId) {
+        resolvedOwnerId = validated.ownerId;
       } else {
-        const adminUser = await User.findOne({ Role: { $in: ['ADMIN', 'admin'] } });
-        if (adminUser) resolvedOwnerId = adminUser._id;
+        const shopOwner = await User.findOne({ Role: { $in: ['SHOP_OWNER', 'shop_owner', 'OWNER', 'owner'] } });
+        if (shopOwner) resolvedOwnerId = shopOwner._id;
       }
     }
 
@@ -723,10 +560,9 @@ export const createBranch = async (req, res) => {
       });
     }
 
-    // Validate and link managerId if provided
     let validManagerId = null;
-    if (managerId && mongoose.Types.ObjectId.isValid(managerId)) {
-      const managerUser = await User.findById(managerId);
+    if (validated.managerId) {
+      const managerUser = await User.findById(validated.managerId);
       if (managerUser) {
         validManagerId = managerUser._id;
         if (['customer', 'CUSTOMER'].includes(managerUser.Role)) {
@@ -736,42 +572,45 @@ export const createBranch = async (req, res) => {
       }
     }
 
-    // Coordinates validation
-    let validLat = null;
-    let validLng = null;
-    if (latitude !== undefined && latitude !== null && latitude !== '') {
-      const pLat = Number(latitude);
-      if (!isNaN(pLat) && pLat >= -90 && pLat <= 90) validLat = pLat;
-    }
-    if (longitude !== undefined && longitude !== null && longitude !== '') {
-      const pLng = Number(longitude);
-      if (!isNaN(pLng) && pLng >= -180 && pLng <= 180) validLng = pLng;
+    let finalImageUrl = validated.imageUrl;
+    if (!finalImageUrl && resolvedOwnerId) {
+      const ownerUser = await User.findById(resolvedOwnerId).select('Avatar').lean();
+      if (ownerUser?.Avatar && typeof ownerUser.Avatar === 'string' && ownerUser.Avatar.trim()) {
+        finalImageUrl = ownerUser.Avatar.trim();
+      } else {
+        finalImageUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(validated.name)}&background=0F172A&color=D97706&size=200`;
+      }
     }
 
-    // If isHQ is true, reset other branches' isHQ
-    if (Boolean(isHQ)) {
-      await Shop.updateMany({ ownerId: resolvedOwnerId, isHQ: true }, { $set: { isHQ: false } });
-    }
+    const defaultShowroomBanner = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80';
+    const finalBanner = validated.bannerUrl || defaultShowroomBanner;
 
     const newBranch = new Shop({
       ownerId: resolvedOwnerId,
       managerId: validManagerId,
-      isHQ: Boolean(isHQ),
-      name: trimmedName,
-      description: description?.trim() || 'Showroom thời trang dạ tiệc và thiết kế cao cấp Vestora.',
-      phone: cleanPhone,
-      address: address?.trim() || '',
-      city: city.trim(),
-      district: district?.trim() || '',
-      ward: ward?.trim() || '',
-      latitude: validLat,
-      longitude: validLng,
-      imageUrl: imageUrl?.trim() || '',
-      openingHours: openingHours?.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
+      isHQ: validated.isHQ,
+      name: validated.name,
+      description: validated.description,
+      phone: validated.phone,
+      address: validated.address,
+      city: validated.city,
+      ward: validated.ward,
+      latitude: validated.latitude,
+      longitude: validated.longitude,
+      imageUrl: finalImageUrl,
+      bannerUrl: finalBanner,
+      openingHours: validated.openingHours,
       status: 'ACTIVE',
     });
 
     await newBranch.save();
+
+    if (validated.isHQ) {
+      await Shop.updateMany(
+        { _id: { $ne: newBranch._id }, ownerId: resolvedOwnerId, isHQ: true, isDeleted: { $ne: true } },
+        { $set: { isHQ: false } }
+      );
+    }
     await newBranch.populate('ownerId', 'FullName Email Role Status phone');
     await newBranch.populate('managerId', 'FullName Email Role Status Information Avatar phone');
 
@@ -781,28 +620,36 @@ export const createBranch = async (req, res) => {
       data: newBranch,
     });
   } catch (error) {
-    return res.status(500).json({
+    const status = error.statusCode || 500;
+    return res.status(status).json({
       success: false,
       message: error.message || 'Lỗi khi khởi tạo chi nhánh mới.',
     });
   }
 };
 
+/**
+ * Soft-delete a showroom branch from the brand network
+ */
 export const deleteBranch = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Mã chi nhánh không hợp lệ.',
-      });
-    }
+    validateObjectId(id, 'chi nhánh');
 
-    const branch = await Shop.findById(id);
+    const branch = await Shop.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!branch) {
       return res.status(404).json({
         success: false,
         message: 'Không tìm thấy chi nhánh cần xóa.',
+      });
+    }
+
+    const isOwner = req.user && branch.ownerId && branch.ownerId.toString() === req.user._id.toString();
+    const isAdmin = req.user && ['admin', 'ADMIN'].includes(req.user.Role);
+    if (req.user && !isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền xóa chi nhánh này.',
       });
     }
 
@@ -813,7 +660,10 @@ export const deleteBranch = async (req, res) => {
       });
     }
 
-    const totalBranches = await Shop.countDocuments();
+    const totalBranches = await Shop.countDocuments({
+      ownerId: branch.ownerId,
+      isDeleted: { $ne: true },
+    });
     if (totalBranches <= 1) {
       return res.status(400).json({
         success: false,
@@ -821,7 +671,16 @@ export const deleteBranch = async (req, res) => {
       });
     }
 
-    await Shop.findByIdAndDelete(id);
+    const managerToDemote = branch.managerId ? branch.managerId.toString() : null;
+    branch.isDeleted = true;
+    branch.deletedAt = new Date();
+    branch.status = 'SUSPENDED';
+    branch.managerId = null;
+    await branch.save();
+
+    if (managerToDemote) {
+      await checkAndDemoteBranchManager(managerToDemote);
+    }
 
     return res.json({
       success: true,
@@ -829,13 +688,17 @@ export const deleteBranch = async (req, res) => {
       deletedId: id,
     });
   } catch (error) {
-    return res.status(500).json({
+    const status = error.statusCode || 500;
+    return res.status(status).json({
       success: false,
       message: error.message || 'Lỗi khi xóa chi nhánh.',
     });
   }
 };
 
+/**
+ * Retrieve eligible accounts for Branch Manager appointment
+ */
 export const getBranchManagers = async (req, res) => {
   try {
     const users = await User.find(
@@ -844,6 +707,8 @@ export const getBranchManagers = async (req, res) => {
           $in: [
             'branch_manager',
             'BRANCH_MANAGER',
+            'brandmanager',
+            'BRANDMANAGER',
             'customer',
             'CUSTOMER',
             'warehouse_manager',
@@ -883,12 +748,9 @@ export const getBranchManagers = async (req, res) => {
   }
 };
 
-// =====================================================================
-// BOUNDED IN-MEMORY GEOCODING CACHE (Max 500 entries, 12h TTL)
-// =====================================================================
 const GEO_CACHE = new Map();
 const MAX_GEO_CACHE_SIZE = 500;
-const GEO_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+const GEO_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 const getCachedGeo = (lat, lng) => {
   const key = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
@@ -910,28 +772,13 @@ const setCachedGeo = (lat, lng, data) => {
   GEO_CACHE.set(key, { data, timestamp: Date.now() });
 };
 
+/**
+ * Reverse geocode GPS coordinates to administrative division names
+ */
 export const reverseGeocodeAddress = async (req, res) => {
   try {
-    const { lat, lng, latitude, longitude } = req.query;
-    const targetLat = parseFloat(lat || latitude);
-    const targetLng = parseFloat(lng || longitude);
+    const { targetLat, targetLng } = validateReverseGeocodeQuery(req.query);
 
-    // 1. Strict Boundary & Number Validation
-    if (
-      isNaN(targetLat) ||
-      isNaN(targetLng) ||
-      targetLat < -90 ||
-      targetLat > 90 ||
-      targetLng < -180 ||
-      targetLng > 180
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tọa độ không hợp lệ (Vĩ độ phải từ -90 đến 90, Kinh độ từ -180 đến 180).',
-      });
-    }
-
-    // 2. Check In-Memory Cache first
     const cachedData = getCachedGeo(targetLat, targetLng);
     if (cachedData) {
       return res.json({
@@ -945,7 +792,6 @@ export const reverseGeocodeAddress = async (req, res) => {
       });
     }
 
-    // 3. Engine 1: BigDataCloud (Fast & accurate Vietnamese administrative names)
     try {
       const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${targetLat}&longitude=${targetLng}&localityLanguage=vi`;
       const bdcRes = await fetch(bdcUrl, { signal: AbortSignal.timeout(3500) });
@@ -972,7 +818,6 @@ export const reverseGeocodeAddress = async (req, res) => {
       }
     } catch (_) {}
 
-    // 4. Engine 2: Photon reverse geocoding (OpenStreetMap Komoot)
     try {
       const photonUrl = `https://photon.komoot.io/reverse?lat=${targetLat}&lon=${targetLng}`;
       const photonRes = await fetch(photonUrl, { signal: AbortSignal.timeout(3500) });
@@ -1004,7 +849,6 @@ export const reverseGeocodeAddress = async (req, res) => {
       }
     } catch (_) {}
 
-    // 5. Engine 3: OpenStreetMap Nominatim (Compliant User-Agent & Headers)
     try {
       const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?lat=${targetLat}&lon=${targetLng}&format=json&accept-language=vi`;
       const nomRes = await fetch(nominatimUrl, {
@@ -1040,7 +884,6 @@ export const reverseGeocodeAddress = async (req, res) => {
       }
     } catch (_) {}
 
-    // 6. Graceful Degradation: return raw coordinates
     return res.json({
       success: true,
       source: 'fallback',
@@ -1054,10 +897,106 @@ export const reverseGeocodeAddress = async (req, res) => {
       },
     });
   } catch (err) {
-    return res.status(500).json({
+    const status = err.statusCode || 500;
+    return res.status(status).json({
       success: false,
-      message: 'Lỗi khi giải mã tọa độ địa chỉ GPS: ' + err.message,
+      message: err.message || 'Lỗi khi giải mã tọa độ địa chỉ GPS.',
     });
+  }
+};
+
+/**
+ * Upload and process showroom logo or banner image with Cloudinary and local fallback
+ */
+export const uploadShopImage = async (req, res, next) => {
+  try {
+    const file = req.file;
+    if (!file || !file.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng chọn file hình ảnh hợp lệ (JPG, PNG, WEBP).',
+      });
+    }
+
+    if (file.buffer.length > 10 * 1024 * 1024) {
+      return res.status(413).json({
+        success: false,
+        message: 'Dung lượng ảnh vượt quá giới hạn 10MB.',
+      });
+    }
+
+    const imageType = req.body?.type === 'banner' ? 'banner' : 'avatar';
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+    const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
+    const apiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+
+    if (cloudName && apiKey && apiSecret) {
+      try {
+        cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret, secure: true });
+
+        let processedBuffer = file.buffer;
+        try {
+          if (imageType === 'avatar') {
+            processedBuffer = await sharp(file.buffer).rotate().resize(512, 512, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
+          } else {
+            processedBuffer = await sharp(file.buffer).rotate().resize(1920, 1080, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+          }
+        } catch {
+          processedBuffer = file.buffer;
+        }
+
+        const b64 = Buffer.from(processedBuffer).toString('base64');
+        const dataUri = `data:image/webp;base64,${b64}`;
+        const uploadRes = await cloudinary.uploader.upload(dataUri, {
+          folder: `vestora/shops/${imageType}`,
+          public_id: `${Date.now()}-${crypto.randomUUID()}`,
+          resource_type: 'image',
+        });
+
+        return res.status(200).json({
+          success: true,
+          url: uploadRes.secure_url,
+          message: 'Tải ảnh lên Cloudinary thành công!',
+        });
+      } catch (cloudErr) {
+        console.warn('Cloudinary upload warning, falling back to local static storage:', cloudErr.message);
+      }
+    }
+
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'shops');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const uniqueId = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+    const filename = `${imageType}-${uniqueId}.webp`;
+    const filepath = path.join(uploadsDir, filename);
+
+    let processedBuffer;
+    try {
+      if (imageType === 'avatar') {
+        processedBuffer = await sharp(file.buffer).rotate().resize(512, 512, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
+      } else {
+        processedBuffer = await sharp(file.buffer).rotate().resize(1920, 1080, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+      }
+    } catch {
+      processedBuffer = file.buffer;
+    }
+
+    fs.writeFileSync(filepath, processedBuffer);
+
+    const host = req.get('host');
+    const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+    const fileUrl = `${protocol}://${host}/uploads/shops/${filename}`;
+
+    return res.status(200).json({
+      success: true,
+      url: fileUrl,
+      message: 'Tải ảnh từ thiết bị thành công!',
+    });
+  } catch (error) {
+    next(error);
   }
 };
 

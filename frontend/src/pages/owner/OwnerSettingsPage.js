@@ -10,11 +10,14 @@ import {
 import OwnerSidebar from '../../components/OwnerSidebar';
 import BranchSidebar from '../../components/BranchSidebar';
 import LeafletMapPicker from '../../components/LeafletMapPicker';
+import OpeningHoursInput, { parseOpeningHours, DAY_OPTIONS } from '../../components/OpeningHoursInput';
+import ImageLightboxModal from '../../components/ImageLightboxModal';
 import { useAuth } from '../../context/AuthContext';
 import {
   getMyShopApi,
   updateShopInfoApi,
   reverseGeocodeApi,
+  uploadShopImageApi,
 } from '../../services/shopApi';
 import '../../styles/ShopDashboard.css';
 import '../../styles/ShopBranches.css';
@@ -97,51 +100,6 @@ const getProvinceCoords = (name) => {
   return null;
 };
 
-const DAY_OPTIONS = [
-  'Thứ 2',
-  'Thứ 3',
-  'Thứ 4',
-  'Thứ 5',
-  'Thứ 6',
-  'Thứ 7',
-  'Chủ Nhật',
-];
-
-const parseOpeningHours = (hoursStr) => {
-  const defaultVal = {
-    fromTime: '09:00',
-    toTime: '21:30',
-    fromDay: 'Thứ 2',
-    toDay: 'Chủ Nhật',
-  };
-  if (!hoursStr) return defaultVal;
-
-  const timeMatch = hoursStr.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-  if (timeMatch) {
-    defaultVal.fromTime = timeMatch[1].padStart(5, '0');
-    defaultVal.toTime = timeMatch[2].padStart(5, '0');
-  }
-
-  const daysMatch = hoursStr.match(/\((.*?)\)/);
-  if (daysMatch) {
-    const parts = daysMatch[1].split('-').map((s) => s.trim());
-    if (parts.length === 2) {
-      if (DAY_OPTIONS.includes(parts[0])) defaultVal.fromDay = parts[0];
-      if (DAY_OPTIONS.includes(parts[1])) defaultVal.toDay = parts[1];
-    } else if (parts.length === 1 && DAY_OPTIONS.includes(parts[0])) {
-      defaultVal.fromDay = parts[0];
-      defaultVal.toDay = parts[0];
-    }
-  }
-
-  return defaultVal;
-};
-
-const formatOpeningHours = (fTime, tTime, fDay, tDay) => {
-  const dayStr = fDay === tDay ? fDay : `${fDay} - ${tDay}`;
-  return `${fTime || '09:00'} - ${tTime || '21:30'} (${dayStr})`;
-};
-
 export default function OwnerSettingsPage() {
   const { user } = useAuth();
   const formRef = useRef(null);
@@ -152,38 +110,21 @@ export default function OwnerSettingsPage() {
   const [isLocating, setIsLocating] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Form state
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     phone: '',
     address: '',
     city: '',
-    district: '',
     ward: '',
     latitude: '',
     longitude: '',
+    bannerUrl: '',
     imageUrl: '',
     openingHours: '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
     isOpen: true,
   });
 
-  // 4 ô thời gian mở cửa: 2 ô time (từ - đến) & 2 ô thứ dropdown (từ - đến)
-  const [fromTime, setFromTime] = useState('09:00');
-  const [toTime, setToTime] = useState('21:30');
-  const [fromDay, setFromDay] = useState('Thứ 2');
-  const [toDay, setToDay] = useState('Chủ Nhật');
-
-  const handleTimeChange = (newFromTime, newToTime, newFromDay, newToDay) => {
-    setFromTime(newFromTime);
-    setToTime(newToTime);
-    setFromDay(newFromDay);
-    setToDay(newToDay);
-    const formatted = formatOpeningHours(newFromTime, newToTime, newFromDay, newToDay);
-    setFormData((prev) => ({ ...prev, openingHours: formatted }));
-  };
-
-  // Administrative Divisions API state (open-api.vn v2)
   const [provinces, setProvinces] = useState(FALLBACK_PROVINCES);
   const [selectedProvCode, setSelectedProvCode] = useState('');
   const [wards, setWards] = useState([]);
@@ -197,7 +138,59 @@ export default function OwnerSettingsPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // 1. Tải danh mục 34 Tỉnh / Thành phố từ API open-api.vn v2
+  const avatarFileRef = useRef(null);
+  const bannerFileRef = useRef(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState(null);
+
+  const handleUploadImageFile = async (e, imageType) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Vui lòng chọn tệp định dạng hình ảnh (PNG, JPG, WEBP, JPEG).', 'warning');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Dung lượng ảnh không được vượt quá 10MB.', 'warning');
+      return;
+    }
+
+    const localPreviewUrl = URL.createObjectURL(file);
+    if (imageType === 'avatar') {
+      setFormData((prev) => ({ ...prev, imageUrl: localPreviewUrl }));
+      setUploadingAvatar(true);
+    } else {
+      setFormData((prev) => ({ ...prev, bannerUrl: localPreviewUrl }));
+      setUploadingBanner(true);
+    }
+
+    try {
+      const res = await uploadShopImageApi(file, imageType);
+      if (res && res.success && res.url) {
+        if (imageType === 'avatar') {
+          setFormData((prev) => ({ ...prev, imageUrl: res.url }));
+        } else {
+          setFormData((prev) => ({ ...prev, bannerUrl: res.url }));
+        }
+        showToast(`Đã tải lên ảnh ${imageType === 'avatar' ? 'đại diện' : 'bìa'} thành công!`, 'success');
+      } else {
+        throw new Error(res?.message || 'Không thể tải ảnh lên');
+      }
+    } catch (err) {
+      showToast('Lỗi khi tải ảnh từ thiết bị: ' + (err.message || 'Lỗi mạng'), 'warning');
+    } finally {
+      if (imageType === 'avatar') {
+        setUploadingAvatar(false);
+        if (avatarFileRef.current) avatarFileRef.current.value = '';
+      } else {
+        setUploadingBanner(false);
+        if (bannerFileRef.current) bannerFileRef.current.value = '';
+      }
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     setLoadingProvinces(true);
@@ -220,7 +213,9 @@ export default function OwnerSettingsPage() {
     };
   }, []);
 
-  // 2. Tải thông tin gian hàng thật từ MongoDB của Shop Owner hiện tại
+  /**
+   * Fetch current user's shop profile from database
+   */
   const fetchMyShop = useCallback(async () => {
     try {
       setLoading(true);
@@ -235,20 +230,14 @@ export default function OwnerSettingsPage() {
           phone: s.phone || '',
           address: s.address || '',
           city: s.city || '',
-          district: '',
           ward: s.ward || '',
           latitude: s.latitude != null ? String(s.latitude) : '',
           longitude: s.longitude != null ? String(s.longitude) : '',
-          imageUrl: s.imageUrl || '',
+          bannerUrl: s.bannerUrl || '',
+          imageUrl: s.imageUrl || s.avatarUrl || '',
           openingHours: s.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
           isOpen: s.status === 'ACTIVE',
         });
-
-        const parsedHours = parseOpeningHours(s.openingHours);
-        setFromTime(parsedHours.fromTime);
-        setToTime(parsedHours.toTime);
-        setFromDay(parsedHours.fromDay);
-        setToDay(parsedHours.toDay);
       } else {
         showToast('Chưa tìm thấy hồ sơ gian hàng liên kết với tài khoản này.', 'warning');
       }
@@ -263,7 +252,6 @@ export default function OwnerSettingsPage() {
     fetchMyShop();
   }, [fetchMyShop]);
 
-  // 3. Khớp Tỉnh/Thành & Phường/Xã từ thông tin gian hàng vào dropdown hành chính
   useEffect(() => {
     if (!provinces.length || !formData.city) return;
 
@@ -277,7 +265,6 @@ export default function OwnerSettingsPage() {
       setSelectedProvCode(String(matchedProv.code));
       loadWardsForProvince(matchedProv.code, formData.ward);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provinces, shop]);
 
   const loadWardsForProvince = async (provCode, initialWardName = '') => {
@@ -336,9 +323,9 @@ export default function OwnerSettingsPage() {
       ward: '',
       ...((!prev.latitude || !prev.longitude) && fallbackCoords
         ? {
-            latitude: fallbackCoords.lat.toFixed(6),
-            longitude: fallbackCoords.lng.toFixed(6),
-          }
+          latitude: fallbackCoords.lat.toFixed(6),
+          longitude: fallbackCoords.lng.toFixed(6),
+        }
         : {}),
     }));
 
@@ -431,9 +418,10 @@ export default function OwnerSettingsPage() {
     }
   };
 
-  // 4. LẤY GPS THIẾT BỊ VÀ TỰ ĐỘNG FILL TỈNH / THÀNH & PHƯỜNG / XÃ (Có Fallback Lớp 1)
+  /**
+   * Retrieve device geolocation and resolve administrative divisions
+   */
   const handleGetDeviceLocation = () => {
-    // HTTPS Guard: Trình duyệt chặn Geolocation trên mạng LAN HTTP
     if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
       const fallback = getProvinceCoords(formData.city) || PROVINCE_DEFAULT_COORDS['Hồ Chí Minh'];
       setFormData((prev) => ({
@@ -464,20 +452,17 @@ export default function OwnerSettingsPage() {
           const latFixed = latitude.toFixed(6);
           const lngFixed = longitude.toFixed(6);
 
-          // 1. Fill ngay tọa độ GPS vào form
           setFormData((prev) => ({
             ...prev,
             latitude: latFixed,
             longitude: lngFixed,
           }));
 
-          // 2. Reverse geocoding để xác định Tỉnh/Thành & Phường/Xã
           try {
             const geoRes = await reverseGeocodeApi(latitude, longitude);
             if (geoRes?.success && geoRes.data) {
               const { city: geoCity, ward: geoWard } = geoRes.data;
 
-              // Đối soát và tự động fill Tỉnh/Thành
               if (geoCity && provinces.length > 0) {
                 const cleanCityTarget = cleanName(geoCity);
                 const matchedProv = provinces.find((p) => {
@@ -492,7 +477,6 @@ export default function OwnerSettingsPage() {
                     city: matchedProv.name,
                   }));
 
-                  // Tải và đối soát danh sách Phường/Xã
                   const resWards = await fetch(`https://provinces.open-api.vn/api/v2/p/${matchedProv.code}?depth=2`);
                   const dataWards = await resWards.json();
                   const wardList = dataWards?.wards || [];
@@ -554,9 +538,21 @@ export default function OwnerSettingsPage() {
     );
   };
 
-  // 5. Lưu toàn bộ thông tin & địa chỉ vào cơ sở dữ liệu MongoDB
+  /**
+   * Persist updated showroom profile and address data
+   */
   const handleSubmit = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+
+    if (uploadingAvatar || uploadingBanner) {
+      showToast('Đang tải ảnh lên hệ thống, vui lòng chờ trong giây lát...', 'warning');
+      return;
+    }
+
+    if (formData.imageUrl?.startsWith('blob:') || formData.bannerUrl?.startsWith('blob:')) {
+      showToast('Ảnh đang trong quá trình tải lên máy chủ, vui lòng đợi hoàn tất.', 'warning');
+      return;
+    }
 
     if (!shop?._id) {
       showToast('Không tìm thấy mã gian hàng để lưu.', 'warning');
@@ -578,6 +574,20 @@ export default function OwnerSettingsPage() {
       return;
     }
 
+    if (formData.openingHours) {
+      const parsedHours = parseOpeningHours(formData.openingHours);
+      if (parsedHours.fromTime && parsedHours.toTime && parsedHours.toTime <= parsedHours.fromTime) {
+        showToast('Giờ đóng cửa phải sau giờ mở cửa.', 'warning');
+        return;
+      }
+      const fromIdx = DAY_OPTIONS.indexOf(parsedHours.fromDay);
+      const toIdx = DAY_OPTIONS.indexOf(parsedHours.toDay);
+      if (fromIdx !== -1 && toIdx !== -1 && toIdx < fromIdx) {
+        showToast(`Thứ kết thúc (${parsedHours.toDay}) phải sau hoặc cùng Thứ bắt đầu (${parsedHours.fromDay}) trong tuần.`, 'warning');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -586,11 +596,11 @@ export default function OwnerSettingsPage() {
         phone: formData.phone.trim(),
         address: formData.address.trim(),
         city: formData.city.trim(),
-        district: '',
         ward: formData.ward.trim(),
         latitude: formData.latitude !== '' ? Number(formData.latitude) : null,
         longitude: formData.longitude !== '' ? Number(formData.longitude) : null,
-        imageUrl: formData.imageUrl.trim(),
+        imageUrl: (formData.imageUrl || '').trim(),
+        bannerUrl: (formData.bannerUrl || '').trim(),
         openingHours: formData.openingHours.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
         status: formData.isOpen ? 'ACTIVE' : 'SUSPENDED',
       };
@@ -609,6 +619,9 @@ export default function OwnerSettingsPage() {
     }
   };
 
+  /**
+   * Reset form fields to previously saved shop data
+   */
   const handleReset = () => {
     if (shop) {
       setFormData({
@@ -617,7 +630,6 @@ export default function OwnerSettingsPage() {
         phone: shop.phone || '',
         address: shop.address || '',
         city: shop.city || '',
-        district: '',
         ward: shop.ward || '',
         latitude: shop.latitude != null ? String(shop.latitude) : '',
         longitude: shop.longitude != null ? String(shop.longitude) : '',
@@ -625,12 +637,6 @@ export default function OwnerSettingsPage() {
         openingHours: shop.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
         isOpen: shop.status === 'ACTIVE',
       });
-
-      const parsedHours = parseOpeningHours(shop.openingHours);
-      setFromTime(parsedHours.fromTime);
-      setToTime(parsedHours.toTime);
-      setFromDay(parsedHours.fromDay);
-      setToDay(parsedHours.toDay);
       showToast('Đã hoàn tác các thay đổi chưa lưu.', 'info');
     }
   };
@@ -640,13 +646,10 @@ export default function OwnerSettingsPage() {
 
   return (
     <div className="shop-dashboard-layout">
-      {/* Sidebar Navigation */}
       {isBranchManager ? <BranchSidebar /> : <OwnerSidebar />}
 
-      {/* Main Content Area */}
       <main className="shop-main-content">
         <div className="store-mgmt-container">
-          {/* Breadcrumb Navigation */}
           <div className="store-mgmt-breadcrumb">
             {isBranchManager ? (
               <>
@@ -665,7 +668,6 @@ export default function OwnerSettingsPage() {
             )}
           </div>
 
-          {/* Top Header */}
           <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
             <div>
               <h1 className="store-mgmt-title">
@@ -692,13 +694,9 @@ export default function OwnerSettingsPage() {
             </div>
           ) : (
             <Form onSubmit={handleSubmit} ref={formRef}>
-              <Row className="g-4">
-                {/* ========================================================
-                    CỘT TRÁI (COL 6): THÔNG TIN GIAN HÀNG & ĐỊA CHỈ HÀNH CHÍNH
-                    ======================================================== */}
+              <Row className="g-4 g-xl-5">
                 <Col lg={6}>
-                  {/* Card 1: Thông tin thương hiệu & Vận hành */}
-                  <div className="store-edit-panel mb-4">
+                  <div className="store-edit-panel mb-5">
                     <div className="d-flex align-items-center justify-content-between pb-3 border-bottom mb-3 flex-wrap gap-2">
                       <div>
                         <h5 className="fw-bold mb-1" style={{ fontSize: '16px', color: '#171717' }}>
@@ -709,7 +707,6 @@ export default function OwnerSettingsPage() {
                         </div>
                       </div>
 
-                      {/* Trạng thái hoạt động switch */}
                       <div className="d-flex align-items-center gap-2">
                         <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#059669' : '#D97706' }}>
                           ● {isActive ? 'ĐANG MỞ CỬA' : 'TẠM DỪNG'}
@@ -724,29 +721,231 @@ export default function OwnerSettingsPage() {
                       </div>
                     </div>
 
-                    {/* Logo/Ảnh đại diện & Tên gian hàng */}
-                    <div className="d-flex align-items-center gap-3 mb-3 p-3 rounded" style={{ background: '#FAF9F6', border: '1px solid #ECE7DD' }}>
-                      <img
-                        src={formData.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'Shop')}&background=18181B&color=F59E0B&size=100`}
-                        alt={formData.name}
-                        style={{ width: '56px', height: '56px', borderRadius: '12px', objectFit: 'cover', border: '2px solid #D97706', flexShrink: 0 }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <Form.Label className="small fw-semibold mb-1" style={{ fontSize: '11px', textTransform: 'uppercase', color: '#6B7280', letterSpacing: '0.5px' }}>
-                          LINK ẢNH ĐẠI DIỆN GIAN HÀNG
-                        </Form.Label>
-                        <Form.Control
-                          type="url"
-                          placeholder="https://... (URL ảnh đại diện)"
-                          value={formData.imageUrl}
-                          onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                          style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 12px' }}
-                        />
+                    <div className="p-4 rounded mb-4" style={{ background: '#FAF9F6', border: '1px solid #ECE7DD' }}>
+                      <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                        <div className="fw-bold text-dark" style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <polyline points="21 15 16 10 5 21" />
+                          </svg>
+                          <span>Hình Ảnh Nhận Diện Showroom & Cửa Hàng</span>
+                        </div>
+                        <span className="text-muted" style={{ fontSize: '11px' }}>
+                          Hỗ trợ cả ảnh ngang (16:9) và ảnh dọc điện thoại (9:16)
+                        </span>
                       </div>
+
+                      <input
+                        type="file"
+                        ref={bannerFileRef}
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleUploadImageFile(e, 'banner')}
+                      />
+                      <input
+                        type="file"
+                        ref={avatarFileRef}
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleUploadImageFile(e, 'avatar')}
+                      />
+
+                      <div
+                        onClick={() => {
+                          if (uploadingAvatar || uploadingBanner) return;
+                          if (formData.bannerUrl && !formData.bannerUrl.startsWith('blob:')) {
+                            setLightboxImage({
+                              url: formData.bannerUrl,
+                              title: `${formData.name || 'Gian Hàng'} — Ảnh Bìa Showroom (Kích Thước Gốc)`,
+                            });
+                          }
+                        }}
+                        style={{
+                          position: 'relative',
+                          width: '100%',
+                          height: '190px',
+                          borderRadius: '12px',
+                          overflow: 'hidden',
+                          background: '#0F172A',
+                          marginBottom: '12px',
+                          border: '1px solid #CBD5E1',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                          cursor: formData.bannerUrl ? 'pointer' : 'default',
+                        }}
+                        title={formData.bannerUrl ? 'Click vào ảnh để xem 100% kích thước ảnh thật' : ''}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: '-15px',
+                            backgroundImage: `url(${formData.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            filter: 'blur(16px) brightness(0.65)',
+                            transform: 'scale(1.1)',
+                          }}
+                        />
+                        <img
+                          src={formData.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'}
+                          alt="Banner Preview"
+                          onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'; }}
+                          style={{
+                            position: 'relative',
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            objectPosition: 'center 20%',
+                            filter: 'brightness(0.95)',
+                          }}
+                        />
+                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,23,42,0.7) 0%, transparent 60%)', pointerEvents: 'none' }} />
+
+                        {formData.bannerUrl && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: '10px',
+                              left: '10px',
+                              zIndex: 2,
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              background: 'rgba(15, 23, 42, 0.75)',
+                              backdropFilter: 'blur(6px)',
+                              color: '#FFF',
+                              borderRadius: '6px',
+                              padding: '3px 8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            <span>🔍 Click xem ảnh thật</span>
+                          </div>
+                        )}
+
+                        <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 3 }} onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            type="button"
+                            variant="light"
+                            size="sm"
+                            disabled={uploadingBanner}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              bannerFileRef.current && bannerFileRef.current.click();
+                            }}
+                            style={{
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              borderRadius: '8px',
+                              padding: '5px 12px',
+                              background: 'rgba(255, 255, 255, 0.95)',
+                              backdropFilter: 'blur(6px)',
+                              color: '#0F172A',
+                              border: '1px solid rgba(255,255,255,0.8)',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                            }}
+                          >
+                            {uploadingBanner ? <Spinner size="sm" animation="border" /> : '📷 Đổi Ảnh Bìa Từ Thiết Bị'}
+                          </Button>
+                        </div>
+
+                        <div style={{ position: 'absolute', bottom: '12px', left: '14px', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 3 }}>
+                          <div style={{ position: 'relative' }}>
+                            <img
+                              src={formData.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'Shop')}&background=0F172A&color=D97706&size=120`}
+                              alt="Avatar Preview"
+                              onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'Shop')}&background=0F172A&color=D97706&size=120`; }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (uploadingAvatar || uploadingBanner) return;
+                                if (formData.imageUrl && !formData.imageUrl.startsWith('blob:')) {
+                                  setLightboxImage({
+                                    url: formData.imageUrl,
+                                    title: `${formData.name || 'Gian Hàng'} — Logo Đại Diện (Kích Thước Gốc)`,
+                                  });
+                                }
+                              }}
+                              title="Click để phóng to xem logo"
+                              style={{
+                                width: '52px',
+                                height: '52px',
+                                borderRadius: '12px',
+                                objectFit: 'cover',
+                                border: '2.5px solid #FFFFFF',
+                                boxShadow: '0 4px 10px rgba(0,0,0,0.25)',
+                                background: '#0F172A',
+                                cursor: formData.imageUrl ? 'pointer' : 'default',
+                              }}
+                            />
+                            {uploadingAvatar && (
+                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Spinner size="sm" animation="border" variant="light" />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div style={{ color: '#FFF', fontWeight: 700, fontSize: '13px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                              {formData.name || 'Gian Hàng Showroom'}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={uploadingAvatar}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                avatarFileRef.current && avatarFileRef.current.click();
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#FDE68A',
+                                padding: 0,
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                textDecoration: 'underline',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {uploadingAvatar ? 'Đang tải lên...' : '📁 Đổi logo / avatar (1:1)'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <Row className="g-3">
+                        <Col md={6}>
+                          <Form.Group>
+                            <Form.Label style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase' }}>
+                              URL Logo / Avatar (1:1)
+                            </Form.Label>
+                            <Form.Control
+                              type="url"
+                              placeholder="Hoặc dán URL ảnh đại diện..."
+                              value={formData.imageUrl}
+                              onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                              style={{ fontSize: '12.5px', borderRadius: '8px', padding: '7px 12px' }}
+                            />
+                          </Form.Group>
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group>
+                            <Form.Label style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase' }}>
+                              URL Ảnh Bìa Showroom (Banner)
+                            </Form.Label>
+                            <Form.Control
+                              type="url"
+                              placeholder="Hoặc dán URL ảnh bìa showroom..."
+                              value={formData.bannerUrl}
+                              onChange={(e) => setFormData({ ...formData, bannerUrl: e.target.value })}
+                              style={{ fontSize: '12.5px', borderRadius: '8px', padding: '7px 12px' }}
+                            />
+                          </Form.Group>
+                        </Col>
+                      </Row>
                     </div>
 
-                    <Row className="g-3 mb-3">
-                      {/* Tên gian hàng */}
+                    <Row className="g-4 mb-4">
                       <Col sm={7}>
                         <Form.Group>
                           <Form.Label className="small fw-semibold mb-1">
@@ -763,7 +962,6 @@ export default function OwnerSettingsPage() {
                         </Form.Group>
                       </Col>
 
-                      {/* Hotline liên hệ */}
                       <Col sm={5}>
                         <Form.Group>
                           <Form.Label className="small fw-semibold mb-1">
@@ -781,74 +979,13 @@ export default function OwnerSettingsPage() {
                       </Col>
                     </Row>
 
-                    {/* Thời gian mở cửa */}
-                    <Form.Group className="mb-3">
-                      <Form.Label className="small fw-semibold mb-1">
-                        THỜI GIAN MỞ CỬA <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Row className="g-2">
-                        <Col sm={6}>
-                          <div className="d-flex align-items-center gap-2">
-                            <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>TỪ GIỜ</div>
-                              <Form.Control
-                                type="time"
-                                required
-                                value={fromTime}
-                                onChange={(e) => handleTimeChange(e.target.value, toTime, fromDay, toDay)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
-                                title="Giờ mở cửa"
-                              />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>ĐẾN GIỜ</div>
-                              <Form.Control
-                                type="time"
-                                required
-                                value={toTime}
-                                onChange={(e) => handleTimeChange(fromTime, e.target.value, fromDay, toDay)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
-                                title="Giờ đóng cửa"
-                              />
-                            </div>
-                          </div>
-                        </Col>
+                    <div className="mb-4">
+                      <OpeningHoursInput
+                        value={formData.openingHours}
+                        onChange={(val) => setFormData((prev) => ({ ...prev, openingHours: val }))}
+                      />
+                    </div>
 
-                        <Col sm={6}>
-                          <div className="d-flex align-items-center gap-2">
-                            <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>TỪ THỨ</div>
-                              <Form.Select
-                                value={fromDay}
-                                onChange={(e) => handleTimeChange(fromTime, toTime, e.target.value, toDay)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
-                              >
-                                {DAY_OPTIONS.map((d) => (
-                                  <option key={d} value={d}>{d}</option>
-                                ))}
-                              </Form.Select>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div className="text-muted mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>ĐẾN THỨ</div>
-                              <Form.Select
-                                value={toDay}
-                                onChange={(e) => handleTimeChange(fromTime, toTime, fromDay, e.target.value)}
-                                style={{ fontSize: '13px', borderRadius: '8px', padding: '7px 10px' }}
-                              >
-                                {DAY_OPTIONS.map((d) => (
-                                  <option key={d} value={d}>{d}</option>
-                                ))}
-                              </Form.Select>
-                            </div>
-                          </div>
-                        </Col>
-                      </Row>
-                      <div className="text-muted mt-1" style={{ fontSize: '11.5px' }}>
-                        Hiển thị trên hồ sơ: <span className="fw-semibold text-dark">{formData.openingHours}</span>
-                      </div>
-                    </Form.Group>
-
-                    {/* Mô tả phong cách gian hàng */}
                     <Form.Group className="mb-0">
                       <Form.Label className="small fw-semibold mb-1">
                         MÔ TẢ GIỚI THIỆU GIAN HÀNG <span className="text-danger">*</span>
@@ -865,7 +1002,6 @@ export default function OwnerSettingsPage() {
                     </Form.Group>
                   </div>
 
-                  {/* Card 2: Địa chỉ hành chính */}
                   <div className="store-edit-panel">
                     <div className="pb-2 border-bottom mb-3">
                       <h5 className="fw-bold mb-1" style={{ fontSize: '16px', color: '#171717' }}>
@@ -876,8 +1012,7 @@ export default function OwnerSettingsPage() {
                       </div>
                     </div>
 
-                    {/* Tỉnh/Thành phố & Phường/Xã */}
-                    <Row className="g-3 mb-3">
+                    <Row className="g-4 mb-4">
                       <Col sm={6}>
                         <Form.Group>
                           <Form.Label className="small fw-semibold mb-1">
@@ -923,7 +1058,6 @@ export default function OwnerSettingsPage() {
                       </Col>
                     </Row>
 
-                    {/* Địa chỉ chi tiết */}
                     <Form.Group className="mb-0">
                       <Form.Label className="small fw-semibold mb-1">
                         ĐỊA CHỈ CHI TIẾT (SỐ NHÀ, TÊN ĐƯỜNG)
@@ -939,9 +1073,6 @@ export default function OwnerSettingsPage() {
                   </div>
                 </Col>
 
-                {/* ========================================================
-                    CỘT PHẢI (COL 6): TỌA ĐỘ VÀ BẢN ĐỒ VỊ TRÍ SHOWROOM
-                    ======================================================== */}
                 <Col lg={6}>
                   <div className="store-edit-panel h-100 d-flex flex-column">
                     <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 pb-2 border-bottom mb-3">
@@ -983,18 +1114,16 @@ export default function OwnerSettingsPage() {
                       </Button>
                     </div>
 
-                    {/* Interactive Leaflet Map - Rộng rãi, chiều cao 380px */}
-                    <div className="mb-3 flex-grow-1" style={{ minHeight: '380px' }}>
+                    <div className="mb-3 flex-grow-1" style={{ minHeight: '420px' }}>
                       <LeafletMapPicker
                         latitude={formData.latitude}
                         longitude={formData.longitude}
                         onChange={handleMapLocationChange}
                         label={formData.name ? `${formData.name} - VỊ TRÍ SHOWROOM` : 'VỊ TRÍ SHOWROOM'}
-                        height="380px"
+                        height="420px"
                       />
                     </div>
 
-                    {/* Bar trạng thái tọa độ & Sync button */}
                     <div className="d-flex align-items-center justify-content-between p-2 rounded mb-3 flex-wrap gap-2" style={{ background: '#FAF9F6', border: '1px solid #ECE7DD' }}>
                       <div className="d-flex align-items-center gap-2">
                         <span style={{ fontSize: '14px' }}>📍</span>
@@ -1021,7 +1150,6 @@ export default function OwnerSettingsPage() {
                       </Button>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="d-flex align-items-center justify-content-end gap-2 pt-3 border-top mt-auto">
                       <Button
                         type="button"
@@ -1035,13 +1163,18 @@ export default function OwnerSettingsPage() {
                       <Button
                         type="submit"
                         variant="dark"
-                        disabled={saving || !shop}
+                        disabled={saving || uploadingAvatar || uploadingBanner || !shop}
                         style={{ fontSize: '13px', fontWeight: 600, borderRadius: '8px', padding: '9px 24px', minWidth: '150px' }}
                       >
                         {saving ? (
                           <>
                             <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
                             Đang lưu...
+                          </>
+                        ) : uploadingAvatar || uploadingBanner ? (
+                          <>
+                            <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
+                            Đang tải ảnh lên...
                           </>
                         ) : (
                           '💾 LƯU THAY ĐỔI'
@@ -1056,13 +1189,18 @@ export default function OwnerSettingsPage() {
         </div>
       </main>
 
-      {/* Floating Luxury Toast */}
       {toast && (
         <div className={`store-floating-toast ${toast.type}`}>
           <span>{toast.type === 'success' ? '✓' : '⚠️'}</span>
           <span>{toast.message}</span>
         </div>
       )}
+      <ImageLightboxModal
+        show={Boolean(lightboxImage)}
+        onHide={() => setLightboxImage(null)}
+        imageUrl={lightboxImage?.url}
+        title={lightboxImage?.title}
+      />
     </div>
   );
 }

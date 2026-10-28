@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import '../styles/OpsShops.css';
 
@@ -34,7 +34,7 @@ export default function OwnerTopHeader({ onToggleSidebar, breadcrumb }) {
   };
 
   const staffName = user?.FullName || user?.fullName || 'Chủ Chuỗi VESTORA';
-  const staffRole = 'Shop Owner / CEO';
+  const staffRole = 'Shop Owner';
   const initial = staffName.charAt(0).toUpperCase();
 
   return (
@@ -46,7 +46,7 @@ export default function OwnerTopHeader({ onToggleSidebar, breadcrumb }) {
             className="admin-sidebar-collapse-toggle"
             onClick={onToggleSidebar}
             title="Đóng / Mở Menu Sidebar"
-            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4 }}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="3" y1="12" x2="21" y2="12" />
@@ -56,16 +56,9 @@ export default function OwnerTopHeader({ onToggleSidebar, breadcrumb }) {
           </button>
         )}
 
-        <Link to="/ops/shops" className="ops-topbar__brand-name">
-          VESTORA
-        </Link>
-        <span className="ops-topbar__brand-tag">
-          Operations Console
-        </span>
-
         {breadcrumb && (
-          <span style={{ fontSize: '13px', color: '#737373', marginLeft: '6px' }}>
-            / {breadcrumb}
+          <span style={{ fontSize: '13px', color: '#64748B', fontWeight: 500, marginLeft: onToggleSidebar ? '8px' : 0 }}>
+            {breadcrumb}
           </span>
         )}
       </div>
@@ -132,7 +125,12 @@ export default function OwnerTopHeader({ onToggleSidebar, breadcrumb }) {
                   gap: '8px',
                 }}
               >
-                <span>🚪</span> Đăng xuất
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span>Đăng xuất</span>
               </button>
             </div>
           )}

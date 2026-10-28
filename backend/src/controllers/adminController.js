@@ -1,7 +1,9 @@
 import { Shop } from '../models/Shop.js';
 import { User } from '../models/User.js';
 
-// UC-64: View Chain-wide Statistics and Reports
+/**
+ * View chain-wide statistics and analytical metrics
+ */
 export const getAdminMetrics = async (req, res) => {
   try {
     const [userFacet, branchFacet] = await Promise.all([
@@ -14,6 +16,7 @@ export const getAdminMetrics = async (req, res) => {
         },
       ]),
       Shop.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
         {
           $facet: {
             total: [{ $count: 'count' }],
@@ -64,10 +67,11 @@ export const getAdminMetrics = async (req, res) => {
   }
 };
 
-// UC-17: Review Internal Product Listings (Danh sách mẫu trang phục nội bộ cần kiểm duyệt)
+/**
+ * Retrieve internal product listings pending moderation
+ */
 export const getPendingModeration = async (req, res) => {
   try {
-    // Trả về danh sách mẫu trang phục nội bộ cần kiểm duyệt trước khi niêm yết lên catalog
     res.json({
       success: true,
       count: 0,

@@ -1,4 +1,7 @@
 import BranchSidebar from './BranchSidebar';
 
-// Re-export for backward compatibility
+/**
+ * Re-export BranchSidebar for backward compatibility
+ */
 export default BranchSidebar;
+

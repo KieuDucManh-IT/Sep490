@@ -4,7 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import '../styles/OpsShops.css';
 import '../styles/AdminDashboard.css';
 
-// Sidebar dành riêng cho Role: Shop Owner / CEO (Quản lý chuỗi & Tài chính)
+/**
+ * OwnerSidebar - Navigation sidebar for Shop Owner role
+ */
 export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -43,7 +45,7 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
             <Link
               to="/owner/dashboard"
               className="admin-shops-sidebar__logo"
-              title="VESTORA Executive Chain"
+              title="VESTORA Shop Owner"
             >
               {isCollapsed ? 'V' : 'VESTORA'}
             </Link>
@@ -64,16 +66,15 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
           {!isCollapsed && (
             <div
               className="admin-shops-sidebar__sub"
-              style={{ color: '#D97706', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              style={{ color: '#D97706', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '11px', textTransform: 'none' }}
             >
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#D97706', display: 'inline-block' }} />
-              SHOP MANAGER (CHỦ CHUỖI)
+              Shop Owner
             </div>
           )}
         </div>
 
         <nav className="admin-shops-sidebar__nav">
-          {/* 1. Tổng Quan Toàn Chuỗi (UC-56, 64) */}
           <Link
             to="/owner/dashboard"
             className={`admin-shops-sidebar__link ${isActive('/owner/dashboard')}`}
@@ -90,7 +91,6 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
             {!isCollapsed && <span>Tổng Quan Chuỗi</span>}
           </Link>
 
-          {/* 2. Mạng Lưới Chi Nhánh & Hồ Sơ (UC-12) */}
           <Link
             to="/owner/branches"
             className={`admin-shops-sidebar__link ${isActive('/owner/branches')}`}
@@ -106,7 +106,6 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
             {!isCollapsed && <span>Quản Lý Chi Nhánh & Hồ Sơ</span>}
           </Link>
 
-          {/* 3. Bảng Giá & Cọc (UC-13) */}
           <Link
             to="/owner/pricing"
             className={`admin-shops-sidebar__link ${isActive('/owner/pricing')}`}
@@ -121,7 +120,6 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
             {!isCollapsed && <span>Bảng Giá & Cọc</span>}
           </Link>
 
-          {/* 4. Báo Cáo Tài Chính & Dòng Tiền (UC-57, 64) */}
           <Link
             to="/owner/analytics"
             className={`admin-shops-sidebar__link ${isActive('/owner/analytics')}`}
@@ -137,7 +135,6 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
             {!isCollapsed && <span>Báo Cáo Tài Chính</span>}
           </Link>
 
-          {/* 5. Giải Quyết Khiếu Nại & Cọc (UC-51, 59) */}
           <Link
             to="/owner/disputes"
             className={`admin-shops-sidebar__link ${isActive('/owner/disputes')}`}

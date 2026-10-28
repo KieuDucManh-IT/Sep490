@@ -2,7 +2,13 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 export async function authMiddleware(req, res, next) {
-  const token = req.cookies?.vestora_token;
+  let token = null;
+  if (typeof req.headers?.authorization === "string" && req.headers.authorization.startsWith("Bearer ")) {
+    token = req.headers.authorization.slice(7).trim();
+  }
+  if (!token) {
+    token = req.cookies?.vestora_token;
+  }
 
   if (!token) {
     return next(
@@ -70,6 +76,23 @@ export async function authMiddleware(req, res, next) {
   } catch (error) {
     return next(error);
   }
+}
+
+export function requireRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Bạn chưa đăng nhập" });
+    }
+    const userRole = (req.user.Role || "").toLowerCase();
+    const normalizedAllowed = allowedRoles.map((r) => r.toLowerCase());
+    if (!normalizedAllowed.includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thực hiện thao tác này",
+      });
+    }
+    return next();
+  };
 }
 
 export function notFound(req, res) {

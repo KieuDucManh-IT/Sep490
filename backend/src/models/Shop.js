@@ -42,7 +42,6 @@ const shopSchema = new mongoose.Schema(
       trim: true,
     },
     city: { type: String, default: '' },
-    district: { type: String, default: '' },
     ward: { type: String, default: '' },
     latitude: {
       type: Number,
@@ -56,39 +55,27 @@ const shopSchema = new mongoose.Schema(
       min: [-180, 'Kinh độ không hợp lệ (-180 đến 180)'],
       max: [180, 'Kinh độ không hợp lệ (-180 đến 180)'],
     },
-    location: {
-      type: {
-        type: String,
-        enum: ['Point'],
-        default: 'Point',
-      },
-      coordinates: {
-        type: [Number], // [longitude, latitude]
-        default: undefined,
-      },
-    },
-    imageUrl: { type: String, default: '' },
+    imageUrl: { type: String, default: '', trim: true },
+    bannerUrl: { type: String, default: '', trim: true },
     openingHours: {
       type: String,
       default: '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
       trim: true,
     },
-    businessLicenseUrl: { type: String, default: '' },
-    idCardFrontUrl: { type: String, default: '' },
-    idCardBackUrl: { type: String, default: '' },
     status: {
       type: String,
       enum: ['ACTIVE', 'SUSPENDED', 'PENDING', 'REJECTED'],
       default: 'ACTIVE',
     },
-    rejectionReason: { type: String, default: '' },
-    notes: { type: String, default: '' },
-    reviewedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
       default: null,
     },
-    reviewedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -98,24 +85,16 @@ shopSchema.index({ managerId: 1 });
 shopSchema.index({ city: 1 });
 shopSchema.index({ status: 1, createdAt: -1 });
 shopSchema.index({ name: 1 });
-shopSchema.index({ location: '2dsphere' }, { sparse: true });
 
-shopSchema.pre('save', function () {
-  if (this.status === 'REJECTED' && !this.rejectionReason?.trim()) {
-    throw new Error('Lý do từ chối là bắt buộc khi từ chối hồ sơ.');
-  }
+shopSchema.set('toJSON', { virtuals: true });
+shopSchema.set('toObject', { virtuals: true });
 
-  // Synchronize GeoJSON location: strictly [longitude, latitude]
-  if (this.latitude != null && this.longitude != null && !isNaN(this.latitude) && !isNaN(this.longitude)) {
-    this.location = {
-      type: 'Point',
-      coordinates: [Number(this.longitude), Number(this.latitude)],
-    };
-  } else {
-    this.location = undefined;
-  }
+/**
+ * Virtual alias for backwards compatibility: avatarUrl -> imageUrl
+ */
+shopSchema.virtual('avatarUrl').get(function () {
+  return this.imageUrl || '';
 });
-
 
 export const Shop = mongoose.models.Shop || mongoose.model('Shop', shopSchema);
 export default Shop;

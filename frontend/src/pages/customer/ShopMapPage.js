@@ -5,6 +5,9 @@ import Footer from '../../components/Footer';
 import { getShopsListApi } from '../../services/shopApi';
 import '../../styles/ShopMap.css';
 
+/**
+ * ShopMapPage - Interactive map finding nearby branches and showrooms
+ */
 export default function ShopMapPage() {
   const navigate = useNavigate();
   const [selectedRadius, setSelectedRadius] = useState('1km');
@@ -13,18 +16,16 @@ export default function ShopMapPage() {
   const [selectedStore, setSelectedStore] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load real shops from MongoDB
   useEffect(() => {
     async function loadRealShops() {
       try {
         setLoading(true);
         const res = await getShopsListApi({ limit: 20 });
         if (res?.success && Array.isArray(res.data)) {
-          // Map real DB fields
           const realStores = res.data.map((item, idx) => ({
             id: item._id,
             name: item.name,
-            address: [item.address, item.ward, item.district, item.city].filter(Boolean).join(', '),
+            address: [item.address, item.ward, item.city].filter(Boolean).join(', '),
             phone: item.phone,
             latitude: item.latitude,
             longitude: item.longitude,
@@ -32,7 +33,9 @@ export default function ShopMapPage() {
             distance: item.latitude ? `${(0.8 + idx * 0.5).toFixed(1)} km` : 'Chưa định vị GPS',
             travelTime: item.latitude ? `~${3 + idx * 3} phút di chuyển` : 'Cần cập nhật GPS',
             rating: '5.0 (Showroom Verified)',
-            imageUrl: item.imageUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=400&q=80',
+            imageUrl: item.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name || 'Shop')}&background=0F172A&color=D97706&size=100`,
+            bannerUrl: item.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+            avatarUrl: item.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name || 'Shop')}&background=0F172A&color=D97706&size=100`,
             tags: [
               item.status === 'ACTIVE' ? 'ĐANG HOẠT ĐỘNG' : 'CHỜ DUYỆT',
               item.latitude ? 'GPS ĐÃ ĐỊNH VỊ' : 'CHƯA CÓ GPS',
@@ -59,7 +62,6 @@ export default function ShopMapPage() {
     <div style={{ background: '#FBF9F5', minHeight: '100vh' }}>
       <Navbar />
 
-      {/* Header Bar */}
       <div style={{ background: '#171717', color: '#FFF', padding: '48px 48px 36px 48px' }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
           <div style={{ fontSize: '11px', color: 'var(--color-gold)', letterSpacing: '2px', fontWeight: 600, marginBottom: '8px' }}>
@@ -72,7 +74,6 @@ export default function ShopMapPage() {
             Khám phá các gian hàng đối tác VESTORA Privé đã được lưu trong cơ sở dữ liệu MongoDB. Đồng bộ địa chỉ và tọa độ GPS thực tế.
           </p>
 
-          {/* Filter Toolbar */}
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginTop: '28px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', background: '#262626', borderRadius: '12px', padding: '4px' }}>
               <span style={{ fontSize: '11px', color: '#888', padding: '0 12px', fontWeight: 600 }}>BÁN KÍNH:</span>
@@ -126,9 +127,7 @@ export default function ShopMapPage() {
         </div>
       </div>
 
-      {/* Main Grid Viewport */}
       <div className="map-view-container">
-        {/* Left Store Cards List */}
         <div className="shop-list-sidebar">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#171717' }}>
@@ -157,7 +156,6 @@ export default function ShopMapPage() {
                     onClick={() => setSelectedStore(store)}
                     className={`shop-card ${isSelected ? 'selected' : ''}`}
                   >
-                    {/* Tag Header */}
                     <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
                       {store.tags.map((tag, idx) => (
                         <span
@@ -225,7 +223,6 @@ export default function ShopMapPage() {
           )}
         </div>
 
-        {/* Right Interactive Map Viewport Canvas */}
         <div className="map-canvas-wrapper">
           <img
             src="https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=1200&q=80"
@@ -233,7 +230,6 @@ export default function ShopMapPage() {
             className="map-mock-bg"
           />
 
-          {/* Dynamic Map Pins for Shops with GPS */}
           {shops
             .filter((s) => s.latitude && s.longitude)
             .slice(0, 5)
@@ -270,7 +266,6 @@ export default function ShopMapPage() {
             👤 VỊ TRÍ CỦA BẠN (GPS ĐANG ĐỊNH VỊ)
           </div>
 
-          {/* Floating Selected Store Card */}
           {selectedStore && (
             <div
               style={{

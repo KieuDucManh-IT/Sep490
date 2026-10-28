@@ -1601,18 +1601,6 @@ export default function AdminAccountsPage() {
                           Đã xác minh
                         </span>
                       </div>
-
-                      <div className="admin-acc-status-row">
-                        <span style={{ fontSize: '13px', color: '#475569' }}>KYC Định danh</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span className="verify-pill verified">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                            Đã định danh
-                          </span>
-                        </div>
-                      </div>
                     </div>
                   </div>
 

@@ -1,165 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
 import '../../styles/Catalog.css';
-
-// Default mock fallbacks in case backend is offline
-const FALLBACK_PRODUCTS = [
-  {
-    _id: 'VESTORA-DR-089',
-    productCode: 'VESTORA-DR-089',
-    name: 'Đầm dạ hội ánh tím',
-    productType: 'rental',
-    tag: 'rental',
-    rentalPricePer3Days: 350000,
-    rentalPricePerDay: 120000,
-    salePrice: 0,
-    rating: 4.9,
-    reviewsCount: 128,
-    inStock: true,
-    sizes: ['S', 'M', 'L', 'XL'],
-    colors: ['purple', 'tím'],
-    brand: 'Elise',
-    condition: 'very_good',
-    images: ['/assets/purple_gown.jpg'],
-    aiTryOn: true,
-  },
-  {
-    _id: 'VESTORA-BZ-012',
-    productCode: 'VESTORA-BZ-012',
-    name: 'Blazer thanh lịch',
-    productType: 'rental',
-    tag: 'rental',
-    rentalPricePer3Days: 180000,
-    rentalPricePerDay: 60000,
-    salePrice: 0,
-    rating: 4.8,
-    reviewsCount: 96,
-    inStock: true,
-    sizes: ['S', 'M', 'L', 'XL'],
-    colors: ['beige', 'kem'],
-    brand: 'Zara',
-    condition: 'very_good',
-    images: ['/assets/beige_blazer.jpg'],
-    aiTryOn: true,
-  },
-  {
-    _id: 'VESTORA-AD-007',
-    productCode: 'VESTORA-AD-007',
-    name: 'Áo dài cách tân',
-    productType: 'sale',
-    tag: 'sale',
-    rentalPricePer3Days: 0,
-    rentalPricePerDay: 0,
-    salePrice: 250000,
-    rating: 4.9,
-    reviewsCount: 74,
-    inStock: true,
-    sizes: ['S', 'M', 'L'],
-    colors: ['pink', 'hồng'],
-    brand: 'Áo Dài Di Sản',
-    condition: 'very_good',
-    images: ['/assets/ao_dai.jpg'],
-    aiTryOn: true,
-  },
-  {
-    _id: 'VESTORA-BG-045',
-    productCode: 'VESTORA-BG-045',
-    name: 'Túi dự tiệc mini',
-    productType: 'sale',
-    tag: 'sale',
-    rentalPricePer3Days: 0,
-    rentalPricePerDay: 0,
-    salePrice: 120000,
-    rating: 4.7,
-    reviewsCount: 52,
-    inStock: true,
-    sizes: [],
-    colors: ['white', 'trắng ngà'],
-    brand: 'Handmade Luxury',
-    condition: 'new_99',
-    images: ['/assets/mini_bag.jpg'],
-    aiTryOn: false,
-  },
-  {
-    _id: 'VESTORA-BD-022',
-    productCode: 'VESTORA-BD-022',
-    name: 'Đầm body đen',
-    productType: 'rental',
-    tag: 'rental',
-    rentalPricePer3Days: 300000,
-    rentalPricePerDay: 100000,
-    salePrice: 0,
-    rating: 4.8,
-    reviewsCount: 110,
-    inStock: true,
-    sizes: ['S', 'M', 'L'],
-    colors: ['black', 'đen'],
-    brand: 'Trendyol',
-    condition: 'very_good',
-    images: ['/assets/black_dress.jpg'],
-    aiTryOn: true,
-  },
-  {
-    _id: 'VESTORA-JK-061',
-    productCode: 'VESTORA-JK-061',
-    name: 'Áo khoác denim vintage',
-    productType: 'sale',
-    tag: 'sale',
-    rentalPricePer3Days: 0,
-    rentalPricePerDay: 0,
-    salePrice: 150000,
-    rating: 4.6,
-    reviewsCount: 73,
-    inStock: true,
-    sizes: ['M', 'L'],
-    colors: ['blue', 'xanh'],
-    brand: "Levi's Vintage",
-    condition: 'good',
-    images: ['https://images.unsplash.com/photo-1576995853123-5a10305d93c0?auto=format&fit=crop&w=800&q=80'],
-    aiTryOn: true,
-  },
-  {
-    _id: 'VESTORA-TB-088',
-    productCode: 'VESTORA-TB-088',
-    name: 'Túi xách da thật',
-    productType: 'sale',
-    tag: 'sale',
-    rentalPricePer3Days: 0,
-    rentalPricePerDay: 0,
-    salePrice: 420000,
-    rating: 4.8,
-    reviewsCount: 91,
-    inStock: true,
-    sizes: [],
-    colors: ['cream', 'kem', 'beige'],
-    brand: 'Charles & Keith',
-    condition: 'very_good',
-    images: ['https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=800&q=80'],
-    aiTryOn: false,
-  },
-  {
-    _id: 'VESTORA-ST-033',
-    productCode: 'VESTORA-ST-033',
-    name: 'Set vest công sở',
-    productType: 'rental',
-    tag: 'rental',
-    rentalPricePer3Days: 320000,
-    rentalPricePerDay: 110000,
-    salePrice: 0,
-    rating: 4.7,
-    reviewsCount: 68,
-    inStock: true,
-    sizes: ['S', 'M', 'L', 'XL'],
-    colors: ['beige', 'be', 'nâu'],
-    brand: 'Mango',
-    condition: 'new_99',
-    images: ['https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=800&q=80'],
-    aiTryOn: true,
-  },
-];
 
 const COLOR_SWATCHES = [
   { name: 'Đen', code: '#111827', key: 'black' },
@@ -180,7 +24,6 @@ const COLOR_SWATCHES = [
 
 export default function CatalogPage() {
   const location = useLocation();
-  const navigate = useNavigate();
 
   // Parse URL query params
   const urlParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -196,18 +39,21 @@ export default function CatalogPage() {
   const [aiTryOnOnly, setAiTryOnOnly] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState(initialCategory ? [initialCategory] : []);
   const [minPrice, setMinPrice] = useState(100000);
-  const [maxPrice, setMaxPrice] = useState(5000000);
+  const [maxPrice, setMaxPrice] = useState(10000000);
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
   const [selectedConditions, setSelectedConditions] = useState([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Data States
+  // Backend Data States
   const [products, setProducts] = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1, limit: 8 });
+  const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1, limit: 12 });
   const [filterMeta, setFilterMeta] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  // Favorites
   const [favorites, setFavorites] = useState(() => {
     try {
       const saved = localStorage.getItem('vestora_favorites');
@@ -217,7 +63,7 @@ export default function CatalogPage() {
     }
   });
 
-  // Debounce search input
+  // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -225,7 +71,7 @@ export default function CatalogPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Load filter metadata once
+  // Load filter metadata from GET /api/products/meta/filters
   useEffect(() => {
     let isMounted = true;
     productService
@@ -235,19 +81,20 @@ export default function CatalogPage() {
           setFilterMeta(res.data);
         }
       })
-      .catch((err) => console.warn('Could not load filter metadata:', err));
+      .catch((err) => console.warn('Lỗi nạp metadata bộ lọc:', err));
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Fetch products from real backend
+  // Fetch products from GET /api/products with params
   const fetchProducts = useCallback(async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const params = {
         page: currentPage,
-        limit: 8,
+        limit: 12,
         sort: sortOption,
       };
 
@@ -258,48 +105,27 @@ export default function CatalogPage() {
       if (selectedColors.length > 0) params.colors = selectedColors.join(',');
       if (selectedConditions.length > 0) params.condition = selectedConditions.join(',');
       if (aiTryOnOnly) params.aiTryOn = true;
-      if (minPrice > 0) params.minPrice = minPrice;
+      if (minPrice > 100000) params.minPrice = minPrice;
       if (maxPrice < 10000000) params.maxPrice = maxPrice;
 
       const res = await productService.getProducts(params);
-      if (res && res.success && res.data) {
+      if (res && res.success && Array.isArray(res.data)) {
         setProducts(res.data);
         if (res.pagination) {
           setPagination(res.pagination);
         }
+      } else if (Array.isArray(res)) {
+        setProducts(res);
+        setPagination({ total: res.length, page: 1, totalPages: 1, limit: 12 });
       } else {
-        // Fallback
-        setProducts(FALLBACK_PRODUCTS);
-        setPagination({ total: FALLBACK_PRODUCTS.length, page: 1, totalPages: 1, limit: 8 });
+        setProducts([]);
+        setPagination({ total: 0, page: 1, totalPages: 1, limit: 12 });
       }
     } catch (err) {
-      console.warn('Backend fetch failed, using fallback mock data:', err);
-      // Client-side fallback filter
-      let filtered = [...FALLBACK_PRODUCTS];
-      if (activeTab === 'rental') {
-        filtered = filtered.filter((p) => p.productType === 'rental' || p.tag === 'rental');
-      } else if (activeTab === 'sale') {
-        filtered = filtered.filter((p) => p.productType === 'sale' || p.tag === 'sale');
-      }
-      if (selectedCategories.length > 0) {
-        filtered = filtered.filter((p) =>
-          selectedCategories.some((c) => p.category?.includes(c) || p.name.includes(c))
-        );
-      }
-      if (selectedSizes.length > 0) {
-        filtered = filtered.filter((p) =>
-          selectedSizes.some((s) => p.sizes?.includes(s))
-        );
-      }
-      if (aiTryOnOnly) {
-        filtered = filtered.filter((p) => p.aiTryOn);
-      }
-      if (debouncedSearch.trim()) {
-        const q = debouncedSearch.toLowerCase();
-        filtered = filtered.filter((p) => p.name.toLowerCase().includes(q) || p.brand?.toLowerCase().includes(q));
-      }
-      setProducts(filtered);
-      setPagination({ total: filtered.length, page: 1, totalPages: Math.ceil(filtered.length / 8) || 1, limit: 8 });
+      console.error('Lỗi khi gọi API /api/products:', err);
+      setErrorMsg(err.message || 'Không thể kết nối đến máy chủ backend.');
+      setProducts([]);
+      setPagination({ total: 0, page: 1, totalPages: 1, limit: 12 });
     } finally {
       setLoading(false);
     }
@@ -317,7 +143,6 @@ export default function CatalogPage() {
     sortOption,
   ]);
 
-  // Trigger fetch when any filter changes
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
@@ -337,7 +162,6 @@ export default function CatalogPage() {
     });
   };
 
-  // Toggle category
   const toggleCategory = (catName) => {
     setCurrentPage(1);
     setSelectedCategories((prev) =>
@@ -345,7 +169,6 @@ export default function CatalogPage() {
     );
   };
 
-  // Toggle size
   const toggleSize = (size) => {
     setCurrentPage(1);
     setSelectedSizes((prev) =>
@@ -353,7 +176,6 @@ export default function CatalogPage() {
     );
   };
 
-  // Toggle color
   const toggleColor = (colorKey) => {
     setCurrentPage(1);
     setSelectedColors((prev) =>
@@ -361,7 +183,6 @@ export default function CatalogPage() {
     );
   };
 
-  // Toggle condition
   const toggleCondition = (cond) => {
     setCurrentPage(1);
     setSelectedConditions((prev) =>
@@ -369,7 +190,6 @@ export default function CatalogPage() {
     );
   };
 
-  // Clear all filters
   const resetFilters = () => {
     setActiveTab('all');
     setSearchQuery('');
@@ -380,42 +200,59 @@ export default function CatalogPage() {
     setSelectedConditions([]);
     setAiTryOnOnly(false);
     setMinPrice(100000);
-    setMaxPrice(5000000);
+    setMaxPrice(10000000);
     setSortOption('newest');
     setCurrentPage(1);
   };
 
-  // Format VND
   const formatVND = (amount) => {
     if (!amount) return '0đ';
     return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
   };
 
-  // Available categories with count
-  const categoryItems = [
-    { name: 'Đầm & Váy Dạ Hội', count: filterMeta?.categoryCounts?.['Đầm & Váy Dạ Hội'] ?? 42 },
-    { name: 'Áo Blazer & Coat', count: filterMeta?.categoryCounts?.['Áo Blazer & Coat'] ?? 28 },
-    { name: 'Vest & Suit', count: filterMeta?.categoryCounts?.['Vest & Suit'] ?? 36 },
-    { name: 'Túi Xách', count: filterMeta?.categoryCounts?.['Túi Xách'] ?? 22 },
-    { name: 'Áo dài', count: filterMeta?.categoryCounts?.['Áo dài'] ?? 18 },
-  ];
+  // Categories dynamically loaded from backend
+  const categoryItems = useMemo(() => {
+    if (filterMeta?.categories && Array.isArray(filterMeta.categories)) {
+      return filterMeta.categories
+        .filter((c) => c && c.name)
+        .map((c) => ({
+          _id: c._id,
+          name: c.name,
+          count: c.count ?? (filterMeta.categoryCounts?.[c.name] ?? 0),
+        }));
+    }
+    return [];
+  }, [filterMeta]);
 
-  // Sizes with count
-  const sizeItems = [
-    { name: 'S', count: filterMeta?.sizeCounts?.S ?? 18 },
-    { name: 'M', count: filterMeta?.sizeCounts?.M ?? 45 },
-    { name: 'L', count: filterMeta?.sizeCounts?.L ?? 36 },
-    { name: 'XL', count: filterMeta?.sizeCounts?.XL ?? 20 },
-  ];
+  // Sizes with real counts from backend
+  const sizeItems = useMemo(() => {
+    if (filterMeta?.sizeCounts && typeof filterMeta.sizeCounts === 'object') {
+      return Object.entries(filterMeta.sizeCounts).map(([name, count]) => ({
+        name,
+        count,
+      }));
+    }
+    return [];
+  }, [filterMeta]);
 
-  // Condition items with count
-  const conditionItems = [
-    { key: 'new_99', label: 'Mới 99%', count: filterMeta?.conditionCounts?.new_99 ?? 32 },
-    { key: 'very_good', label: 'Rất tốt', count: filterMeta?.conditionCounts?.very_good ?? 56 },
-    { key: 'good', label: 'Tốt', count: filterMeta?.conditionCounts?.good ?? 18 },
-  ];
+  // Condition items with real counts from backend
+  const conditionItems = useMemo(() => {
+    if (filterMeta?.conditionCounts && typeof filterMeta.conditionCounts === 'object') {
+      const labels = {
+        new_99: 'Mới 99%',
+        new: 'Mới 100%',
+        very_good: 'Rất tốt',
+        good: 'Tốt',
+      };
+      return Object.entries(filterMeta.conditionCounts).map(([key, count]) => ({
+        key,
+        label: labels[key] || key,
+        count,
+      }));
+    }
+    return [];
+  }, [filterMeta]);
 
-  // Calculate has active filters
   const hasActiveFilters =
     selectedCategories.length > 0 ||
     selectedSizes.length > 0 ||
@@ -432,19 +269,21 @@ export default function CatalogPage() {
       {/* Header Hero Section */}
       <div className="catalog-header-hero">
         <div className="catalog-breadcrumb">
-          <Link to="/">TRANG CHỦ</Link> <span>/</span> <span>BỘ SƯU TẬP</span>
+          <Link to="/">TRANG CHỦ</Link>
+          <span className="catalog-breadcrumb-separator">/</span>
+          <span>BỘ SƯU TẬP</span>
         </div>
 
         <div className="catalog-header-row">
           <div>
             <h1 className="catalog-title">Thời trang dành riêng cho bạn</h1>
             <p className="catalog-subtitle">
-              Khám phá hàng ngàn thiết kế đẹp mắt, từ các set đồ cho thuê hiện đại đến những món đồ
-              secondhand chất lượng, giúp bạn luôn tự tin và thể hiện phong cách riêng.
+              Khám phá các thiết kế đẹp mắt từ hệ thống cơ sở dữ liệu VESTORA, từ các set đồ cho thuê hiện đại
+              đến những món đồ secondhand chất lượng, giúp bạn luôn tự tin và thể hiện phong cách riêng.
             </p>
           </div>
           <div className="catalog-result-count">
-            Hiển thị <strong>{pagination.total || products.length}</strong> kết quả
+            Hiển thị <strong>{pagination.total}</strong> sản phẩm từ máy chủ
           </div>
         </div>
       </div>
@@ -453,7 +292,7 @@ export default function CatalogPage() {
       <div className="catalog-controls-container">
         <div className="catalog-search-sort-row">
           <div className="catalog-search-wrapper">
-            <span className="catalog-search-icon">🔍</span>
+            <i className="fa-solid fa-magnifying-glass catalog-search-icon"></i>
             <input
               type="text"
               className="catalog-search-input"
@@ -462,8 +301,12 @@ export default function CatalogPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button className="catalog-search-clear" onClick={() => setSearchQuery('')}>
-                ✕
+              <button
+                className="catalog-search-clear"
+                onClick={() => setSearchQuery('')}
+                aria-label="Xóa tìm kiếm"
+              >
+                <i className="fa-solid fa-xmark"></i>
               </button>
             )}
           </div>
@@ -518,8 +361,12 @@ export default function CatalogPage() {
             {selectedCategories.map((cat) => (
               <span key={cat} className="catalog-chip-pill">
                 {cat}
-                <button className="catalog-chip-remove" onClick={() => toggleCategory(cat)}>
-                  ✕
+                <button
+                  className="catalog-chip-remove"
+                  onClick={() => toggleCategory(cat)}
+                  aria-label="Xóa danh mục"
+                >
+                  <i className="fa-solid fa-xmark"></i>
                 </button>
               </span>
             ))}
@@ -527,8 +374,12 @@ export default function CatalogPage() {
             {selectedSizes.map((sz) => (
               <span key={sz} className="catalog-chip-pill">
                 Size: {sz}
-                <button className="catalog-chip-remove" onClick={() => toggleSize(sz)}>
-                  ✕
+                <button
+                  className="catalog-chip-remove"
+                  onClick={() => toggleSize(sz)}
+                  aria-label="Xóa kích cỡ"
+                >
+                  <i className="fa-solid fa-xmark"></i>
                 </button>
               </span>
             ))}
@@ -538,27 +389,46 @@ export default function CatalogPage() {
               return (
                 <span key={cond} className="catalog-chip-pill">
                   Tình trạng: {label}
-                  <button className="catalog-chip-remove" onClick={() => toggleCondition(cond)}>
-                    ✕
+                  <button
+                    className="catalog-chip-remove"
+                    onClick={() => toggleCondition(cond)}
+                    aria-label="Xóa tình trạng"
+                  >
+                    <i className="fa-solid fa-xmark"></i>
                   </button>
                 </span>
               );
             })}
 
-            {selectedColors.map((clr) => (
-              <span key={clr} className="catalog-chip-pill">
-                Màu sắc
-                <button className="catalog-chip-remove" onClick={() => toggleColor(clr)}>
-                  ✕
-                </button>
-              </span>
-            ))}
+            {selectedColors.map((clr) => {
+              const clrItem = COLOR_SWATCHES.find((c) => c.key === clr);
+              return (
+                <span key={clr} className="catalog-chip-pill">
+                  Màu: {clrItem?.name || clr}
+                  <button
+                    className="catalog-chip-remove"
+                    onClick={() => toggleColor(clr)}
+                    aria-label="Xóa màu"
+                  >
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                </span>
+              );
+            })}
 
             {aiTryOnOnly && (
-              <span className="catalog-chip-pill" style={{ color: '#7C3AED', borderColor: '#C4B5FD' }}>
-                ✨ Thử đồ AI
-                <button className="catalog-chip-remove" onClick={() => setAiTryOnOnly(false)}>
-                  ✕
+              <span
+                className="catalog-chip-pill"
+                style={{ color: '#6e3eb3', borderColor: '#dfd1ef', background: '#f5f0fb' }}
+              >
+                <i className="fa-solid fa-wand-magic-sparkles" style={{ marginRight: '4px' }}></i>
+                Thử đồ AI
+                <button
+                  className="catalog-chip-remove"
+                  onClick={() => setAiTryOnOnly(false)}
+                  aria-label="Tắt thử đồ AI"
+                >
+                  <i className="fa-solid fa-xmark"></i>
                 </button>
               </span>
             )}
@@ -572,14 +442,16 @@ export default function CatalogPage() {
                     setSearchQuery('');
                     setDebouncedSearch('');
                   }}
+                  aria-label="Xóa từ khóa tìm kiếm"
                 >
-                  ✕
+                  <i className="fa-solid fa-xmark"></i>
                 </button>
               </span>
             )}
 
             <button className="catalog-chip-clear-all" onClick={resetFilters}>
-              ⟳ Xóa tất cả
+              <i className="fa-solid fa-rotate-right"></i>
+              Xóa tất cả
             </button>
           </div>
         )}
@@ -593,10 +465,13 @@ export default function CatalogPage() {
             className="catalog-sidebar-header"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           >
-            <span className="catalog-sidebar-title">🧰 Bộ lọc tìm kiếm</span>
-            <span style={{ fontSize: '11px', color: '#9CA3AF' }}>
-              {sidebarCollapsed ? '▼' : '▲'}
+            <span className="catalog-sidebar-title">
+              <i className="fa-solid fa-sliders catalog-sidebar-icon"></i>
+              Bộ lọc tìm kiếm
             </span>
+            <i
+              className={`fa-solid fa-chevron-${sidebarCollapsed ? 'down' : 'up'} catalog-collapse-arrow`}
+            ></i>
           </div>
 
           {!sidebarCollapsed && (
@@ -604,7 +479,10 @@ export default function CatalogPage() {
               {/* AI Try-on Toggle */}
               <div className="catalog-ai-box">
                 <div>
-                  <div className="catalog-ai-title">✨ Hỗ trợ thử đồ AI</div>
+                  <div className="catalog-ai-title">
+                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                    Hỗ trợ thử đồ AI
+                  </div>
                   <div className="catalog-ai-desc">Chỉ hiển thị sản phẩm có thể thử đồ AI</div>
                 </div>
                 <label className="catalog-switch">
@@ -617,9 +495,12 @@ export default function CatalogPage() {
                 </label>
               </div>
 
-              {/* Category Filter */}
+              {/* Category Filter from Backend */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">👗 Danh mục</div>
+                <div className="catalog-filter-heading">
+                  <i className="fa-solid fa-shirt"></i>
+                  Danh mục
+                </div>
                 <div className="catalog-checkbox-list">
                   {categoryItems.map((cat) => (
                     <label key={cat.name} className="catalog-checkbox-label">
@@ -640,7 +521,10 @@ export default function CatalogPage() {
 
               {/* Price Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">💰 Khoảng giá</div>
+                <div className="catalog-filter-heading">
+                  <i className="fa-solid fa-tag"></i>
+                  Khoảng giá
+                </div>
                 <div className="catalog-price-inputs">
                   <select
                     className="catalog-price-select"
@@ -661,6 +545,7 @@ export default function CatalogPage() {
                     <option value={2000000}>Đến 2.000.000 đ</option>
                     <option value={5000000}>Đến 5.000.000 đ</option>
                     <option value={10000000}>Đến 10.000.000 đ</option>
+                    <option value={50000000}>Đến 50.000.000 đ</option>
                   </select>
                 </div>
                 <input
@@ -676,7 +561,10 @@ export default function CatalogPage() {
 
               {/* Size Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">📏 Kích cỡ</div>
+                <div className="catalog-filter-heading">
+                  <i className="fa-solid fa-ruler-combined"></i>
+                  Kích cỡ
+                </div>
                 <div className="catalog-checkbox-list">
                   {sizeItems.map((sz) => (
                     <label key={sz.name} className="catalog-checkbox-label">
@@ -697,7 +585,10 @@ export default function CatalogPage() {
 
               {/* Color Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">🎨 Màu sắc</div>
+                <div className="catalog-filter-heading">
+                  <i className="fa-solid fa-palette"></i>
+                  Màu sắc
+                </div>
                 <div className="catalog-color-grid">
                   {COLOR_SWATCHES.map((clr) => {
                     const isSelected = selectedColors.includes(clr.key);
@@ -711,15 +602,13 @@ export default function CatalogPage() {
                         onClick={() => toggleColor(clr.key)}
                       >
                         {isSelected && (
-                          <span
+                          <i
+                            className="fa-solid fa-check"
                             style={{
-                              color: clr.code === '#F9FAFB' ? '#111' : '#FFF',
-                              fontSize: '10px',
-                              fontWeight: 700,
+                              color: clr.code === '#F9FAFB' ? '#111827' : '#ffffff',
+                              fontSize: '9px',
                             }}
-                          >
-                            ✓
-                          </span>
+                          ></i>
                         )}
                       </div>
                     );
@@ -729,7 +618,10 @@ export default function CatalogPage() {
 
               {/* Condition Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">🏷️ Tình trạng (đồ cũ)</div>
+                <div className="catalog-filter-heading">
+                  <i className="fa-solid fa-certificate"></i>
+                  Tình trạng (đồ cũ)
+                </div>
                 <div className="catalog-checkbox-list">
                   {conditionItems.map((cond) => (
                     <label key={cond.key} className="catalog-checkbox-label">
@@ -751,13 +643,14 @@ export default function CatalogPage() {
               {/* Promo Card: Thử đồ AI */}
               <div className="catalog-promo-card">
                 <div className="catalog-promo-badge">
-                  <span>✨ Thử đồ AI</span>
+                  <i className="fa-solid fa-wand-magic-sparkles"></i>
+                  <span>Thử đồ AI</span>
                 </div>
                 <p className="catalog-promo-text">
                   Khám phá phiên bản tốt nhất của bạn chỉ với 1 bức ảnh!
                 </p>
                 <Link to="/try-on-photo" className="catalog-promo-btn">
-                  Thử đồ ngay →
+                  Thử đồ ngay <i className="fa-solid fa-arrow-right"></i>
                 </Link>
                 <img
                   src="/assets/hero_model.jpg"
@@ -771,7 +664,8 @@ export default function CatalogPage() {
 
               {/* Reset Filter Button */}
               <button className="catalog-clear-btn" onClick={resetFilters}>
-                ⟳ Xóa bộ lọc
+                <i className="fa-solid fa-rotate-right"></i>
+                Xóa bộ lọc
               </button>
             </>
           )}
@@ -790,12 +684,25 @@ export default function CatalogPage() {
                 </div>
               ))}
             </div>
+          ) : errorMsg ? (
+            <div className="catalog-empty-state">
+              <i
+                className="fa-solid fa-triangle-exclamation catalog-empty-icon"
+                style={{ color: '#dc2626' }}
+              ></i>
+              <div className="catalog-empty-title">Không thể tải dữ liệu từ máy chủ</div>
+              <p className="catalog-empty-desc">{errorMsg}</p>
+              <button className="catalog-tab-btn active" onClick={fetchProducts}>
+                <i className="fa-solid fa-rotate-right" style={{ marginRight: '6px' }}></i>
+                Thử lại
+              </button>
+            </div>
           ) : products.length === 0 ? (
             <div className="catalog-empty-state">
-              <div className="catalog-empty-icon">👗</div>
-              <div className="catalog-empty-title">Không tìm thấy sản phẩm phù hợp</div>
+              <i className="fa-solid fa-shirt catalog-empty-icon"></i>
+              <div className="catalog-empty-title">Không tìm thấy sản phẩm trong cơ sở dữ liệu</div>
               <p className="catalog-empty-desc">
-                Hãy thử nới lỏng các tiêu chí lọc hoặc tìm kiếm với từ khóa khác.
+                Không có sản phẩm nào khớp với tiêu chí lọc hiện tại của bạn.
               </p>
               <button className="catalog-tab-btn active" onClick={resetFilters}>
                 Khôi phục bộ lọc
@@ -805,110 +712,125 @@ export default function CatalogPage() {
             <div className="catalog-grid-4cols">
               {products.map((item) => {
                 const isRental =
-                  item.productType === 'rental' || item.tag === 'rental' || item.rentalPricePer3Days > 0;
-                const priceMain = isRental
-                  ? formatVND(item.rentalPricePer3Days || item.rentalPricePerDay * 3 || 350000)
-                  : formatVND(item.salePrice || 250000);
-                const priceUnit = isRental ? ' / 3 ngày' : '';
+                  item.productType === 'rental' ||
+                  item.tag === 'rental' ||
+                  (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) ||
+                  (item.rentalPricePerDay && item.rentalPricePerDay > 0);
+
+                const priceNumber = isRental
+                  ? item.rentalPricePer3Days || (item.rentalPricePerDay ? item.rentalPricePerDay * 3 : 0)
+                  : item.salePrice || 0;
+
+                const priceMain = priceNumber > 0 ? formatVND(priceNumber) : 'Liên hệ';
+                const priceUnit = isRental && priceNumber > 0 ? '/ 3 ngày' : '';
                 const isFavorited = favorites.includes(item._id || item.productCode);
                 const mainImage =
-                  item.images && item.images.length > 0
+                  item.images && item.images.length > 0 && item.images[0]
                     ? item.images[0]
-                    : '/assets/purple_gown.jpg';
+                    : item.image || '';
 
-                // Condition display text
-                let conditionText = 'Rất tốt';
-                if (item.condition === 'new_99') conditionText = 'Mới 99%';
-                else if (item.condition === 'good') conditionText = 'Tốt';
+                const conditionLabels = {
+                  new_99: 'Mới 99%',
+                  new: 'Mới 100%',
+                  very_good: 'Rất tốt',
+                  good: 'Tốt',
+                };
+                const conditionText = item.condition
+                  ? conditionLabels[item.condition] || item.condition
+                  : null;
 
                 return (
                   <Link
                     key={item._id || item.productCode || item.sku}
                     to={`/product/${item._id || item.productCode || item.sku}`}
-                    className="product-card-item"
+                    className="modern-product-card"
                   >
-                    <div className="product-card-image-box">
+                    <div className="card-media-box">
                       {/* Type Badge */}
                       <span
-                        className={`product-card-type-badge ${isRental ? 'rental' : 'sale'}`}
+                        className={`product-type-badge ${isRental ? 'badge-rental' : 'badge-resale'}`}
                       >
                         {isRental ? 'Cho thuê' : 'Mua đồ cũ'}
                       </span>
 
                       {/* Favorite Button */}
                       <button
-                        className={`product-card-fav-btn ${isFavorited ? 'favorited' : ''}`}
+                        className={`card-heart-btn ${isFavorited ? 'favorited' : ''}`}
                         onClick={(e) => toggleFavorite(e, item._id || item.productCode)}
                         title={isFavorited ? 'Bỏ thích' : 'Yêu thích'}
+                        aria-label="Lưu vào yêu thích"
                       >
-                        {isFavorited ? '♥' : '♡'}
+                        <i className={isFavorited ? 'fa-solid fa-heart' : 'fa-regular fa-heart'}></i>
                       </button>
 
                       {/* Product Image */}
-                      <img
-                        src={mainImage}
-                        alt={item.name}
-                        className="product-card-img"
-                        onError={(e) => {
-                          e.target.src = '/assets/purple_gown.jpg';
-                        }}
-                      />
+                      {mainImage ? (
+                        <img
+                          src={mainImage}
+                          alt={item.name}
+                          className="product-card-img"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            const fallback = e.target.parentElement.querySelector('.product-card-placeholder-box');
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className="product-card-placeholder-box"
+                        style={{ display: mainImage ? 'none' : 'flex' }}
+                      >
+                        <i className="fa-solid fa-shirt"></i>
+                      </div>
                     </div>
 
-                    <div className="product-card-body">
+                    <div className="card-info-box">
                       {/* Title */}
-                      <h3 className="product-card-title" title={item.name}>
+                      <h3 className="card-product-name" title={item.name}>
                         {item.name}
                       </h3>
 
                       {/* Rating & Stock */}
-                      <div className="product-card-rating-row">
-                        <span className="product-card-star">★</span>
-                        <span style={{ fontWeight: 600, color: '#1F2937' }}>
-                          {item.rating || '4.9'}
-                        </span>
-                        <span>({item.reviewsCount || 128})</span>
-                        <span className="product-card-stock-dot">•</span>
-                        <span className="product-card-stock-text">
-                          {item.inStock !== false ? 'Còn hàng' : 'Hết hàng'}
+                      <div className="card-meta-line">
+                        {item.rating > 0 ? (
+                          <>
+                            <i className="fa-solid fa-star rating-star"></i>
+                            <span className="rating-score">{item.rating}</span>
+                            {item.reviewsCount > 0 && <span>({item.reviewsCount})</span>}
+                            <span className="meta-separator">•</span>
+                          </>
+                        ) : null}
+                        <span className="stock-indicator">
+                          <span
+                            className={`stock-dot ${item.inStock === false ? 'out-of-stock' : ''}`}
+                          ></span>
+                          <span>{item.inStock !== false ? 'Còn hàng' : 'Hết hàng'}</span>
                         </span>
                       </div>
 
                       {/* Price */}
-                      <div className="product-card-price-row">
-                        <span className="product-card-price-main">{priceMain}</span>
-                        {priceUnit && (
-                          <span className="product-card-price-unit">{priceUnit}</span>
-                        )}
+                      <div className="card-pricing-line">
+                        <span className="price-main">{priceMain}</span>
+                        {priceUnit && <span className="price-unit">{priceUnit}</span>}
                       </div>
 
                       {/* Attributes */}
-                      <div className="product-card-attributes">
+                      <div className="card-attributes-list">
                         {item.sizes && item.sizes.length > 0 ? (
-                          <div className="product-card-attr-item">
-                            Size: {item.sizes.join(', ')}
-                          </div>
+                          <div className="card-attr-row">Size: {item.sizes.join(', ')}</div>
                         ) : item.colors && item.colors.length > 0 ? (
-                          <div className="product-card-attr-item">
-                            Màu: {item.colors[0]}
-                          </div>
+                          <div className="card-attr-row">Màu: {item.colors[0]}</div>
                         ) : null}
 
-                        {item.brand && item.brand !== 'Không' ? (
-                          <div className="product-card-attr-item">
-                            Thương hiệu: {item.brand}
-                          </div>
-                        ) : (
-                          <div className="product-card-attr-item">
-                            Tình trạng: {conditionText}
-                          </div>
-                        )}
+                        {item.brand ? (
+                          <div className="card-attr-row">Thương hiệu: {item.brand}</div>
+                        ) : conditionText ? (
+                          <div className="card-attr-row">Tình trạng: {conditionText}</div>
+                        ) : null}
                       </div>
 
                       {/* Action Button */}
-                      <button className="product-card-action-btn">
-                        Xem chi tiết
-                      </button>
+                      <span className="card-action-btn">Xem chi tiết</span>
                     </div>
                   </Link>
                 );
@@ -923,8 +845,9 @@ export default function CatalogPage() {
                 className="catalog-page-btn"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                aria-label="Trang trước"
               >
-                ‹
+                <i className="fa-solid fa-chevron-left"></i>
               </button>
 
               {Array.from({ length: pagination.totalPages }).map((_, idx) => {
@@ -944,8 +867,9 @@ export default function CatalogPage() {
                 className="catalog-page-btn"
                 disabled={currentPage >= pagination.totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))}
+                aria-label="Trang tiếp"
               >
-                ›
+                <i className="fa-solid fa-chevron-right"></i>
               </button>
             </div>
           )}
@@ -955,7 +879,9 @@ export default function CatalogPage() {
       {/* Trust & Value Proposition Footer Bar */}
       <div className="catalog-trust-bar">
         <div className="catalog-trust-item">
-          <div className="catalog-trust-icon-box">🛡️</div>
+          <div className="catalog-trust-icon-box">
+            <i className="fa-solid fa-shield-halved"></i>
+          </div>
           <div>
             <h4 className="catalog-trust-title">Sản phẩm được kiểm duyệt</h4>
             <p className="catalog-trust-desc">Đảm bảo chất lượng, nguồn gốc rõ ràng</p>
@@ -963,7 +889,9 @@ export default function CatalogPage() {
         </div>
 
         <div className="catalog-trust-item">
-          <div className="catalog-trust-icon-box">💳</div>
+          <div className="catalog-trust-icon-box">
+            <i className="fa-solid fa-credit-card"></i>
+          </div>
           <div>
             <h4 className="catalog-trust-title">Thanh toán an toàn</h4>
             <p className="catalog-trust-desc">Bảo mật thông tin, linh hoạt phương thức</p>
@@ -971,7 +899,9 @@ export default function CatalogPage() {
         </div>
 
         <div className="catalog-trust-item">
-          <div className="catalog-trust-icon-box">🎧</div>
+          <div className="catalog-trust-icon-box">
+            <i className="fa-solid fa-headset"></i>
+          </div>
           <div>
             <h4 className="catalog-trust-title">Hỗ trợ khách hàng</h4>
             <p className="catalog-trust-desc">Tư vấn 24/7, luôn đồng hành cùng bạn</p>

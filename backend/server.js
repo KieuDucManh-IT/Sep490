@@ -8,9 +8,9 @@ import { connectDB } from "./src/config/db.js";
 import authRoutes from "./src/routes/authRoutes.js";
 import shopRoutes from "./src/routes/shopRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
+import productRoutes from "./src/routes/productRoutes.js";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
-import { ensureSeedProducts } from "./src/scripts/seedProducts.js";
 
 dotenv.config();
 
@@ -38,6 +38,7 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/shops", shopRoutes);
 app.use("/api/admin/shops", shopRoutes);
+app.use("/api/products", productRoutes);
 app.use("/api", apiRoutes);
 
 app.use(notFound);
@@ -49,7 +50,6 @@ async function startServer() {
   try {
     await connectDB();
     await User.init();
-    await ensureSeedProducts();
 
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);

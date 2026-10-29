@@ -6,17 +6,7 @@ export const productService = {
       const response = await apiClient.get('/products', { params });
       return response;
     } catch (error) {
-      console.error('Lỗi tải danh sách sản phẩm:', error);
-      throw error;
-    }
-  },
-
-  getProductById: async (id) => {
-    try {
-      const response = await apiClient.get(`/products/${id}`);
-      return response;
-    } catch (error) {
-      console.error('Lỗi tải chi tiết sản phẩm:', error);
+      console.error('Lỗi khi gọi API /api/products:', error);
       throw error;
     }
   },
@@ -26,11 +16,20 @@ export const productService = {
       const response = await apiClient.get('/products/meta/filters');
       return response;
     } catch (error) {
-      console.error('Lỗi tải metadata bộ lọc:', error);
+      console.error('Lỗi khi gọi API /api/products/meta/filters:', error);
+      throw error;
+    }
+  },
+
+  getProductById: async (id) => {
+    try {
+      const response = await apiClient.get(`/products/${id}`);
+      return response;
+    } catch (error) {
+      console.error('Lỗi khi gọi API chi tiết sản phẩm /api/products/:id:', error);
       throw error;
     }
   },
 };
 
 export default productService;
-

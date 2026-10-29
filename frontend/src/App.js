@@ -29,16 +29,14 @@ import BranchReviewsPage from './pages/branch/BranchReviewsPage';
 import BranchAnalyticsPage from './pages/branch/BranchAnalyticsPage';
 
 // 4. Role Warehouse Manager (UC-15..UC-28)
-import WarehouseProductsPage from './pages/warehouse/WarehouseProductsPage';
-import WarehouseAddProductPage from './pages/warehouse/WarehouseAddProductPage';
-import WarehouseInventoryPage from './pages/warehouse/WarehouseInventoryPage';
 import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';
+import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
+import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 
 // 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerBranchesPage from './pages/owner/OwnerBranchesPage';
 import OwnerShopsPage from './pages/owner/OwnerShopsPage';
-import OwnerPricingPage from './pages/owner/OwnerPricingPage';
 import OwnerAnalyticsPage from './pages/owner/OwnerAnalyticsPage';
 import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
@@ -49,120 +47,124 @@ import AdminAccountsPage from './pages/admin/AdminAccountsPage';
 
 function App() {
   return (
-    
-      <Router>
-        <Routes>
-          {/* ========================================================
-              CUSTOMER PORTAL (Khách Hàng)
-              ======================================================== */}
-          <Route path="/" element={<HomePage />} />
-          <Route path="/catalog" element={<CatalogPage />} />
-          <Route path="/product" element={<ProductDetailPage />} />
-          <Route path="/product/:id" element={<ProductDetailPage />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/favorites" element={<FavoritesPage />} />
-          <Route path="/map" element={<ShopMapPage />} />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <UserProfilePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/try-on/photo" element={<PhotoTryOnPage />} />
-          <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
-          <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
-          <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
+    <Router>
+      <Routes>
+        {/* ========================================================
+            CUSTOMER PORTAL (Khách Hàng)
+            ======================================================== */}
+        <Route path="/" element={<HomePage />} />
+        <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/product" element={<ProductDetailPage />} />
+        <Route path="/product/:id" element={<ProductDetailPage />} />
+        <Route path="/cart" element={<CartPage />} />
+        <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/map" element={<ShopMapPage />} />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <UserProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/try-on/photo" element={<PhotoTryOnPage />} />
+        <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
+        <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
+        <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
-          {/* ========================================================
-              AUTHENTICATION (Đăng Nhập & Đăng Ký)
-              ======================================================== */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* ========================================================
+            AUTHENTICATION (Đăng Nhập & Đăng Ký)
+            ======================================================== */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-          {/* ========================================================
-              ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Showroom)
-              ======================================================== */}
-          <Route path="/branch/dashboard" element={<BranchDashboardPage />} />
-          <Route path="/branch/rental-orders" element={<BranchRentalOrdersPage />} />
-          <Route path="/branch/sale-orders" element={<BranchSaleOrdersPage />} />
-          <Route path="/branch/returns" element={<BranchReturnsPage />} />
-          <Route path="/branch/reviews" element={<BranchReviewsPage />} />
-          <Route path="/branch/analytics" element={<BranchAnalyticsPage />} />
-          <Route path="/branch/settings" element={<OwnerSettingsPage />} />
-          <Route path="/branch/showroom" element={<OwnerSettingsPage />} />
+        {/* ========================================================
+            ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Showroom)
+            ======================================================== */}
+        <Route path="/branch/dashboard" element={<BranchDashboardPage />} />
+        <Route path="/branch/rental-orders" element={<BranchRentalOrdersPage />} />
+        <Route path="/branch/sale-orders" element={<BranchSaleOrdersPage />} />
+        <Route path="/branch/returns" element={<BranchReturnsPage />} />
+        <Route path="/branch/reviews" element={<BranchReviewsPage />} />
+        <Route path="/branch/analytics" element={<BranchAnalyticsPage />} />
+        <Route path="/branch/settings" element={<OwnerSettingsPage />} />
+        <Route path="/branch/showroom" element={<OwnerSettingsPage />} />
 
-          {/* ========================================================
-              ROLE: WAREHOUSE MANAGER (Quản Lý Kho & Sản Phẩm)
-              ======================================================== */}
-          <Route path="/warehouse/products" element={<WarehouseProductsPage />} />
-          <Route path="/warehouse/products/new" element={<WarehouseAddProductPage />} />
-          <Route path="/warehouse/inventory" element={<WarehouseInventoryPage />} />
-          <Route path="/warehouse/moderation" element={<WarehouseModerationPage />} />
+        {/* ========================================================
+            ROLE: WAREHOUSE MANAGER (Quản Lý Kho & Sản Phẩm)
+            ======================================================== */}
+        <Route path="/warehousemanager" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
+        <Route path="/warehousemanager/:resource" element={<WarehouseManagerPage />} />
+        <Route path="/warehousemanager/slips/:kind" element={<WarehousePlaceholderPage />} />
+        <Route path="/warehousemanager/reports/:kind" element={<WarehousePlaceholderPage />} />
+        <Route path="/warehouse/moderation" element={<WarehouseModerationPage />} />
+        <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
+        <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
+        <Route path="/warehouse/inventory" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
+        <Route path="/warehouse" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
 
-          {/* ========================================================
-              ROLE: SHOP OWNER / CEO (Chủ Chuỗi & Tài Chính Toàn Sàn)
-              ======================================================== */}
-          <Route path="/owner/dashboard" element={<OwnerDashboardPage />} />
-          <Route path="/owner/branches" element={<OwnerBranchesPage />} />
-          <Route path="/owner/manage-shops" element={<OwnerBranchesPage />} />
-          <Route path="/owner/shops" element={<OwnerBranchesPage />} />
-          <Route path="/owner/pricing" element={<OwnerPricingPage />} />
-          <Route path="/owner/analytics" element={<OwnerAnalyticsPage />} />
-          <Route path="/owner/disputes" element={<OwnerDisputesPage />} />
-          <Route path="/owner/settings" element={<OwnerSettingsPage />} />
-          <Route path="/owner/branches-list" element={<OwnerBranchesListPage />} />
+        {/* ========================================================
+            ROLE: SHOP OWNER / CEO (Chủ Chuỗi & Tài Chính Toàn Sàn)
+            ======================================================== */}
+        <Route path="/owner/dashboard" element={<OwnerDashboardPage />} />
+        <Route path="/owner/branches" element={<OwnerBranchesPage />} />
+        <Route path="/owner/manage-shops" element={<OwnerBranchesPage />} />
+        <Route path="/owner/shops" element={<OwnerBranchesPage />} />
+        <Route path="/owner/pricing" element={<Navigate to="/warehousemanager/variants" replace />} />
+        <Route path="/owner/analytics" element={<OwnerAnalyticsPage />} />
+        <Route path="/owner/disputes" element={<OwnerDisputesPage />} />
+        <Route path="/owner/settings" element={<OwnerSettingsPage />} />
+        <Route path="/owner/branches-list" element={<OwnerBranchesListPage />} />
 
-          {/* ========================================================
-              ROLE: SYSTEM ADMIN (Quản Trị Hệ Thống & Tài Khoản)
-              ======================================================== */}
-          <Route path="/admin/accounts" element={<AdminAccountsPage />} />
-          <Route path="/admin/dashboard" element={<OwnerDashboardPage />} />
-          <Route path="/admin/shops" element={<OwnerShopsPage />} />
-          <Route path="/admin/moderation" element={<WarehouseModerationPage />} />
-          <Route path="/admin/disputes" element={<OwnerDisputesPage />} />
-          <Route path="/admin/analytics" element={<OwnerAnalyticsPage />} />
+        {/* ========================================================
+            ROLE: SYSTEM ADMIN (Quản Trị Hệ Thống & Tài Khoản)
+            ======================================================== */}
+        <Route path="/admin/accounts" element={<AdminAccountsPage />} />
+        <Route path="/admin/dashboard" element={<OwnerDashboardPage />} />
+        <Route path="/admin/shops" element={<OwnerShopsPage />} />
+        <Route path="/admin/moderation" element={<WarehouseModerationPage />} />
+        <Route path="/admin/disputes" element={<OwnerDisputesPage />} />
+        <Route path="/admin/analytics" element={<OwnerAnalyticsPage />} />
 
-          {/* ========================================================
-              BACKWARD COMPATIBILITY REDIRECTS (Tương Thích Tuyệt Đối)
-              ======================================================== */}
-          <Route path="/owner" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/branch" element={<Navigate to="/branch/dashboard" replace />} />
-          <Route path="/branches" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/manage-shops" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/shop-owner" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/shop-owner/branches" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/branch-manager" element={<Navigate to="/branch/dashboard" replace />} />
-          <Route path="/branch/manage-shops" element={<Navigate to="/branch/settings" replace />} />
-          <Route path="/branch/branches" element={<Navigate to="/branch/settings" replace />} />
+        {/* ========================================================
+            BACKWARD COMPATIBILITY REDIRECTS (Tương Thích Tuyệt Đối)
+            ======================================================== */}
+        <Route path="/owner" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/branch" element={<Navigate to="/branch/dashboard" replace />} />
+        <Route path="/branches" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/manage-shops" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/shop-owner" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/shop-owner/branches" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/branch-manager" element={<Navigate to="/branch/dashboard" replace />} />
+        <Route path="/branch/manage-shops" element={<Navigate to="/branch/settings" replace />} />
+        <Route path="/branch/branches" element={<Navigate to="/branch/settings" replace />} />
 
-          <Route path="/shop" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/shop/dashboard" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/shop/rental-orders" element={<Navigate to="/branch/rental-orders" replace />} />
-          <Route path="/shop/sale-orders" element={<Navigate to="/branch/sale-orders" replace />} />
-          <Route path="/shop/returns" element={<Navigate to="/branch/returns" replace />} />
-          <Route path="/shop/reviews" element={<Navigate to="/branch/reviews" replace />} />
-          <Route path="/shop/analytics" element={<Navigate to="/branch/analytics" replace />} />
-          <Route path="/shop/products" element={<Navigate to="/warehouse/products" replace />} />
-          <Route path="/shop/products/new" element={<Navigate to="/warehouse/products/new" replace />} />
-          <Route path="/shop/inventory" element={<Navigate to="/warehouse/inventory" replace />} />
-          <Route path="/shop/pricing" element={<Navigate to="/owner/pricing" replace />} />
-          <Route path="/shop/settings" element={<Navigate to="/owner/settings" replace />} />
-          <Route path="/shop/branches" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/shop/address" element={<Navigate to="/owner/settings" replace />} />
-          <Route path="/shop/store-info" element={<Navigate to="/owner/settings" replace />} />
+        <Route path="/shop" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/shop/dashboard" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/shop/rental-orders" element={<Navigate to="/branch/rental-orders" replace />} />
+        <Route path="/shop/sale-orders" element={<Navigate to="/branch/sale-orders" replace />} />
+        <Route path="/shop/returns" element={<Navigate to="/branch/returns" replace />} />
+        <Route path="/shop/reviews" element={<Navigate to="/branch/reviews" replace />} />
+        <Route path="/shop/analytics" element={<Navigate to="/branch/analytics" replace />} />
+        <Route path="/shop/products" element={<Navigate to="/warehousemanager/products" replace />} />
+        <Route path="/shop/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
+        <Route path="/shop/inventory" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
+        <Route path="/shop/pricing" element={<Navigate to="/warehousemanager/variants" replace />} />
+        <Route path="/shop/settings" element={<Navigate to="/owner/settings" replace />} />
+        <Route path="/shop/branches" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/shop/address" element={<Navigate to="/owner/settings" replace />} />
+        <Route path="/shop/store-info" element={<Navigate to="/owner/settings" replace />} />
 
-          <Route path="/ops/shops" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/ops/manage-shops" element={<Navigate to="/owner/branches" replace />} />
-          <Route path="/ops/moderation" element={<Navigate to="/warehouse/moderation" replace />} />
-          <Route path="/ops/disputes" element={<Navigate to="/owner/disputes" replace />} />
+        <Route path="/ops/shops" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/ops/manage-shops" element={<Navigate to="/owner/branches" replace />} />
+        <Route path="/ops/moderation" element={<Navigate to="/warehouse/moderation" replace />} />
+        <Route path="/ops/disputes" element={<Navigate to="/owner/disputes" replace />} />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 

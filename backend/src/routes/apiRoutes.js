@@ -1,9 +1,8 @@
 import express from 'express';
 import shopRoutes from './shopRoutes.js';
 import userRoutes from './userRoutes.js';
-import adminRoutes from './adminRoutes.js';
-import categoryRoutes from './categoryRoutes.js';
-import productRoutes from './productRoutes.js';
+import masterdataRoutes from './masterdataRoutes.js';
+import warehouseLocationRoutes from './warehouseLocationRoutes.js';
 const router = express.Router();
 
 router.get('/health', (req, res) => {
@@ -18,7 +17,6 @@ router.get('/health', (req, res) => {
 
 router.use('/shops', shopRoutes);
 router.use('/users', userRoutes);
-router.use('/admin', adminRoutes);
-router.use('/categories', categoryRoutes);
-router.use('/products', productRoutes);
+router.use('/warehouse/masterdata', masterdataRoutes);
+router.use('/warehouse/locations', warehouseLocationRoutes);
 export default router;

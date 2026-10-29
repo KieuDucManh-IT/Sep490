@@ -10,7 +10,7 @@ import { connectDB } from "./src/config/db.js";
 import authRoutes from "./src/routes/authRoutes.js";
 import shopRoutes from "./src/routes/shopRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
-import User from "./src/models/User.js";
+import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
 
 dotenv.config();

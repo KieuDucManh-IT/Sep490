@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import sharp from 'sharp';
 import { v2 as cloudinary } from 'cloudinary';
 import { Shop } from '../models/Shop.js';
-import { User } from '../models/User.js';
 import {
   validateObjectId,
   validateCreateBranchInput,
@@ -14,6 +13,7 @@ import {
   validateOperatingStatus,
   validateReverseGeocodeQuery,
 } from '../validations/shopValidation.js';
+import { User } from '../models/system/User.js';
 
 /**
  * Retrieve shop applications / branches list with status filters, search, and pagination

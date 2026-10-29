@@ -1,5 +1,5 @@
 import { Shop } from '../models/Shop.js';
-import { User } from '../models/User.js';
+import { User } from '../models/system/User.js';
 
 /**
  * View chain-wide statistics and analytical metrics

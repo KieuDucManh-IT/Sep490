@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/system/User.js";
 
 export async function authMiddleware(req, res, next) {
-  const token = req.cookies?.vestora_token;
+  const token = req.cookies?.vestora_token || req.get('Authorization')?.replace(/^Bearer\s+/i, '');
 
   if (!token) {
     return next(
@@ -71,6 +71,14 @@ export async function authMiddleware(req, res, next) {
     return next(error);
   }
 }
+
+export const requireRoles = (...roles) => (req, res, next) => {
+  const role = String(req.user?.Role || '').toLowerCase();
+  if (!roles.map((item) => item.toLowerCase()).includes(role)) {
+    return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này.' });
+  }
+  return next();
+};
 
 export function notFound(req, res) {
   return res.status(404).json({

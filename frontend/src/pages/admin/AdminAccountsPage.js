@@ -190,6 +190,8 @@ export default function AdminAccountsPage() {
         if (roleFilter === 'CUSTOMER' && u.role !== 'CUSTOMER') return false;
         if (roleFilter === 'SHOP_OWNER' && !u.role.includes('SHOP')) return false;
         if (roleFilter === 'STAFF' && u.role !== 'STAFF') return false;
+        if (roleFilter === 'WAREHOUSE_STAFF' && u.role !== 'WAREHOUSE STAFF') return false;
+        if (roleFilter === 'WAREHOUSE_MANAGER' && u.role !== 'WAREHOUSE MANAGER') return false;
       }
 
       // Status filter
@@ -619,6 +621,8 @@ export default function AdminAccountsPage() {
               <option value="CUSTOMER">CUSTOMER</option>
               <option value="SHOP_OWNER">SHOP OWNER</option>
               <option value="STAFF">STAFF</option>
+              <option value="WAREHOUSE_STAFF">WAREHOUSE STAFF</option>
+              <option value="WAREHOUSE_MANAGER">WAREHOUSE MANAGER</option>
             </select>
 
             {/* Status Select */}
@@ -1596,6 +1600,8 @@ export default function AdminAccountsPage() {
                       <option value="CUSTOMER">CUSTOMER</option>
                       <option value="SHOP OWNER">SHOP OWNER</option>
                       <option value="STAFF">STAFF</option>
+                      <option value="WAREHOUSE STAFF">WAREHOUSE STAFF</option>
+                      <option value="WAREHOUSE MANAGER">WAREHOUSE MANAGER</option>
                       <option value="ADMIN">ADMIN</option>
                     </select>
                   </div>
@@ -1724,6 +1730,8 @@ export default function AdminAccountsPage() {
                       <option value="CUSTOMER">CUSTOMER</option>
                       <option value="SHOP OWNER">SHOP OWNER</option>
                       <option value="STAFF">STAFF</option>
+                      <option value="WAREHOUSE STAFF">WAREHOUSE STAFF</option>
+                      <option value="WAREHOUSE MANAGER">WAREHOUSE MANAGER</option>
                       <option value="ADMIN">ADMIN</option>
                     </select>
                   </div>

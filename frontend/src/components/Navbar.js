@@ -42,6 +42,12 @@ export default function Navbar() {
         {user?.role === "admin" && (
           <Link to="/admin/dashboard" className="navbar-link">ADMIN HỆ THỐNG</Link>
         )}
+        {user?.role === "warehouse_manager" && (
+          <Link to="/warehousemanager" className="navbar-link">QUẢN LÝ KHO</Link>
+        )}
+        {user?.role === "warehouse_staff" && (
+          <Link to="/warehousestaff/inbound-receipts" className="navbar-link">NHÂN VIÊN KHO</Link>
+        )}
       </nav>
 
       <div className="navbar-actions">

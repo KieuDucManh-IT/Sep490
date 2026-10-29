@@ -37,6 +37,7 @@ import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerBranchesPage from './pages/owner/OwnerBranchesPage';
 import OwnerShopsPage from './pages/owner/OwnerShopsPage';
+import OwnerPricingPage from './pages/owner/OwnerPricingPage';
 import OwnerAnalyticsPage from './pages/owner/OwnerAnalyticsPage';
 import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
@@ -83,50 +84,242 @@ function App() {
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Showroom)
             ======================================================== */}
-        <Route path="/branch/dashboard" element={<BranchDashboardPage />} />
-        <Route path="/branch/rental-orders" element={<BranchRentalOrdersPage />} />
-        <Route path="/branch/sale-orders" element={<BranchSaleOrdersPage />} />
-        <Route path="/branch/returns" element={<BranchReturnsPage />} />
-        <Route path="/branch/reviews" element={<BranchReviewsPage />} />
-        <Route path="/branch/analytics" element={<BranchAnalyticsPage />} />
-        <Route path="/branch/settings" element={<OwnerSettingsPage />} />
-        <Route path="/branch/showroom" element={<OwnerSettingsPage />} />
+        <Route
+          path="/branch/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/rental-orders"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchRentalOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/sale-orders"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchSaleOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/returns"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchReturnsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/reviews"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchReviewsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/analytics"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchAnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/settings"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/showroom"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerSettingsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* ========================================================
             ROLE: WAREHOUSE MANAGER (Quản Lý Kho & Sản Phẩm)
             ======================================================== */}
-        <Route path="/warehousemanager" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
-        <Route path="/warehousemanager/:resource" element={<WarehouseManagerPage />} />
-        <Route path="/warehousemanager/slips/:kind" element={<WarehousePlaceholderPage />} />
-        <Route path="/warehousemanager/reports/:kind" element={<WarehousePlaceholderPage />} />
-        <Route path="/warehouse/moderation" element={<WarehouseModerationPage />} />
+        <Route
+          path="/warehousemanager"
+          element={<Navigate to="/warehousemanager/inventory-locations" replace />}
+        />
+        <Route
+          path="/warehousemanager/:resource"
+          element={
+            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
+              <WarehouseManagerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/warehousemanager/slips/:kind"
+          element={
+            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
+              <WarehousePlaceholderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/warehousemanager/reports/:kind"
+          element={
+            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
+              <WarehousePlaceholderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/warehouse/moderation"
+          element={
+            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
+              <WarehouseModerationPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/inventory" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
         <Route path="/warehouse" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
 
         {/* ========================================================
-            ROLE: SHOP OWNER / CEO (Chủ Chuỗi & Tài Chính Toàn Sàn)
+            ROLE: SHOP OWNER / CEO (Chủ Chuỗi & Quản Lý Chi Nhánh)
             ======================================================== */}
-        <Route path="/owner/dashboard" element={<OwnerDashboardPage />} />
-        <Route path="/owner/branches" element={<OwnerBranchesPage />} />
-        <Route path="/owner/manage-shops" element={<OwnerBranchesPage />} />
-        <Route path="/owner/shops" element={<OwnerBranchesPage />} />
-        <Route path="/owner/pricing" element={<Navigate to="/warehousemanager/variants" replace />} />
-        <Route path="/owner/analytics" element={<OwnerAnalyticsPage />} />
-        <Route path="/owner/disputes" element={<OwnerDisputesPage />} />
-        <Route path="/owner/settings" element={<OwnerSettingsPage />} />
-        <Route path="/owner/branches-list" element={<OwnerBranchesListPage />} />
+        <Route
+          path="/owner/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/branches"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerBranchesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/manage-shops"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerBranchesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/shops"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerBranchesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/pricing"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerPricingPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/analytics"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerAnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/disputes"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerDisputesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/settings"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/branches-list"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerBranchesListPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* ========================================================
             ROLE: SYSTEM ADMIN (Quản Trị Hệ Thống & Tài Khoản)
             ======================================================== */}
-        <Route path="/admin/accounts" element={<AdminAccountsPage />} />
-        <Route path="/admin/dashboard" element={<OwnerDashboardPage />} />
-        <Route path="/admin/shops" element={<OwnerShopsPage />} />
-        <Route path="/admin/moderation" element={<WarehouseModerationPage />} />
-        <Route path="/admin/disputes" element={<OwnerDisputesPage />} />
-        <Route path="/admin/analytics" element={<OwnerAnalyticsPage />} />
+        <Route
+          path="/admin/accounts"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminAccountsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <OwnerDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/shops"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <OwnerShopsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/moderation"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE_MANAGER']}>
+              <WarehouseModerationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/disputes"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <OwnerDisputesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/analytics"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <OwnerAnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* ========================================================
             BACKWARD COMPATIBILITY REDIRECTS (Tương Thích Tuyệt Đối)
@@ -148,10 +341,10 @@ function App() {
         <Route path="/shop/returns" element={<Navigate to="/branch/returns" replace />} />
         <Route path="/shop/reviews" element={<Navigate to="/branch/reviews" replace />} />
         <Route path="/shop/analytics" element={<Navigate to="/branch/analytics" replace />} />
-        <Route path="/shop/products" element={<Navigate to="/warehousemanager/products" replace />} />
-        <Route path="/shop/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
-        <Route path="/shop/inventory" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
-        <Route path="/shop/pricing" element={<Navigate to="/warehousemanager/variants" replace />} />
+        <Route path="/shop/products" element={<Navigate to="/owner/pricing" replace />} />
+        <Route path="/shop/products/new" element={<Navigate to="/owner/pricing" replace />} />
+        <Route path="/shop/inventory" element={<Navigate to="/owner/pricing" replace />} />
+        <Route path="/shop/pricing" element={<Navigate to="/owner/pricing" replace />} />
         <Route path="/shop/settings" element={<Navigate to="/owner/settings" replace />} />
         <Route path="/shop/branches" element={<Navigate to="/owner/branches" replace />} />
         <Route path="/shop/address" element={<Navigate to="/owner/settings" replace />} />

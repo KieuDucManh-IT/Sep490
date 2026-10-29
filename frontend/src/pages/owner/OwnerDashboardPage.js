@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OwnerSidebar from '../../components/OwnerSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/AdminDashboard.css';
+import '../../styles/OpsShops.css';
 
 export default function OwnerDashboardPage() {
   const navigate = useNavigate();
@@ -121,109 +123,36 @@ export default function OwnerDashboardPage() {
 
       {/* 2. Main Viewport */}
       <div className="admin-main-viewport">
-        {/* TailAdmin Top Header */}
-        <header className="admin-top-header">
-          <div className="admin-header-left">
-            <button
-              className="admin-header-toggle-btn"
-              onClick={() => setIsSidebarCollapsed(prev => !prev)}
-              title="Đóng / Mở Menu"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
-
-            {/* Command Search Input */}
-            <div className="admin-search-wrapper">
-              <span className="admin-search-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-              </span>
-              <input
-                type="text"
-                className="admin-search-input"
-                placeholder="Search or type command..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <span className="admin-search-kbd">⌘K</span>
-            </div>
-          </div>
-
-          <div className="admin-header-right">
-            {/* Dark / Light Mode Toggle */}
-            <button
-              className="admin-icon-btn"
-              title="Chế độ giao diện"
-              onClick={() => alert('Giao diện chuẩn VESTORA Gold & Slate đã được kích hoạt')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-              </svg>
-            </button>
-
-            {/* Notification Bell */}
-            <button
-              className="admin-icon-btn"
-              title="Thông báo hệ thống"
-              onClick={() => navigate('/admin/moderation')}
-            >
-              <span className="badge-dot"></span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
-            </button>
-
-            {/* Admin User Profile Capsule */}
-            <div className="admin-user-capsule" onClick={() => navigate('/admin/accounts')}>
-              <img
-                src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=120&q=80"
-                alt="Musharof"
-                className="admin-user-avatar"
-              />
-              <div className="admin-user-info">
-                <span className="admin-user-name">
-                  Musharof
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </span>
-                <span className="admin-user-role">System Admin</span>
-              </div>
-            </div>
-          </div>
-        </header>
+        {/* Owner Top Header */}
+        <OwnerTopHeader
+          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
+          breadcrumb="Tổng Quan Chuỗi"
+        />
 
         {/* 3. Scrollable Dashboard Body */}
         <div className="admin-content-body">
           {/* Greeting Hero Bar */}
           <div className="admin-page-hero">
             <div>
-              <h1 className="admin-page-title">Tổng Quan Hệ Thống VESTORA</h1>
+              <h1 className="admin-page-title">Tổng Quan Chuỗi Showroom VESTORA</h1>
               <p className="admin-page-desc">
-                Cập nhật giao dịch toàn sàn, trạng thái PayOS Escrow & xếp hạng các Showroom đối tác.
+                Theo dõi tình hình kinh doanh, doanh thu các chi nhánh và trạng thái đơn thuê toàn chuỗi.
               </p>
             </div>
 
             <div className="admin-hero-actions">
-              <button className="btn-tail-outline" onClick={() => navigate('/admin/moderation')}>
-                Kiểm duyệt (1)
+              <button className="btn-tail-outline" onClick={() => navigate('/owner/branches')}>
+                Quản lý chi nhánh
               </button>
-              <button className="btn-tail-gold" onClick={() => navigate('/admin/analytics')}>
-                Xem báo cáo chi tiết
+              <button className="btn-tail-gold" onClick={() => navigate('/owner/analytics')}>
+                Báo cáo tài chính
               </button>
             </div>
           </div>
 
           {/* 4. Top 4 Core KPI Stat Cards */}
           <div className="admin-kpi-grid">
-            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/analytics')}>
+            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/owner/analytics')}>
               <div className="admin-kpi-header">
                 <span className="admin-kpi-title">TỔNG GMV LUÂN CHUYỂN</span>
                 <span className="admin-kpi-icon-pill">
@@ -243,7 +172,7 @@ export default function OwnerDashboardPage() {
               </div>
             </div>
 
-            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/disputes')}>
+            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/owner/disputes')}>
               <div className="admin-kpi-header">
                 <span className="admin-kpi-title">TIỀN CỌC ESCROW ĐANG GIỮ</span>
                 <span className="admin-kpi-icon-pill gold">
@@ -261,9 +190,9 @@ export default function OwnerDashboardPage() {
               </div>
             </div>
 
-            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/shops')}>
+            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/owner/branches')}>
               <div className="admin-kpi-header">
-                <span className="admin-kpi-title">GIAN HÀNG HOẠT ĐỘNG</span>
+                <span className="admin-kpi-title">CHI NHÁNH HOẠT ĐỘNG</span>
                 <span className="admin-kpi-icon-pill">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -281,21 +210,19 @@ export default function OwnerDashboardPage() {
               </div>
             </div>
 
-            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/accounts')}>
+            <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/owner/pricing')}>
               <div className="admin-kpi-header">
-                <span className="admin-kpi-title">TÀI KHOẢN ĐỊNH DANH</span>
+                <span className="admin-kpi-title">BẢNG GIÁ & CỌC NIÊM YẾT</span>
                 <span className="admin-kpi-icon-pill">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                    <line x1="7" y1="7" x2="7.01" y2="7" />
                   </svg>
                 </span>
               </div>
-              <div className="admin-kpi-value">12.450 Users</div>
-              <div className="admin-kpi-trend neutral">
-                98.5% Đã định danh KYC
+              <div className="admin-kpi-value">Thiết Lập Chuẩn</div>
+              <div className="admin-kpi-trend positive">
+                Áp dụng toàn bộ hệ thống
               </div>
             </div>
           </div>
@@ -421,6 +348,38 @@ export default function OwnerDashboardPage() {
               </div>
 
               <div className="admin-card-table-actions">
+                {/* Search Input */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm sản phẩm, khách hàng..."
+                    style={{
+                      height: '36px',
+                      padding: '0 12px 0 32px',
+                      borderRadius: '8px',
+                      border: '1px solid #CBD5E1',
+                      fontSize: '13px',
+                      outline: 'none',
+                      width: '220px',
+                      background: '#FFFFFF'
+                    }}
+                  />
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#94A3B8"
+                    strokeWidth="2"
+                    style={{ position: 'absolute', left: '10px', pointerEvents: 'none' }}
+                  >
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                </div>
+
                 {/* Filter Button */}
                 <div style={{ position: 'relative' }}>
                   <button
@@ -491,7 +450,7 @@ export default function OwnerDashboardPage() {
                 {/* See All Button */}
                 <button
                   className="btn-tail-outline"
-                  onClick={() => navigate('/admin/analytics')}
+                  onClick={() => navigate('/owner/analytics')}
                 >
                   See all
                 </button>
@@ -574,7 +533,7 @@ export default function OwnerDashboardPage() {
                         <button
                           className="btn-tail-outline"
                           style={{ padding: '6px 12px', fontSize: '11px' }}
-                          onClick={() => navigate('/admin/disputes')}
+                          onClick={() => navigate('/owner/disputes')}
                         >
                           Chi tiết
                         </button>

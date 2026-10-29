@@ -37,6 +37,8 @@ import AdminAccountsPage from './pages/admin/AdminAccountsPage';
 import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
 import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
+import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
+import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 
 function App() {
   return (
@@ -90,9 +92,13 @@ function App() {
           <Route path="/shop/branches" element={<ShopBranchesPage />} />
 
           <Route path="/warehousemanager" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
+          <Route path="/warehousemanager/inbound-receipts" element={<InboundReceiptsPage mode="manager" />} />
+          <Route path="/warehousemanager/reports/inventory" element={<InventoryReportPage />} />
           <Route path="/warehousemanager/:resource" element={<WarehouseManagerPage />} />
           <Route path="/warehousemanager/slips/:kind" element={<WarehousePlaceholderPage />} />
           <Route path="/warehousemanager/reports/:kind" element={<WarehousePlaceholderPage />} />
+          <Route path="/warehousestaff" element={<Navigate to="/warehousestaff/inbound-receipts" replace />} />
+          <Route path="/warehousestaff/inbound-receipts" element={<InboundReceiptsPage mode="staff" />} />
 
           {/* <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/shops" element={<AdminShopsPage />} /> */}

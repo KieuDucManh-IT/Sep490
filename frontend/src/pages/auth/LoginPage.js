@@ -13,6 +13,8 @@ import { useAuth } from "../../context/AuthContext";
 function getHome(role) {
   if (role === "admin") return "/admin/dashboard";
   if (role === "shop_owner") return "/shop/dashboard";
+  if (role === "warehouse_manager") return "/warehousemanager";
+  if (role === "warehouse_staff") return "/warehousestaff/inbound-receipts";
 
   return "/";
 }

@@ -1,4 +1,4 @@
-import api from '../api';
+import api from '../services/api';
 
 export const createCrudService = (path) => ({
   list: async () => (await api.get(path)).data || [],

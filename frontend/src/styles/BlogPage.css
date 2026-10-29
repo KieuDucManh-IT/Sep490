@@ -1,0 +1,150 @@
+/* Blog Page Styles */
+.blog-main-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 50px 24px 80px 24px;
+  flex: 1;
+}
+
+.blog-header-section {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 50px auto;
+}
+
+.blog-tagline {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #9c7148;
+  display: inline-block;
+  margin-bottom: 12px;
+}
+
+.blog-main-title {
+  font-family: var(--font-display, 'Newsreader', serif);
+  font-size: 42px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 16px;
+}
+
+.blog-subtext {
+  font-size: 16px;
+  color: #666666;
+  line-height: 1.6;
+}
+
+.blog-articles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32px;
+}
+
+.blog-card {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid #eee8df;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+
+.blog-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.blog-card-media {
+  position: relative;
+  height: 240px;
+  overflow: hidden;
+}
+
+.blog-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.blog-card:hover .blog-card-media img {
+  transform: scale(1.04);
+}
+
+.blog-badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  color: #9c7148;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+
+.blog-card-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.blog-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: #888888;
+  margin-bottom: 12px;
+}
+
+.blog-post-title {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+
+.blog-post-title a {
+  color: #222222;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.blog-post-title a:hover {
+  color: #9c7148;
+}
+
+.blog-excerpt {
+  font-size: 14px;
+  color: #666666;
+  line-height: 1.6;
+  margin-bottom: 18px;
+  flex: 1;
+}
+
+.blog-read-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #9c7148;
+  text-decoration: none;
+  transition: gap 0.2s;
+}
+
+.blog-read-more:hover {
+  gap: 10px;
+}
+
+@media (max-width: 768px) {
+  .blog-articles-grid {
+    grid-template-columns: 1fr;
+  }
+}

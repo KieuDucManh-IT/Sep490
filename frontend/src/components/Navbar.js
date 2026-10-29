@@ -29,7 +29,7 @@ export default function Navbar() {
         </Link>
 
         <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
-          RADAR SHOWROOM
+          RADAR CỬA HÀNG
         </Link>
 
         {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
@@ -63,7 +63,7 @@ export default function Navbar() {
               to="/branch/settings"
               className={`navbar-link ${isActive('/branch/settings') ? 'active' : ''}`}
             >
-              SHOWROOM & BẢN ĐỒ
+              CỬA HÀNG & BẢN ĐỒ
             </Link>
           </>
         )}

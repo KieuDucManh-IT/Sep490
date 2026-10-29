@@ -1,6 +1,7 @@
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { validateInventoryLocation, validateStorageLocation } from '../../validations/warehouse/locationValidation.js';
+import User from '../../models/system/User.js';
 
 const capacityConflict = (message) => Object.assign(new Error(message), { statusCode: 409 });
 const capacityOf = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
@@ -10,12 +11,17 @@ const childCapacityTotal = async (filter) => {
 };
 
 export const inventoryLocationService = {
-  list: () => InventoryLocation.find().sort({ createdAt: -1 }),
-  create: async (payload) => InventoryLocation.create(validateInventoryLocation(payload)),
+  list: () => InventoryLocation.find().sort({ createdAt: -1 }).populate('managerId', 'FullName Email Role'),
+  create: async (payload) => {
+    const data = validateInventoryLocation(payload);
+    await validateWarehouseManager(data.managerId);
+    return InventoryLocation.create(data);
+  },
   update: async (id, payload) => {
     const location = await InventoryLocation.findById(id);
     if (!location) return null;
     const changes = validateInventoryLocation(payload, location.toObject());
+    await validateWarehouseManager(Object.hasOwn(changes, 'managerId') ? changes.managerId : location.managerId);
     const childrenCapacity = await childCapacityTotal({ locationId: location._id, parentStorageId: null });
     const nextCapacity = Object.hasOwn(changes, 'maxCapacity') ? changes.maxCapacity : location.maxCapacity;
     if (childrenCapacity > capacityOf(nextCapacity)) {
@@ -28,6 +34,12 @@ export const inventoryLocationService = {
     if (await StorageLocation.exists({ locationId: id })) throw capacityConflict('Không thể xóa kho/cửa hàng khi vẫn còn vị trí lưu trữ bên trong.');
     return InventoryLocation.findByIdAndDelete(id);
   },
+};
+
+const validateWarehouseManager = async (managerId) => {
+  if (!managerId) return;
+  const manager = await User.findOne({ _id: managerId, Role: /^warehouse_manager$/i, Status: /^active$/i }).select('_id');
+  if (!manager) throw Object.assign(new Error('Người quản lý phải là tài khoản warehouse manager đang hoạt động.'), { statusCode: 400 });
 };
 
 const listStorageLocations = () => StorageLocation.find().sort({ createdAt: -1 }).populate('locationId parentStorageId');

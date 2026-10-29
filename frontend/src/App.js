@@ -37,6 +37,7 @@ import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
 import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
+import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 
 function App() {
   return (
@@ -81,6 +82,7 @@ function App() {
 
           <Route path="/warehousemanager" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
           <Route path="/warehousemanager/inbound-receipts" element={<InboundReceiptsPage mode="manager" />} />
+          <Route path="/warehousemanager/reports/inventory" element={<InventoryReportPage />} />
           <Route path="/warehousemanager/:resource" element={<WarehouseManagerPage />} />
           <Route path="/warehousemanager/slips/:kind" element={<WarehousePlaceholderPage />} />
           <Route path="/warehousemanager/reports/:kind" element={<WarehousePlaceholderPage />} />

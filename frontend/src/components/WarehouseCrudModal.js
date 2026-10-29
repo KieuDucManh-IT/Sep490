@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import '../styles/WarehouseManager.css';
 
 const getInitialValues = (config, record) => Object.fromEntries(config.fields.map(([key]) => [key, record?.[key]?._id || record?.[key] || '']));
-const display = (value) => value && typeof value === 'object' ? value.name || value.code || value._id : value ?? '—';
+const display = (value) => value && typeof value === 'object' ? value.FullName || value.name || value.code || value._id : value ?? '—';
 
 export default function WarehouseCrudModal({ config, mode, record, choices, onClose, onSave }) {
   const [form, setForm] = useState(() => getInitialValues(config, record));

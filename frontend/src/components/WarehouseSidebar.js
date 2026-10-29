@@ -20,7 +20,8 @@ export default function WarehouseSidebar({ mode = 'manager' }) {
       {nav('/warehousemanager/inbound-receipts', <ClipboardList size={17} />, 'Nhập kho')}
       {['Xuất kho', 'Kiểm kho', 'Chuyển kho', 'Điều chỉnh'].map((label) => nav(`/warehousemanager/slips/${encodeURIComponent(label)}`, <ClipboardList size={17} />, label))}
       <p>Báo cáo</p>
-      {['Tồn kho', 'Lịch sử giao dịch'].map((label) => nav(`/warehousemanager/reports/${encodeURIComponent(label)}`, <FileBarChart2 size={17} />, label))}
+      {nav('/warehousemanager/reports/inventory', <FileBarChart2 size={17} />, 'Tồn kho')}
+      {nav(`/warehousemanager/reports/${encodeURIComponent('Lịch sử giao dịch')}`, <FileBarChart2 size={17} />, 'Lịch sử giao dịch')}
       </> : <><p>Nghiệp vụ kho</p>{nav('/warehousestaff/inbound-receipts', <ClipboardList size={17} />, 'Công việc được giao')}</>}
     </nav>
     <Link className="wm-exit" to={mode === 'manager' ? '/shop/dashboard' : '/'}><LogOut size={16} /> {mode === 'manager' ? 'Thoát Warehouse Manager' : 'Về trang chính'}</Link>

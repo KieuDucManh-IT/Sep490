@@ -10,6 +10,7 @@ import shopRoutes from "./src/routes/shopRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
+import { ensureSeedProducts } from "./src/scripts/seedProducts.js";
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ async function startServer() {
   try {
     await connectDB();
     await User.init();
+    await ensureSeedProducts();
 
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);

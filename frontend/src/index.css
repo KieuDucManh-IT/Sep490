@@ -3,8 +3,9 @@
    Extracted from Figma Design Tokens
    ============================================ */
 
-/* Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700&family=Newsreader:opsz,wght@6..72,400;6..72,700&display=swap');
+/* Google Fonts & Font Awesome */
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
 /* CSS Custom Properties (Design Tokens) */
 :root {

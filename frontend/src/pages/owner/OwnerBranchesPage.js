@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Row, Col, Spinner, Button, Modal, Form } from 'react-bootstrap';
+import {
+  Compass,
+  Navigation,
+  RefreshCw,
+  AlertCircle,
+  Info,
+  Upload,
+} from 'lucide-react';
 import OwnerSidebar from '../../components/OwnerSidebar';
 import OwnerTopHeader from '../../components/OwnerTopHeader';
 import LeafletMapPicker from '../../components/LeafletMapPicker';
 import SearchableSelect from '../../components/SearchableSelect';
-import GeoLocateButton from '../../components/GeoLocateButton';
 import OpeningHoursInput, { parseOpeningHours, DAY_OPTIONS } from '../../components/OpeningHoursInput';
 import ImageLightboxModal from '../../components/ImageLightboxModal';
 import { useAuth } from '../../context/AuthContext';
@@ -16,10 +23,55 @@ import {
   deleteBranchApi,
   getBranchManagersApi,
   uploadShopImageApi,
+  reverseGeocodeApi,
 } from '../../services/shopApi';
 import '../../styles/OpsShops.css';
 import '../../styles/ShopDashboard.css';
 import '../../styles/ShopBranches.css';
+
+/**
+ * Normalize Vietnamese administrative division names for diacritics-insensitive matching
+ */
+const cleanName = (str) =>
+  (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/^(thanh pho|tinh|quan|huyen|thi xa|phuong|xa|thi tran|tp\.?)\s+/gi, '')
+    .trim();
+
+const PROVINCE_DEFAULT_COORDS = {
+  'Hà Nội': { lat: 21.028511, lng: 105.854167 },
+  'Thành phố Hà Nội': { lat: 21.028511, lng: 105.854167 },
+  'Hồ Chí Minh': { lat: 10.776889, lng: 106.700806 },
+  'Thành phố Hồ Chí Minh': { lat: 10.776889, lng: 106.700806 },
+  'Đà Nẵng': { lat: 16.054407, lng: 108.202167 },
+  'Thành phố Đà Nẵng': { lat: 16.054407, lng: 108.202167 },
+  'Hải Phòng': { lat: 20.844912, lng: 106.688084 },
+  'Thành phố Hải Phòng': { lat: 20.844912, lng: 106.688084 },
+  'Cần Thơ': { lat: 10.045162, lng: 105.746857 },
+  'Thành phố Cần Thơ': { lat: 10.045162, lng: 105.746857 },
+  'Bình Dương': { lat: 10.980461, lng: 106.651871 },
+  'Đồng Nai': { lat: 10.957413, lng: 106.842713 },
+  'Thành phố Đồng Nai': { lat: 10.957413, lng: 106.842713 },
+  'Quảng Ninh': { lat: 20.950454, lng: 107.073364 },
+  'Thành phố Quảng Ninh': { lat: 20.950454, lng: 107.073364 },
+  'Khánh Hòa': { lat: 12.238791, lng: 109.196749 },
+  'Thừa Thiên Huế': { lat: 16.463713, lng: 107.590866 },
+  'Thành phố Huế': { lat: 16.463713, lng: 107.590866 },
+  'Lâm Đồng': { lat: 11.940419, lng: 108.458313 },
+};
+
+const getProvinceCoords = (name) => {
+  if (!name) return null;
+  const clean = cleanName(name);
+  for (const [key, coords] of Object.entries(PROVINCE_DEFAULT_COORDS)) {
+    if (cleanName(key) === clean || clean.includes(cleanName(key)) || cleanName(key).includes(clean)) {
+      return coords;
+    }
+  }
+  return null;
+};
 
 const FALLBACK_PROVINCES = [
   { code: 1, name: 'Thành phố Hà Nội' },
@@ -63,6 +115,8 @@ export default function OwnerBranchesPage() {
 
   const [activeBranch, setActiveBranch] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [isSyncingAddress, setIsSyncingAddress] = useState(false);
 
   const initialBranchFormData = {
     name: '',
@@ -125,7 +179,7 @@ export default function OwnerBranchesPage() {
         } else {
           setFormData((prev) => ({ ...prev, imageUrl: res.url }));
         }
-        showToast(imageType === 'banner' ? 'Tải ảnh bìa showroom từ thiết bị thành công!' : 'Tải logo chi nhánh từ thiết bị thành công!', 'success');
+        showToast(imageType === 'banner' ? 'Tải ảnh bìa cửa hàng từ thiết bị thành công!' : 'Tải logo chi nhánh từ thiết bị thành công!', 'success');
       } else {
         throw new Error(res?.message || 'Không nhận được đường dẫn ảnh');
       }
@@ -256,7 +310,18 @@ export default function OwnerBranchesPage() {
    * Update selected province and fetch corresponding wards
    */
   const handleProvinceChange = async (provName, provOption) => {
-    setFormData((prev) => ({ ...prev, city: provName, ward: '' }));
+    const fallbackCoords = getProvinceCoords(provName);
+    setFormData((prev) => ({
+      ...prev,
+      city: provName,
+      ward: '',
+      ...((!prev.latitude || !prev.longitude) && fallbackCoords
+        ? {
+            latitude: fallbackCoords.lat.toFixed(6),
+            longitude: fallbackCoords.lng.toFixed(6),
+          }
+        : {}),
+    }));
     if (formErrors.city) setFormErrors((prev) => ({ ...prev, city: '' }));
 
     const provList = provinces.length > 0 ? provinces : FALLBACK_PROVINCES;
@@ -285,35 +350,189 @@ export default function OwnerBranchesPage() {
     }
   };
 
-  /**
-   * Handle detected GPS coordinates and autofill location fields
-   */
-  const handleGpsLocationFound = async ({ latitude, longitude, city, ward, street }) => {
+  const handleMapLocationChange = useCallback(({ latitude, longitude }) => {
     setFormData((prev) => ({
       ...prev,
       latitude: String(latitude),
       longitude: String(longitude),
-      ...(street && !prev.address ? { address: street } : {}),
     }));
-    if (formErrors.coordinates) setFormErrors((prev) => ({ ...prev, coordinates: '' }));
+    setFormErrors((prev) => (prev.coordinates ? { ...prev, coordinates: '' } : prev));
+  }, []);
 
-    const provList = provinces.length > 0 ? provinces : FALLBACK_PROVINCES;
-    if (city && provList.length > 0) {
-      const cleanTarget = city.toLowerCase();
-      const matchedProv = provList.find((p) => {
-        const pClean = p.name.toLowerCase();
-        return pClean === cleanTarget || cleanTarget.includes(pClean) || pClean.includes(cleanTarget);
-      });
-      if (matchedProv) {
-        await handleProvinceChange(matchedProv.name, matchedProv);
-        if (ward) {
-          setTimeout(() => {
-            setFormData((prev) => ({ ...prev, ward }));
-          }, 300);
-        }
-      }
+  const handleSyncAddressFromPin = useCallback(async () => {
+    const lat = parseFloat(formData.latitude);
+    const lng = parseFloat(formData.longitude);
+    if (isNaN(lat) || isNaN(lng)) {
+      showToast('Chưa có tọa độ ghim trên bản đồ để đối soát địa chỉ.', 'warning');
+      return;
     }
-  };
+
+    setIsSyncingAddress(true);
+    try {
+      const geoRes = await reverseGeocodeApi(lat, lng);
+      if (geoRes?.success && geoRes.data) {
+        const { city: geoCity, ward: geoWard, street } = geoRes.data;
+        if (geoCity && provinces.length > 0) {
+          const cleanCityTarget = cleanName(geoCity);
+          const matchedProv = provinces.find((p) => {
+            const pClean = cleanName(p.name);
+            return pClean === cleanCityTarget || cleanCityTarget.includes(pClean) || pClean.includes(cleanCityTarget);
+          });
+
+          if (matchedProv) {
+            setFormData((prev) => ({
+              ...prev,
+              city: matchedProv.name,
+              ...(street && !prev.address ? { address: street } : {}),
+            }));
+            setFormErrors((prev) => ({
+              ...prev,
+              city: '',
+              coordinates: '',
+              ...(street ? { address: '' } : {}),
+            }));
+
+            const resWards = await fetch(`https://provinces.open-api.vn/api/v2/p/${matchedProv.code}?depth=2`);
+            const dataWards = await resWards.json();
+            const wardList = dataWards?.wards || [];
+            wardCache.current[matchedProv.code] = wardList;
+            setWards(wardList);
+
+            if (geoWard && wardList.length > 0) {
+              const cleanWardTarget = cleanName(geoWard);
+              const matchedWard = wardList.find((w) => {
+                const wClean = cleanName(w.name);
+                return wClean === cleanWardTarget || cleanWardTarget.includes(wClean) || wClean.includes(cleanWardTarget);
+              });
+              if (matchedWard) {
+                setFormData((prev) => ({
+                  ...prev,
+                  ward: matchedWard.name,
+                }));
+              }
+            }
+            showToast(`Đã đồng bộ địa chỉ theo ghim: ${matchedProv.name}!`, 'success');
+            return;
+          }
+        }
+        showToast('Đã đối soát tọa độ vị trí ghim thành công.', 'success');
+      } else {
+        showToast('Không tìm thấy tên phường/xã tương ứng với vị trí này.', 'info');
+      }
+    } catch (_) {
+      showToast('Không thể kết nối đến máy chủ giải mã địa chỉ.', 'warning');
+    } finally {
+      setIsSyncingAddress(false);
+    }
+  }, [formData.latitude, formData.longitude, provinces]);
+
+  const handleGetDeviceLocation = useCallback(() => {
+    if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
+      const fallback = getProvinceCoords(formData.city) || PROVINCE_DEFAULT_COORDS['Thành phố Hà Nội'];
+      setFormData((prev) => ({
+        ...prev,
+        latitude: fallback.lat.toFixed(6),
+        longitude: fallback.lng.toFixed(6),
+      }));
+      showToast('Trình duyệt yêu cầu HTTPS để lấy GPS. Đã định vị theo trung tâm Tỉnh/Thành.', 'info');
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      const fallback = getProvinceCoords(formData.city) || PROVINCE_DEFAULT_COORDS['Thành phố Hà Nội'];
+      setFormData((prev) => ({
+        ...prev,
+        latitude: fallback.lat.toFixed(6),
+        longitude: fallback.lng.toFixed(6),
+      }));
+      showToast('Trình duyệt không hỗ trợ định vị GPS. Đã định vị theo trung tâm Tỉnh/Thành.', 'info');
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setFormData((prev) => ({
+            ...prev,
+            latitude: lat.toFixed(6),
+            longitude: lng.toFixed(6),
+          }));
+          setFormErrors((prev) => (prev.coordinates ? { ...prev, coordinates: '' } : prev));
+
+          const geoRes = await reverseGeocodeApi(lat, lng);
+          if (geoRes?.success && geoRes.data) {
+            const { city: geoCity, ward: geoWard, street } = geoRes.data;
+            if (geoCity && provinces.length > 0) {
+              const cleanCityTarget = cleanName(geoCity);
+              const matchedProv = provinces.find((p) => {
+                const pClean = cleanName(p.name);
+                return pClean === cleanCityTarget || cleanCityTarget.includes(pClean) || pClean.includes(cleanCityTarget);
+              });
+
+              if (matchedProv) {
+                setFormData((prev) => ({
+                  ...prev,
+                  city: matchedProv.name,
+                  ...(street && !prev.address ? { address: street } : {}),
+                }));
+                setFormErrors((prev) => ({
+                  ...prev,
+                  coordinates: '',
+                  city: '',
+                  ...(street ? { address: '' } : {}),
+                }));
+
+                const resWards = await fetch(`https://provinces.open-api.vn/api/v2/p/${matchedProv.code}?depth=2`);
+                const dataWards = await resWards.json();
+                const wardList = dataWards?.wards || [];
+                wardCache.current[matchedProv.code] = wardList;
+                setWards(wardList);
+
+                if (geoWard && wardList.length > 0) {
+                  const cleanWardTarget = cleanName(geoWard);
+                  const matchedWard = wardList.find((w) => {
+                    const wClean = cleanName(w.name);
+                    return wClean === cleanWardTarget || cleanWardTarget.includes(wClean) || wClean.includes(cleanWardTarget);
+                  });
+                  if (matchedWard) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      ward: matchedWard.name,
+                    }));
+                  }
+                }
+                showToast(`Đã cập nhật vị trí GPS thiết bị: ${matchedProv.name}!`, 'success');
+                return;
+              }
+            }
+            showToast('Đã định vị thành công tọa độ thiết bị.', 'success');
+          }
+        } catch (_) {
+          showToast('Đã lấy tọa độ GPS thiết bị (không phân giải được địa chỉ chữ).', 'info');
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (err) => {
+        setIsLocating(false);
+        const fallback = getProvinceCoords(formData.city) || PROVINCE_DEFAULT_COORDS['Thành phố Hà Nội'];
+        setFormData((prev) => ({
+          ...prev,
+          latitude: fallback.lat.toFixed(6),
+          longitude: fallback.lng.toFixed(6),
+        }));
+        if (err.code === 1) {
+          showToast('Bạn đã từ chối quyền truy cập vị trí. Đã chuyển về vị trí mặc định.', 'warning');
+        } else {
+          showToast('Không thể lấy vị trí thiết bị. Đã chuyển về vị trí mặc định.', 'warning');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }, [formData.city, provinces]);
 
   /**
    * Validate branch form fields before submitting
@@ -379,9 +598,12 @@ export default function OwnerBranchesPage() {
     setFormErrors({});
     const defaultCity = provinces[0]?.name || 'Thành phố Hà Nội';
     const prefillAvatar = (user?.Avatar && typeof user.Avatar === 'string' && user.Avatar.trim()) ? user.Avatar.trim() : '';
+    const defaultCoords = getProvinceCoords(defaultCity) || PROVINCE_DEFAULT_COORDS['Thành phố Hà Nội'];
     setFormData({
       ...initialBranchFormData,
       city: defaultCity,
+      latitude: defaultCoords ? defaultCoords.lat.toFixed(6) : '',
+      longitude: defaultCoords ? defaultCoords.lng.toFixed(6) : '',
       imageUrl: prefillAvatar,
       bannerUrl: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80',
       ownerId: getOwnerId(),
@@ -461,7 +683,7 @@ export default function OwnerBranchesPage() {
         bannerUrl: formData.bannerUrl?.trim() || '',
         phone: formData.phone.trim().replace(/\s+/g, '').replace(/^\+84/, '0'),
         openingHours: formData.openingHours.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
-        description: formData.description.trim() || 'Showroom thời trang dạ tiệc và thiết kế cao cấp Vestora.',
+        description: formData.description.trim() || 'Cửa hàng thời trang dạ tiệc và thiết kế cao cấp Vestora.',
         address: formData.address.trim(),
         city: formData.city.trim(),
         ward: formData.ward.trim(),
@@ -618,7 +840,7 @@ export default function OwnerBranchesPage() {
                 Quản Lý Chi Nhánh & Trụ Sở
               </h1>
               <p className="text-muted mb-0" style={{ fontSize: '13px', marginTop: '3px', color: '#64748B' }}>
-                Quản lý hồ sơ thương hiệu, mạng lưới showroom, định vị GPS và nhân sự quản lý chi nhánh.
+                Quản lý hồ sơ thương hiệu, mạng lưới cửa hàng, định vị GPS và nhân sự quản lý chi nhánh.
               </p>
             </div>
             <div className="d-flex align-items-center gap-2">
@@ -647,7 +869,7 @@ export default function OwnerBranchesPage() {
                 </svg>
               </div>
               <div className="clean-kpi-info">
-                <span className="clean-kpi-label">Tổng Cơ Sở Showroom</span>
+                <span className="clean-kpi-label">Tổng Cơ Sở Cửa Hàng</span>
                 <span className="clean-kpi-value">{showroomStats.total}</span>
                 <span className="clean-kpi-desc">Mạng lưới toàn quốc</span>
               </div>
@@ -843,7 +1065,7 @@ export default function OwnerBranchesPage() {
                           const bannerSrc = b.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80';
                           setLightboxImage({
                             url: bannerSrc,
-                            title: `${b.name} — Ảnh Bìa Showroom (Kích Thước Gốc)`,
+                            title: `${b.name} — Ảnh Bìa Cửa Hàng (Kích Thước Gốc)`,
                           });
                         }}
                         style={{
@@ -859,7 +1081,7 @@ export default function OwnerBranchesPage() {
                       >
                         <img
                           src={b.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'}
-                          alt={`${b.name} Showroom Banner`}
+                          alt={`${b.name} Cửa Hàng Banner`}
                           onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'; }}
                           style={{
                             position: 'relative',
@@ -1237,8 +1459,8 @@ export default function OwnerBranchesPage() {
               </svg>
             </div>
             <div>
-              <h5 className="modal-title-main">Khởi Tạo Chi Nhánh Showroom Mới</h5>
-              <p className="modal-subtitle-text">Thiết lập hồ sơ showroom, địa chỉ GPS và ảnh nhận diện thương hiệu</p>
+              <h5 className="modal-title-main">Khởi Tạo Chi Nhánh Cửa Hàng Mới</h5>
+              <p className="modal-subtitle-text">Thiết lập hồ sơ cửa hàng, địa chỉ GPS và ảnh nhận diện thương hiệu</p>
             </div>
           </div>
           <button
@@ -1268,12 +1490,12 @@ export default function OwnerBranchesPage() {
                 <Col md={8}>
                   <Form.Group>
                     <label className="modal-field-label">
-                      Tên Chi Nhánh Showroom <span className="req">*</span>
+                      Tên Chi Nhánh Cửa Hàng <span className="req">*</span>
                     </label>
                     <Form.Control
                       type="text"
                       required
-                      placeholder="VD: Vestora Showroom Tràng Tiền"
+                      placeholder="VD: Vestora Cửa Hàng Tràng Tiền"
                       value={formData.name}
                       isInvalid={Boolean(formErrors.name)}
                       onChange={(e) => {
@@ -1290,7 +1512,7 @@ export default function OwnerBranchesPage() {
                 <Col md={4}>
                   <Form.Group>
                     <label className="modal-field-label">
-                      Hotline Showroom <span className="req">*</span>
+                      Hotline Cửa Hàng <span className="req">*</span>
                     </label>
                     <Form.Control
                       type="text"
@@ -1336,7 +1558,7 @@ export default function OwnerBranchesPage() {
                   onChange={(e) => setFormData({ ...formData, isHQ: e.target.checked })}
                 />
                 <div className="text-muted small mt-1" style={{ fontSize: '11.5px', paddingLeft: '2.4em' }}>
-                  Showroom Trụ Sở Chính sẽ được gắn huy hiệu Gold Seal và hiển thị ưu tiên hàng đầu trên toàn chuỗi Vestora.
+                  Cửa hàng Trụ Sở Chính sẽ được gắn huy hiệu Gold Seal và hiển thị ưu tiên hàng đầu trên toàn chuỗi Vestora.
                 </div>
               </div>
             </div>
@@ -1354,7 +1576,7 @@ export default function OwnerBranchesPage() {
               </div>
               <Form.Group>
                 <label className="modal-field-label">
-                  Nhân Sự Phụ Trách Vận Hành Showroom
+                  Nhân Sự Phụ Trách Vận Hành Cửa Hàng
                 </label>
                 <SearchableSelect
                   options={managers.map((m) => ({
@@ -1459,62 +1681,100 @@ export default function OwnerBranchesPage() {
                 <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                   <div>
                     <label className="modal-field-label mb-0">
-                      Ghim Tọa Độ Vị Trí Showroom (Leaflet Maps) <span className="req">*</span>
+                      Ghim Tọa Độ Vị Trí Cửa Hàng (Leaflet Maps) <span className="req">*</span>
                     </label>
                     <div className="text-muted small" style={{ fontSize: '11px' }}>
-                      Click trực tiếp trên bản đồ hoặc dùng nút GPS để tự động định vị
+                      Click trực tiếp trên bản đồ hoặc dùng các nút công cụ để lấy vị trí
                     </div>
                   </div>
-                  <GeoLocateButton
-                    onLocationFound={handleGpsLocationFound}
-                    variant="luxury"
-                    currentCity={formData.city}
+
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1"
+                      style={{ fontSize: '12px', borderRadius: '6px', fontWeight: 600, padding: '5px 12px' }}
+                      onClick={handleGetDeviceLocation}
+                      disabled={isLocating}
+                      title="Lấy tọa độ thực tế của thiết bị hiện tại"
+                    >
+                      {isLocating ? <Spinner size="sm" animation="border" /> : <Navigation size={13} />}
+                      <span>Lấy GPS Thiết Bị</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                      style={{ fontSize: '12px', borderRadius: '6px', fontWeight: 600, padding: '5px 12px' }}
+                      onClick={handleSyncAddressFromPin}
+                      disabled={isSyncingAddress || !formData.latitude || !formData.longitude}
+                      title="Dịch ngược tọa độ ghim hiện tại để điền Tỉnh/Thành, Phường/Xã và Số nhà"
+                    >
+                      {isSyncingAddress ? <Spinner size="sm" animation="border" /> : <RefreshCw size={13} />}
+                      <span>Đồng Bộ Địa Chỉ Từ Ghim</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    border: formErrors.coordinates ? '1.5px solid #EF4444' : '1px solid #CBD5E1',
+                    boxShadow: formErrors.coordinates ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : '0 2px 6px rgba(0,0,0,0.04)',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                  }}
+                >
+                  <LeafletMapPicker
+                    latitude={formData.latitude}
+                    longitude={formData.longitude}
+                    cityName={formData.city}
+                    height="280px"
+                    onChange={handleMapLocationChange}
                   />
                 </div>
-                <LeafletMapPicker
-                  latitude={formData.latitude}
-                  longitude={formData.longitude}
-                  height="260px"
-                  onChange={({ latitude, longitude }) => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      latitude: String(latitude),
-                      longitude: String(longitude),
-                    }));
-                    if (formErrors.coordinates) setFormErrors((prev) => ({ ...prev, coordinates: '' }));
-                  }}
-                />
-                <Row className="g-3 mt-3">
-                  <Col sm={6}>
-                    <Form.Control
-                      size="sm"
-                      placeholder="Vĩ độ (Latitude) VD: 21.028511"
-                      value={formData.latitude}
-                      isInvalid={Boolean(formErrors.coordinates)}
-                      onChange={(e) => {
-                        setFormData({ ...formData, latitude: e.target.value });
-                        if (formErrors.coordinates) setFormErrors((prev) => ({ ...prev, coordinates: '' }));
-                      }}
-                      style={{ fontSize: '12px' }}
-                    />
-                  </Col>
-                  <Col sm={6}>
-                    <Form.Control
-                      size="sm"
-                      placeholder="Kinh độ (Longitude) VD: 105.854444"
-                      value={formData.longitude}
-                      isInvalid={Boolean(formErrors.coordinates)}
-                      onChange={(e) => {
-                        setFormData({ ...formData, longitude: e.target.value });
-                        if (formErrors.coordinates) setFormErrors((prev) => ({ ...prev, coordinates: '' }));
-                      }}
-                      style={{ fontSize: '12px' }}
-                    />
-                  </Col>
-                </Row>
+
                 {formErrors.coordinates && (
-                  <div className="vestora-invalid-feedback d-block mt-1">{formErrors.coordinates}</div>
+                  <div
+                    className="vestora-invalid-feedback d-flex align-items-center gap-1 mt-2 p-2"
+                    style={{
+                      background: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      borderRadius: '8px',
+                      color: '#991B1B',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <AlertCircle size={15} className="flex-shrink-0 text-danger" />
+                    <span>{formErrors.coordinates}</span>
+                  </div>
                 )}
+
+                {/* Map Coordinate Chip & Guidance */}
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 pt-1">
+                  <span className="text-muted d-inline-flex align-items-center gap-1" style={{ fontSize: '11.5px' }}>
+                    <Info size={13} className="text-slate-400" />
+                    <span>Click vào vị trí trên bản đồ để di chuyển ghim đỏ tới cửa hàng</span>
+                  </span>
+                  {formData.latitude && formData.longitude && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        background: '#F1F5F9',
+                        color: '#334155',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontFamily: 'monospace',
+                        border: '1px solid #E2E8F0',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Compass size={12} className="text-slate-400" />
+                      Tọa độ: {Number(formData.latitude).toFixed(4)}, {Number(formData.longitude).toFixed(4)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1526,7 +1786,7 @@ export default function OwnerBranchesPage() {
                     <circle cx="8.5" cy="8.5" r="1.5" />
                     <polyline points="21 15 16 10 5 21" />
                   </svg>
-                  <span>4. Hình Ảnh Showroom & Nhận Diện Chi Nhánh</span>
+                  <span>4. Hình Ảnh Cửa Hàng & Nhận Diện Chi Nhánh</span>
                 </div>
                 <span className="modal-section-badge">Hỗ trợ 16:9 & 9:16</span>
               </div>
@@ -1552,7 +1812,7 @@ export default function OwnerBranchesPage() {
                   if (formData.bannerUrl && !formData.bannerUrl.startsWith('blob:')) {
                     setLightboxImage({
                       url: formData.bannerUrl,
-                      title: `${formData.name || 'Chi Nhánh'} — Ảnh Bìa Showroom (Kích Thước Gốc)`,
+                      title: `${formData.name || 'Chi Nhánh'} — Ảnh Bìa Cửa Hàng (Kích Thước Gốc)`,
                     });
                   }
                 }}
@@ -1619,7 +1879,7 @@ export default function OwnerBranchesPage() {
                 />
                 <img
                   src={formData.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'}
-                  alt="Showroom Banner Preview"
+                  alt="Banner Cửa Hàng Preview"
                   onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'; }}
                   style={{
                     position: 'relative',
@@ -1692,7 +1952,7 @@ export default function OwnerBranchesPage() {
                   </div>
                   <div>
                     <div style={{ color: '#FFF', fontWeight: 700, fontSize: '13px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
-                      {formData.name || 'Chi Nhánh Showroom'}
+                      {formData.name || 'Chi Nhánh Cửa Hàng'}
                     </div>
                   </div>
                 </div>
@@ -1704,19 +1964,7 @@ export default function OwnerBranchesPage() {
                     type="button"
                     variant="outline-dark"
                     size="sm"
-                    disabled={uploadingBanner}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      createBannerFileRef.current?.click();
-                    }}
-                    style={{ fontSize: '12px', fontWeight: 600, borderRadius: '8px', padding: '5px 14px' }}
-                  >
-                    {uploadingBanner ? <Spinner size="sm" animation="border" className="me-1" /> : '📷 Đổi Ảnh Bìa'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline-dark"
-                    size="sm"
+                    className="d-inline-flex align-items-center"
                     disabled={uploadingAvatar}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1724,7 +1972,31 @@ export default function OwnerBranchesPage() {
                     }}
                     style={{ fontSize: '12px', fontWeight: 600, borderRadius: '8px', padding: '5px 14px' }}
                   >
-                    {uploadingAvatar ? <Spinner size="sm" animation="border" className="me-1" /> : '📁 Đổi Logo Showroom'}
+                    {uploadingAvatar ? (
+                      <Spinner size="sm" animation="border" className="me-1" />
+                    ) : (
+                      <Upload size={13} className="me-1" />
+                    )}
+                    <span>Đổi Logo Cửa Hàng</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline-dark"
+                    size="sm"
+                    className="d-inline-flex align-items-center"
+                    disabled={uploadingBanner}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      createBannerFileRef.current?.click();
+                    }}
+                    style={{ fontSize: '12px', fontWeight: 600, borderRadius: '8px', padding: '5px 14px' }}
+                  >
+                    {uploadingBanner ? (
+                      <Spinner size="sm" animation="border" className="me-1" />
+                    ) : (
+                      <Upload size={13} className="me-1" />
+                    )}
+                    <span>Đổi Ảnh Bìa</span>
                   </Button>
                 </div>
 
@@ -1743,13 +2015,13 @@ export default function OwnerBranchesPage() {
                     <line x1="21" y1="14" x2="3" y2="14" />
                     <line x1="21" y1="18" x2="7" y2="18" />
                   </svg>
-                  <span>5. Giới Thiệu & Dịch Vụ Showroom</span>
+                  <span>5. Giới Thiệu & Dịch Vụ Cửa Hàng</span>
                 </div>
                 <span className="modal-section-badge">Tùy chọn</span>
               </div>
               <Form.Group>
                 <label className="modal-field-label">
-                  Mô Tả Không Gian & Tiện Ích Showroom
+                  Mô Tả Không Gian & Tiện Ích Cửa Hàng
                 </label>
                 <Form.Control
                   as="textarea"
@@ -1837,7 +2109,7 @@ export default function OwnerBranchesPage() {
                     <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                     <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                   </svg>
-                  <span>1. Thông Tin Showroom & Trạng Thái Hoạt Động</span>
+                  <span>1. Thông Tin Cửa Hàng & Trạng Thái Hoạt Động</span>
                 </div>
                 <span className="modal-section-badge">Bắt buộc</span>
               </div>
@@ -1846,7 +2118,7 @@ export default function OwnerBranchesPage() {
                 <Col md={8}>
                   <Form.Group>
                     <label className="modal-field-label">
-                      Tên Chi Nhánh Showroom <span className="req">*</span>
+                      Tên Cửa Hàng <span className="req">*</span>
                     </label>
                     <Form.Control
                       type="text"
@@ -1867,7 +2139,7 @@ export default function OwnerBranchesPage() {
                 <Col md={4}>
                   <Form.Group>
                     <label className="modal-field-label">
-                      Hotline Showroom <span className="req">*</span>
+                      Hotline Cửa Hàng <span className="req">*</span>
                     </label>
                     <Form.Control
                       type="text"
@@ -1891,7 +2163,7 @@ export default function OwnerBranchesPage() {
                 <Col md={6}>
                   <Form.Group>
                     <label className="modal-field-label">
-                      Trạng Thái Vận Hành Showroom
+                      Trạng Thái Vận Hành Cửa Hàng
                     </label>
                     <Form.Select
                       value={formData.status}
@@ -1951,7 +2223,7 @@ export default function OwnerBranchesPage() {
               </div>
               <Form.Group>
                 <label className="modal-field-label">
-                  Nhân Sự Phụ Trách Vận Hành Showroom
+                  Nhân Sự Phụ Trách Vận Hành Cửa Hàng
                 </label>
                 <SearchableSelect
                   options={managers.map((m) => ({
@@ -2055,62 +2327,100 @@ export default function OwnerBranchesPage() {
                 <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                   <div>
                     <label className="modal-field-label mb-0">
-                      Ghim Tọa Độ Vị Trí Showroom (Leaflet Maps) <span className="req">*</span>
+                      Ghim Tọa Độ Vị Trí Cửa Hàng (Leaflet Maps) <span className="req">*</span>
                     </label>
                     <div className="text-muted small" style={{ fontSize: '11px' }}>
-                      Click trực tiếp trên bản đồ hoặc dùng nút GPS để tự động định vị
+                      Click trực tiếp trên bản đồ hoặc dùng các nút công cụ để lấy vị trí
                     </div>
                   </div>
-                  <GeoLocateButton
-                    onLocationFound={handleGpsLocationFound}
-                    variant="luxury"
-                    currentCity={formData.city}
+
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1"
+                      style={{ fontSize: '12px', borderRadius: '6px', fontWeight: 600, padding: '5px 12px' }}
+                      onClick={handleGetDeviceLocation}
+                      disabled={isLocating}
+                      title="Lấy tọa độ thực tế của thiết bị hiện tại"
+                    >
+                      {isLocating ? <Spinner size="sm" animation="border" /> : <Navigation size={13} />}
+                      <span>Lấy GPS Thiết Bị</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                      style={{ fontSize: '12px', borderRadius: '6px', fontWeight: 600, padding: '5px 12px' }}
+                      onClick={handleSyncAddressFromPin}
+                      disabled={isSyncingAddress || !formData.latitude || !formData.longitude}
+                      title="Dịch ngược tọa độ ghim hiện tại để điền Tỉnh/Thành, Phường/Xã và Số nhà"
+                    >
+                      {isSyncingAddress ? <Spinner size="sm" animation="border" /> : <RefreshCw size={13} />}
+                      <span>Đồng Bộ Địa Chỉ Từ Ghim</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    border: formErrors.coordinates ? '1.5px solid #EF4444' : '1px solid #CBD5E1',
+                    boxShadow: formErrors.coordinates ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : '0 2px 6px rgba(0,0,0,0.04)',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                  }}
+                >
+                  <LeafletMapPicker
+                    latitude={formData.latitude}
+                    longitude={formData.longitude}
+                    cityName={formData.city}
+                    height="280px"
+                    onChange={handleMapLocationChange}
                   />
                 </div>
-                <LeafletMapPicker
-                  latitude={formData.latitude}
-                  longitude={formData.longitude}
-                  height="260px"
-                  onChange={({ latitude, longitude }) => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      latitude: String(latitude),
-                      longitude: String(longitude),
-                    }));
-                    if (formErrors.coordinates) setFormErrors((prev) => ({ ...prev, coordinates: '' }));
-                  }}
-                />
-                <Row className="g-3 mt-3">
-                  <Col sm={6}>
-                    <Form.Control
-                      size="sm"
-                      placeholder="Vĩ độ (Latitude) VD: 21.028511"
-                      value={formData.latitude}
-                      isInvalid={Boolean(formErrors.coordinates)}
-                      onChange={(e) => {
-                        setFormData({ ...formData, latitude: e.target.value });
-                        if (formErrors.coordinates) setFormErrors((prev) => ({ ...prev, coordinates: '' }));
-                      }}
-                      style={{ fontSize: '12px' }}
-                    />
-                  </Col>
-                  <Col sm={6}>
-                    <Form.Control
-                      size="sm"
-                      placeholder="Kinh độ (Longitude) VD: 105.854444"
-                      value={formData.longitude}
-                      isInvalid={Boolean(formErrors.coordinates)}
-                      onChange={(e) => {
-                        setFormData({ ...formData, longitude: e.target.value });
-                        if (formErrors.coordinates) setFormErrors((prev) => ({ ...prev, coordinates: '' }));
-                      }}
-                      style={{ fontSize: '12px' }}
-                    />
-                  </Col>
-                </Row>
+
                 {formErrors.coordinates && (
-                  <div className="vestora-invalid-feedback d-block mt-1">{formErrors.coordinates}</div>
+                  <div
+                    className="vestora-invalid-feedback d-flex align-items-center gap-1 mt-2 p-2"
+                    style={{
+                      background: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      borderRadius: '8px',
+                      color: '#991B1B',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <AlertCircle size={15} className="flex-shrink-0 text-danger" />
+                    <span>{formErrors.coordinates}</span>
+                  </div>
                 )}
+
+                {/* Map Coordinate Chip & Guidance */}
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 pt-1">
+                  <span className="text-muted d-inline-flex align-items-center gap-1" style={{ fontSize: '11.5px' }}>
+                    <Info size={13} className="text-slate-400" />
+                    <span>Click vào vị trí trên bản đồ để di chuyển ghim đỏ tới cửa hàng</span>
+                  </span>
+                  {formData.latitude && formData.longitude && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        background: '#F1F5F9',
+                        color: '#334155',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontFamily: 'monospace',
+                        border: '1px solid #E2E8F0',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Compass size={12} className="text-slate-400" />
+                      Tọa độ: {Number(formData.latitude).toFixed(4)}, {Number(formData.longitude).toFixed(4)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2122,7 +2432,7 @@ export default function OwnerBranchesPage() {
                     <circle cx="8.5" cy="8.5" r="1.5" />
                     <polyline points="21 15 16 10 5 21" />
                   </svg>
-                  <span>4. Hình Ảnh Showroom & Nhận Diện Chi Nhánh</span>
+                  <span>4. Hình Ảnh Cửa Hàng & Nhận Diện Chi Nhánh</span>
                 </div>
                 <span className="modal-section-badge">Hỗ trợ 16:9 & 9:16</span>
               </div>
@@ -2148,7 +2458,7 @@ export default function OwnerBranchesPage() {
                   if (formData.bannerUrl && !formData.bannerUrl.startsWith('blob:')) {
                     setLightboxImage({
                       url: formData.bannerUrl,
-                      title: `${formData.name || 'Chi Nhánh'} — Ảnh Bìa Showroom (Kích Thước Gốc)`,
+                      title: `${formData.name || 'Chi Nhánh'} — Ảnh Bìa Cửa Hàng (Kích Thước Gốc)`,
                     });
                   }
                 }}
@@ -2215,7 +2525,7 @@ export default function OwnerBranchesPage() {
                 />
                 <img
                   src={formData.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'}
-                  alt="Showroom Banner Preview"
+                  alt="Banner Cửa Hàng Preview"
                   onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'; }}
                   style={{
                     position: 'relative',
@@ -2288,7 +2598,7 @@ export default function OwnerBranchesPage() {
                   </div>
                   <div>
                     <div style={{ color: '#FFF', fontWeight: 700, fontSize: '13px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
-                      {formData.name || 'Chi Nhánh Showroom'}
+                      {formData.name || 'Chi Nhánh Cửa Hàng'}
                     </div>
                   </div>
                 </div>
@@ -2300,19 +2610,7 @@ export default function OwnerBranchesPage() {
                     type="button"
                     variant="outline-dark"
                     size="sm"
-                    disabled={uploadingBanner}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      editBannerFileRef.current?.click();
-                    }}
-                    style={{ fontSize: '12px', fontWeight: 600, borderRadius: '8px', padding: '5px 14px' }}
-                  >
-                    {uploadingBanner ? <Spinner size="sm" animation="border" className="me-1" /> : '📷 Đổi Ảnh Bìa'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline-dark"
-                    size="sm"
+                    className="d-inline-flex align-items-center"
                     disabled={uploadingAvatar}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2320,7 +2618,31 @@ export default function OwnerBranchesPage() {
                     }}
                     style={{ fontSize: '12px', fontWeight: 600, borderRadius: '8px', padding: '5px 14px' }}
                   >
-                    {uploadingAvatar ? <Spinner size="sm" animation="border" className="me-1" /> : '📁 Đổi Logo Showroom'}
+                    {uploadingAvatar ? (
+                      <Spinner size="sm" animation="border" className="me-1" />
+                    ) : (
+                      <Upload size={13} className="me-1" />
+                    )}
+                    <span>Đổi Logo Cửa Hàng</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline-dark"
+                    size="sm"
+                    className="d-inline-flex align-items-center"
+                    disabled={uploadingBanner}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      editBannerFileRef.current?.click();
+                    }}
+                    style={{ fontSize: '12px', fontWeight: 600, borderRadius: '8px', padding: '5px 14px' }}
+                  >
+                    {uploadingBanner ? (
+                      <Spinner size="sm" animation="border" className="me-1" />
+                    ) : (
+                      <Upload size={13} className="me-1" />
+                    )}
+                    <span>Đổi Ảnh Bìa</span>
                   </Button>
                 </div>
 
@@ -2339,13 +2661,13 @@ export default function OwnerBranchesPage() {
                     <line x1="21" y1="14" x2="3" y2="14" />
                     <line x1="21" y1="18" x2="7" y2="18" />
                   </svg>
-                  <span>5. Giới Thiệu & Dịch Vụ Showroom</span>
+                  <span>5. Giới Thiệu & Dịch Vụ Cửa Hàng</span>
                 </div>
                 <span className="modal-section-badge">Tùy chọn</span>
               </div>
               <Form.Group>
                 <label className="modal-field-label">
-                  Mô Tả / Giới Thiệu Showroom
+                  Mô Tả / Giới Thiệu Cửa Hàng
                 </label>
                 <Form.Control
                   as="textarea"
@@ -2392,7 +2714,7 @@ export default function OwnerBranchesPage() {
               ) : (
                 <>
                   <span>💾</span>
-                  <span>Lưu Cập Nhật Showroom</span>
+                  <span>Lưu Cập Nhật Cửa Hàng</span>
                 </>
               )}
             </button>
@@ -2418,7 +2740,7 @@ export default function OwnerBranchesPage() {
             </div>
             <div>
               <h5 className="modal-title-main" style={{ color: '#991B1B' }}>Xác Nhận Xóa Chi Nhánh</h5>
-              <p className="modal-subtitle-text" style={{ color: '#B91C1C' }}>Thao tác này sẽ gỡ bỏ showroom khỏi mạng lưới chuỗi Vestora</p>
+              <p className="modal-subtitle-text" style={{ color: '#B91C1C' }}>Thao tác này sẽ gỡ bỏ cửa hàng khỏi mạng lưới chuỗi Vestora</p>
             </div>
           </div>
           <button
@@ -2435,7 +2757,7 @@ export default function OwnerBranchesPage() {
             <div className="p-3 rounded-2 mb-3 d-flex align-items-start gap-2" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', fontSize: '13px' }}>
               <span style={{ fontSize: '16px' }}>⚠️</span>
               <div>
-                <strong>Lưu ý quan trọng:</strong> Đây hiện đang là <strong>Trụ Sở Chính (HQ)</strong> của toàn chuỗi. Nếu xóa, bạn nên chỉ định một showroom khác làm HQ để đảm bảo quy trình vận hành chuỗi không bị gián đoạn.
+                <strong>Lưu ý quan trọng:</strong> Đây hiện đang là <strong>Trụ Sở Chính (HQ)</strong> của toàn chuỗi. Nếu xóa, bạn nên chỉ định một cửa hàng khác làm HQ để đảm bảo quy trình vận hành chuỗi không bị gián đoạn.
               </div>
             </div>
           )}
@@ -2512,7 +2834,7 @@ export default function OwnerBranchesPage() {
               </svg>
             </div>
             <div>
-              <h5 className="modal-title-main">Bản Đồ Vị Trí Showroom: {activeBranch?.name}</h5>
+              <h5 className="modal-title-main">Bản Đồ Vị Trí Cửa Hàng: {activeBranch?.name}</h5>
               <p className="modal-subtitle-text">Tọa độ GPS chuẩn xác & điều hướng bản đồ trực quan</p>
             </div>
           </div>
@@ -2548,7 +2870,7 @@ export default function OwnerBranchesPage() {
             longitude={activeBranch?.longitude}
             readOnly={true}
             height="400px"
-            label={activeBranch?.name || 'Vị trí Showroom'}
+            label={activeBranch?.name || 'Vị trí Cửa Hàng'}
           />
         </div>
 

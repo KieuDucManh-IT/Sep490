@@ -30,8 +30,7 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
     if (path === '/owner/branches') {
       return (
         location.pathname === '/owner/branches' ||
-        location.pathname === '/owner/shops' ||
-        location.pathname === '/owner/settings'
+        location.pathname === '/owner/shops'
       ) ? 'active' : '';
     }
     return location.pathname === path ? 'active' : '';

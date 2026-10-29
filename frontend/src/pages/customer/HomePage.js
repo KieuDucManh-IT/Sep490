@@ -361,7 +361,7 @@ export default function HomePage() {
               TRẢI NGHIỆM ĐẲNG CẤP VESTORA
             </div>
             <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '32px', marginBottom: '12px', color: '#FFF' }}>
-              Trải Nghiệm Trang Phục Cao Cấp<br />Tại Hệ Thống Showroom
+              Trải Nghiệm Trang Phục Cao Cấp<br />Tại Hệ Thống Cửa Hàng
             </h2>
             <p style={{ fontSize: '14px', color: '#A3A3A3', maxWidth: '480px' }}>
               Khám phá bộ sưu tập trang phục thiết kế độc quyền, đặt lịch thuê online hoặc ghé ngay các chi nhánh VESTORA gần bạn để thử đồ trực tiếp.
@@ -369,7 +369,7 @@ export default function HomePage() {
           </div>
 
           <button className="btn-primary" onClick={() => navigate('/map')}>
-            TÌM SHOWROOM GẦN BẠN ➔
+            TÌM CỬA HÀNG GẦN BẠN ➔
           </button>
         </div>
       </section>

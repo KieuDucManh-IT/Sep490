@@ -32,14 +32,14 @@ export default function ShopMapPage() {
             status: item.status,
             distance: item.latitude ? `${(0.8 + idx * 0.5).toFixed(1)} km` : 'Chưa định vị GPS',
             travelTime: item.latitude ? `~${3 + idx * 3} phút di chuyển` : 'Cần cập nhật GPS',
-            rating: '5.0 (Showroom Verified)',
+            rating: '5.0 (Cửa Hàng Verified)',
             imageUrl: item.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name || 'Shop')}&background=0F172A&color=D97706&size=100`,
             bannerUrl: item.bannerUrl || 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
             avatarUrl: item.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name || 'Shop')}&background=0F172A&color=D97706&size=100`,
             tags: [
               item.status === 'ACTIVE' ? 'ĐANG HOẠT ĐỘNG' : 'CHỜ DUYỆT',
               item.latitude ? 'GPS ĐÃ ĐỊNH VỊ' : 'CHƯA CÓ GPS',
-              'THỬ ĐỒ TẠI SHOWROOM',
+              'THỬ ĐỒ TẠI CỬA HÀNG',
             ],
           }));
 
@@ -65,7 +65,7 @@ export default function ShopMapPage() {
       <div style={{ background: '#171717', color: '#FFF', padding: '48px 48px 36px 48px' }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
           <div style={{ fontSize: '11px', color: 'var(--color-gold)', letterSpacing: '2px', fontWeight: 600, marginBottom: '8px' }}>
-            📡 VESTORA RADAR MAPS • ĐỊNH VỊ SHOWROOM ĐỒ THUÊ GẦN BẠN
+            📡 VESTORA RADAR MAPS • ĐỊNH VỊ CỬA HÀNG ĐỒ THUÊ GẦN BẠN
           </div>
           <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '36px', fontWeight: 400, margin: '0 0 12px 0' }}>
             Tìm Cửa Hàng Cho Thuê Gần Nhất (Dữ Liệu Thật Từ Database)

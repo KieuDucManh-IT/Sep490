@@ -183,7 +183,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                   </span>
                   <div className="admin-dropdown-content">
                     <div className="admin-dropdown-item-title">Yêu cầu hoàn cọc Escrow PayOS</div>
-                    <div className="admin-dropdown-item-desc">Đơn hàng đã hoàn tất trả đồ an toàn tại showroom</div>
+                    <div className="admin-dropdown-item-desc">Đơn hàng đã hoàn tất trả đồ an toàn tại cửa hàng</div>
                     <span className="admin-dropdown-time">1 giờ trước • Trọng tài</span>
                   </div>
                 </div>
@@ -201,7 +201,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                     </svg>
                   </span>
                   <div className="admin-dropdown-content">
-                    <div className="admin-dropdown-item-title">{isOps ? 'Giám sát chi nhánh showroom mới' : 'Xác thực tài khoản người dùng KYC'}</div>
+                    <div className="admin-dropdown-item-title">{isOps ? 'Giám sát chi nhánh cửa hàng mới' : 'Xác thực tài khoản người dùng KYC'}</div>
                     <div className="admin-dropdown-item-desc">{isOps ? 'Chi nhánh cập nhật tọa độ GPS bản đồ' : 'Cập nhật hồ sơ định danh điện tử hoàn tất'}</div>
                     <span className="admin-dropdown-time">3 giờ trước • Kiểm soát</span>
                   </div>
@@ -313,7 +313,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                       <path d="M10 13a2 2 0 0 0 4 0" />
                     </svg>
                   </span>
-                  <span>Phê Duyệt Shop Owner & Showroom</span>
+                  <span>Phê Duyệt Shop Owner & Cửa Hàng</span>
                 </button>
 
                 <button

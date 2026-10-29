@@ -112,7 +112,7 @@ export default function OwnerAnalyticsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>HỆ THỐNG CHI NHÁNH & KHO VESTORA (UC-12)</div>
-                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#171717', margin: '4px 0' }}>{metrics.branches?.total ?? 0} Điểm Showroom & Kho</div>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#171717', margin: '4px 0' }}>{metrics.branches?.total ?? 0} Điểm Cửa Hàng & Kho</div>
                   <div style={{ fontSize: '12px', color: '#10B981' }}>{metrics.branches?.active ?? 0} Đang hoạt động • {metrics.branches?.suspended ?? 0} Tạm ngưng</div>
                 </div>
                 <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>

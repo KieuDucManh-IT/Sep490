@@ -388,7 +388,7 @@ function ShopDetailModal({ app, onClose, onSuspend, onReactivate, onApprove, onR
               <span className="admin-applicant-field__val regular">{ownerEmail}</span>
             </div>
             <div className="admin-applicant-field" style={{ gridColumn: 'span 2' }}>
-              <span className="admin-applicant-field__label">ĐỊA CHỈ TRỤ SỞ / SHOWROOM</span>
+              <span className="admin-applicant-field__label">ĐỊA CHỈ TRỤ SỞ / CỬA HÀNG</span>
               <span className="admin-applicant-field__val regular">{fullAddress}</span>
               {hasGps && (
                 <div style={{ marginTop: '6px', fontSize: '12px', color: '#059669', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -685,7 +685,7 @@ function ApplicantDetailModal({ app, onClose, onApprove, onReject, onViewDoc }) 
               </div>
 
               <div className="admin-applicant-field" style={{ gridColumn: 'span 2' }}>
-                <span className="admin-applicant-field__label">ĐỊA CHỈ SHOWROOM / KHO HÀNG</span>
+                <span className="admin-applicant-field__label">ĐỊA CHỈ CỬA HÀNG / KHO HÀNG</span>
                 <span className="admin-applicant-field__val regular">{fullAddress}</span>
                 {hasGps && (
                   <div style={{ marginTop: '4px', fontSize: '12px', color: '#059669', fontFamily: 'monospace' }}>
@@ -1063,7 +1063,7 @@ function ShopCard({ app, onApprove, onReject, onSuspend, onReactivate, onViewDoc
                 <span className="admin-owner-col__val regular">{app.city || 'Toàn quốc'}</span>
               </div>
               <div className="admin-owner-col">
-                <span className="admin-owner-col__label">ĐỊA CHỈ SHOWROOM</span>
+                <span className="admin-owner-col__label">ĐỊA CHỈ CỬA HÀNG</span>
                 <span className="admin-owner-col__val regular">
                   {app.address ? [app.address, app.ward, app.district, app.city].filter(Boolean).join(', ') : 'Chưa cập nhật'}
                   {app.latitude && app.longitude && (

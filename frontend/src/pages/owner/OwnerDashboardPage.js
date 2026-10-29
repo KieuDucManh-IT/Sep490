@@ -134,7 +134,7 @@ export default function OwnerDashboardPage() {
           {/* Greeting Hero Bar */}
           <div className="admin-page-hero">
             <div>
-              <h1 className="admin-page-title">Tổng Quan Chuỗi Showroom VESTORA</h1>
+              <h1 className="admin-page-title">Tổng Quan Chuỗi Cửa Hàng VESTORA</h1>
               <p className="admin-page-desc">
                 Theo dõi tình hình kinh doanh, doanh thu các chi nhánh và trạng thái đơn thuê toàn chuỗi.
               </p>
@@ -200,13 +200,13 @@ export default function OwnerDashboardPage() {
                   </svg>
                 </span>
               </div>
-              <div className="admin-kpi-value">48 Showroom</div>
+              <div className="admin-kpi-value">48 Cửa Hàng</div>
               <div className="admin-kpi-trend positive">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <line x1="12" y1="19" x2="12" y2="5"></line>
                   <polyline points="5 12 12 5 19 12"></polyline>
                 </svg>
-                +5 showroom tháng này
+                +5 cửa hàng tháng này
               </div>
             </div>
 
@@ -306,7 +306,7 @@ export default function OwnerDashboardPage() {
             <div className="admin-widget-card">
               <div className="admin-widget-header">
                 <div>
-                  <h3 className="admin-widget-title">Top Showroom Đối Tác</h3>
+                  <h3 className="admin-widget-title">Top Cửa Hàng Đối Tác</h3>
                   <span className="admin-widget-subtitle">Theo doanh thu luân chuyển</span>
                 </div>
               </div>

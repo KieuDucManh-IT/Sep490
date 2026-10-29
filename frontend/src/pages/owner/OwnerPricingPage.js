@@ -190,7 +190,7 @@ export default function OwnerPricingPage() {
                 Bảng Giá Thuê & Tiền Cọc Escrow
               </h1>
               <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px' }}>
-                Thiết lập mức giá thuê theo ngày và tỷ lệ cọc bảo đảm PayOS Escrow áp dụng thống nhất cho toàn chuỗi showroom.
+                Thiết lập mức giá thuê theo ngày và tỷ lệ cọc bảo đảm PayOS Escrow áp dụng thống nhất cho toàn chuỗi cửa hàng.
               </p>
             </div>
             <div className="admin-hero-actions">

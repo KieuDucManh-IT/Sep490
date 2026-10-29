@@ -36,7 +36,7 @@ export default function LeafletMapPicker({
   onChange,
   readOnly = false,
   height = '320px',
-  label = 'VỊ TRÍ SHOWROOM',
+  label = 'VỊ TRÍ CỬA HÀNG',
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -247,7 +247,7 @@ export default function LeafletMapPicker({
           type="button"
           className="leaflet-map-recenter-btn"
           onClick={handleRecenter}
-          title="Đưa góc nhìn bản đồ về tâm điểm vị trí showroom"
+          title="Đưa góc nhìn bản đồ về tâm điểm vị trí cửa hàng"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
@@ -273,7 +273,7 @@ export default function LeafletMapPicker({
               <line x1="12" y1="8" x2="12.01" y2="8" />
             </svg>
             <span>
-              <strong>Mẹo:</strong> Nhấp trên bản đồ hoặc kéo giữ ghim để chọn vị trí showroom chính xác.
+              <strong>Mẹo:</strong> Nhấp trên bản đồ hoặc kéo giữ ghim để chọn vị trí cửa hàng chính xác.
             </span>
           </div>
         </div>

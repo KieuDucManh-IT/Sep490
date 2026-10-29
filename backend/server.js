@@ -10,6 +10,26 @@ import shopRoutes from "./src/routes/shopRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
+import walletRoutes, {
+  asyncRoute,
+} from "./src/routes/walletRoutes.js";
+
+import {
+  payosWebhook,
+} from "./src/controllers/walletController.js";
+
+import { Wallet } from "./src/models/finance/Wallet.js";
+import {
+  WalletTransaction,
+} from "./src/models/finance/WalletTransaction.js";
+
+import {
+  checkWalletKeys,
+} from "./src/utils/walletSecurity.js";
+
+import {
+  startWalletReconcileJob,
+} from "./src/jobs/walletReconcileJob.js";
 
 dotenv.config();
 
@@ -33,6 +53,12 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
+app.post(
+  "/api/webhooks/payos",
+  asyncRoute(payosWebhook)
+);
+
+app.use("/api/wallet", walletRoutes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/shops", shopRoutes);
@@ -48,6 +74,44 @@ async function startServer() {
   try {
     await connectDB();
     await User.init();
+    checkWalletKeys();
+
+    const hello = await mongoose.connection.db
+      .admin()
+      .command({ hello: 1 });
+
+    if (!hello.setName && hello.msg !== "isdbgrid") {
+      throw new Error("Chức năng Ví cần MongoDB replica set hoặc Atlas");
+    }
+
+    // Chặn việc vô tình dùng schema mới trên dữ liệu Ví cũ.
+    const oldWallet = await Wallet.collection.findOne({
+      $or: [
+        { balance: { $exists: true } },
+        { lockedBalance: { $exists: true } },
+        { balanceEncrypted: { $exists: false } },
+      ],
+    });
+
+    const oldTransaction = await WalletTransaction.collection.findOne({
+      $or: [
+        { balanceBefore: { $exists: true } },
+        { balanceAfter: { $exists: true } },
+        { userId: { $exists: false } },
+        { code: { $exists: false } },
+      ],
+    });
+
+    if (oldWallet || oldTransaction) {
+      throw new Error(
+        "Có dữ liệu Ví cũ cần chuyển đổi sang schema mã hóa trước khi chạy"
+      );
+    }
+
+    await Wallet.init();
+    await WalletTransaction.init();
+
+    startWalletReconcileJob();
 
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);

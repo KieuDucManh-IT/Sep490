@@ -809,9 +809,8 @@ export default function UserProfilePage() {
           <div className="profile-nav-menu">
             <button
               type="button"
-              className={`profile-nav-btn profile-menu-parent ${
-                profileMenuOpen ? "is-open" : ""
-              }`}
+              className={`profile-nav-btn profile-menu-parent ${profileMenuOpen ? "is-open" : ""
+                }`}
               onClick={() => setProfileMenuOpen((previous) => !previous)}
               aria-expanded={profileMenuOpen}
               aria-controls="profile-account-submenu"
@@ -838,11 +837,10 @@ export default function UserProfilePage() {
               >
                 <button
                   type="button"
-                  className={`profile-submenu-button ${
-                    profileTab === "information" && isEditing
+                  className={`profile-submenu-button ${profileTab === "information" && isEditing
                       ? "is-active"
                       : ""
-                  }`}
+                    }`}
                   onClick={handleOpenEdit}
                   disabled={accountBusy}
                 >
@@ -855,9 +853,8 @@ export default function UserProfilePage() {
                 {canChangePassword && (
                   <button
                     type="button"
-                    className={`profile-submenu-button ${
-                      profileTab === "password" ? "is-active" : ""
-                    }`}
+                    className={`profile-submenu-button ${profileTab === "password" ? "is-active" : ""
+                      }`}
                     onClick={handleOpenPassword}
                     disabled={accountBusy}
                   >
@@ -872,6 +869,15 @@ export default function UserProfilePage() {
                 )}
               </div>
             )}
+            <button
+              type="button"
+              className="profile-nav-btn"
+              onClick={() => navigate("/wallet")}
+              disabled={accountBusy}
+            >
+              <span>Ví Của Tôi</span>
+              <span>›</span>
+            </button>
 
             <button
               type="button"

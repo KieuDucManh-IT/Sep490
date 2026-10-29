@@ -142,7 +142,8 @@ export default function ProductDetailPage() {
     setFavorites(updated);
     try {
       localStorage.setItem('vestora_favorites', JSON.stringify(updated));
-    } catch {}
+      window.dispatchEvent(new Event('favoritesUpdated'));
+    } catch { }
     showToast(isFavorited ? 'Đã xóa khỏi danh sách yêu thích' : 'Đã thêm vào yêu thích!');
   };
 
@@ -160,14 +161,15 @@ export default function ProductDetailPage() {
     return list;
   }, [product]);
 
+  // Ép kiểu Boolean chuẩn xác 100%, không bao giờ trả về số 0
   const isRental = useMemo(() => {
     if (!product) return true;
-    return (
+    return Boolean(
       product.productType === 'rental' ||
       product.tag === 'rental' ||
       product.productType === 'both' ||
-      (product.rentalPricePer3Days && product.rentalPricePer3Days > 0) ||
-      (product.rentalPricePerDay && product.rentalPricePerDay > 0)
+      Number(product.rentalPricePer3Days) > 0 ||
+      Number(product.rentalPricePerDay) > 0
     );
   }, [product]);
 
@@ -198,7 +200,11 @@ export default function ProductDetailPage() {
     ? priceByDuration[rentalDuration] || baseRental3Days
     : product?.salePrice || 0;
 
-  const depositAmount = product?.deposit || product?.depositPrice || Math.round(baseRental3Days * 3.2);
+  // Hàng mua bán thì không có tiền cọc
+  const depositAmount = useMemo(() => {
+    if (!isRental) return 0;
+    return Number(product?.deposit || product?.depositPrice || Math.round(baseRental3Days * 3.2));
+  }, [isRental, product, baseRental3Days]);
 
   // Available Sizes
   const sizeOptions = useMemo(() => {
@@ -257,29 +263,48 @@ export default function ProductDetailPage() {
     if (!product) return;
     try {
       const cartItem = {
+        id: `cart-${Date.now()}-${product._id || product.productCode}`,
         productId: product._id || product.productCode,
         name: product.name,
-        image: images[0] || '',
+        shopName: product.shopId?.name || product.brand || 'Vestora Fashion Store',
+        image: images[0] || product.image || '',
         size: selectedSize,
-        duration: rentalDuration,
-        startDate,
-        endDate: endDateFormatted,
+        color: (Array.isArray(product.colors) && product.colors[0]) || 'Mặc định',
+        colorCode: '#6e3eb3',
+        duration: isRental ? rentalDuration : null,
+        startDate: isRental ? startDate : null,
+        endDate: isRental ? endDateFormatted : null,
         price: currentPrice,
         deposit: depositAmount,
         quantity,
         isRental,
+        condition: product.condition || 'Rất tốt',
+        inStock: product.inStock !== false,
+        aiTryOn: product.aiTryOn !== false,
       };
 
       const existingCart = JSON.parse(localStorage.getItem('vestora_cart') || '[]');
-      existingCart.push(cartItem);
+      const existingIdx = existingCart.findIndex(
+        (ci) =>
+          ci.productId === cartItem.productId &&
+          ci.size === cartItem.size &&
+          ci.isRental === cartItem.isRental &&
+          ci.startDate === cartItem.startDate
+      );
+      if (existingIdx >= 0) {
+        existingCart[existingIdx].quantity += quantity;
+      } else {
+        existingCart.push(cartItem);
+      }
       localStorage.setItem('vestora_cart', JSON.stringify(existingCart));
+      window.dispatchEvent(new Event('cartUpdated'));
       showToast('Đã thêm sản phẩm vào giỏ hàng thành công!');
     } catch {
       showToast('Đã thêm sản phẩm vào giỏ hàng!');
     }
   };
 
-  // Handle Rent Now
+  // Handle Rent / Buy Now
   const handleRentNow = () => {
     handleAddToCart();
     navigate('/cart');
@@ -502,31 +527,42 @@ export default function ProductDetailPage() {
             <span className="pdetail-meta-divider">|</span>
             <span>
               <i className="fa-regular fa-comments" style={{ marginRight: '4px' }}></i>
-              Đã cho thuê 2.5k+ lần
+              {isRental ? 'Đã cho thuê 2.5k+ lần' : 'Đã bán 860+ lượt'}
             </span>
           </div>
 
-          {/* Pricing Box */}
+          {/* Pricing Box - Tuyệt đối không còn hiển thị số 0 dư thừa */}
           <div className="pdetail-pricing-box">
             <div className="pdetail-pricing-main-row">
               <div className="pdetail-price-left">
                 <span className="pdetail-price-main">{formatVND(currentPrice)}</span>
-                {isRental && <span className="pdetail-price-unit">/ {rentalDuration} ngày</span>}
+                {isRental ? (
+                  <span className="pdetail-price-unit">/ {rentalDuration} ngày</span>
+                ) : (
+                  <span className="pdetail-price-unit" style={{ color: '#059669', fontWeight: 600 }}>
+                    (Giá sở hữu)
+                  </span>
+                )}
               </div>
 
-              {isRental && depositAmount > 0 && (
+              {isRental && depositAmount > 0 ? (
                 <div className="pdetail-deposit-right">
                   <i className="fa-solid fa-shield-halved"></i>
                   <span>Đặt cọc hoàn trả:</span>
                   <span className="pdetail-deposit-amount">{formatVND(depositAmount)}</span>
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div className="pdetail-pricing-note">
-              <i className="fa-solid fa-circle-info"></i>
+              <i
+                className={`fa-solid ${isRental ? 'fa-circle-info' : 'fa-certificate'}`}
+                style={{ color: isRental ? '#a1a1aa' : '#059669' }}
+              ></i>
               <span>
-                Tiền cọc được hoàn trả 100% sau khi bạn trả đồ và hệ thống kiểm tra tình trạng sản phẩm.
+                {isRental
+                  ? 'Tiền cọc được hoàn trả 100% sau khi bạn trả đồ và hệ thống kiểm tra tình trạng sản phẩm.'
+                  : 'Sản phẩm mua bán chính hãng, kiểm định IFAB, bảo vệ người mua 100% qua PayOS Escrow.'}
               </span>
             </div>
           </div>
@@ -557,8 +593,8 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
-          {/* Rental Duration Selection */}
-          {isRental && (
+          {/* Rental Duration Selection (Chỉ hiển thị khi là đồ thuê) */}
+          {isRental ? (
             <div className="pdetail-section-group">
               <div className="pdetail-section-header">
                 <span className="pdetail-section-title">
@@ -581,9 +617,9 @@ export default function ProductDetailPage() {
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Quantity & Delivery Date */}
+          {/* Quantity & Delivery */}
           <div className="pdetail-qty-date-container">
             <div className="pdetail-qty-date-row">
               {/* Stepper */}
@@ -606,18 +642,25 @@ export default function ProductDetailPage() {
                 </button>
               </div>
 
-              {/* Date Picker Input */}
-              <div className="pdetail-date-picker-box">
-                <i className="fa-regular fa-calendar" style={{ color: '#9c7148' }}></i>
-                <input
-                  type="date"
-                  min={todayStr}
-                  max={maxDateStr}
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  title="Chọn ngày nhận đồ (Hôm nay hoặc tương lai)"
-                />
-              </div>
+              {/* Delivery / Date Picker Input */}
+              {isRental ? (
+                <div className="pdetail-date-picker-box">
+                  <i className="fa-regular fa-calendar" style={{ color: '#9c7148' }}></i>
+                  <input
+                    type="date"
+                    min={todayStr}
+                    max={maxDateStr}
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    title="Chọn ngày nhận đồ (Hôm nay hoặc tương lai)"
+                  />
+                </div>
+              ) : (
+                <div className="pdetail-shipping-badge">
+                  <i className="fa-solid fa-truck-fast"></i>
+                  <span>Giao hàng toàn quốc (1 - 3 ngày)</span>
+                </div>
+              )}
 
               {/* Stock Indicator */}
               <div className="pdetail-stock-indicator">
@@ -626,8 +669,8 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Quick date select chips */}
-            {isRental && (
+            {/* Quick date select chips (Chỉ cho thuê) */}
+            {isRental ? (
               <div className="pdetail-quick-dates-row">
                 <span className="pdetail-quick-date-label">Gợi ý ngày:</span>
                 <button
@@ -660,10 +703,10 @@ export default function ProductDetailPage() {
                   Cuối tuần này
                 </button>
               </div>
-            )}
+            ) : null}
 
-            {/* Rental Timeline: Hiển thị ngày nhận và ngày trả minh bạch */}
-            {isRental && startDate && (
+            {/* Rental Timeline (Chỉ cho thuê) */}
+            {isRental && startDate ? (
               <div className="pdetail-rental-timeline">
                 <div className="pdetail-timeline-item">
                   <i className="fa-solid fa-truck-ramp-box" style={{ color: '#6e3eb3', fontSize: '15px' }}></i>
@@ -688,13 +731,13 @@ export default function ProductDetailPage() {
                   <span>Lịch trống sẵn sàng</span>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Action Buttons Row */}
           <div className="pdetail-actions-row">
             <button className="pdetail-btn-rent-now" onClick={handleRentNow}>
-              <i className="fa-solid fa-vest"></i>
+              <i className={isRental ? 'fa-solid fa-vest' : 'fa-solid fa-bag-shopping'}></i>
               <span>{isRental ? 'Thuê ngay' : 'Mua ngay'}</span>
               <i className="fa-solid fa-arrow-right"></i>
             </button>
@@ -706,7 +749,7 @@ export default function ProductDetailPage() {
 
             <button
               className="pdetail-btn-ai-tryon"
-              onClick={() => navigate(`/try-on-photo?product=${product._id || product.productCode}`)}
+              onClick={() => navigate(`/try-on/photo?product=${product._id || product.productCode}`)}
             >
               <i className="fa-solid fa-camera"></i>
               <span>Thử đồ AI</span>
@@ -735,7 +778,7 @@ export default function ProductDetailPage() {
             className={`pdetail-tab-btn ${activeTab === 'policy' ? 'active' : ''}`}
             onClick={() => setActiveTab('policy')}
           >
-            <i className="fa-solid fa-shield-halved"></i> Chính sách thuê
+            <i className="fa-solid fa-shield-halved"></i> {isRental ? 'Chính sách thuê' : 'Chính sách mua hàng'}
           </button>
           <button
             className={`pdetail-tab-btn ${activeTab === 'reviews' ? 'active' : ''}`}
@@ -777,24 +820,43 @@ export default function ProductDetailPage() {
               </ul>
             </div>
 
-            {/* Col 2: Chính sách thuê */}
+            {/* Col 2: Chính sách thuê / mua hàng */}
             <div className="pdetail-policy-box">
               <div className="pdetail-policy-title">
-                <i className="fa-solid fa-shield-halved"></i> Chính sách thuê
+                <i className="fa-solid fa-shield-halved"></i> {isRental ? 'Chính sách thuê' : 'Chính sách mua hàng'}
               </div>
               <ul className="pdetail-policy-bullets">
-                <li className="pdetail-policy-item">
-                  <i className="fa-solid fa-check pdetail-policy-check"></i>
-                  <span>Tiền cọc sẽ được hoàn trả sau khi trả đồ và kiểm tra tình trạng.</span>
-                </li>
-                <li className="pdetail-policy-item">
-                  <i className="fa-solid fa-check pdetail-policy-check"></i>
-                  <span>Vui lòng giữ gìn trang phục, tránh làm rách hoặc bám bẩn vĩnh viễn.</span>
-                </li>
-                <li className="pdetail-policy-item">
-                  <i className="fa-solid fa-check pdetail-policy-check"></i>
-                  <span>Phí bồi thường nếu làm hỏng hoặc mất đồ theo quy định niêm yết.</span>
-                </li>
+                {isRental ? (
+                  <>
+                    <li className="pdetail-policy-item">
+                      <i className="fa-solid fa-check pdetail-policy-check"></i>
+                      <span>Tiền cọc sẽ được hoàn trả sau khi trả đồ và kiểm tra tình trạng.</span>
+                    </li>
+                    <li className="pdetail-policy-item">
+                      <i className="fa-solid fa-check pdetail-policy-check"></i>
+                      <span>Vui lòng giữ gìn trang phục, tránh làm rách hoặc bám bẩn vĩnh viễn.</span>
+                    </li>
+                    <li className="pdetail-policy-item">
+                      <i className="fa-solid fa-check pdetail-policy-check"></i>
+                      <span>Phí bồi thường nếu làm hỏng hoặc mất đồ theo quy định niêm yết.</span>
+                    </li>
+                  </>
+                ) : (
+                  <>
+                    <li className="pdetail-policy-item">
+                      <i className="fa-solid fa-check pdetail-policy-check"></i>
+                      <span>Cam kết 100% trang phục chính hãng, đã qua kiểm định IFAB.</span>
+                    </li>
+                    <li className="pdetail-policy-item">
+                      <i className="fa-solid fa-check pdetail-policy-check"></i>
+                      <span>Được đồng kiểm trang phục khi nhận hàng trước khi thanh toán.</span>
+                    </li>
+                    <li className="pdetail-policy-item">
+                      <i className="fa-solid fa-check pdetail-policy-check"></i>
+                      <span>Bảo vệ quyền lợi người mua qua PayOS Escrow, hoàn tiền nếu lỗi mô tả.</span>
+                    </li>
+                  </>
+                )}
               </ul>
             </div>
 
@@ -896,16 +958,34 @@ export default function ProductDetailPage() {
         {/* Tab 3: Policy */}
         {activeTab === 'policy' && (
           <div style={{ background: '#faf9f7', borderRadius: '14px', padding: '24px', border: '1px solid #ebe8e1', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Quy chuẩn giặt hấp & Hoàn trả tiền cọc</h3>
-            <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
-              1. <strong>Kiểm duyệt chất lượng:</strong> Mọi trang phục trước khi giao đều được giặt hấp theo tiêu chuẩn y tế, khử trùng bằng tia UV và kiểm tra từng đường kim mũi chỉ.
-            </p>
-            <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
-              2. <strong>Hoàn cọc tự động:</strong> Khi bạn trả đồ về showroom hoặc cho shipper, bộ phận kiểm định sẽ kiểm tra và hoàn lại 100% tiền cọc vào tài khoản của bạn trong vòng 2-4 giờ làm việc.
-            </p>
-            <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
-              3. <strong>Bảo hiểm rủi ro nhỏ:</strong> VESTORA hỗ trợ xử lý miễn phí các vết bẩn sinh hoạt thông thường (vết nước ngọt, bụi đường). Quý khách không cần tự giặt trang phục trước khi trả.
-            </p>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>
+              {isRental ? 'Quy chuẩn giặt hấp & Hoàn trả tiền cọc' : 'Chính sách mua bán & Bảo vệ người mua'}
+            </h3>
+            {isRental ? (
+              <>
+                <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
+                  1. <strong>Kiểm duyệt chất lượng:</strong> Mọi trang phục trước khi giao đều được giặt hấp theo tiêu chuẩn y tế, khử trùng bằng tia UV và kiểm tra từng đường kim mũi chỉ.
+                </p>
+                <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
+                  2. <strong>Hoàn cọc tự động:</strong> Khi bạn trả đồ về showroom hoặc cho shipper, bộ phận kiểm định sẽ kiểm tra và hoàn lại 100% tiền cọc vào tài khoản của bạn trong vòng 2-4 giờ làm việc.
+                </p>
+                <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
+                  3. <strong>Bảo hiểm rủi ro nhỏ:</strong> VESTORA hỗ trợ xử lý miễn phí các vết bẩn sinh hoạt thông thường (vết nước ngọt, bụi đường). Quý khách không cần tự giặt trang phục trước khi trả.
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
+                  1. <strong>Kiểm định chính hãng 100%:</strong> Sản phẩm được thẩm định nguồn gốc xuất xứ, độ bền vải và đường may bởi chuyên viên thời trang VESTORA.
+                </p>
+                <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
+                  2. <strong>Thanh toán đảm bảo PayOS Escrow:</strong> Tiền mua hàng được giữ an toàn trên hệ thống ký quỹ trung gian, chỉ chuyển cho shop sau khi bạn nhận và xác nhận hài lòng.
+                </p>
+                <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
+                  3. <strong>Đồng kiểm & Đổi trả trong 48h:</strong> Quý khách được quyền kiểm tra hàng trước khi nhận, đổi trả hoặc hoàn tiền 100% nếu sản phẩm có lỗi sai khác so với hình ảnh mô tả.
+                </p>
+              </>
+            )}
           </div>
         )}
 

@@ -157,6 +157,7 @@ export default function CatalogPage() {
         : [...prev, productId];
       try {
         localStorage.setItem('vestora_favorites', JSON.stringify(updated));
+        window.dispatchEvent(new Event('favoritesUpdated'));
       } catch { }
       return updated;
     });

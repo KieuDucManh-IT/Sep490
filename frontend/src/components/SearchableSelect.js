@@ -31,14 +31,16 @@ export default function SearchableSelect({
   const searchInputRef = useRef(null);
 
   const normalizedOptions = useMemo(() => {
-    return options.map((opt) => {
+    const list = Array.isArray(options) ? options : [];
+    return list.map((opt) => {
       if (typeof opt === 'string' || typeof opt === 'number') {
-        return { value: String(opt), label: String(opt) };
+        return { value: String(opt), label: String(opt), name: String(opt) };
       }
       return {
         ...opt,
         value: String(opt.value ?? opt._id ?? opt.id ?? ''),
         label: String(opt.label ?? opt.name ?? opt.FullName ?? opt.title ?? ''),
+        name: String(opt.name ?? opt.label ?? opt.value ?? ''),
       };
     });
   }, [options]);
@@ -49,7 +51,7 @@ export default function SearchableSelect({
   }, [normalizedOptions, value]);
 
   const filteredOptions = useMemo(() => {
-    if (!searchTerm.trim()) return normalizedOptions;
+    if (!searchTerm || !String(searchTerm).trim()) return normalizedOptions;
     const cleanSearch = normalizeVietnamese(searchTerm);
 
     return normalizedOptions.filter((opt) => {
@@ -178,6 +180,19 @@ export default function SearchableSelect({
                 </span>
               )}
             </>
+          ) : value ? (
+            <span
+              style={{
+                fontSize: '13.5px',
+                fontWeight: 500,
+                color: '#111827',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {value}
+            </span>
           ) : (
             <span style={{ fontSize: '13px', color: '#9CA3AF' }}>{placeholder}</span>
           )}

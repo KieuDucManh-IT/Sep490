@@ -7,6 +7,7 @@ import {
   getShopStats,
   getShopById,
   getMyShop,
+  getAssignedBranch,
   updateShopAddress,
   updateShopInfo,
   reverseGeocodeAddress,
@@ -16,6 +17,7 @@ import {
   uploadShopImage,
 } from '../controllers/shopController.js';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
+import { Shop } from '../models/Shop.js';
 
 const router = express.Router();
 
@@ -37,7 +39,27 @@ const shopUpload = multer({
 router.post(
   '/upload-image',
   authMiddleware,
-  requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
+  async (req, res, next) => {
+    const userRole = (req.user?.Role || '').toLowerCase();
+    if (['admin', 'shop_owner', 'owner', 'branch_manager'].includes(userRole)) {
+      return next();
+    }
+    try {
+      const isAssigned = await Shop.exists({
+        managerId: req.user._id,
+        isDeleted: { $ne: true },
+      });
+      if (isAssigned) {
+        return next();
+      }
+    } catch {
+      // ignore
+    }
+    return res.status(403).json({
+      success: false,
+      message: 'Bạn không có quyền thực hiện thao tác này',
+    });
+  },
   shopUpload.single('file'),
   uploadShopImage
 );
@@ -51,6 +73,12 @@ router.get(
 
 router.get('/stats', getShopStats);
 router.get('/my-shop', getMyShop);
+router.get(
+  '/assigned-branch',
+  authMiddleware,
+  requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
+  getAssignedBranch
+);
 router.get('/reverse-geocode', reverseGeocodeAddress);
 router.get('/', getShopApplications);
 router.get('/:id', getShopById);

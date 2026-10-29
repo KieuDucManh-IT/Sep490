@@ -45,6 +45,10 @@ export const getMyShopApi = async (ownerId) => {
   return fetchJson(`/api/shops/my-shop${query}`);
 };
 
+export const getAssignedBranchApi = async () => {
+  return fetchJson('/api/shops/assigned-branch');
+};
+
 export const updateShopAddressApi = async (shopId, addressData) => {
   return fetchJson(`/api/shops/${shopId}/address`, {
     method: 'PUT',

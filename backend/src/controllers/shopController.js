@@ -1,9 +1,9 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import sharp from 'sharp';
-import { v2 as cloudinary } from 'cloudinary';
+import { uploadToCloudinary } from '../config/cloudinary.js';
 import { Shop } from '../models/Shop.js';
 import {
   validateObjectId,
@@ -175,7 +175,7 @@ export const getShopById = async (req, res) => {
 };
 
 /**
- * Suspend or reactivate a showroom / branch
+ * Suspend or reactivate a store / branch
  */
 export const toggleSuspendShop = async (req, res) => {
   try {
@@ -360,7 +360,93 @@ export const getMyShop = async (req, res) => {
 };
 
 /**
- * Update showroom address details and GPS coordinates
+ * Retrieve the specific store / branch assigned to the authenticated user
+ * Enforces token-based identity resolution without reliance on client query parameters
+ */
+export const getAssignedBranch = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    const userRole = (req.user?.Role || req.user?.role || '').toLowerCase();
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Chưa xác thực người dùng. Vui lòng đăng nhập lại.',
+      });
+    }
+
+    let shop = null;
+
+    // Priority 1: Match store where user is the assigned manager
+    shop = await Shop.findOne({
+      managerId: userId,
+      isDeleted: { $ne: true },
+    })
+      .sort({ updatedAt: -1 })
+      .populate('ownerId', 'FullName Email Role Status phone')
+      .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+      .lean();
+
+    // Priority 2: Fallback to role-based default stores
+    if (!shop) {
+      if (['shop_owner', 'owner'].includes(userRole)) {
+        shop = await Shop.findOne({
+          ownerId: userId,
+          isHQ: true,
+          isDeleted: { $ne: true },
+        })
+          .populate('ownerId', 'FullName Email Role Status phone')
+          .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+          .lean();
+
+        if (!shop) {
+          shop = await Shop.findOne({
+            ownerId: userId,
+            isDeleted: { $ne: true },
+          })
+            .sort({ isHQ: -1, createdAt: 1 })
+            .populate('ownerId', 'FullName Email Role Status phone')
+            .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+            .lean();
+        }
+      } else if (['admin'].includes(userRole)) {
+        shop = await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } })
+          .populate('ownerId', 'FullName Email Role Status phone')
+          .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+          .lean();
+
+        if (!shop) {
+          shop = await Shop.findOne({ isDeleted: { $ne: true } })
+            .sort({ isHQ: -1, createdAt: 1 })
+            .populate('ownerId', 'FullName Email Role Status phone')
+            .populate('managerId', 'FullName Email Role Status Information Avatar phone')
+            .lean();
+        }
+      }
+    }
+
+    if (!shop) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'Tài khoản chưa được chỉ định quản lý chi nhánh nào.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: shop,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi khi lấy thông tin chi nhánh được chỉ định.',
+    });
+  }
+};
+
+/**
+ * Update store address details and GPS coordinates
  */
 export const updateShopAddress = async (req, res) => {
   try {
@@ -414,7 +500,7 @@ export const updateShopAddress = async (req, res) => {
 };
 
 /**
- * Update comprehensive showroom / branch information
+ * Update comprehensive store / branch information
  */
 export const updateShopInfo = async (req, res) => {
   try {
@@ -442,6 +528,16 @@ export const updateShopInfo = async (req, res) => {
       });
     }
 
+    // Branch manager cannot reassign manager or mutate headquarters flag
+    if (isManager && !isOwner && !isAdmin) {
+      if (req.body.managerId !== undefined || req.body.isHQ !== undefined) {
+        return res.status(403).json({
+          success: false,
+          message: 'Chỉ Shop Owner mới có quyền thay đổi Quản lý chi nhánh hoặc Trụ sở chính.',
+        });
+      }
+    }
+
     if (validated.name !== undefined) shop.name = validated.name;
     if (validated.description !== undefined) shop.description = validated.description;
     if (validated.phone !== undefined) shop.phone = validated.phone;
@@ -453,7 +549,17 @@ export const updateShopInfo = async (req, res) => {
     if (validated.imageUrl !== undefined) shop.imageUrl = validated.imageUrl;
     if (validated.bannerUrl !== undefined) shop.bannerUrl = validated.bannerUrl;
     if (validated.openingHours !== undefined) shop.openingHours = validated.openingHours;
-    if (validated.status !== undefined) shop.status = validated.status;
+
+    if (validated.status !== undefined) {
+      // Prevent unauthorized activation of unreviewed or rejected branches
+      if (['PENDING', 'REJECTED'].includes(shop.status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Không thể thay đổi trạng thái khi gian hàng đang chờ xét duyệt hoặc đã bị từ chối.',
+        });
+      }
+      shop.status = validated.status;
+    }
 
     if (validated.managerId !== undefined && (isOwner || isAdmin)) {
       if (!validated.managerId) {
@@ -461,8 +567,13 @@ export const updateShopInfo = async (req, res) => {
       } else {
         const mgrUser = await User.findById(validated.managerId);
         if (mgrUser) {
+          // Release manager from previous store assignments to enforce 1:1 relationship
+          await Shop.updateMany(
+            { _id: { $ne: shop._id }, managerId: mgrUser._id },
+            { $set: { managerId: null } }
+          );
           shop.managerId = mgrUser._id;
-          if (['customer', 'CUSTOMER'].includes(mgrUser.Role)) {
+          if (String(mgrUser.Role).toLowerCase() === 'customer') {
             mgrUser.Role = 'BRANCH_MANAGER';
             await mgrUser.save();
           }
@@ -472,6 +583,7 @@ export const updateShopInfo = async (req, res) => {
 
     if (validated.isHQ !== undefined && (isOwner || isAdmin)) {
       if (validated.isHQ) {
+        // Enforce single HQ per owner
         await Shop.updateMany(
           { _id: { $ne: shop._id }, ownerId: shop.ownerId, isHQ: true, isDeleted: { $ne: true } },
           { $set: { isHQ: false } }
@@ -522,7 +634,7 @@ export const checkAndDemoteBranchManager = async (managerId) => {
 
     if (remainingCount === 0) {
       const user = await User.findById(managerId);
-      if (user && ['branch_manager', 'BRANCH_MANAGER'].includes(user.Role)) {
+      if (user && ['branch_manager', 'BRANCH_MANAGER', 'brandmanager', 'BRANDMANAGER'].includes(user.Role)) {
         user.Role = 'CUSTOMER';
         await user.save();
       }
@@ -533,7 +645,7 @@ export const checkAndDemoteBranchManager = async (managerId) => {
 };
 
 /**
- * Create a new showroom branch in the brand network
+ * Create a new branch in the brand network
  */
 export const createBranch = async (req, res) => {
   try {
@@ -565,7 +677,12 @@ export const createBranch = async (req, res) => {
       const managerUser = await User.findById(validated.managerId);
       if (managerUser) {
         validManagerId = managerUser._id;
-        if (['customer', 'CUSTOMER'].includes(managerUser.Role)) {
+        // Enforce 1:1 manager assignment by releasing manager from existing stores
+        await Shop.updateMany(
+          { managerId: managerUser._id },
+          { $set: { managerId: null } }
+        );
+        if (String(managerUser.Role).toLowerCase() === 'customer') {
           managerUser.Role = 'BRANCH_MANAGER';
           await managerUser.save();
         }
@@ -582,8 +699,8 @@ export const createBranch = async (req, res) => {
       }
     }
 
-    const defaultShowroomBanner = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80';
-    const finalBanner = validated.bannerUrl || defaultShowroomBanner;
+    const defaultShopBanner = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80';
+    const finalBanner = validated.bannerUrl || defaultShopBanner;
 
     const newBranch = new Shop({
       ownerId: resolvedOwnerId,
@@ -629,7 +746,7 @@ export const createBranch = async (req, res) => {
 };
 
 /**
- * Soft-delete a showroom branch from the brand network
+ * Soft-delete a branch from the brand network
  */
 export const deleteBranch = async (req, res) => {
   try {
@@ -711,8 +828,6 @@ export const getBranchManagers = async (req, res) => {
             'BRANDMANAGER',
             'customer',
             'CUSTOMER',
-            'warehouse_manager',
-            'WAREHOUSE_MANAGER',
           ],
         },
         Status: { $in: ['active', 'ACTIVE'] },
@@ -906,7 +1021,7 @@ export const reverseGeocodeAddress = async (req, res) => {
 };
 
 /**
- * Upload and process showroom logo or banner image with Cloudinary and local fallback
+ * Upload and process store logo or banner image to Cloudinary
  */
 export const uploadShopImage = async (req, res, next) => {
   try {
@@ -927,74 +1042,65 @@ export const uploadShopImage = async (req, res, next) => {
 
     const imageType = req.body?.type === 'banner' ? 'banner' : 'avatar';
 
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
-    const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
-    const apiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+    let processedBuffer = file.buffer;
+    let uploadMimeType = file.mimetype || 'image/jpeg';
 
-    if (cloudName && apiKey && apiSecret) {
-      try {
-        cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret, secure: true });
-
-        let processedBuffer = file.buffer;
-        try {
-          if (imageType === 'avatar') {
-            processedBuffer = await sharp(file.buffer).rotate().resize(512, 512, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
-          } else {
-            processedBuffer = await sharp(file.buffer).rotate().resize(1920, 1080, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
-          }
-        } catch {
-          processedBuffer = file.buffer;
-        }
-
-        const b64 = Buffer.from(processedBuffer).toString('base64');
-        const dataUri = `data:image/webp;base64,${b64}`;
-        const uploadRes = await cloudinary.uploader.upload(dataUri, {
-          folder: `vestora/shops/${imageType}`,
-          public_id: `${Date.now()}-${crypto.randomUUID()}`,
-          resource_type: 'image',
-        });
-
-        return res.status(200).json({
-          success: true,
-          url: uploadRes.secure_url,
-          message: 'Tải ảnh lên Cloudinary thành công!',
-        });
-      } catch (cloudErr) {
-        console.warn('Cloudinary upload warning, falling back to local static storage:', cloudErr.message);
-      }
-    }
-
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'shops');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-
-    const uniqueId = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
-    const filename = `${imageType}-${uniqueId}.webp`;
-    const filepath = path.join(uploadsDir, filename);
-
-    let processedBuffer;
     try {
       if (imageType === 'avatar') {
         processedBuffer = await sharp(file.buffer).rotate().resize(512, 512, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
       } else {
         processedBuffer = await sharp(file.buffer).rotate().resize(1920, 1080, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
       }
-    } catch {
+      uploadMimeType = 'image/webp';
+    } catch (sharpErr) {
+      console.warn('[uploadShopImage] Sharp optimization warning, using original buffer:', sharpErr.message);
       processedBuffer = file.buffer;
     }
 
-    fs.writeFileSync(filepath, processedBuffer);
+    try {
+      const uploadRes = await uploadToCloudinary(
+        processedBuffer,
+        {
+          folder: `vestora/shops/${imageType}`,
+          public_id: `${Date.now()}-${crypto.randomUUID()}`,
+        },
+        uploadMimeType
+      );
 
-    const host = req.get('host');
-    const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
-    const fileUrl = `${protocol}://${host}/uploads/shops/${filename}`;
+      return res.status(200).json({
+        success: true,
+        url: uploadRes.secure_url,
+        public_id: uploadRes.public_id,
+        message: 'Tải ảnh lên thành công!',
+      });
+    } catch (cloudErr) {
+      console.warn('[uploadShopImage] Cloudinary upload unavailable, saving to local uploads fallback:', cloudErr.message);
 
-    return res.status(200).json({
-      success: true,
-      url: fileUrl,
-      message: 'Tải ảnh từ thiết bị thành công!',
-    });
+      try {
+        const uploadDir = path.join(process.cwd(), 'uploads', 'shops', imageType);
+        await fs.promises.mkdir(uploadDir, { recursive: true });
+        const ext = uploadMimeType === 'image/webp' ? 'webp' : 'jpg';
+        const fileName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
+        const filePath = path.join(uploadDir, fileName);
+        await fs.promises.writeFile(filePath, processedBuffer);
+
+        const host = req.get('host') || 'localhost:5001';
+        const protocol = req.protocol || 'http';
+        const localUrl = `${protocol}://${host}/uploads/shops/${imageType}/${fileName}`;
+
+        return res.status(200).json({
+          success: true,
+          url: localUrl,
+          message: 'Tải ảnh lên máy chủ thành công!',
+        });
+      } catch (localErr) {
+        console.error('[uploadShopImage] Local save also failed:', localErr.message);
+        return res.status(502).json({
+          success: false,
+          message: cloudErr.message || 'Không thể tải ảnh lên dịch vụ Cloudinary. Vui lòng thử lại sau.',
+        });
+      }
+    }
   } catch (error) {
     next(error);
   }

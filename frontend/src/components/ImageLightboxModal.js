@@ -1,17 +1,40 @@
 import React, { useEffect, useCallback } from 'react';
-import { Modal, Button } from 'react-bootstrap';
+import { Modal } from 'react-bootstrap';
 
 /**
  * ImageLightboxModal - Fullscreen modal for viewing high-resolution images
+ * Supports flexible prop signatures:
+ *  - show (boolean) or auto-derived from Boolean(imageUrl)
+ *  - onHide or onClose callbacks
+ *  - imageUrl as a string (URL) or an object { url: string, title?: string }
  */
-export default function ImageLightboxModal({ show, onHide, imageUrl, title = 'Xem Ảnh Kích Thước Thật' }) {
+export default function ImageLightboxModal({
+  show,
+  onHide,
+  onClose,
+  imageUrl,
+  title = 'Xem Ảnh Kích Thước Thật',
+}) {
+  const handleClose = useCallback(() => {
+    if (typeof onHide === 'function') {
+      onHide();
+    } else if (typeof onClose === 'function') {
+      onClose();
+    }
+  }, [onHide, onClose]);
+
+  // Support imageUrl as string or object { url, title }
+  const actualUrl = typeof imageUrl === 'object' && imageUrl !== null ? (imageUrl.url || '') : (imageUrl || '');
+  const actualTitle = (typeof imageUrl === 'object' && imageUrl !== null && imageUrl.title) ? imageUrl.title : title;
+  const isVisible = show !== undefined ? Boolean(show) : Boolean(actualUrl);
+
   const handleKeyDown = useCallback(
     (e) => {
-      if (show && e.key === 'Escape') {
-        onHide();
+      if (isVisible && e.key === 'Escape') {
+        handleClose();
       }
     },
-    [show, onHide]
+    [isVisible, handleClose]
   );
 
   useEffect(() => {
@@ -19,12 +42,12 @@ export default function ImageLightboxModal({ show, onHide, imageUrl, title = 'Xe
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  if (!imageUrl) return null;
+  if (!actualUrl) return null;
 
   return (
     <Modal
-      show={show}
-      onHide={onHide}
+      show={isVisible}
+      onHide={handleClose}
       size="xl"
       centered
       dialogClassName="image-lightbox-modal-dialog"
@@ -48,7 +71,7 @@ export default function ImageLightboxModal({ show, onHide, imageUrl, title = 'Xe
           </svg>
           <div className="text-truncate">
             <div style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF' }} className="text-truncate">
-              {title}
+              {actualTitle}
             </div>
             <div style={{ fontSize: '11px', color: '#94A3B8' }}>
               100% kích thước ảnh thật
@@ -68,11 +91,11 @@ export default function ImageLightboxModal({ show, onHide, imageUrl, title = 'Xe
           maxHeight: '82vh',
           overflow: 'auto',
         }}
-        onClick={onHide}
+        onClick={handleClose}
       >
         <img
-          src={imageUrl}
-          alt={title}
+          src={actualUrl}
+          alt={actualTitle}
           draggable={false}
           style={{
             maxWidth: '100%',

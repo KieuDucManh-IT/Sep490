@@ -124,7 +124,7 @@ export const validateCreateBranchInput = (body) => {
 
   return {
     name: trimmedName,
-    description: description?.trim() || 'Showroom thời trang dạ tiệc và thiết kế cao cấp Vestora.',
+    description: description?.trim() || 'Cửa hàng thời trang dạ tiệc và thiết kế cao cấp Vestora.',
     phone: cleanPhone,
     address: trimmedAddress,
     city: city.trim(),
@@ -296,3 +296,4 @@ export const validateReverseGeocodeQuery = (query) => {
 
   return { targetLat, targetLng };
 };
+

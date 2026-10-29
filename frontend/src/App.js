@@ -27,6 +27,7 @@ import BranchSaleOrdersPage from './pages/branch/BranchSaleOrdersPage';
 import BranchReturnsPage from './pages/branch/BranchReturnsPage';
 import BranchReviewsPage from './pages/branch/BranchReviewsPage';
 import BranchAnalyticsPage from './pages/branch/BranchAnalyticsPage';
+import BranchSettingsPage from './pages/branch/BranchSettingsPage';
 
 // 4. Role Warehouse Manager (UC-15..UC-28)
 import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';
@@ -82,7 +83,7 @@ function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* ========================================================
-            ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Showroom)
+            ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Cửa Hàng)
             ======================================================== */}
         <Route
           path="/branch/dashboard"
@@ -136,7 +137,7 @@ function App() {
           path="/branch/settings"
           element={
             <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
-              <OwnerSettingsPage />
+              <BranchSettingsPage />
             </ProtectedRoute>
           }
         />
@@ -144,7 +145,7 @@ function App() {
           path="/branch/showroom"
           element={
             <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
-              <OwnerSettingsPage />
+              <BranchSettingsPage />
             </ProtectedRoute>
           }
         />

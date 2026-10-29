@@ -1,25 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getAssignedBranchApi } from '../services/shopApi';
 import '../styles/ShopDashboard.css';
 
-// Sidebar dành riêng cho Role: Branch Manager (Quản lý chi nhánh)
+// Dedicated sidebar for Branch Manager role
 export default function BranchSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [managerName, setManagerName] = useState('Quản Lý Chi Nhánh');
+  const [assignedBranch, setAssignedBranch] = useState(null);
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        const parsed = JSON.parse(storedUser);
-        if (parsed.fullName || parsed.FullName || parsed.name) {
-          setManagerName(parsed.fullName || parsed.FullName || parsed.name);
+    if (user?.fullName || user?.FullName || user?.name) {
+      setManagerName(user.fullName || user.FullName || user.name);
+    } else {
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          if (parsed.fullName || parsed.FullName || parsed.name) {
+            setManagerName(parsed.fullName || parsed.FullName || parsed.name);
+          }
         }
-      }
-    } catch (e) { }
+      } catch (e) { }
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getAssignedBranchApi()
+      .then((res) => {
+        if (isMounted && res?.success && res.data) {
+          setAssignedBranch(res.data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -59,18 +80,50 @@ export default function BranchSidebar() {
         <div className="shop-owner-profile-card">
           <div className="shop-owner-avatar-ring">
             <span>{managerInitial}</span>
-            <span className="shop-owner-status-dot" title="Chi nhánh đang mở cửa" />
+            <span
+              className="shop-owner-status-dot"
+              style={{
+                background: assignedBranch?.status === 'ACTIVE' ? '#10B981' : assignedBranch ? '#F59E0B' : '#9CA3AF',
+              }}
+              title={
+                assignedBranch
+                  ? `Cửa hàng ${assignedBranch.name} (${assignedBranch.status === 'ACTIVE' ? 'Mở Cửa' : 'Tạm Dừng'})`
+                  : 'Chưa được phân công cửa hàng'
+              }
+            />
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="shop-owner-name" title={managerName}>{managerName}</div>
-            <div style={{ fontSize: '11px', color: '#9CA3AF' }}>Showroom Chi Nhánh</div>
+            <div
+              style={{
+                fontSize: '11px',
+                color: assignedBranch ? '#D97706' : '#9CA3AF',
+                fontWeight: assignedBranch ? 600 : 400,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px',
+              }}
+              title={assignedBranch ? assignedBranch.name : 'Chưa phân công cửa hàng'}
+            >
+              {assignedBranch ? (
+                <>
+                  <MapPin size={11} className="flex-shrink-0" />
+                  <span className="text-truncate">{assignedBranch.name}</span>
+                </>
+              ) : (
+                'Chưa phân công cửa hàng'
+              )}
+            </div>
           </div>
         </div>
 
         {/* Navigation Menu */}
         <nav className="shop-nav-menu">
-          {/* SECTION 1: VẬN HÀNH SHOWROOM */}
-          <div className="sidebar-section-label">VẬN HÀNH SHOWROOM</div>
+          {/* Section 1: Store Operations */}
+          <div className="sidebar-section-label">VẬN HÀNH CỬA HÀNG</div>
 
           <Link to="/branch/dashboard" className={`sidebar-nav-item ${isActive('/branch/dashboard')}`}>
             <div className="sidebar-nav-item-content">
@@ -95,7 +148,7 @@ export default function BranchSidebar() {
                   <circle cx="12" cy="10" r="3" />
                 </svg>
               </span>
-              <span>Showroom & Ghim Map</span>
+              <span>Cửa Hàng & Ghim Map</span>
             </div>
             <span className="sidebar-nav-arrow">›</span>
           </Link>
@@ -157,7 +210,7 @@ export default function BranchSidebar() {
             <span className="sidebar-nav-arrow">›</span>
           </Link>
 
-          {/* SECTION 2: KHO & SẢN PHẨM LIÊN KẾT */}
+          {/* Section 2: Warehouse & Products */}
           <div className="sidebar-section-label">KHO & SẢN PHẨM</div>
 
           <Link to="/warehouse/products" className={`sidebar-nav-item ${isActive('/warehouse/products')}`}>
@@ -181,12 +234,12 @@ export default function BranchSidebar() {
                   <line x1="12" y1="22.08" x2="12" y2="12" />
                 </svg>
               </span>
-              <span>Tồn Kho Showroom & Kho (UC-19)</span>
+              <span>Tồn Kho Cửa Hàng & Kho (UC-19)</span>
             </div>
             <span className="sidebar-nav-arrow">›</span>
           </Link>
 
-          {/* SECTION 3: ĐÁNH GIÁ */}
+          {/* Section 3: Customer & Reviews */}
           <div className="sidebar-section-label">KHÁCH HÀNG & ĐÁNH GIÁ</div>
 
           <Link to="/branch/reviews" className={`sidebar-nav-item ${isActive('/branch/reviews')}`}>

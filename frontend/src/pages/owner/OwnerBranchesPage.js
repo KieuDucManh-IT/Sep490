@@ -514,8 +514,8 @@ export default function OwnerBranchesPage() {
     try {
       const payload = {
         name: formData.name.trim(),
-        imageUrl: formData.imageUrl?.trim() || '',
-        bannerUrl: formData.bannerUrl?.trim() || '',
+        imageUrl: formData.imageUrl?.trim() || activeBranch.imageUrl || activeBranch.avatarUrl || '',
+        bannerUrl: formData.bannerUrl?.trim() || activeBranch.bannerUrl || '',
         phone: formData.phone.trim().replace(/\s+/g, '').replace(/^\+84/, '0'),
         openingHours: formData.openingHours.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
         description: formData.description.trim(),

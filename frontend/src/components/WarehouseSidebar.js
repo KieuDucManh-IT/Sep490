@@ -15,6 +15,7 @@ export default function WarehouseSidebar() {
       {nav('/warehousemanager/categories', <Tags size={17} />, 'Loại sản phẩm')}
       {nav('/warehousemanager/products', <Package size={17} />, 'Sản phẩm')}
       {nav('/warehousemanager/variants', <Layers3 size={17} />, 'Biến thể')}
+      {nav('/warehousemanager/suppliers', <Package size={17} />, 'Nhà cung cấp')}
       <p>Quản lý phiếu</p>
       {['Nhập kho', 'Xuất kho', 'Kiểm kho', 'Chuyển kho', 'Điều chỉnh'].map((label) => nav(`/warehousemanager/slips/${encodeURIComponent(label)}`, <ClipboardList size={17} />, label))}
       <p>Báo cáo</p>

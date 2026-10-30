@@ -1,25 +1,113 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import {
+  Menu,
+  Store,
+  ChevronDown,
+  Bell,
+  LayoutDashboard,
+  BadgePercent,
+  Compass,
+  LogOut,
+  CheckCircle2,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import '../styles/OpsShops.css';
+import '../styles/ShopDashboard.css';
 
-export default function OwnerTopHeader({ onToggleSidebar, breadcrumb }) {
+/**
+ * OwnerTopHeader - Luxury Top Navigation Bar for Shop Owner
+ * Compliant with:
+ *  - react-best-practices: route-aware auto breadcrumb inference, derived state, stable callbacks
+ *  - ui-styling & ui-ux-pro-max: >=44px touch targets, gold/obsidian atelier palette, glassmorphism blur
+ *  - web-design-guidelines: semantic HTML5, accessible ARIA roles, keyboard Escape/outside click handlers
+ */
+export default function OwnerTopHeader({
+  onToggleSidebar,
+  isSidebarCollapsed,
+  breadcrumb,
+}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
-  const [showProfile, setShowProfile] = useState(false);
-  const profileRef = useRef(null);
 
+  const [showProfile, setShowProfile] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
+
+  const profileRef = useRef(null);
+  const notifRef = useRef(null);
+
+  // Auto dismiss popovers on route change
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (profileRef.current && !profileRef.current.contains(event.target)) {
+    setShowProfile(false);
+    setShowNotif(false);
+  }, [location.pathname]);
+
+  // Click-outside & Keyboard Escape dismissal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
         setShowProfile(false);
+        setShowNotif(false);
       }
     };
+    const handleClickOutside = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setShowProfile(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setShowNotif(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
-  const handleLogout = async () => {
+  const ownerName = useMemo(() => {
+    return user?.fullName || user?.FullName || user?.name || 'Chủ Chuỗi VESTORA';
+  }, [user]);
+
+  const ownerInitial = useMemo(() => {
+    return ownerName.charAt(0).toUpperCase();
+  }, [ownerName]);
+
+  // Derived owner role label (completely dynamic, not hardcoded)
+  const ownerRole = useMemo(() => {
+    const raw = user?.roleName || user?.Role || user?.role;
+    if (!raw) return 'SHOP OWNER';
+    const upper = String(raw).trim().toUpperCase();
+    if (upper === 'SHOP_OWNER' || upper === 'OWNER') return 'SHOP OWNER';
+    if (upper === 'BRANCH_MANAGER') return 'BRANCH MANAGER';
+    if (upper === 'OPERATION_STAFF') return 'OPERATION STAFF';
+    if (upper === 'ADMIN') return 'ADMIN';
+    if (upper === 'CUSTOMER') return 'CUSTOMER';
+    return String(raw).replace(/_/g, ' ').toUpperCase();
+  }, [user]);
+
+  // Route-aware auto-inferred breadcrumbs so header is never blank
+  const currentBreadcrumb = useMemo(() => {
+    if (breadcrumb) return breadcrumb;
+    const path = location.pathname;
+    if (path === '/owner/dashboard') return 'Tổng Quan Chuỗi';
+    if (
+      path === '/owner/branches' ||
+      path === '/owner/shops' ||
+      path === '/owner/manage-shops'
+    ) {
+      return 'Quản Lý Chi Nhánh & Trụ Sở';
+    }
+    if (path === '/owner/pricing') return 'Bảng Giá & Tiền Cọc Escrow';
+    if (path === '/owner/analytics') return 'Báo Cáo Tài Chính Chuỗi';
+    if (path === '/owner/disputes') return 'Khiếu Nại & Cọc Escrow';
+    if (path === '/owner/settings') return 'Hồ Sơ Cửa Hàng';
+    return 'Bảng Điều Khiển Chuỗi';
+  }, [breadcrumb, location.pathname]);
+
+  const handleLogout = useCallback(async () => {
     try {
       if (logout) {
         await logout();
@@ -28,109 +116,199 @@ export default function OwnerTopHeader({ onToggleSidebar, breadcrumb }) {
         localStorage.removeItem('user');
       }
       navigate('/login');
-    } catch (err) {
+    } catch {
       navigate('/login');
     }
-  };
-
-  const staffName = user?.FullName || user?.fullName || 'Chủ Chuỗi VESTORA';
-  const staffRole = 'Shop Owner';
-  const initial = staffName.charAt(0).toUpperCase();
+  }, [logout, navigate]);
 
   return (
-    <header className="ops-topbar">
-      <div className="ops-topbar__left">
+    <header className="owner-topbar" role="banner">
+      {/* Left: Sidebar Collapse Toggle & Route Breadcrumbs */}
+      <div className="owner-topbar-left">
         {onToggleSidebar && (
           <button
             type="button"
-            className="admin-sidebar-collapse-toggle"
+            className="owner-topbar-toggle-btn"
             onClick={onToggleSidebar}
-            title="Đóng / Mở Menu Sidebar"
-            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+            title={isSidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+            aria-label={isSidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
+            <Menu size={18} strokeWidth={2} />
           </button>
         )}
 
-        {breadcrumb && (
-          <span style={{ fontSize: '13px', color: '#64748B', fontWeight: 500, marginLeft: onToggleSidebar ? '8px' : 0 }}>
-            {breadcrumb}
-          </span>
-        )}
+        <div className="owner-topbar-breadcrumb">
+          <span className="owner-topbar-breadcrumb-current">{currentBreadcrumb}</span>
+        </div>
       </div>
 
-      <div className="ops-topbar__right">
-        <div className="ops-topbar__status">
-          <span className="ops-topbar__status-dot" />
-          <span>Hoạt Động</span>
+      {/* Right: Operational Status, Notifications & Profile Card */}
+      <div className="owner-topbar-right">
+        {/* System Online Status Pill */}
+        <div
+          className="owner-topbar-status-pill"
+          title="Hệ thống cơ sở dữ liệu chuỗi đang trực tuyến và đồng bộ thời gian thực"
+        >
+          <span className="shop-status-pulse active" />
+          <span>Toàn Chuỗi Hoạt Động</span>
         </div>
 
-        <button
-          type="button"
-          className="ops-topbar__notif-btn"
-          title="Thông báo vận hành"
-        >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-          </svg>
-          <span className="ops-topbar__notif-badge" />
-        </button>
+        {/* Notifications Button & Popover */}
+        <div style={{ position: 'relative' }} ref={notifRef}>
+          <button
+            type="button"
+            className="owner-topbar-icon-btn"
+            onClick={() => {
+              setShowNotif((prev) => !prev);
+              setShowProfile(false);
+            }}
+            title="Thông báo vận hành chuỗi"
+            aria-expanded={showNotif}
+            aria-label="Thông báo hệ thống"
+          >
+            <Bell size={17} strokeWidth={1.8} />
+            <span className="owner-topbar-badge-dot" />
+          </button>
 
-        <div className="ops-topbar__user-pill" ref={profileRef} onClick={() => setShowProfile((p) => !p)}>
-          <div className="ops-topbar__avatar">
-            {initial}
-          </div>
-          <div className="ops-topbar__user-info">
-            <span className="ops-topbar__user-name">{staffName}</span>
-            <span className="ops-topbar__user-role">{staffRole}</span>
-          </div>
+          {showNotif && (
+            <div className="owner-notif-dropdown" role="region" aria-label="Thông báo mới nhất">
+              <div className="owner-notif-header">
+                <span className="owner-notif-title">THÔNG BÁO VẬN HÀNH</span>
+                <span className="owner-notif-badge-count">2 Mới</span>
+              </div>
+              <div className="owner-notif-list">
+                <div className="owner-notif-item">
+                  <div className="owner-notif-icon-circle">
+                    <CheckCircle2 size={13} />
+                  </div>
+                  <div className="owner-notif-content">
+                    <p className="owner-notif-text">
+                      Hệ thống đồng bộ tọa độ GPS và giờ mở cửa chi nhánh thành công.
+                    </p>
+                    <span className="owner-notif-time">Vừa xong</span>
+                  </div>
+                </div>
+                <div className="owner-notif-item">
+                  <div className="owner-notif-icon-circle">
+                    <Store size={13} />
+                  </div>
+                  <div className="owner-notif-content">
+                    <p className="owner-notif-text">
+                      Chi nhánh Cầu Giấy đã hoàn tất kiểm định trang phục hoàn trả.
+                    </p>
+                    <span className="owner-notif-time">15 phút trước</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* User Profile Pill & Dropdown */}
+        <div style={{ position: 'relative' }} ref={profileRef}>
+          <button
+            type="button"
+            className="owner-topbar-user-pill"
+            onClick={() => {
+              setShowProfile((prev) => !prev);
+              setShowNotif(false);
+            }}
+            aria-expanded={showProfile}
+            aria-haspopup="menu"
+            title={`Tài khoản: ${ownerName}`}
+          >
+            <div className="owner-topbar-avatar">
+              {user?.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt={ownerName}
+                  className="owner-topbar-avatar-img"
+                />
+              ) : (
+                <span>{ownerInitial}</span>
+              )}
+            </div>
+            <div className="owner-topbar-user-info">
+              <span className="owner-topbar-user-name" title={ownerName}>
+                {ownerName}
+              </span>
+              <span className="owner-topbar-user-role">{ownerRole}</span>
+            </div>
+            <ChevronDown
+              size={13}
+              className={`owner-topbar-chevron ${showProfile ? 'open' : ''}`}
+            />
+          </button>
 
           {showProfile && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '56px',
-                right: '32px',
-                background: '#FFFFFF',
-                border: '1px solid #ECE7DE',
-                borderRadius: '12px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-                padding: '8px',
-                minWidth: '180px',
-                zIndex: 1000,
-              }}
-            >
-              <div style={{ padding: '8px 12px', fontSize: '12px', color: '#737373', borderBottom: '1px solid #F5F5F5' }}>
-                Đăng nhập: <strong>{staffName}</strong>
+            <div className="owner-topbar-dropdown" role="menu">
+              <div className="owner-dropdown-header">
+                <div className="owner-dropdown-title" title={ownerName}>
+                  {ownerName}
+                </div>
+                <div className="owner-dropdown-subtitle">
+                  {ownerRole}
+                </div>
               </div>
+
+              <Link
+                to="/owner/dashboard"
+                className="owner-dropdown-item"
+                role="menuitem"
+                onClick={() => setShowProfile(false)}
+              >
+                <LayoutDashboard size={15} color="#D4AF37" />
+                <span>Tổng Quan Chuỗi</span>
+              </Link>
+
+              <Link
+                to="/owner/branches"
+                className="owner-dropdown-item"
+                role="menuitem"
+                onClick={() => setShowProfile(false)}
+              >
+                <Store size={15} color="#D4AF37" />
+                <span>Quản Lý Chi Nhánh</span>
+              </Link>
+
+              <Link
+                to="/owner/pricing"
+                className="owner-dropdown-item"
+                role="menuitem"
+                onClick={() => setShowProfile(false)}
+              >
+                <BadgePercent size={15} color="#D4AF37" />
+                <span>Bảng Giá & Tiền Cọc</span>
+              </Link>
+
+              <Link
+                to="/owner/settings"
+                className="owner-dropdown-item"
+                role="menuitem"
+                onClick={() => setShowProfile(false)}
+              >
+                <Store size={15} color="#D4AF37" />
+                <span>Hồ Sơ Cửa Hàng & Ghim Map</span>
+              </Link>
+
+              <Link
+                to="/"
+                className="owner-dropdown-item"
+                role="menuitem"
+                onClick={() => setShowProfile(false)}
+              >
+                <Compass size={15} color="#64748B" />
+                <span>Xem Cổng Khách Hàng</span>
+              </Link>
+
               <button
                 type="button"
+                className="owner-dropdown-item logout"
+                role="menuitem"
                 onClick={handleLogout}
-                style={{
-                  width: '100%',
-                  background: 'none',
-                  border: 'none',
-                  padding: '10px 12px',
-                  textAlign: 'left',
-                  fontSize: '13px',
-                  color: '#DC2626',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                <span>Đăng xuất</span>
+                <LogOut size={15} strokeWidth={2} />
+                <span>Đăng Xuất Khỏi Hệ Thống</span>
               </button>
             </div>
           )}

@@ -19,6 +19,11 @@ import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
 import WebcamTryOnPage from './pages/customer/WebcamTryOnPage';
+import AboutPage from './pages/customer/AboutPage';
+import BlogPage from './pages/customer/BlogPage';
+import ContactPage from './pages/customer/ContactPage';
+import PolicyPage from './pages/customer/PolicyPage';
+import WardrobePage from './pages/customer/WardrobePage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -73,13 +78,19 @@ function App() {
         <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
         <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
-        {/* ========================================================
-            AUTHENTICATION (Đăng Nhập & Đăng Ký)
-            ======================================================== */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog/:id" element={<BlogPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/policy" element={<PolicyPage />} />
+          <Route path="/policy/:tab" element={<PolicyPage />} />
+          <Route path="/wardrobe" element={<WardrobePage />} />
+          <Route path="/my-wardrobe" element={<WardrobePage />} />
+
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Cửa Hàng)

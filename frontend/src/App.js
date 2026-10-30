@@ -160,7 +160,7 @@ function App() {
         <Route
           path="/warehousemanager/:resource"
           element={
-            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}>
               <WarehouseManagerPage />
             </ProtectedRoute>
           }

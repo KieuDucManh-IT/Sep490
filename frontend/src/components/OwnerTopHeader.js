@@ -10,6 +10,11 @@ import {
   Compass,
   LogOut,
   CheckCircle2,
+  CalendarRange,
+  ShoppingBag,
+  RotateCcw,
+  BarChart3,
+  Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../styles/ShopDashboard.css';
@@ -75,7 +80,7 @@ export default function OwnerTopHeader({
     return ownerName.charAt(0).toUpperCase();
   }, [ownerName]);
 
-  // Derived owner role label (completely dynamic, not hardcoded)
+  // Derived owner/manager role label (completely dynamic, not hardcoded)
   const ownerRole = useMemo(() => {
     const raw = user?.roleName || user?.Role || user?.role;
     if (!raw) return 'SHOP OWNER';
@@ -88,10 +93,56 @@ export default function OwnerTopHeader({
     return String(raw).replace(/_/g, ' ').toUpperCase();
   }, [user]);
 
+  const isBranchManager = useMemo(() => {
+    const raw = user?.roleName || user?.Role || user?.role;
+    const roleUpper = String(raw || '').trim().toUpperCase();
+    return roleUpper === 'BRANCH_MANAGER' || location.pathname.startsWith('/branch');
+  }, [user, location.pathname]);
+
+  // Assigned branch info from cache for dynamic status pill
+  const [assignedBranch, setAssignedBranch] = useState(() => {
+    try {
+      const cached = localStorage.getItem('vestora_branch_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const cached = localStorage.getItem('vestora_branch_cache');
+        if (cached) setAssignedBranch(JSON.parse(cached));
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   // Route-aware auto-inferred breadcrumbs so header is never blank
   const currentBreadcrumb = useMemo(() => {
     if (breadcrumb) return breadcrumb;
     const path = location.pathname;
+
+    // 1. Branch Manager Routes
+    if (path === '/branch/dashboard') return 'Tổng Quan Chi Nhánh';
+    if (path === '/branch/settings' || path === '/branch/showroom') return 'Cửa Hàng & Ghim Map';
+    if (path === '/branch/rental-orders') return 'Đơn Thuê Trang Phục';
+    if (path === '/branch/sale-orders') return 'Đơn Bán Đứt';
+    if (path === '/branch/returns') return 'Kiểm Định Nhận Trả';
+    if (path === '/branch/analytics') return 'Doanh Thu Chi Nhánh';
+    if (path === '/branch/reviews') return 'Đánh Giá Khách Hàng';
+    if (path === '/warehouse/products' || path === '/warehousemanager/products') return 'Danh Mục Sản Phẩm';
+    if (
+      path === '/warehouse/inventory' ||
+      path === '/warehousemanager/inventory' ||
+      path === '/warehousemanager/inventory-locations'
+    ) {
+      return 'Tồn Kho Cửa Hàng & Kho';
+    }
+
+    // 2. Shop Owner Routes
     if (path === '/owner/dashboard') return 'Tổng Quan Chuỗi';
     if (
       path === '/owner/branches' ||
@@ -103,9 +154,10 @@ export default function OwnerTopHeader({
     if (path === '/owner/pricing') return 'Bảng Giá & Tiền Cọc Escrow';
     if (path === '/owner/analytics') return 'Báo Cáo Tài Chính Chuỗi';
     if (path === '/owner/disputes') return 'Khiếu Nại & Cọc Escrow';
-    if (path === '/owner/settings') return 'Hồ Sơ Cửa Hàng';
-    return 'Bảng Điều Khiển Chuỗi';
-  }, [breadcrumb, location.pathname]);
+    if (path === '/owner/settings') return 'Hồ Sơ Cửa Hàng & Ghim Map';
+
+    return isBranchManager ? 'Bảng Điều Khiển Chi Nhánh' : 'Bảng Điều Khiển Chuỗi';
+  }, [breadcrumb, location.pathname, isBranchManager]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -144,13 +196,33 @@ export default function OwnerTopHeader({
 
       {/* Right: Operational Status, Notifications & Profile Card */}
       <div className="owner-topbar-right">
-        {/* System Online Status Pill */}
+        {/* Operational Status Pill */}
         <div
           className="owner-topbar-status-pill"
-          title="Hệ thống cơ sở dữ liệu chuỗi đang trực tuyến và đồng bộ thời gian thực"
+          title={
+            isBranchManager
+              ? assignedBranch
+                ? `Chi nhánh ${assignedBranch.name} • ${assignedBranch.status === 'ACTIVE' ? 'Đang hoạt động' : 'Tạm ngưng'}`
+                : 'Chưa được phân công chi nhánh'
+              : 'Hệ thống cơ sở dữ liệu chuỗi đang trực tuyến và đồng bộ thời gian thực'
+          }
         >
-          <span className="shop-status-pulse active" />
-          <span>Toàn Chuỗi Hoạt Động</span>
+          <span
+            className={`shop-status-pulse ${
+              isBranchManager
+                ? assignedBranch?.status === 'ACTIVE'
+                  ? 'active'
+                  : 'idle'
+                : 'active'
+            }`}
+          />
+          <span>
+            {isBranchManager
+              ? assignedBranch?.status === 'ACTIVE'
+                ? 'Chi Nhánh Hoạt Động'
+                : 'Chi Nhánh Tạm Ngưng'
+              : 'Toàn Chuỗi Hoạt Động'}
+          </span>
         </div>
 
         {/* Notifications Button & Popover */}
@@ -251,45 +323,121 @@ export default function OwnerTopHeader({
                 </div>
               </div>
 
-              <Link
-                to="/owner/dashboard"
-                className="owner-dropdown-item"
-                role="menuitem"
-                onClick={() => setShowProfile(false)}
-              >
-                <LayoutDashboard size={15} color="#D4AF37" />
-                <span>Tổng Quan Chuỗi</span>
-              </Link>
+              {isBranchManager ? (
+                <>
+                  <Link
+                    to="/branch/dashboard"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <LayoutDashboard size={15} color="#D4AF37" />
+                    <span>Tổng Quan Chi Nhánh</span>
+                  </Link>
 
-              <Link
-                to="/owner/branches"
-                className="owner-dropdown-item"
-                role="menuitem"
-                onClick={() => setShowProfile(false)}
-              >
-                <Store size={15} color="#D4AF37" />
-                <span>Quản Lý Chi Nhánh</span>
-              </Link>
+                  <Link
+                    to="/branch/settings"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <Store size={15} color="#D4AF37" />
+                    <span>Cửa Hàng & Ghim Map</span>
+                  </Link>
 
-              <Link
-                to="/owner/pricing"
-                className="owner-dropdown-item"
-                role="menuitem"
-                onClick={() => setShowProfile(false)}
-              >
-                <BadgePercent size={15} color="#D4AF37" />
-                <span>Bảng Giá & Tiền Cọc</span>
-              </Link>
+                  <Link
+                    to="/branch/rental-orders"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <CalendarRange size={15} color="#D4AF37" />
+                    <span>Đơn Thuê Trang Phục</span>
+                  </Link>
 
-              <Link
-                to="/owner/settings"
-                className="owner-dropdown-item"
-                role="menuitem"
-                onClick={() => setShowProfile(false)}
-              >
-                <Store size={15} color="#D4AF37" />
-                <span>Hồ Sơ Cửa Hàng & Ghim Map</span>
-              </Link>
+                  <Link
+                    to="/branch/sale-orders"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <ShoppingBag size={15} color="#D4AF37" />
+                    <span>Đơn Bán Đứt</span>
+                  </Link>
+
+                  <Link
+                    to="/branch/returns"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <RotateCcw size={15} color="#D4AF37" />
+                    <span>Kiểm Định Nhận Trả</span>
+                  </Link>
+
+                  <Link
+                    to="/branch/analytics"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <BarChart3 size={15} color="#D4AF37" />
+                    <span>Doanh Thu Chi Nhánh</span>
+                  </Link>
+
+                  <Link
+                    to="/branch/reviews"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <Star size={15} color="#D4AF37" />
+                    <span>Đánh Giá Khách Hàng</span>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/owner/dashboard"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <LayoutDashboard size={15} color="#D4AF37" />
+                    <span>Tổng Quan Chuỗi</span>
+                  </Link>
+
+                  <Link
+                    to="/owner/branches"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <Store size={15} color="#D4AF37" />
+                    <span>Quản Lý Chi Nhánh</span>
+                  </Link>
+
+                  <Link
+                    to="/owner/pricing"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <BadgePercent size={15} color="#D4AF37" />
+                    <span>Bảng Giá & Tiền Cọc</span>
+                  </Link>
+
+                  <Link
+                    to="/owner/settings"
+                    className="owner-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setShowProfile(false)}
+                  >
+                    <Store size={15} color="#D4AF37" />
+                    <span>Hồ Sơ Cửa Hàng & Ghim Map</span>
+                  </Link>
+                </>
+              )}
 
               <Link
                 to="/"

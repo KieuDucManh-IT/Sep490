@@ -1,18 +1,80 @@
-import React from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  Store,
+  BadgePercent,
+  BarChart3,
+  Scale,
+  Compass,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import '../styles/OpsShops.css';
-import '../styles/AdminDashboard.css';
+import '../styles/ShopDashboard.css';
 
 /**
- * OwnerSidebar - Navigation sidebar for Shop Owner role
+ * OwnerSidebar - Luxury Navigation Taskbar for Shop Owner Role
+ * Completely synchronized and compatible with BranchSidebar
+ * Compliant with:
+ *  - react-best-practices: derived memoized state, stable callbacks, bundle-friendly imports
+ *  - ui-styling & ui-ux-pro-max: >=44px touch targets, obsidian/gold atelier palette, centered brand header
+ *  - web-design-guidelines: semantic HTML, accessible ARIA, keyboard focus-visible rings
  */
-export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
+export default function OwnerSidebar({ isCollapsed: externalCollapsed, onToggle: externalOnToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
-  const handleLogout = async () => {
+  // Internal collapse state persisted to localStorage if not controlled externally
+  const [internalCollapsed, setInternalCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('vestora_owner_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const isCollapsed = externalCollapsed !== undefined ? externalCollapsed : internalCollapsed;
+
+  const handleToggle = useCallback(() => {
+    if (externalOnToggle) {
+      externalOnToggle();
+    } else {
+      setInternalCollapsed((prev) => {
+        const next = !prev;
+        try {
+          localStorage.setItem('vestora_owner_sidebar_collapsed', String(next));
+        } catch {}
+        return next;
+      });
+    }
+  }, [externalOnToggle]);
+
+  // Derived owner display name & avatar initial (eliminates redundant useState + useEffect cycles)
+  const ownerName = useMemo(() => {
+    return user?.fullName || user?.FullName || user?.name || 'Chủ Chuỗi Cửa Hàng';
+  }, [user]);
+
+  const ownerInitial = useMemo(() => {
+    return ownerName.charAt(0).toUpperCase();
+  }, [ownerName]);
+
+  // Derived owner role label (completely dynamic, not hardcoded)
+  const ownerRole = useMemo(() => {
+    const raw = user?.roleName || user?.Role || user?.role;
+    if (!raw) return 'SHOP OWNER';
+    const upper = String(raw).trim().toUpperCase();
+    if (upper === 'SHOP_OWNER' || upper === 'OWNER') return 'SHOP OWNER';
+    if (upper === 'BRANCH_MANAGER') return 'BRANCH MANAGER';
+    if (upper === 'OPERATION_STAFF') return 'OPERATION STAFF';
+    if (upper === 'ADMIN') return 'ADMIN';
+    if (upper === 'CUSTOMER') return 'CUSTOMER';
+    return String(raw).replace(/_/g, ' ').toUpperCase();
+  }, [user]);
+
+  const handleLogout = useCallback(async () => {
     try {
       if (logout) {
         await logout();
@@ -21,166 +83,205 @@ export default function OwnerSidebar({ isCollapsed = false, onToggle }) {
         localStorage.removeItem('user');
       }
       navigate('/login');
-    } catch (err) {
+    } catch {
       navigate('/login');
     }
-  };
+  }, [logout, navigate]);
 
-  const isActive = (path) => {
-    if (path === '/owner/branches') {
-      return (
-        location.pathname === '/owner/branches' ||
-        location.pathname === '/owner/shops'
-      ) ? 'active' : '';
-    }
-    return location.pathname === path ? 'active' : '';
-  };
+  const isActive = useCallback(
+    (path) => {
+      if (location.pathname === path) return true;
+      if (
+        path === '/owner/branches' &&
+        (location.pathname === '/owner/shops' || location.pathname === '/owner/manage-shops')
+      ) {
+        return true;
+      }
+      if (path !== '/owner/dashboard' && location.pathname.startsWith(path + '/')) {
+        return true;
+      }
+      return false;
+    },
+    [location.pathname]
+  );
+
+  // Grouped operational domains for Shop Owner
+  const navGroups = useMemo(
+    () => [
+      {
+        id: 'operations',
+        title: 'VẬN HÀNH CHUỖI',
+        items: [
+          {
+            path: '/owner/dashboard',
+            label: 'Tổng Quan Chuỗi',
+            icon: LayoutDashboard,
+            desc: 'Báo cáo tổng hợp vận hành toàn chuỗi',
+          },
+          {
+            path: '/owner/branches',
+            label: 'Quản Lý Chi Nhánh',
+            icon: Store,
+            desc: 'Quản lý danh sách chi nhánh & bổ nhiệm quản lý',
+          },
+        ],
+      },
+      {
+        id: 'finance',
+        title: 'TÀI CHÍNH & KINH DOANH',
+        items: [
+          {
+            path: '/owner/pricing',
+            label: 'Bảng Giá & Tiền Cọc',
+            icon: BadgePercent,
+            desc: 'Chính sách giá thuê, giá bán & tỷ lệ cọc',
+          },
+          {
+            path: '/owner/analytics',
+            label: 'Báo Cáo Tài Chính',
+            icon: BarChart3,
+            desc: 'Doanh thu toàn chuỗi & dòng tiền đối soát',
+          },
+          {
+            path: '/owner/disputes',
+            label: 'Khiếu Nại & Cọc',
+            icon: Scale,
+            desc: 'Xử lý tranh chấp và tiền cọc Escrow',
+          },
+        ],
+      },
+    ],
+    []
+  );
 
   return (
-    <aside className={`admin-shops-sidebar ops-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      <div>
-        <div className="admin-shops-sidebar__brand">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Link
-              to="/owner/dashboard"
-              className="admin-shops-sidebar__logo"
-              title="VESTORA Shop Owner"
-            >
-              {isCollapsed ? 'V' : 'VESTORA'}
+    <aside
+      className={`shop-sidebar ${isCollapsed ? 'collapsed' : ''}`}
+      role="navigation"
+      aria-label="Thanh điều hướng Chủ Chuỗi VESTORA"
+    >
+      <div className="shop-sidebar-inner">
+        {/* Top Brand Header - Centered Logo */}
+        <div className="shop-brand-badge">
+          <div className="shop-brand-left">
+            <Link to="/owner/dashboard" className="shop-brand-link" title="VESTORA Shop Owner">
+              <span className="shop-brand-logo">{isCollapsed ? 'V' : 'VESTORA'}</span>
             </Link>
-            {onToggle && (
-              <button
-                type="button"
-                onClick={onToggle}
-                className="admin-sidebar-collapse-toggle"
-                title={isCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
-                aria-label="Thu gọn / mở rộng menu"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {isCollapsed ? <polyline points="9 18 15 12 9 6" /> : <polyline points="15 18 9 12 15 6" />}
-                </svg>
-              </button>
-            )}
           </div>
+
+          <button
+            type="button"
+            className="shop-sidebar-toggle-btn"
+            onClick={handleToggle}
+            title={isCollapsed ? 'Mở rộng thanh tác vụ' : 'Thu gọn thanh tác vụ'}
+            aria-label={isCollapsed ? 'Mở rộng thanh tác vụ' : 'Thu gọn thanh tác vụ'}
+          >
+            {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
+        </div>
+
+        {/* Owner Profile Card */}
+        <div
+          className={`shop-branch-card ${isCollapsed ? 'collapsed' : ''}`}
+          title={`${ownerName} • ${ownerRole}`}
+        >
+          <div className="shop-branch-avatar-container">
+            {user?.avatar ? (
+              <img src={user.avatar} alt={ownerName} className="shop-branch-avatar-img" />
+            ) : (
+              <div className="shop-branch-avatar-circle">
+                <span>{ownerInitial}</span>
+              </div>
+            )}
+            <span className="shop-branch-status-dot online" />
+          </div>
+
           {!isCollapsed && (
-            <div
-              className="admin-shops-sidebar__sub"
-              style={{ color: '#D97706', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '11px', textTransform: 'none' }}
-            >
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#D97706', display: 'inline-block' }} />
-              Shop Owner
+            <div className="shop-branch-info-box">
+              <div className="shop-branch-manager-name" title={ownerName}>
+                {ownerName}
+              </div>
+              <div className="shop-owner-role-tag in-card" title={ownerRole}>
+                <span className="text-truncate">{ownerRole}</span>
+              </div>
             </div>
           )}
         </div>
 
-        <nav className="admin-shops-sidebar__nav">
-          <Link
-            to="/owner/dashboard"
-            className={`admin-shops-sidebar__link ${isActive('/owner/dashboard')}`}
-            title="Tổng Quan Toàn Chuỗi"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                <rect x="3" y="14" width="7" height="7" rx="1.5" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Tổng Quan Chuỗi</span>}
-          </Link>
+        {/* Navigation Menu */}
+        <nav className="shop-nav-menu">
+          {navGroups.map((group) => (
+            <div key={group.id} className="shop-nav-group">
+              {!isCollapsed ? (
+                <div className="sidebar-section-label">{group.title}</div>
+              ) : (
+                <div className="sidebar-section-divider-dot" />
+              )}
 
-          <Link
-            to="/owner/branches"
-            className={`admin-shops-sidebar__link ${isActive('/owner/branches')}`}
-            title="Quản Lý Chi Nhánh & Hồ Sơ"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M3 9l2-5h14l2 5" />
-                <path d="M21 9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9" />
-                <path d="M10 13a2 2 0 0 0 4 0" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Quản Lý Chi Nhánh & Hồ Sơ</span>}
-          </Link>
+              {group.items.map((item) => {
+                const active = isActive(item.path);
+                const IconComponent = item.icon;
 
-          <Link
-            to="/owner/pricing"
-            className={`admin-shops-sidebar__link ${isActive('/owner/pricing')}`}
-            title="Bảng Giá & Cọc"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                <line x1="7" y1="7" x2="7.01" y2="7" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Bảng Giá & Cọc</span>}
-          </Link>
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`sidebar-nav-item ${active ? 'active' : ''}`}
+                    title={isCollapsed ? `${item.label} - ${item.desc}` : item.desc}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <div className="sidebar-nav-item-content">
+                      <span className="sidebar-nav-icon">
+                        <IconComponent size={17} strokeWidth={active ? 2.2 : 1.8} />
+                      </span>
+                      {!isCollapsed && (
+                        <span className="sidebar-nav-label text-truncate">{item.label}</span>
+                      )}
+                    </div>
 
-          <Link
-            to="/owner/analytics"
-            className={`admin-shops-sidebar__link ${isActive('/owner/analytics')}`}
-            title="Báo Cáo Tài Chính"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <line x1="18" y1="20" x2="18" y2="10" />
-                <line x1="12" y1="20" x2="12" y2="4" />
-                <line x1="6" y1="20" x2="6" y2="14" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Báo Cáo Tài Chính</span>}
-          </Link>
-
-          <Link
-            to="/owner/disputes"
-            className={`admin-shops-sidebar__link ${isActive('/owner/disputes')}`}
-            title="Khiếu Nại & Tiền Cọc"
-          >
-            <span className="admin-shops-sidebar__icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </span>
-            {!isCollapsed && <span>Khiếu Nại & Cọc</span>}
-          </Link>
+                    {!isCollapsed && (
+                      <div className="sidebar-nav-item-right">
+                        <ChevronRight
+                          size={13}
+                          className={`sidebar-nav-arrow ${active ? 'active' : ''}`}
+                        />
+                      </div>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
-      </div>
 
-      <div className="admin-shops-sidebar__footer">
-        <Link
-          to="/"
-          className="admin-shops-sidebar__link"
-          title="Trang chủ khách hàng"
-        >
-          <span className="admin-shops-sidebar__icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-          </span>
-          {!isCollapsed && <span>Xem Cổng Khách Hàng</span>}
-        </Link>
+        {/* Footer Section */}
+        <div className="shop-sidebar-footer">
+          <Link
+            to="/"
+            className="sidebar-nav-item footer-link"
+            title={isCollapsed ? 'Xem Cổng Khách Hàng' : undefined}
+          >
+            <div className="sidebar-nav-item-content">
+              <span className="sidebar-nav-icon">
+                <Compass size={17} strokeWidth={1.8} />
+              </span>
+              {!isCollapsed && <span className="sidebar-nav-label">Cổng Khách Hàng</span>}
+            </div>
+            {!isCollapsed && <span className="footer-link-arrow">↗</span>}
+          </Link>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="admin-shops-sidebar__logout"
-          title="Đăng xuất"
-        >
-          <span className="admin-shops-sidebar__icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-          </span>
-          {!isCollapsed && <span>Đăng Xuất</span>}
-        </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="shop-sidebar-btn-logout"
+            title={isCollapsed ? 'Đăng xuất khỏi hệ thống' : undefined}
+          >
+            <span className="sidebar-nav-icon logout-icon">
+              <LogOut size={17} strokeWidth={1.8} />
+            </span>
+            {!isCollapsed && <span className="sidebar-nav-label">Đăng Xuất</span>}
+          </button>
+        </div>
       </div>
     </aside>
   );

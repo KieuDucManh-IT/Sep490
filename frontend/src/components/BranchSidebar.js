@@ -12,7 +12,6 @@ import {
   Star,
   Compass,
   LogOut,
-  MapPin,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -213,12 +212,6 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
             <Link to="/branch/dashboard" className="shop-brand-link" title="VESTORA Branch Manager">
               <span className="shop-brand-logo">{isCollapsed ? 'V' : 'VESTORA'}</span>
             </Link>
-            {!isCollapsed && (
-              <div className="shop-branch-role-tag">
-                <span className={`shop-status-pulse ${isBranchActive ? 'active' : 'idle'}`} />
-                <span>BRANCH MANAGER</span>
-              </div>
-            )}
           </div>
 
           <button
@@ -235,11 +228,7 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
         {/* Manager & Assigned Branch Card */}
         <div
           className={`shop-branch-card ${isCollapsed ? 'collapsed' : ''}`}
-          title={
-            assignedBranch
-              ? `${managerName} • ${assignedBranch.name} (${isBranchActive ? 'Đang hoạt động' : 'Tạm ngưng'})`
-              : `${managerName} • Chưa phân công chi nhánh`
-          }
+          title={`${managerName} • Branch Manager`}
         >
           <div className="shop-branch-avatar-container">
             {user?.avatar ? (
@@ -262,12 +251,11 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
                 {managerName}
               </div>
               <div
-                className="shop-branch-assigned-name"
-                title={assignedBranch ? assignedBranch.name : 'Chưa được chỉ định cửa hàng'}
+                className="shop-owner-role-tag in-card"
+                title="Branch Manager"
               >
-                <MapPin size={11} className="flex-shrink-0" />
                 <span className="text-truncate">
-                  {assignedBranch ? assignedBranch.name : 'Chưa phân công'}
+                  Branch Manager
                 </span>
               </div>
             </div>

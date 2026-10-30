@@ -23,10 +23,10 @@ import {
   Camera,
   Image as ImageIcon,
   Check,
-  ChevronRight,
   Sparkles,
 } from 'lucide-react';
 import BranchSidebar from '../../components/BranchSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import LeafletMapPicker from '../../components/LeafletMapPicker';
 import OpeningHoursInput, { parseOpeningHours, DAY_OPTIONS } from '../../components/OpeningHoursInput';
 import ImageLightboxModal from '../../components/ImageLightboxModal';
@@ -121,6 +121,7 @@ const getProvinceCoords = (name) => {
 export default function BranchSettingsPage() {
   const formRef = useRef(null);
 
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [shop, setShop] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -749,18 +750,20 @@ export default function BranchSettingsPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Branch Manager Sidebar */}
-      <BranchSidebar />
+      <BranchSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
 
-      <main className="shop-main-content">
-        <div className="store-mgmt-container pb-5">
-          {/* Breadcrumb Navigation */}
-          <div className="store-mgmt-breadcrumb mb-3 d-flex align-items-center gap-1" style={{ fontSize: '13px' }}>
-            <Link to="/branch/dashboard" style={{ textDecoration: 'none', color: '#64748B', fontWeight: 500 }}>
-              Vận Hành Chi Nhánh
-            </Link>
-            <ChevronRight size={14} className="text-muted" />
-            <span style={{ color: '#0F172A', fontWeight: 600 }}>Cài Đặt Cửa Hàng Phân Công</span>
-          </div>
+      <div className="admin-main-viewport">
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Cửa Hàng & Ghim Map"
+        />
+
+        <main className="shop-main-content">
+          <div className="store-mgmt-container pb-5">
 
           {/* Toast Notification */}
           {toast && (
@@ -845,7 +848,7 @@ export default function BranchSettingsPage() {
                 </div>
                 <h3
                   style={{
-                    fontFamily: 'var(--font-title, serif)',
+                    fontFamily: "'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                     fontSize: '22px',
                     fontWeight: 700,
                     color: '#0F172A',
@@ -1822,6 +1825,7 @@ export default function BranchSettingsPage() {
           title={lightboxImage?.title || 'Xem Ảnh Kích Thước Thật'}
         />
       </main>
+      </div>
     </div>
   );
 }

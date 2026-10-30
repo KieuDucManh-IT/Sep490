@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Settings,
   TrendingUp,
-  Bell,
   MapPin,
   Phone,
   Clock,
@@ -16,21 +15,18 @@ import {
   Store,
 } from 'lucide-react';
 import BranchSidebar from '../../components/BranchSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import ImageLightboxModal from '../../components/ImageLightboxModal';
-import { useAuth } from '../../context/AuthContext';
 import { getAssignedBranchApi } from '../../services/shopApi';
 import '../../styles/ShopDashboard.css';
 
 export default function BranchDashboardPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState('TẤT CẢ (08)');
   const [shop, setShop] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lightboxImage, setLightboxImage] = useState(null);
-
-  const managerDisplayName = user?.fullName || user?.FullName || 'Quản Lý Chi Nhánh';
-  const managerInitial = managerDisplayName.charAt(0).toUpperCase();
 
   useEffect(() => {
     let isMounted = true;
@@ -111,67 +107,20 @@ export default function BranchDashboardPage() {
 
   return (
     <div className="shop-dashboard-layout">
-      {/* Reusable Shop Sidebar */}
-      <BranchSidebar />
+      {/* Reusable Branch Sidebar */}
+      <BranchSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
 
-      {/* Main Content Area */}
-      <div className="shop-main-area">
-        {/* Top Bar */}
-        <header className="shop-top-navbar">
-          <div style={{ fontSize: '12px', color: '#6B7280' }}>
-            Trang Chủ Cửa Hàng &gt; <strong>Tổng Quan</strong>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <span
-              style={{
-                fontSize: '11px',
-                background: shop?.status === 'ACTIVE' ? '#ECFDF5' : '#FEF3C7',
-                color: shop?.status === 'ACTIVE' ? '#059669' : '#D97706',
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                fontWeight: 600,
-              }}
-            >
-              ● {shop ? (shop.status === 'ACTIVE' ? 'ĐANG HOẠT ĐỘNG' : 'TẠM NGƯNG') : 'CHƯA PHÂN CÔNG'}
-            </span>
-            <span style={{ cursor: 'pointer', color: '#64748B' }} title="Thông báo">
-              <Bell size={18} />
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {user?.avatar ? (
-                <img
-                  src={user.avatar}
-                  alt="Avatar"
-                  style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '50%',
-                    background: '#1F2937',
-                    color: '#F9FAFB',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 700,
-                    fontSize: '14px',
-                  }}
-                >
-                  {managerInitial}
-                </div>
-              )}
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>{managerDisplayName}</div>
-                <div style={{ fontSize: '10px', color: '#6B7280' }}>
-                  {shop ? shop.name : 'Quản Lý Chi Nhánh'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
+      {/* Main Viewport */}
+      <div className="admin-main-viewport">
+        {/* Top Header */}
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Tổng Quan Chi Nhánh"
+        />
 
         {/* Scroll Content */}
         <div className="shop-content-scroll">
@@ -214,7 +163,7 @@ export default function BranchDashboardPage() {
                 </div>
                 <h3
                   style={{
-                    fontFamily: 'var(--font-title, serif)',
+                    fontFamily: "'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                     fontSize: '22px',
                     fontWeight: 700,
                     color: '#0F172A',
@@ -299,7 +248,7 @@ export default function BranchDashboardPage() {
                       </span>
                     )}
                   </div>
-                  <h1 style={{ fontFamily: 'var(--font-title, serif)', fontSize: '28px', margin: '0 0 6px 0', color: '#0F172A' }}>
+                  <h1 className="admin-page-title" style={{ fontSize: '26px', margin: '0 0 6px 0', color: '#0F172A' }}>
                     Tổng Quan: {shop.name}
                   </h1>
                   <p style={{ fontSize: '13px', color: '#64748B', margin: 0, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>

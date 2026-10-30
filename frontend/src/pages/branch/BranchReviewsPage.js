@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import BranchSidebar from '../../components/BranchSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/ShopDashboard.css';
 
 export default function BranchReviewsPage() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [reviews, setReviews] = useState([
     {
       id: 'REV-101',
@@ -36,20 +38,32 @@ export default function BranchReviewsPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar */}
-      <BranchSidebar />
+      <BranchSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
 
-      {/* Main Area */}
-      <main className="shop-main-content">
-        <header className="shop-header">
-          <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.8rem', margin: 0 }}>
-              Quản Lý Đánh Giá Từ Khách Hàng & Uy Tín Gian Hàng
-            </h1>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '4px' }}>
-              Điểm Đánh Giá Trung Bình: <strong style={{ color: '#d4af37' }}>4.95 / 5.0 ⭐ (128 Nhận Xét)</strong>
-            </p>
+      {/* Main Viewport */}
+      <div className="admin-main-viewport">
+        {/* Top Header */}
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Đánh Giá Khách Hàng"
+        />
+
+        {/* Main Area */}
+        <main className="shop-main-content">
+          <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
+            <div>
+              <h1 className="admin-page-title" style={{ fontSize: '26px', margin: 0 }}>
+                Đánh Giá Khách Hàng & Uy Tín Chi Nhánh
+              </h1>
+              <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px', marginTop: '4px', margin: 0 }}>
+                Điểm Đánh Giá Trung Bình: <strong style={{ color: '#d4af37' }}>4.95 / 5.0 ⭐ (128 Nhận Xét)</strong>
+              </p>
+            </div>
           </div>
-        </header>
 
         {/* Reviews List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '24px' }}>
@@ -100,6 +114,7 @@ export default function BranchReviewsPage() {
           ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

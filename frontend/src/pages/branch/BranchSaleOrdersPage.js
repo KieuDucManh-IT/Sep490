@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import BranchSidebar from '../../components/BranchSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/ShopDashboard.css';
 
 export default function BranchSaleOrdersPage() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -57,27 +59,39 @@ export default function BranchSaleOrdersPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar Navigation */}
-      <BranchSidebar />
+      <BranchSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
 
-      {/* Main Content Area */}
-      <main className="shop-main-content">
-        <header className="shop-header">
-          <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.8rem', margin: 0 }}>
-              Quản Lý Đơn Mua Thanh Lý & Bán Thẳng
-            </h1>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '4px' }}>
-              Theo dõi và xác nhận các đơn hàng bán đứt sản phẩm Haute Couture từ khách hàng
-            </p>
+      {/* Main Viewport */}
+      <div className="admin-main-viewport">
+        {/* Top Header */}
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Đơn Bán Đứt"
+        />
+
+        {/* Main Content Area */}
+        <main className="shop-main-content">
+          <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
+            <div>
+              <h1 className="admin-page-title" style={{ fontSize: '26px', margin: 0 }}>
+                Quản Lý Đơn Mua Thanh Lý & Bán Thẳng
+              </h1>
+              <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px', marginTop: '4px', margin: 0 }}>
+                Theo dõi và xác nhận các đơn hàng bán đứt sản phẩm Haute Couture từ khách hàng
+              </p>
+            </div>
+            <button
+              onClick={() => alert('Xuất danh sách đơn bán file Excel!')}
+              className="btn-vestora btn-vestora-outline"
+              style={{ fontSize: '0.85rem' }}
+            >
+              📥 Xuất Báo Cáo Excel
+            </button>
           </div>
-          <button 
-            onClick={() => alert('Xuất danh sách đơn bán file Excel!')}
-            className="btn-vestora btn-vestora-outline" 
-            style={{ fontSize: '0.85rem' }}
-          >
-            📥 Xuất Báo Cáo Excel
-          </button>
-        </header>
 
         {/* Filter Tabs & Search */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '24px 0 16px' }}>
@@ -159,6 +173,7 @@ export default function BranchSaleOrdersPage() {
           </table>
         </div>
       </main>
+      </div>
     </div>
   );
 }

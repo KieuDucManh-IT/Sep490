@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { Row, Col, Form, Button, Spinner } from 'react-bootstrap';
 import {
   MapPin,
@@ -757,12 +756,15 @@ export default function OwnerSettingsPage() {
   }, [shop, showToast]);
 
   const isActive = Boolean(formData.isOpen);
-  const isBranchManager = /branch_manager/i.test(user?.Role || '');
+  const isBranchManager = /branch_manager/i.test(user?.roleName || user?.Role || user?.role || '');
 
   return (
     <div className="shop-dashboard-layout">
       {isBranchManager ? (
-        <BranchSidebar />
+        <BranchSidebar
+          isCollapsed={isSidebarCollapsed}
+          onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+        />
       ) : (
         <OwnerSidebar
           isCollapsed={isSidebarCollapsed}
@@ -771,13 +773,11 @@ export default function OwnerSettingsPage() {
       )}
 
       <div className="admin-main-viewport" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100vh', overflowY: 'auto' }}>
-        {!isBranchManager && (
-          <OwnerTopHeader
-            isSidebarCollapsed={isSidebarCollapsed}
-            onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-            breadcrumb="Hồ Sơ Cửa Hàng & Ghim Map"
-          />
-        )}
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Hồ Sơ Cửa Hàng & Ghim Map"
+        />
 
         <main className="shop-main-content" style={{ flex: 1, padding: '24px 36px' }}>
           <div className="store-mgmt-container">

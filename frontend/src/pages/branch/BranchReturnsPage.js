@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import BranchSidebar from '../../components/BranchSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/ShopDashboard.css';
 
 export default function BranchReturnsPage() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [returns, setReturns] = useState([
     {
       id: 'RET-881',
@@ -48,20 +50,32 @@ export default function BranchReturnsPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar */}
-      <BranchSidebar />
+      <BranchSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
 
-      {/* Main Area */}
-      <main className="shop-main-content">
-        <header className="shop-header">
-          <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.8rem', margin: 0 }}>
-              Xác Nhận Trả Hàng & Đồng Bộ Hoàn Cọc PayOS Escrow
-            </h1>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '4px' }}>
-              Kiểm tra tình trạng trang phục sau thuê và quyết định giải ngân/khấu trừ tiền cọc an toàn
-            </p>
+      {/* Main Viewport */}
+      <div className="admin-main-viewport">
+        {/* Top Header */}
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Kiểm Định Nhận Trả"
+        />
+
+        {/* Main Area */}
+        <main className="shop-main-content">
+          <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
+            <div>
+              <h1 className="admin-page-title" style={{ fontSize: '26px', margin: 0 }}>
+                Xác Nhận Trả Hàng & Hoàn Cọc PayOS Escrow
+              </h1>
+              <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px', marginTop: '4px', margin: 0 }}>
+                Kiểm định tình trạng trang phục sau thuê và quyết định giải ngân/khấu trừ tiền cọc an toàn
+              </p>
+            </div>
           </div>
-        </header>
 
         {/* Returns Table Card */}
         <div className="dashboard-card" style={{ padding: 0, marginTop: '24px' }}>
@@ -132,6 +146,7 @@ export default function BranchReturnsPage() {
           </table>
         </div>
       </main>
+      </div>
     </div>
   );
 }

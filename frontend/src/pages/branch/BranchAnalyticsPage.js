@@ -1,43 +1,57 @@
 import React, { useState } from 'react';
 import { Row, Col, Card, Badge, Button, Form } from 'react-bootstrap';
 import BranchSidebar from '../../components/BranchSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/ShopDashboard.css';
 
 export default function BranchAnalyticsPage() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [timeRange, setTimeRange] = useState('MONTH');
 
   return (
     <div className="shop-dashboard-layout">
       {/* Sidebar Navigation */}
-      <BranchSidebar />
+      <BranchSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
 
-      {/* Main Area */}
-      <main className="shop-main-content">
-        <header className="shop-header">
-          <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.8rem', margin: 0 }}>
-              Báo Cáo Doanh Thu & Thống Kê Gian Hàng
-            </h1>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '4px' }}>
-              Phân tích chi tiết dòng tiền cho thuê, doanh thu bán đứt thanh lý và hiệu suất xoay vòng trang phục
-            </p>
+      {/* Main Viewport */}
+      <div className="admin-main-viewport">
+        {/* Top Header */}
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Doanh Thu Chi Nhánh"
+        />
+
+        {/* Main Area */}
+        <main className="shop-main-content">
+          <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
+            <div>
+              <h1 className="admin-page-title" style={{ fontSize: '26px', margin: 0 }}>
+                Báo Cáo Doanh Thu & Hiệu Suất Chi Nhánh
+              </h1>
+              <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px', marginTop: '4px', margin: 0 }}>
+                Phân tích chi tiết dòng tiền cho thuê, doanh thu bán đứt và hiệu suất xoay vòng trang phục
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <Form.Select
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value)}
+                style={{ width: '160px', fontSize: '0.88rem' }}
+              >
+                <option value="WEEK">Tháng Này (T10)</option>
+                <option value="MONTH">Quý 3 (T7 - T9)</option>
+                <option value="YEAR">Cả Năm 2026</option>
+              </Form.Select>
+              <Button variant="outline-dark" onClick={() => alert('Đã xuất báo cáo thống kê shop file PDF!')}>
+                📥 Xuất File PDF
+              </Button>
+            </div>
           </div>
-          
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <Form.Select 
-              value={timeRange} 
-              onChange={(e) => setTimeRange(e.target.value)}
-              style={{ width: '160px', fontSize: '0.88rem' }}
-            >
-              <option value="WEEK">Tháng Này (T10)</option>
-              <option value="MONTH">Quý 3 (T7 - T9)</option>
-              <option value="YEAR">Cả Năm 2026</option>
-            </Form.Select>
-            <Button variant="outline-dark" onClick={() => alert('Đã xuất báo cáo thống kê shop file PDF!')}>
-              📥 Xuất File PDF
-            </Button>
-          </div>
-        </header>
 
         {/* Big Metrics Grid */}
         <Row className="g-3 mt-3">
@@ -75,7 +89,7 @@ export default function BranchAnalyticsPage() {
         <Row className="g-4 mt-2">
           <Col md={8}>
             <Card className="dashboard-card p-4">
-              <h5 className="fw-bold mb-3" style={{ fontFamily: "'Playfair Display', serif" }}>
+              <h5 className="fw-bold mb-3" style={{ fontSize: '15px' }}>
                 Biểu Đồ Doanh Thu Theo Tuần (Tháng 10/2026)
               </h5>
               <div style={{ height: '220px', display: 'flex', alignItems: 'flex-end', gap: '24px', padding: '20px 10px', background: '#f9fafb', borderRadius: '8px' }}>
@@ -99,7 +113,7 @@ export default function BranchAnalyticsPage() {
 
           <Col md={4}>
             <Card className="dashboard-card p-4">
-              <h5 className="fw-bold mb-3" style={{ fontFamily: "'Playfair Display', serif" }}>
+              <h5 className="fw-bold mb-3" style={{ fontSize: '15px' }}>
                 Top Mẫu Trang Phục Sinh Lời Nhất
               </h5>
               <div className="d-flex flex-column gap-3">
@@ -129,6 +143,7 @@ export default function BranchAnalyticsPage() {
           </Col>
         </Row>
       </main>
+      </div>
     </div>
   );
 }

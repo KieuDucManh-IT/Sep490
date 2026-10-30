@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import BranchSidebar from '../../components/BranchSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/ShopDashboard.css';
 
 export default function BranchRentalOrdersPage() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState('Tất Cả (72)');
 
   const rentalOrders = [
@@ -71,45 +73,28 @@ export default function BranchRentalOrdersPage() {
   return (
     <div className="shop-dashboard-layout">
       {/* Left Sidebar */}
-      <BranchSidebar />
+      <BranchSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
 
-      {/* Main Area */}
-
-      {/* Main Area */}
-      <div className="shop-main-area">
+      {/* Main Viewport */}
+      <div className="admin-main-viewport">
         {/* Top Navbar */}
-        <header className="shop-top-navbar">
-          <div style={{ fontSize: '12px', color: '#6B7280' }}>
-            Trang Chủ Shop &gt; Đơn Hàng &gt; <strong>Quản Lý Đơn Thuê</strong>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <span style={{ fontSize: '11px', background: '#ECFDF5', color: '#059669', padding: '4px 12px', borderRadius: '9999px', fontWeight: 600 }}>
-              ● ĐANG HOẠT ĐỘNG
-            </span>
-            <span style={{ fontSize: '18px', cursor: 'pointer' }}>🔔</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img
-                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80"
-                alt="Avatar"
-                style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
-              />
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>Lê Bảo Trâm</div>
-                <div style={{ fontSize: '10px', color: '#6B7280' }}>Chủ Gian Hàng</div>
-              </div>
-            </div>
-          </div>
-        </header>
+        <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Đơn Thuê Trang Phục"
+        />
 
         {/* Content */}
         <div className="shop-content-scroll">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
             <div>
-              <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '32px', margin: '0 0 4px 0' }}>
-                Quản Lý Đơn Thuê
+              <h1 className="admin-page-title" style={{ fontSize: '26px', margin: '0 0 4px 0' }}>
+                Quản Lý Đơn Thuê Trang Phục
               </h1>
-              <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+              <p className="admin-page-desc" style={{ fontSize: '13px', color: '#64748B', margin: 0 }}>
                 Theo dõi chu kỳ thuê trang phục, trạng thái cọc PayOS Escrow và lịch hoàn trả đồ của khách hàng.
               </p>
             </div>

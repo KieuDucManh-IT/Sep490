@@ -125,6 +125,7 @@ export default function OwnerDashboardPage() {
       <div className="admin-main-viewport">
         {/* Owner Top Header */}
         <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
           breadcrumb="Tổng Quan Chuỗi"
         />

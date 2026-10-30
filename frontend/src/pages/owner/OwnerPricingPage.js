@@ -179,6 +179,7 @@ export default function OwnerPricingPage() {
 
       <div className="admin-main-viewport">
         <OwnerTopHeader
+          isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
           breadcrumb="Bảng Giá & Tiền Cọc Escrow"
         />
@@ -186,7 +187,7 @@ export default function OwnerPricingPage() {
         <div className="admin-content-body" style={{ padding: '24px 32px' }}>
           <div className="admin-page-hero" style={{ marginBottom: '24px' }}>
             <div>
-              <h1 className="admin-page-title" style={{ fontFamily: 'Cinzel, serif', fontSize: '26px', color: '#1E293B' }}>
+              <h1 className="admin-page-title">
                 Bảng Giá Thuê & Tiền Cọc Escrow
               </h1>
               <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px' }}>

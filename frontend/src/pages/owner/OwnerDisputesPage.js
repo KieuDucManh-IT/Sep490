@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import OwnerSidebar from '../../components/OwnerSidebar';
-import AdminTopHeader from '../../components/AdminTopHeader';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/AdminDashboard.css';
 
 export default function OwnerDisputesPage() {
@@ -54,9 +54,10 @@ export default function OwnerDisputesPage() {
 
       {/* 2. Main Viewport with Top Header */}
       <div className="admin-main-viewport">
-        <AdminTopHeader 
-          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)} 
-          breadcrumb="Trọng Tài PayOS Escrow"
+        <OwnerTopHeader
+          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
+          isSidebarCollapsed={isSidebarCollapsed}
+          breadcrumb="Khiếu Nại & Cọc Escrow"
         />
 
         {/* 3. Content Body */}

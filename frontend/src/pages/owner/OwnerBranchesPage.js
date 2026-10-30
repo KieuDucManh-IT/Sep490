@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link } from 'react-router-dom';
 import { Row, Col, Spinner, Button, Modal, Form } from 'react-bootstrap';
 import {
   Compass,
@@ -821,25 +820,22 @@ export default function OwnerBranchesPage() {
         onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
       />
 
-      <main className="shop-main-content">
+      <div className="admin-main-viewport" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100vh', overflowY: 'auto' }}>
         <OwnerTopHeader
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          breadcrumb="Quản Lý Chi Nhánh & Trụ Sở"
         />
 
-        <div className="store-mgmt-container">
-          <div className="store-mgmt-breadcrumb mb-2">
-            <Link to="/owner/dashboard">Tổng Quan Chuỗi</Link>
-            <span>›</span>
-            <span style={{ color: '#0F172A', fontWeight: 600 }}>Quản Lý Chi Nhánh & Trụ Sở</span>
-          </div>
+        <main className="shop-main-content" style={{ flex: 1, padding: '24px 36px' }}>
+          <div className="store-mgmt-container">
 
-          <div className="pb-2 mb-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
             <div>
-              <h1 className="store-mgmt-title" style={{ fontSize: '22px', fontWeight: 700, margin: 0, color: '#0F172A', letterSpacing: '-0.3px' }}>
+              <h1 className="admin-page-title">
                 Quản Lý Chi Nhánh & Trụ Sở
               </h1>
-              <p className="text-muted mb-0" style={{ fontSize: '13px', marginTop: '3px', color: '#64748B' }}>
+              <p className="admin-page-desc">
                 Quản lý hồ sơ thương hiệu, mạng lưới cửa hàng, định vị GPS và nhân sự quản lý chi nhánh.
               </p>
             </div>
@@ -1441,6 +1437,7 @@ export default function OwnerBranchesPage() {
           )}
         </div>
       </main>
+      </div>
 
       <Modal
         show={showCreateModal}

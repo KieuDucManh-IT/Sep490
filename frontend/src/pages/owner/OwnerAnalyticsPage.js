@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import OwnerSidebar from '../../components/OwnerSidebar';
-import AdminTopHeader from '../../components/AdminTopHeader';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/AdminDashboard.css';
 
 export default function OwnerAnalyticsPage() {
@@ -33,9 +33,10 @@ export default function OwnerAnalyticsPage() {
 
       {/* 2. Main Viewport with Top Header */}
       <div className="admin-main-viewport">
-        <AdminTopHeader
+        <OwnerTopHeader
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
-          breadcrumb="Thống Kê Chi Tiết Hệ Thống"
+          isSidebarCollapsed={isSidebarCollapsed}
+          breadcrumb="Báo Cáo Tài Chính Chuỗi"
         />
 
         {/* 3. Content Body */}

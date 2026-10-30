@@ -16,6 +16,7 @@ import {
   Check,
 } from 'lucide-react';
 import OwnerSidebar from '../../components/OwnerSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
 import BranchSidebar from '../../components/BranchSidebar';
 import LeafletMapPicker from '../../components/LeafletMapPicker';
 import OpeningHoursInput, { parseOpeningHours, DAY_OPTIONS } from '../../components/OpeningHoursInput';
@@ -116,6 +117,7 @@ export default function OwnerSettingsPage() {
   const { user } = useAuth();
   const formRef = useRef(null);
 
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [shop, setShop] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -759,38 +761,45 @@ export default function OwnerSettingsPage() {
 
   return (
     <div className="shop-dashboard-layout">
-      {isBranchManager ? <BranchSidebar /> : <OwnerSidebar />}
+      {isBranchManager ? (
+        <BranchSidebar />
+      ) : (
+        <OwnerSidebar
+          isCollapsed={isSidebarCollapsed}
+          onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+        />
+      )}
 
-      <main className="shop-main-content">
-        <div className="store-mgmt-container">
-          {/* Breadcrumb Navigation */}
-          <div className="store-mgmt-breadcrumb">
-            <Link to="/owner/dashboard">Tổng Quan Chuỗi</Link>
-            <span>›</span>
-            <Link to="/owner/branches">Quản Lý Chi Nhánh</Link>
-            <span>›</span>
-            <span style={{ color: '#0F172A', fontWeight: 600 }}>Thông Tin Cửa Hàng & Ghim Map</span>
-          </div>
+      <div className="admin-main-viewport" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100vh', overflowY: 'auto' }}>
+        {!isBranchManager && (
+          <OwnerTopHeader
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+            breadcrumb="Hồ Sơ Cửa Hàng & Ghim Map"
+          />
+        )}
 
-          {/* Page Header */}
-          <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
-            <div>
-              <h1 className="store-mgmt-title">
-                {isBranchManager ? 'Hồ Sơ Showroom Chi Nhánh & Ghim Map' : 'Quản Lý Thông Tin Cửa Hàng'}
-              </h1>
-              <p className="store-mgmt-desc">
-                {isBranchManager
-                  ? 'Cập nhật hotline, giờ mở cửa, giới thiệu và định vị tọa độ GPS showroom phục vụ khách thử đồ và giao hàng.'
-                  : 'Cập nhật thông tin thương hiệu, hotline liên hệ, địa chỉ và định vị showroom trên bản đồ trực quan.'}
-              </p>
+        <main className="shop-main-content" style={{ flex: 1, padding: '24px 36px' }}>
+          <div className="store-mgmt-container">
+            {/* Page Header */}
+            <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
+              <div>
+                <h1 className="admin-page-title">
+                  {isBranchManager ? 'Hồ Sơ Showroom Chi Nhánh & Ghim Map' : 'Quản Lý Thông Tin Cửa Hàng'}
+                </h1>
+                <p className="admin-page-desc">
+                  {isBranchManager
+                    ? 'Cập nhật hotline, giờ mở cửa, giới thiệu và định vị tọa độ GPS showroom phục vụ khách thử đồ và giao hàng.'
+                    : 'Cập nhật thông tin thương hiệu, hotline liên hệ, địa chỉ và định vị showroom trên bản đồ trực quan.'}
+                </p>
+              </div>
+
+              <div className="d-flex align-items-center gap-3">
+                <span className={`store-pill-active ${!isActive ? 'inactive' : ''}`}>
+                  ● {isActive ? 'ĐANG HOẠT ĐỘNG' : 'TẠM NGHỈ'}
+                </span>
+              </div>
             </div>
-
-            <div className="d-flex align-items-center gap-3">
-              <span className={`store-pill-active ${!isActive ? 'inactive' : ''}`}>
-                ● {isActive ? 'ĐANG HOẠT ĐỘNG' : 'TẠM NGHỈ'}
-              </span>
-            </div>
-          </div>
 
           {loading ? (
             <div className="text-center py-5 my-5">
@@ -1390,6 +1399,7 @@ export default function OwnerSettingsPage() {
           )}
         </div>
       </main>
+      </div>
 
       {/* Floating Notification Toast */}
       {toast && (

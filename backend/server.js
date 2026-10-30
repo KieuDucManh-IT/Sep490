@@ -1,6 +1,6 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 
@@ -11,8 +11,6 @@ import userRoutes from "./src/routes/userRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
-
-dotenv.config();
 
 const app = express();
 

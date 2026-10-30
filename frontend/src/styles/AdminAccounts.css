@@ -1930,3 +1930,703 @@
   flex-shrink: 0;
 }
 
+
+
+/* ==========================================================
+   LOCK REASON MODAL (LY DO KHOA TAI KHOAN)
+   ========================================================== */
+.admin-lock-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.admin-lock-modal-card {
+  background: #FFFFFF;
+  border-radius: 16px;
+  border: 1px solid #E2E8F0;
+  width: 100%;
+  max-width: 490px;
+  box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.16);
+  overflow: hidden;
+}
+
+.admin-lock-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #FFFFFF;
+}
+
+.admin-lock-icon-wrap {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #FEE2E2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-lock-icon-wrap i {
+  color: #DC2626;
+  font-size: 18px;
+}
+
+.admin-lock-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-lock-title {
+  color: #0F172A;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.admin-lock-subtitle {
+  color: #64748B;
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+
+.admin-lock-close-btn {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #64748B;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.admin-lock-close-btn:disabled {
+  cursor: not-allowed;
+}
+
+.admin-lock-close-btn:hover:not(:disabled) {
+  background: #F1F5F9;
+  color: #0F172A;
+}
+
+.admin-lock-modal-body {
+  padding: 24px;
+}
+
+.admin-lock-alert-box {
+  background: #FFF7ED;
+  border: 1px solid #FFEDD5;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.admin-lock-alert-title {
+  color: #C2410C;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.3px;
+}
+
+.admin-lock-alert-title i {
+  color: #EA580C;
+  font-size: 13px;
+}
+
+.admin-lock-alert-desc {
+  color: #9A3412;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.admin-lock-label {
+  display: block;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.admin-lock-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 10px;
+  color: #0F172A;
+  font-size: 13.5px;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.6;
+  outline: none;
+  font-family: inherit;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-lock-textarea:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.admin-lock-textarea.has-error {
+  border-color: #DC2626 !important;
+}
+
+.admin-lock-textarea.has-error:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.admin-lock-error-msg {
+  color: #DC2626;
+  font-size: 12px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-lock-char-count {
+  color: #94A3B8;
+  font-size: 11.5px;
+  margin-top: 6px;
+  text-align: right;
+}
+
+.admin-lock-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #F1F5F9;
+  background: #F8FAFC;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.admin-lock-btn-cancel {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  color: #475569;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease;
+}
+
+.admin-lock-btn-cancel:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.admin-lock-btn-cancel:hover:not(:disabled) {
+  background: #F1F5F9;
+  border-color: #94A3B8;
+}
+
+.admin-lock-btn-confirm {
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: none;
+  background: #94A3B8;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: not-allowed;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+.admin-lock-btn-confirm.is-active {
+  background: #DC2626;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+}
+
+.admin-lock-btn-confirm.is-active:hover {
+  background: #B91C1C;
+}
+
+/* ==========================================================
+   TOAST NOTIFICATIONS
+   ========================================================== */
+.admin-acc-toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.admin-acc-toast-item {
+  pointer-events: auto;
+  min-width: 320px;
+  max-width: 440px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  color: #FFFFFF;
+  font-size: 13.5px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(8px);
+  background: linear-gradient(135deg, #1E293B, #334155);
+  border-left: 5px solid #60A5FA;
+}
+
+.admin-acc-toast-item.success {
+  background: linear-gradient(135deg, #065F46, #059669);
+  border-left-color: #34D399;
+}
+
+.admin-acc-toast-item.error {
+  background: linear-gradient(135deg, #991B1B, #DC2626);
+  border-left-color: #F87171;
+}
+
+.admin-acc-toast-item.warning {
+  background: linear-gradient(135deg, #92400E, #D97706);
+  border-left-color: #FBBF24;
+}
+
+.admin-acc-toast-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-acc-toast-icon {
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-acc-toast-msg {
+  line-height: 1.45;
+}
+
+.admin-acc-toast-close {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.admin-acc-toast-close:hover {
+  color: #FFFFFF;
+}
+
+/* ==========================================================
+   RESET PASSWORD MODAL NOTICE & INPUTS
+   ========================================================== */
+.admin-acc-reset-pwd-notice {
+  background-color: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: #166534;
+  line-height: 1.5;
+}
+
+.admin-acc-reset-pwd-notice-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-acc-reset-pwd-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-acc-reset-pwd-hint {
+  color: #64748B;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}
+
+/* ==========================================================
+   DRAWER ACTIVITY, TRANSACTION & VIOLATION TABS
+   ========================================================== */
+.admin-acc-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.admin-acc-activity-item {
+  padding-left: 12px;
+}
+
+.admin-acc-activity-item.blue {
+  border-left: 2px solid #2563EB;
+}
+
+.admin-acc-activity-item.green {
+  border-left: 2px solid #10B981;
+}
+
+.admin-acc-activity-title {
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.admin-acc-activity-meta {
+  color: #64748B;
+  font-size: 11.5px;
+}
+
+.admin-acc-trans-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-acc-trans-card {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.admin-acc-trans-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.admin-acc-trans-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0F172A;
+}
+
+.admin-acc-trans-val {
+  color: #059669;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.admin-acc-trans-meta {
+  font-size: 11.5px;
+  color: #64748B;
+  display: flex;
+  justify-content: space-between;
+}
+
+.admin-acc-trans-tag {
+  color: #0284C7;
+}
+
+.admin-acc-violation-clean {
+  text-align: center;
+  padding: 30px 10px;
+  color: #059669;
+}
+
+.admin-acc-violation-clean-icon {
+  margin-bottom: 8px;
+}
+
+.admin-acc-violation-clean-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.admin-acc-violation-clean-desc {
+  font-size: 12px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+.admin-acc-violation-alert {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12.5px;
+  color: #B91C1C;
+}
+
+/* ==========================================================
+   FORM GRIDS & COMMON UTILITIES
+   ========================================================== */
+.admin-acc-form-grid-1-2 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+}
+
+.admin-acc-form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.admin-acc-create-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-acc-req-star {
+  color: #EF4444;
+}
+
+.admin-acc-bg-page {
+  background-color: #FBF9F5 !important;
+}
+
+.admin-acc-sec-title-mb {
+  margin-bottom: 14px;
+}
+
+
+/* ==========================================================
+   ADDITIONAL ADMIN ACCOUNTS REFINED UTILITIES
+   ========================================================== */
+.admin-acc-field-error-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  color: #EF4444;
+  font-size: 11.5px;
+}
+
+.admin-acc-btn-icon {
+  margin-right: 6px;
+}
+
+.admin-acc-close-icon {
+  font-size: 15px;
+}
+
+.admin-acc-sec-title-mb-12 {
+  margin-bottom: 12px;
+}
+
+.admin-acc-drawer-status-label {
+  font-size: 13px;
+  color: #475569;
+}
+
+.admin-acc-drawer-status-val {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-acc-stat-green {
+  color: #059669;
+}
+
+.admin-acc-stat-blue {
+  color: #2563EB;
+  font-weight: 600;
+}
+
+.admin-acc-code-val {
+  font-family: monospace;
+  font-size: 11.5px;
+}
+
+.admin-acc-textarea-wrap {
+  position: relative;
+}
+
+.admin-acc-textarea-compact {
+  min-height: 68px;
+  padding-bottom: 22px;
+}
+
+.admin-acc-textarea-counter {
+  position: absolute;
+  bottom: 6px;
+  right: 12px;
+  font-size: 11px;
+  color: #94A3B8;
+}
+
+.btn-acc-primary-submit {
+  background: #2563EB;
+  padding: 9px 22px;
+  gap: 8px;
+}
+
+.admin-acc-hidden-input {
+  display: none;
+}
+
+.admin-acc-th-w40 {
+  width: 40px;
+}
+
+.admin-acc-th-nowrap {
+  min-width: 135px;
+  white-space: nowrap;
+}
+
+.admin-acc-th-center {
+  text-align: center;
+}
+
+.admin-acc-td-center-empty {
+  text-align: center;
+  padding: 40px;
+  color: #64748B;
+}
+
+.admin-acc-td-nowrap {
+  white-space: nowrap;
+}
+
+.admin-acc-text-slate {
+  color: #475569;
+}
+
+.admin-acc-text-slate-light {
+  color: #64748B;
+}
+
+.admin-acc-action-cell-center {
+  justify-content: center;
+  position: relative;
+}
+
+.admin-acc-cursor-pointer {
+  cursor: pointer;
+}
+
+.admin-acc-svg-arrow {
+  margin-left: 2px;
+}
+
+.btn-bulk-action-clear {
+  background: none;
+  border: none;
+  color: #94A3B8;
+}
+
+.admin-acc-checkbox {
+  cursor: pointer;
+}
+
+.admin-acc-tr-row {
+  cursor: pointer;
+}
+
+.admin-acc-tr-row.is-action-open {
+  position: relative;
+  z-index: 25;
+}
+
+.admin-acc-page-size-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-acc-page-size-select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+  font-size: 12px;
+}
+
+.btn-acc-page-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-acc-toast-item.success .admin-acc-toast-icon i {
+  color: #34D399;
+}
+
+.admin-acc-toast-item.error .admin-acc-toast-icon i {
+  color: #F87171;
+}
+
+.admin-acc-toast-item.warning .admin-acc-toast-icon i {
+  color: #FBBF24;
+}
+
+.admin-acc-toast-item.info .admin-acc-toast-icon i {
+  color: #60A5FA;
+}
+
+.admin-acc-action-dropdown-item.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==========================================================
+   DYNAMIC LETTER AVATAR — CSS custom property --letter-bg
+   (set từ JS: style={{ '--letter-bg': user.letterColor }})
+   ========================================================== */
+.admin-acc-avatar-letter,
+.admin-acc-drawer-avatar-letter,
+.admin-acc-edit-avatar-letter {
+  background: var(--letter-bg, #3B82F6);
+}
+
+/* ==========================================================
+   VIOLATIONS STAT BOX VALUE — dynamic color via className
+   ========================================================== */
+.admin-acc-stat-box-val.is-violation {
+  color: #EF4444;
+}
+
+.admin-acc-stat-box-val.is-clean {
+  color: #10B981;
+}

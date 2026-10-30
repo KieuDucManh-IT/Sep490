@@ -37,7 +37,6 @@ import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage
 // 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerBranchesPage from './pages/owner/OwnerBranchesPage';
-import OwnerShopsPage from './pages/owner/OwnerShopsPage';
 import OwnerPricingPage from './pages/owner/OwnerPricingPage';
 import OwnerAnalyticsPage from './pages/owner/OwnerAnalyticsPage';
 import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
@@ -289,14 +288,7 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/admin/shops"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <OwnerShopsPage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/admin/shops" element={<Navigate to="/owner/branches" replace />} />
         <Route
           path="/admin/moderation"
           element={

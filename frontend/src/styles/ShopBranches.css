@@ -929,17 +929,11 @@
   }
 }
 
-/* Force unified font across ALL elements in page, taskbars, sidebars, and modals */
-.shop-dashboard-layout,
-.shop-dashboard-layout *,
+/* Force unified font across store management content, tables, taskbars, and modals */
 .store-mgmt-container,
 .store-mgmt-container *,
 .unified-branches-taskbar,
 .unified-branches-taskbar *,
-.admin-shops-sidebar,
-.admin-shops-sidebar *:not(.admin-shops-sidebar__logo),
-.ops-topbar,
-.ops-topbar *,
 .modal,
 .modal-dialog,
 .modal-content,

@@ -15,9 +15,9 @@ import {
   deleteBranch,
   getBranchManagers,
   uploadShopImage,
-} from '../controllers/shopController.js';
+} from '../controllers/shop/shopController.js';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
-import { Shop } from '../models/Shop.js';
+import { Shop } from '../models/shop/Shop.js';
 
 const router = express.Router();
 
@@ -53,7 +53,6 @@ router.post(
         return next();
       }
     } catch {
-      // ignore
     }
     return res.status(403).json({
       success: false,

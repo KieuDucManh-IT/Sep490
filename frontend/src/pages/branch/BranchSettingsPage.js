@@ -188,12 +188,12 @@ export default function BranchSettingsPage() {
   }, []);
 
   /**
-   * Load assigned branch using Bearer Token without relying on query parameters
+   * Load assigned branch using Bearer Token or active branch ID
    */
-  const fetchAssignedBranch = useCallback(async () => {
+  const fetchAssignedBranch = useCallback(async (targetBranchId) => {
     try {
       setLoading(true);
-      const res = await getAssignedBranchApi();
+      const res = await getAssignedBranchApi(targetBranchId);
       if (res && res.success && res.data) {
         const s = res.data;
         setShop(s);
@@ -224,6 +224,16 @@ export default function BranchSettingsPage() {
 
   useEffect(() => {
     fetchAssignedBranch();
+  }, [fetchAssignedBranch]);
+
+  useEffect(() => {
+    const handleBranchChanged = (e) => {
+      fetchAssignedBranch(e.detail?.branchId);
+    };
+    window.addEventListener('vestora_branch_changed', handleBranchChanged);
+    return () => {
+      window.removeEventListener('vestora_branch_changed', handleBranchChanged);
+    };
   }, [fetchAssignedBranch]);
 
   const loadWardsForProvince = useCallback(async (provCode, initialWardName = '') => {

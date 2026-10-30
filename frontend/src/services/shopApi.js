@@ -45,8 +45,10 @@ export const getMyShopApi = async (ownerId) => {
   return fetchJson(`/api/shops/my-shop${query}`);
 };
 
-export const getAssignedBranchApi = async () => {
-  return fetchJson('/api/shops/assigned-branch');
+export const getAssignedBranchApi = async (branchId) => {
+  const activeId = branchId || localStorage.getItem('vestora_active_branch_id') || '';
+  const query = activeId ? `?branchId=${encodeURIComponent(activeId)}` : '';
+  return fetchJson(`/api/shops/assigned-branch${query}`);
 };
 
 export const updateShopAddressApi = async (shopId, addressData) => {
@@ -118,7 +120,7 @@ export const deleteBranchApi = async (branchId) => {
 };
 
 export const getBranchManagersApi = async () => {
-  return fetchJson('/api/shops/managers');
+  return fetchJson(`/api/shops/managers?_t=${Date.now()}`);
 };
 
 export const updateBranchInfoApi = updateShopInfoApi;

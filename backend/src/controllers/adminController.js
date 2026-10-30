@@ -1,4 +1,4 @@
-import { Shop } from '../models/Shop.js';
+import { Shop } from '../models/shop/Shop.js';
 import { User } from '../models/system/User.js';
 
 /**

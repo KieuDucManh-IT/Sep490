@@ -88,13 +88,33 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
       })
       .catch(() => {});
 
+    const handleBranchChanged = (e) => {
+      if (e.detail?.branch) {
+        setAssignedBranch(e.detail.branch);
+      }
+    };
+    const handleStorage = () => {
+      try {
+        const cached = localStorage.getItem('vestora_branch_cache');
+        if (cached) setAssignedBranch(JSON.parse(cached));
+      } catch {}
+    };
+
+    window.addEventListener('vestora_branch_changed', handleBranchChanged);
+    window.addEventListener('storage', handleStorage);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('vestora_branch_changed', handleBranchChanged);
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 
   const handleLogout = useCallback(async () => {
     try {
+      localStorage.removeItem('vestora_active_branch_id');
+      localStorage.removeItem('vestora_branch_cache');
+      localStorage.removeItem('vestora_managed_branches_cache');
       if (logout) {
         await logout();
       } else {

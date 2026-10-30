@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import './system/User.js';
+import '../system/User.js';
 
 const shopSchema = new mongoose.Schema(
   {

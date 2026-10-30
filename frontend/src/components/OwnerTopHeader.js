@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu,
   Store,
+  Building2,
   ChevronDown,
   Bell,
   LayoutDashboard,
@@ -10,6 +11,7 @@ import {
   Compass,
   LogOut,
   CheckCircle2,
+  Check,
   CalendarRange,
   ShoppingBag,
   RotateCcw,
@@ -17,6 +19,7 @@ import {
   Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getAssignedBranchApi } from '../services/shopApi';
 import '../styles/ShopDashboard.css';
 
 /**
@@ -37,14 +40,17 @@ export default function OwnerTopHeader({
 
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
+  const [showBranchSwitcher, setShowBranchSwitcher] = useState(false);
 
   const profileRef = useRef(null);
   const notifRef = useRef(null);
+  const branchSwitcherRef = useRef(null);
 
   // Auto dismiss popovers on route change
   useEffect(() => {
     setShowProfile(false);
     setShowNotif(false);
+    setShowBranchSwitcher(false);
   }, [location.pathname]);
 
   // Click-outside & Keyboard Escape dismissal
@@ -53,6 +59,7 @@ export default function OwnerTopHeader({
       if (e.key === 'Escape') {
         setShowProfile(false);
         setShowNotif(false);
+        setShowBranchSwitcher(false);
       }
     };
     const handleClickOutside = (e) => {
@@ -61,6 +68,9 @@ export default function OwnerTopHeader({
       }
       if (notifRef.current && !notifRef.current.contains(e.target)) {
         setShowNotif(false);
+      }
+      if (branchSwitcherRef.current && !branchSwitcherRef.current.contains(e.target)) {
+        setShowBranchSwitcher(false);
       }
     };
 
@@ -99,7 +109,7 @@ export default function OwnerTopHeader({
     return roleUpper === 'BRANCH_MANAGER' || location.pathname.startsWith('/branch');
   }, [user, location.pathname]);
 
-  // Assigned branch info from cache for dynamic status pill
+  // Assigned branch info and list of branches managed by this manager
   const [assignedBranch, setAssignedBranch] = useState(() => {
     try {
       const cached = localStorage.getItem('vestora_branch_cache');
@@ -109,15 +119,88 @@ export default function OwnerTopHeader({
     }
   });
 
+  const [managedBranches, setManagedBranches] = useState(() => {
+    try {
+      const cached = localStorage.getItem('vestora_managed_branches_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const loadBranchData = useCallback(async (targetBranchId) => {
+    try {
+      const res = await getAssignedBranchApi(targetBranchId);
+      if (res?.success) {
+        if (res.data) {
+          setAssignedBranch(res.data);
+          try {
+            localStorage.setItem('vestora_branch_cache', JSON.stringify(res.data));
+            localStorage.setItem('vestora_active_branch_id', res.data._id);
+          } catch {}
+        }
+        if (Array.isArray(res.assignedBranches)) {
+          setManagedBranches(res.assignedBranches);
+          try {
+            localStorage.setItem(
+              'vestora_managed_branches_cache',
+              JSON.stringify(res.assignedBranches)
+            );
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load assigned branches:', err);
+    }
+  }, []);
+
   useEffect(() => {
+    if (isBranchManager) {
+      const activeId = localStorage.getItem('vestora_active_branch_id');
+      loadBranchData(activeId);
+    }
+  }, [isBranchManager, loadBranchData]);
+
+  // Synchronize branch updates across components and window storage events
+  useEffect(() => {
+    const handleBranchChanged = (e) => {
+      const newBranch = e.detail?.branch;
+      if (newBranch) {
+        setAssignedBranch(newBranch);
+      } else if (e.detail?.branchId) {
+        loadBranchData(e.detail.branchId);
+      }
+    };
     const handleStorageChange = () => {
       try {
-        const cached = localStorage.getItem('vestora_branch_cache');
-        if (cached) setAssignedBranch(JSON.parse(cached));
+        const cachedBranch = localStorage.getItem('vestora_branch_cache');
+        if (cachedBranch) setAssignedBranch(JSON.parse(cachedBranch));
+        const cachedList = localStorage.getItem('vestora_managed_branches_cache');
+        if (cachedList) setManagedBranches(JSON.parse(cachedList));
       } catch {}
     };
+
+    window.addEventListener('vestora_branch_changed', handleBranchChanged);
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('vestora_branch_changed', handleBranchChanged);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [loadBranchData]);
+
+  const handleSelectBranch = useCallback((branch) => {
+    if (!branch) return;
+    setAssignedBranch(branch);
+    try {
+      localStorage.setItem('vestora_active_branch_id', branch._id);
+      localStorage.setItem('vestora_branch_cache', JSON.stringify(branch));
+    } catch {}
+    setShowBranchSwitcher(false);
+    window.dispatchEvent(
+      new CustomEvent('vestora_branch_changed', {
+        detail: { branch, branchId: branch._id },
+      })
+    );
   }, []);
 
   // Route-aware auto-inferred breadcrumbs so header is never blank
@@ -161,6 +244,9 @@ export default function OwnerTopHeader({
 
   const handleLogout = useCallback(async () => {
     try {
+      localStorage.removeItem('vestora_active_branch_id');
+      localStorage.removeItem('vestora_branch_cache');
+      localStorage.removeItem('vestora_managed_branches_cache');
       if (logout) {
         await logout();
       } else {
@@ -196,6 +282,135 @@ export default function OwnerTopHeader({
 
       {/* Right: Operational Status, Notifications & Profile Card */}
       <div className="owner-topbar-right">
+        {/* Branch Switcher (Exclusively for Branch Manager) */}
+        {isBranchManager && (
+          <div style={{ position: 'relative' }} ref={branchSwitcherRef}>
+            <button
+              type="button"
+              className="owner-branch-switcher-pill"
+              onClick={() => {
+                setShowBranchSwitcher((prev) => !prev);
+                setShowProfile(false);
+                setShowNotif(false);
+              }}
+              aria-expanded={showBranchSwitcher}
+              aria-haspopup="listbox"
+              title={
+                assignedBranch
+                  ? `Đang quản lý: ${assignedBranch.name}`
+                  : 'Chọn chi nhánh quản lý'
+              }
+            >
+              <Building2 size={15} color="#D4AF37" />
+              <div className="owner-branch-switcher-text">
+                <span className="owner-branch-switcher-label">Chi nhánh:</span>
+                <span className="owner-branch-switcher-name">
+                  {assignedBranch?.name ||
+                    (managedBranches.length > 0
+                      ? managedBranches[0].name
+                      : 'Chưa phân công')}
+                </span>
+              </div>
+              {managedBranches.length > 1 && (
+                <span
+                  className="owner-branch-count-badge"
+                  title={`Bạn đang quản lý ${managedBranches.length} chi nhánh`}
+                >
+                  {managedBranches.length}
+                </span>
+              )}
+              <ChevronDown
+                size={13}
+                className={`owner-topbar-chevron ${showBranchSwitcher ? 'open' : ''}`}
+              />
+            </button>
+
+            {showBranchSwitcher && (
+              <div
+                className="owner-branch-switcher-dropdown"
+                role="listbox"
+                aria-label="Danh sách chi nhánh phụ trách"
+              >
+                <div className="owner-branch-dropdown-header">
+                  <div className="owner-branch-dropdown-title">
+                    CHI NHÁNH PHỤ TRÁCH
+                  </div>
+                  <div className="owner-branch-dropdown-subtitle">
+                    {managedBranches.length > 0
+                      ? `${managedBranches.length} chi nhánh trực thuộc`
+                      : 'Chưa có chi nhánh nào được gán'}
+                  </div>
+                </div>
+
+                <div className="owner-branch-switcher-list">
+                  {managedBranches.length === 0 ? (
+                    <div className="owner-branch-empty-text">
+                      Bạn chưa được phân công quản lý chi nhánh nào.
+                    </div>
+                  ) : (
+                    managedBranches.map((branch) => {
+                      const isSelected =
+                        assignedBranch?._id?.toString() === branch._id?.toString();
+                      return (
+                        <button
+                          key={branch._id}
+                          type="button"
+                          className={`owner-branch-switcher-item ${
+                            isSelected ? 'selected' : ''
+                          }`}
+                          onClick={() => handleSelectBranch(branch)}
+                          role="option"
+                          aria-selected={isSelected}
+                        >
+                          <div className="owner-branch-item-left">
+                            <div className="owner-branch-item-icon">
+                              <Store size={14} />
+                            </div>
+                            <div className="owner-branch-item-info">
+                              <div className="owner-branch-item-title-row">
+                                <span className="owner-branch-item-name">
+                                  {branch.name}
+                                </span>
+                              </div>
+                              <span className="owner-branch-item-sub">
+                                {[branch.ward, branch.city]
+                                  .filter(Boolean)
+                                  .join(', ') ||
+                                  branch.address ||
+                                  'VESTORA Branch'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="owner-branch-item-right">
+                            <span
+                              className={`owner-branch-status-dot ${
+                                branch.status === 'ACTIVE' ? 'active' : 'inactive'
+                              }`}
+                              title={
+                                branch.status === 'ACTIVE'
+                                  ? 'Đang hoạt động'
+                                  : 'Tạm ngưng'
+                              }
+                            />
+                            {isSelected && (
+                              <Check
+                                size={15}
+                                color="#D4AF37"
+                                strokeWidth={2.5}
+                              />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Operational Status Pill */}
         <div
           className="owner-topbar-status-pill"

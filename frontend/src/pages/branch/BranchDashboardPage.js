@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Spinner } from 'react-bootstrap';
 import {
@@ -28,27 +28,39 @@ export default function BranchDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [lightboxImage, setLightboxImage] = useState(null);
 
-  useEffect(() => {
-    let isMounted = true;
-    getAssignedBranchApi()
-      .then((res) => {
-        if (isMounted && res?.success && res.data) {
-          setShop(res.data);
-        } else if (isMounted) {
-          setShop(null);
-        }
-      })
-      .catch(() => {
-        if (isMounted) setShop(null);
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
+  const fetchBranch = useCallback(async (targetBranchId) => {
+    try {
+      setLoading(true);
+      const res = await getAssignedBranchApi(targetBranchId);
+      if (res?.success && res.data) {
+        setShop(res.data);
+      } else {
+        setShop(null);
+      }
+    } catch {
+      setShop(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchBranch();
+  }, [fetchBranch]);
+
+  useEffect(() => {
+    const handleBranchChanged = (e) => {
+      if (e.detail?.branch) {
+        setShop(e.detail.branch);
+      } else {
+        fetchBranch(e.detail?.branchId);
+      }
+    };
+    window.addEventListener('vestora_branch_changed', handleBranchChanged);
+    return () => {
+      window.removeEventListener('vestora_branch_changed', handleBranchChanged);
+    };
+  }, [fetchBranch]);
 
   const orders = [
     {

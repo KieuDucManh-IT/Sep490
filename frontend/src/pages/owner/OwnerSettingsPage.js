@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Row, Col, Form, Button, Spinner } from 'react-bootstrap';
+import { Row, Col, Form, Spinner } from 'react-bootstrap';
 import {
   MapPin,
   Compass,

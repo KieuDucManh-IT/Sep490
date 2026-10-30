@@ -935,6 +935,220 @@
   color: #D4AF37;
 }
 
+/* Branch Switcher (Multi-Branch Management) */
+.owner-branch-switcher-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: #FFFFFF;
+  border: 1.5px solid rgba(212, 175, 55, 0.35);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  font-family: inherit;
+}
+
+.owner-branch-switcher-pill:hover {
+  background: rgba(212, 175, 55, 0.08);
+  border-color: #D4AF37;
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.15);
+}
+
+.owner-branch-switcher-pill:focus-visible {
+  box-shadow: 0 0 0 2px #D4AF37;
+}
+
+.owner-branch-switcher-text {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.owner-branch-switcher-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.owner-branch-switcher-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0F172A;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.owner-branch-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background: #D4AF37;
+  color: #191B21;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.owner-branch-switcher-dropdown {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  background: #FFFFFF;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+  padding: 8px;
+  min-width: 290px;
+  max-width: 360px;
+  z-index: 1000;
+  animation: ownerDropdownFade 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.owner-branch-dropdown-header {
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid #F1F5F9;
+  margin-bottom: 6px;
+}
+
+.owner-branch-dropdown-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #0F172A;
+  text-transform: uppercase;
+}
+
+.owner-branch-dropdown-subtitle {
+  font-size: 10.5px;
+  color: #D4AF37;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.owner-branch-switcher-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.owner-branch-empty-text {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: #94A3B8;
+  text-align: center;
+}
+
+.owner-branch-switcher-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.owner-branch-switcher-item:hover {
+  background: rgba(212, 175, 55, 0.08);
+  border-color: rgba(212, 175, 55, 0.25);
+}
+
+.owner-branch-switcher-item.selected {
+  background: rgba(212, 175, 55, 0.12);
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+.owner-branch-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.owner-branch-item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #FAF8F5;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #D4AF37;
+  flex-shrink: 0;
+}
+
+.owner-branch-item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.owner-branch-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.owner-branch-item-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0F172A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.owner-branch-item-sub {
+  font-size: 11px;
+  color: #64748B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.owner-branch-item-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.owner-branch-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.owner-branch-status-dot.active {
+  background: #10B981;
+}
+
+.owner-branch-status-dot.inactive {
+  background: #94A3B8;
+}
+
 /* Dropdown Card */
 .owner-topbar-dropdown {
   position: absolute;

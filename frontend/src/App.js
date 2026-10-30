@@ -38,6 +38,9 @@ import BranchSettingsPage from './pages/branch/BranchSettingsPage';
 import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';
 import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
 import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
+import ForceChangePasswordModal from './components/ForceChangePasswordModal';
+import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
+import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 
 // 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
@@ -54,6 +57,7 @@ import AdminAccountsPage from './pages/admin/AdminAccountsPage';
 function App() {
   return (
     <Router>
+      <ForceChangePasswordModal />
       <Routes>
         {/* ========================================================
             CUSTOMER PORTAL (Khách Hàng)
@@ -161,11 +165,27 @@ function App() {
         />
 
         {/* ========================================================
-            ROLE: WAREHOUSE MANAGER (Quản Lý Kho & Sản Phẩm)
+            ROLE: WAREHOUSE MANAGER & STAFF (Quản Lý Kho & Sản Phẩm)
             ======================================================== */}
         <Route
           path="/warehousemanager"
           element={<Navigate to="/warehousemanager/inventory-locations" replace />}
+        />
+        <Route
+          path="/warehousemanager/inbound-receipts"
+          element={
+            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
+              <InboundReceiptsPage mode="manager" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/warehousemanager/reports/inventory"
+          element={
+            <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
+              <InventoryReportPage />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/warehousemanager/:resource"
@@ -196,6 +216,18 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}>
               <WarehouseModerationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/warehousestaff"
+          element={<Navigate to="/warehousestaff/inbound-receipts" replace />}
+        />
+        <Route
+          path="/warehousestaff/inbound-receipts"
+          element={
+            <ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}>
+              <InboundReceiptsPage mode="staff" />
             </ProtectedRoute>
           }
         />

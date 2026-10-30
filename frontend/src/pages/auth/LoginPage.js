@@ -16,7 +16,8 @@ function getHome(role) {
   if (normalized === "operation_staff" || normalized === "ops") return "/ops/shops";
   if (normalized === "shop_owner" || normalized === "owner") return "/owner/dashboard";
   if (normalized === "branch_manager") return "/branch/dashboard";
-  if (normalized === "warehouse_manager" || normalized === "warehouse_staff") return "/warehousemanager";
+  if (normalized === "warehouse_staff") return "/warehousestaff/inbound-receipts";
+  if (normalized === "warehouse_manager") return "/warehousemanager";
 
   return "/";
 }

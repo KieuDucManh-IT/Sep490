@@ -1,11 +1,12 @@
 /* ==========================================================
    VESTORA — Admin Accounts Management (Quản Lý Tài Khoản)
-   Standardized Form & Complete Feature Set matching TailAdmin UI
+   Tone nền background be ngà (#FBF9F5) + Form nguyên bản TailAdmin
    ========================================================== */
 
+/* Main Page Container - Lấy màu nền background be ngà */
 .admin-acc-page {
   padding: 24px 32px 64px 32px;
-  background-color: #F8FAFC;
+  background-color: #FBF9F5;
   min-height: 100vh;
   box-sizing: border-box;
 }
@@ -100,7 +101,7 @@
 }
 
 .btn-acc-outline:hover {
-  background: #F8FAFC;
+  background: #FAF9F6;
   border-color: #CBD5E1;
   color: #0F172A;
 }
@@ -230,6 +231,7 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .admin-acc-search-box {
@@ -347,7 +349,7 @@
   border-color: #FECACA;
 }
 
-/* Bulk Actions Bar (Sticky/Floating when checkboxes selected) */
+/* Bulk Actions Bar */
 .admin-acc-bulk-bar {
   background: #1E293B;
   color: #FFFFFF;
@@ -422,19 +424,30 @@
   border: 1px solid #E2E8F0;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .admin-acc-table-responsive {
   width: 100%;
   overflow-x: auto;
+  min-height: 380px;
 }
 
 .admin-acc-table {
   width: 100%;
+  min-width: 880px;
+  table-layout: auto;
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
+}
+
+.admin-acc-table th:nth-child(2),
+.admin-acc-table td:nth-child(2) {
+  width: 250px;
+  max-width: 250px;
+  min-width: 180px;
+  overflow: hidden;
 }
 
 .admin-acc-table th {
@@ -446,6 +459,13 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border-bottom: 1px solid #E2E8F0;
+  white-space: nowrap;
+}
+
+/* Cột VAI TRÒ cố định độ rộng để SHOP OWNER luôn trên 1 dòng */
+.admin-acc-table th:nth-child(3),
+.admin-acc-table td:nth-child(3) {
+  min-width: 135px;
   white-space: nowrap;
 }
 
@@ -470,6 +490,10 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .admin-acc-avatar {
@@ -499,14 +523,24 @@
 .admin-acc-user-meta {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  max-width: calc(100% - 50px);
+  overflow: hidden;
 }
 
 .admin-acc-user-name {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   font-size: 13.5px;
   font-weight: 600;
   color: #0F172A;
   cursor: pointer;
   transition: color 0.15s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-acc-user-name:hover {
@@ -514,40 +548,78 @@
 }
 
 .admin-acc-user-email {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   font-size: 12px;
   color: #64748B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Role Pills */
+/* ==========================================================
+   ROLE PILLS: CĂN CHỈNH TRÊN 1 HÀNG & MÀU SẮC HỢP LÝ, HIỆN ĐẠI
+   ========================================================== */
 .role-pill {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 9999px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  white-space: nowrap !important;
+  line-height: 1.2;
+  box-sizing: border-box;
 }
 
+/* ADMIN: Tone xanh Indigo / Navy đậm quyền lực và trang nhã */
 .role-pill.admin {
-  background: #EFF6FF;
-  color: #2563EB;
+  background: #EEF2FF;
+  color: #4338CA;
+  border: 1px solid #C7D2FE;
 }
 
-.role-pill.customer {
-  background: #EFF6FF;
-  color: #3B82F6;
-}
-
+/* SHOP OWNER: Tone cam đất Terracotta ấm áp */
+.role-pill.shopOwner,
 .role-pill.shop-owner {
   background: #FFF7ED;
-  color: #EA580C;
+  color: #C2410C;
+  border: 1px solid #FED7AA;
 }
 
-.role-pill.staff {
+/* BRAND MANAGER: Tone tím Violet hiện đại, sang trọng */
+.role-pill.brandmanager,
+.role-pill.brand-manager {
   background: #FAF5FF;
-  color: #9333EA;
+  color: #7E22CE;
+  border: 1px solid #E9D5FF;
+}
+
+/* WAREHOUSE MANAGER: Tone xanh ngọc Cyan kỹ thuật, quản lý kho */
+.role-pill.warehouseManager,
+.role-pill.warehouse-manager {
+  background: #ECFEFF;
+  color: #0E7490;
+  border: 1px solid #A5F3FC;
+}
+
+/* WAREHOUSE STAFF: Tone xanh lục Emerald thực thi kho */
+.role-pill.warehousestaff,
+.role-pill.warehouse-staff {
+  background: #ECFDF5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
+}
+
+/* CUSTOMER: Tone xanh dương Sky sạch sẽ, thanh lịch */
+.role-pill.customer {
+  background: #F0F9FF;
+  color: #0369A1;
+  border: 1px solid #BAE6FD;
 }
 
 /* Verification Pills */
@@ -640,6 +712,74 @@
   border-color: #CBD5E1;
 }
 
+/* Action Dropdown Menu */
+.admin-acc-action-dropdown {
+  position: absolute;
+  right: 0;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 9px;
+  box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.16), 0 4px 10px -2px rgba(15, 23, 42, 0.08);
+  padding: 6px;
+  z-index: 100;
+  width: 195px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.admin-acc-action-dropdown.drop-up {
+  bottom: calc(100% + 6px);
+  top: auto;
+}
+
+.admin-acc-action-dropdown.drop-down {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+.admin-acc-action-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #334155;
+  transition: all 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.admin-acc-action-dropdown-item:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+}
+
+.admin-acc-action-dropdown-item.danger {
+  color: #DC2626;
+}
+
+.admin-acc-action-dropdown-item.danger:hover {
+  background: #FEF2F2;
+  color: #B91C1C;
+}
+
+.admin-acc-action-dropdown-item.success {
+  color: #059669;
+}
+
+.admin-acc-action-dropdown-item.success:hover {
+  background: #ECFDF5;
+  color: #047857;
+}
+
 /* Pagination Row */
 .admin-acc-pagination-bar {
   padding: 16px 20px;
@@ -726,6 +866,8 @@
   flex-direction: column;
   animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 @keyframes slideLeft {
@@ -744,6 +886,7 @@
   top: 0;
   background: #FFFFFF;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-title {
@@ -765,6 +908,7 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-close:hover {
@@ -772,7 +916,7 @@
   color: #0F172A;
 }
 
-/* Drawer User Hero Card */
+/* Drawer User Hero Card - Không bao giờ bị co rúm (flex-shrink: 0) */
 .admin-acc-drawer-hero {
   padding: 24px;
   display: flex;
@@ -781,6 +925,9 @@
   text-align: center;
   border-bottom: 1px solid #F1F5F9;
   background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
+  width: 100%;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .admin-acc-drawer-avatar {
@@ -791,6 +938,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   margin-bottom: 12px;
   border: 3px solid #FFFFFF;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-avatar-letter {
@@ -806,19 +954,34 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   margin-bottom: 12px;
   border: 3px solid #FFFFFF;
+  flex-shrink: 0;
 }
 
 .admin-acc-drawer-name {
   font-size: 17px;
   font-weight: 700;
   color: #0F172A;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  width: 100%;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .admin-acc-drawer-email {
   font-size: 13px;
   color: #64748B;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  width: 100%;
+  max-width: 100%;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.4;
+  text-align: center;
 }
 
 /* Drawer Tabs */
@@ -828,6 +991,7 @@
   border-bottom: 1px solid #E2E8F0;
   background: #FFFFFF;
   gap: 20px;
+  flex-shrink: 0;
 }
 
 .admin-acc-tab-btn {
@@ -840,6 +1004,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .admin-acc-tab-btn:hover {
@@ -855,10 +1020,11 @@
 /* Drawer Body */
 .admin-acc-drawer-body {
   padding: 24px;
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  box-sizing: border-box;
 }
 
 /* Section Header with edit button */
@@ -908,23 +1074,35 @@
 .admin-acc-kv-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
+  align-items: flex-start;
+  padding: 8px 0;
   border-bottom: 1px dashed #F1F5F9;
+  gap: 16px;
+  min-width: 0;
 }
 
 .admin-acc-kv-key {
   color: #64748B;
   font-weight: 400;
+  flex-shrink: 0;
+  min-width: 105px;
 }
 
 .admin-acc-kv-val {
   color: #0F172A;
   font-weight: 500;
   text-align: right;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.5;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* Status & Verification Box */
@@ -1113,13 +1291,15 @@
 .admin-acc-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(2px);
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
   z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  overflow-y: auto;
+  box-sizing: border-box;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -1131,6 +1311,7 @@
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
   overflow: hidden;
   animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin: auto;
 }
 
 @keyframes popIn {
@@ -1201,3 +1382,551 @@
   gap: 10px;
   background: #F8FAFC;
 }
+
+/* ==========================================================
+   RICH EDIT USER MODAL (Chuẩn theo giao diện thiết kế, cân đối khung nhìn)
+   ========================================================== */
+.admin-acc-modal-card.admin-acc-edit-card {
+  max-width: 620px;
+  width: 100%;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.2), 0 4px 12px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  margin: auto;
+}
+
+.admin-acc-modal-head-rich {
+  padding: 16px 24px;
+  border-bottom: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: #FFFFFF;
+}
+
+.admin-acc-modal-head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-acc-modal-head-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-acc-modal-head-icon.blue {
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.admin-acc-modal-title-rich {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0 0 2px 0;
+  letter-spacing: -0.01em;
+}
+
+.admin-acc-modal-sub-rich {
+  font-size: 12.5px;
+  color: #64748B;
+  margin: 0;
+}
+
+/* Edit Form Container with internal scroll */
+.admin-acc-edit-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-acc-edit-modal-body {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+/* Avatar Upload & Edit Component */
+.admin-acc-edit-avatar-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: #F8FAFC;
+  border: 1px dashed #CBD5E1;
+  border-radius: 12px;
+  margin-bottom: 2px;
+}
+
+.admin-acc-edit-avatar-preview-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.admin-acc-edit-avatar-img {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.admin-acc-edit-avatar-letter {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-size: 20px;
+  font-weight: 700;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.admin-acc-edit-avatar-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
+  background: #2563EB;
+  color: #FFFFFF;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.admin-acc-edit-avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.admin-acc-edit-avatar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1E293B;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-acc-edit-avatar-desc {
+  font-size: 11.5px;
+  color: #64748B;
+  margin: 0;
+}
+
+.admin-acc-edit-avatar-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+}
+
+.btn-upload-avatar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563EB;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-upload-avatar:hover {
+  background: #EFF6FF;
+  border-color: #93C5FD;
+}
+
+.btn-remove-avatar {
+  background: transparent;
+  border: none;
+  font-size: 11.5px;
+  color: #EF4444;
+  cursor: pointer;
+  padding: 4px 6px;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.btn-remove-avatar:hover {
+  text-decoration: underline;
+  color: #DC2626;
+}
+
+/* Input Icon Container */
+.admin-acc-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.admin-acc-input-icon {
+  position: absolute;
+  left: 12px;
+  color: #94A3B8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.admin-acc-input-wrap .admin-acc-form-input,
+.admin-acc-input-wrap .admin-acc-form-select {
+  padding-left: 38px;
+  padding-right: 12px;
+  height: 38px;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 9px;
+  font-size: 13.5px;
+  color: #0F172A;
+  background: #FFFFFF;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.admin-acc-input-wrap .admin-acc-form-input:disabled {
+  background: #F8FAFC;
+  color: #64748B;
+  border-color: #E2E8F0;
+  cursor: not-allowed;
+}
+
+.admin-acc-input-wrap .admin-acc-form-input:focus,
+.admin-acc-input-wrap .admin-acc-form-select:focus,
+.admin-acc-input-wrap .admin-acc-form-textarea:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  outline: none;
+}
+
+.admin-acc-input-wrap.has-textarea {
+  align-items: flex-start;
+}
+
+.admin-acc-input-wrap.has-textarea .admin-acc-input-icon {
+  top: 11px;
+}
+
+.admin-acc-input-wrap .admin-acc-form-textarea {
+  padding-left: 38px;
+  padding-right: 12px;
+  padding-top: 9px;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 9px;
+  font-size: 13.5px;
+  color: #0F172A;
+  background: #FFFFFF;
+  width: 100%;
+  min-height: 64px;
+  box-sizing: border-box;
+  resize: vertical;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.admin-acc-field-hint {
+  font-size: 11.5px;
+  color: #94A3B8;
+  margin-top: 4px;
+  display: block;
+}
+
+.admin-acc-field-error {
+  font-size: 11.5px;
+  color: #EF4444;
+  margin-top: 3px;
+  display: block;
+}
+
+/* Info Banner Alert */
+.admin-acc-edit-info-alert {
+  background: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 9px;
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: #1E40AF;
+  line-height: 1.4;
+}
+
+.admin-acc-edit-info-alert svg {
+  color: #3B82F6;
+  flex-shrink: 0;
+}
+
+/* Rich Modal Footer */
+.admin-acc-modal-foot-rich {
+  padding: 13px 24px;
+  border-top: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  background: #FFFFFF;
+  border-bottom-left-radius: 18px;
+  border-bottom-right-radius: 18px;
+  flex-shrink: 0;
+}
+
+.btn-acc-modal-cancel {
+  padding: 8px 18px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-acc-modal-cancel:hover {
+  background: #F8FAFC;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+.btn-acc-modal-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  background: #2563EB;
+  border: none;
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+.btn-acc-modal-save:hover {
+  background: #1D4ED8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+/* ==========================================================
+   ADD USER MODAL STYLES (MATCH DESIGN EXACTLY)
+   ========================================================== */
+.admin-acc-modal-card.admin-acc-add-user-modal {
+  max-width: 800px;
+  width: 95%;
+  max-height: 92vh;
+  border-radius: 18px;
+  background: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+}
+
+.admin-acc-add-modal-body {
+  padding: 22px 28px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  flex: 1 1 auto;
+}
+
+.admin-acc-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.admin-acc-section-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2563EB;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.admin-acc-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1E293B;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-acc-section-sub {
+  font-weight: 400;
+  color: #64748B;
+  font-size: 13.5px;
+}
+
+.admin-acc-form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 22px;
+}
+
+.admin-acc-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 38px;
+}
+
+.admin-acc-toggle-switch {
+  width: 44px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #CBD5E1;
+  border: none;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.25s ease;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.admin-acc-toggle-switch.active {
+  background: #22C55E;
+}
+
+.admin-acc-toggle-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(0px);
+}
+
+.admin-acc-toggle-switch.active .admin-acc-toggle-thumb {
+  transform: translateX(20px);
+}
+
+.admin-acc-toggle-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+
+.admin-acc-input-eye-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+  z-index: 2;
+}
+
+.admin-acc-input-eye-btn:hover {
+  color: #475569;
+}
+
+.admin-acc-pwd-requirement-box {
+  background: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 9px;
+  padding: 10px 14px;
+  margin-top: 10px;
+}
+
+.admin-acc-pwd-requirement-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #1E40AF;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.admin-acc-pwd-requirement-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #1E3A8A;
+}
+
+.admin-acc-notify-banner {
+  background: #EFF6FF;
+  border: 1px solid #DBEAFE;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #1E40AF;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.admin-acc-notify-banner svg {
+  color: #2563EB;
+  flex-shrink: 0;
+}
+

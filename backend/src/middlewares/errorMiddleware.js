@@ -2,13 +2,10 @@ import jwt from "jsonwebtoken";
 import User from "../models/system/User.js";
 
 export async function authMiddleware(req, res, next) {
-  let token = null;
-  if (typeof req.headers?.authorization === "string" && req.headers.authorization.startsWith("Bearer ")) {
-    token = req.headers.authorization.slice(7).trim();
-  }
-  if (!token) {
-    token = req.cookies?.vestora_token;
-  }
+  const authHeader = req.get?.('Authorization') || req.headers?.authorization || '';
+  const token = (typeof authHeader === 'string' && /^Bearer\s+/i.test(authHeader)
+    ? authHeader.replace(/^Bearer\s+/i, '').trim()
+    : null) || req.cookies?.vestora_token || null;
 
   if (!token) {
     return next(
@@ -83,17 +80,19 @@ export function requireRole(...allowedRoles) {
     if (!req.user) {
       return res.status(401).json({ success: false, message: "Bạn chưa đăng nhập" });
     }
-    const userRole = (req.user.Role || "").toLowerCase();
-    const normalizedAllowed = allowedRoles.map((r) => r.toLowerCase());
-    if (!normalizedAllowed.includes(userRole)) {
+    const userRole = String(req.user.Role || req.user.role || "").trim().toLowerCase();
+    const normalizedAllowed = allowedRoles.map((r) => String(r).trim().toLowerCase());
+    if (userRole !== "admin" && !normalizedAllowed.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện thao tác này",
+        message: "Bạn không có quyền thực hiện thao tác này.",
       });
     }
     return next();
   };
 }
+
+export const requireRoles = requireRole;
 
 export function notFound(req, res) {
   return res.status(404).json({

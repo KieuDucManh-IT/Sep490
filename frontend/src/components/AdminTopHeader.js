@@ -7,8 +7,18 @@ import '../styles/AdminShops.css';
 export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
-  const isOps = location.pathname.startsWith('/ops');
+  const { user, logout } = useAuth();
+  const accountName = user?.fullName?.trim() || user?.email?.split('@')[0] || 'Quản trị viên';
+  const accountEmail = user?.email || '';
+  const accountRole = user?.role || user?.Role || 'ADMIN';
+  const isOps = /operation_staff|ops/i.test(accountRole);
+  const roleLabel = accountRole.toUpperCase() === 'ADMIN' ? 'Quản trị viên' : accountRole;
+  const avatarInitial = [...accountName][0]?.toLocaleUpperCase('vi-VN') || 'A';
+  const renderAvatar = (className, size) => user?.avatar ? (
+    <img src={user.avatar} alt={`Ảnh đại diện ${accountName}`} className={className} />
+  ) : (
+    <span className={className} role="img" aria-label={`Ảnh đại diện ${accountName}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#EEE9DF', color: '#6B5A3E', fontWeight: 700, fontSize: size }}>{avatarInitial}</span>
+  );
 
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -234,38 +244,30 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
               }
             }}
           >
-            <img
-              src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"
-              alt="Lê Hoàng Long"
-              className="admin-shops-topbar__avatar"
-            />
+            {renderAvatar('admin-shops-topbar__avatar', 15)}
             <div className="admin-shops-topbar__user-meta">
               <span className="admin-shops-topbar__user-name">
-                Lê Hoàng Long
+                {accountName}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginLeft: 3, verticalAlign: 'middle' }}>
                   <path d="M6 9l6 6 6-6" />
                 </svg>
               </span>
-              <span className="admin-shops-topbar__user-role">{isOps ? 'Bộ Phận Vận Hành' : 'Quản Trị Viên'}</span>
+              <span className="admin-shops-topbar__user-role">{roleLabel}</span>
             </div>
           </div>
 
           {showProfile && (
             <div className="admin-topbar-dropdown admin-profile-dropdown">
               <div className="admin-dropdown-profile-card">
-                <img
-                  src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"
-                  alt="Lê Hoàng Long"
-                  className="admin-dropdown-profile-avatar"
-                />
+                {renderAvatar('admin-dropdown-profile-avatar', 17)}
                 <div>
-                  <div className="admin-dropdown-profile-name">Lê Hoàng Long</div>
-                  <div className="admin-dropdown-profile-email">{isOps ? 'ops@vestora.vn' : 'admin@vestora.vn'}</div>
+                  <div className="admin-dropdown-profile-name">{accountName}</div>
+                  <div className="admin-dropdown-profile-email">{accountEmail}</div>
                   <span
                     className="admin-dropdown-profile-badge"
                     style={isOps ? { background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' } : {}}
                   >
-                    {isOps ? 'Chuyên Viên Vận Hành (OPS)' : 'Quản Trị Hệ Thống Tối Cao'}
+                    {isOps ? 'Chuyên Viên Vận Hành (OPS)' : roleLabel}
                   </span>
                 </div>
               </div>

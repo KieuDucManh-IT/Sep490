@@ -1,9 +1,3 @@
-/* =========================================================
-   VESTORA — Manage Shop Addresses & GPS Coordinates Styles
-   Role: Shop Owner | Module: Shop Management
-   Compliant with ERD: Address, City, District, Ward, Latitude, Longitude
-   ========================================================= */
-
 .shop-address-container {
   display: flex;
   flex-direction: column;
@@ -1971,6 +1965,303 @@
 .form-switch-description {
   font-size: 11.5px;
 }
+
+/* =========================================================
+   NO-INLINE CSS ARCHITECTURE — SHOP OWNER SETTINGS CLASSES
+   ========================================================= */
+
+.settings-section-card {
+  background: #FFFFFF;
+  border-radius: 20px;
+  border: 1px solid #E2E8F0;
+  padding: 24px;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
+  margin-bottom: 24px;
+}
+
+.settings-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #E2E8F0;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0F172A;
+  margin-bottom: 2px;
+}
+
+.settings-card-subtitle {
+  font-size: 12px;
+  color: #64748B;
+}
+
+.settings-status-indicator {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-status-indicator.open {
+  color: #059669;
+}
+
+.settings-status-indicator.closed {
+  color: #D97706;
+}
+
+.settings-media-box {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.settings-media-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.settings-media-preview-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.settings-logo-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid #CBD5E1;
+  flex-shrink: 0;
+  background: #F1F5F9;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.settings-logo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-weight: 700;
+  font-size: 10px;
+  color: #94A3B8;
+}
+
+.settings-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.settings-banner-preview {
+  width: 96px;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #CBD5E1;
+  flex-shrink: 0;
+  background: #0F172A;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.settings-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.settings-media-btn {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  padding: 5px 12px !important;
+}
+
+.settings-media-hint {
+  font-size: 10.5px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+.settings-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.settings-field-label .req {
+  color: #EF4444;
+}
+
+.settings-field-input {
+  font-size: 13.5px !important;
+  padding: 10px 14px !important;
+  border-radius: 8px !important;
+}
+
+.settings-char-count {
+  font-size: 11px;
+  color: #94A3B8;
+}
+
+.settings-map-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #F1F5F9;
+  color: #0F172A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.settings-map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.settings-map-container {
+  height: 350px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #CBD5E1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-map-container.has-error {
+  border: 1.5px solid #EF4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.settings-map-error-alert {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 8px;
+  color: #991B1B;
+  font-size: 12px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-map-hint {
+  font-size: 11.5px;
+  color: #64748B;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-coords-chip {
+  font-size: 11px;
+  background: #F1F5F9;
+  color: #334155;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: monospace;
+  border: 1px solid #E2E8F0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-action-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 100;
+  margin-top: 24px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 14px;
+  padding: 14px 24px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settings-dirty-badge {
+  font-size: 12.5px;
+  color: #D97706;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #FEF3C7;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.settings-dirty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #F59E0B;
+}
+
+.settings-clean-badge {
+  font-size: 12.5px;
+  color: #64748B;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #F1F5F9;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.settings-btn-reset {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 7px 16px !important;
+  border-radius: 8px !important;
+}
+
+.settings-btn-save {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 7px 22px !important;
+  border-radius: 8px !important;
+  background: #0F172A !important;
+  border-color: #0F172A !important;
+  min-width: 150px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 
 
 

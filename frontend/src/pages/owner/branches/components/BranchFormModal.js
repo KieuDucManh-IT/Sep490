@@ -15,7 +15,7 @@ import {
 import LeafletMapPicker from '../../../../components/LeafletMapPicker';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import OpeningHoursInput from '../../../../components/OpeningHoursInput';
-import GeoLocateButton from '../../../../components/GeoLocateButton';
+import { FALLBACK_PROVINCES } from '../utils/branchConstants';
 
 export default function BranchFormModal({
   show,
@@ -99,10 +99,21 @@ export default function BranchFormModal({
     }),
   ];
 
+  // Danh sách Tỉnh / Thành phố kèm phương án dự phòng khi API mạng chậm
+  const provinceOptions = (provinces && provinces.length > 0 ? provinces : FALLBACK_PROVINCES).map((p) => ({
+    value: p.name,
+    label: p.name,
+    code: p.code,
+  }));
+
   return (
     <Modal
       show={show}
       onHide={onHide}
+      onEntered={() => {
+        // Kích hoạt tính toán lại kích thước Leaflet sau khi Modal hoàn tất animation 300ms
+        window.dispatchEvent(new Event('resize'));
+      }}
       dialogClassName="vestora-modal-dialog"
       backdrop="static"
       keyboard={false}
@@ -115,7 +126,7 @@ export default function BranchFormModal({
           </div>
           <div>
             <h5 className="modal-title-main">
-              {isEditMode ? `Cập Nhật Chi Nhánh — ${activeBranch?.name || ''}` : 'Khởi Tạo Chi Nhánh Showroom Mới'}
+              {isEditMode ? `Cập Nhật Chi Nhánh — ${activeBranch?.name || ''}` : 'Khởi Tạo Chi Nhánh Cửa Hàng Mới'}
             </h5>
             <p className="modal-subtitle-text">
               {isEditMode
@@ -148,7 +159,7 @@ export default function BranchFormModal({
               <Col md={8}>
                 <Form.Group>
                   <Form.Label className="small fw-bold text-dark">
-                    Tên Showroom / Chi Nhánh <span className="text-danger">*</span>
+                    Tên Chi Nhánh / Cửa Hàng <span className="text-danger">*</span>
                   </Form.Label>
                   <Form.Control
                     type="text"
@@ -195,7 +206,8 @@ export default function BranchFormModal({
                   <OpeningHoursInput
                     value={formData.openingHours}
                     onChange={(newHours) => onFieldChange('openingHours', newHours)}
-                    error={formErrors.openingHours}
+                    isInvalid={Boolean(formErrors.openingHours)}
+                    errorMessage={formErrors.openingHours}
                   />
                 </Form.Group>
               </Col>
@@ -203,7 +215,7 @@ export default function BranchFormModal({
               <Col md={12}>
                 <Form.Group>
                   <Form.Label className="small fw-bold text-dark">
-                    Mô Tả Giới Thiệu Showroom
+                    Mô Tả Giới Thiệu Cửa Hàng
                   </Form.Label>
                   <Form.Control
                     as="textarea"
@@ -240,11 +252,7 @@ export default function BranchFormModal({
                     Tỉnh / Thành Phố <span className="text-danger">*</span>
                   </Form.Label>
                   <SearchableSelect
-                    options={provinces.map((p) => ({
-                      value: p.name,
-                      label: p.name,
-                      code: p.code,
-                    }))}
+                    options={provinceOptions}
                     value={formData.city}
                     onChange={(val, opt) => onProvinceChange(val, opt)}
                     placeholder="Chọn Tỉnh / Thành phố..."
@@ -300,12 +308,21 @@ export default function BranchFormModal({
               </Col>
 
               <Col md={5} className="d-flex align-items-end gap-2">
-                <GeoLocateButton
+                <Button
+                  type="button"
+                  variant="outline-dark"
+                  size="sm"
+                  className="d-inline-flex align-items-center gap-1"
                   onClick={onGetDeviceLocation}
-                  loading={isLocating}
-                />
+                  disabled={isLocating}
+                  title="Lấy tọa độ GPS từ thiết bị hiện tại"
+                >
+                  {isLocating ? <Spinner size="sm" animation="border" /> : <Navigation size={13} />}
+                  <span>{isLocating ? 'Đang định vị...' : 'Lấy GPS Thiết Bị'}</span>
+                </Button>
 
                 <Button
+                  type="button"
                   variant="outline-secondary"
                   size="sm"
                   className="d-inline-flex align-items-center gap-1 flex-grow-1"
@@ -313,7 +330,7 @@ export default function BranchFormModal({
                   disabled={isSyncingAddress || !formData.latitude || !formData.longitude}
                   title="Tự động tìm tên Tỉnh, Phường theo điểm đã ghim trên bản đồ"
                 >
-                  {isSyncingAddress ? <Spinner size="sm" animation="border" /> : <Navigation size={13} />}
+                  {isSyncingAddress ? <Spinner size="sm" animation="border" /> : <MapPin size={13} />}
                   <span>{isSyncingAddress ? 'Đang tìm...' : 'Lấy địa chỉ từ ghim'}</span>
                 </Button>
               </Col>
@@ -360,8 +377,8 @@ export default function BranchFormModal({
               <Col md={12}>
                 <div className="form-map-picker-box">
                   <LeafletMapPicker
-                    latitude={parseFloat(formData.latitude) || 21.028511}
-                    longitude={parseFloat(formData.longitude) || 105.854167}
+                    latitude={formData.latitude || '21.028511'}
+                    longitude={formData.longitude || '105.854167'}
                     onChange={onMapLocationChange}
                     height="280px"
                   />
@@ -374,7 +391,7 @@ export default function BranchFormModal({
             <div className="modal-section-header">
               <span className="modal-section-title">
                 <ImageIcon size={14} />
-                <span>3. Hình Ảnh Nhận Diện & Không Gian Showroom</span>
+                <span>3. Hình Ảnh Nhận Diện & Không Gian Cửa Hàng</span>
               </span>
               <span className="badge bg-light text-dark border">Ảnh cửa hàng</span>
             </div>
@@ -382,7 +399,7 @@ export default function BranchFormModal({
             <Row className="g-3">
               <Col md={8}>
                 <Form.Label className="small fw-bold text-dark">
-                  Ảnh Bìa Không Gian Showroom
+                  Ảnh Bìa Không Gian Cửa Hàng
                 </Form.Label>
                 <div
                   className={`form-banner-dropzone ${isDraggingBanner ? 'dragging' : ''}`}
@@ -521,7 +538,7 @@ export default function BranchFormModal({
                   <div>
                     <div className="small fw-bold text-dark">Trạng Thái Hoạt Động</div>
                     <div className="text-muted form-switch-description">
-                      {formData.status === 'ACTIVE' ? 'Showroom đang mở cửa tiếp khách' : 'Tạm dừng tiếp khách'}
+                      {formData.status === 'ACTIVE' ? 'Cửa hàng đang mở cửa tiếp khách' : 'Tạm dừng tiếp khách'}
                     </div>
                   </div>
                   <Form.Check

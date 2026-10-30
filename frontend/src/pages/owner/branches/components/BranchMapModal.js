@@ -62,6 +62,7 @@ export default function BranchMapModal({ show, onHide, branch }) {
             latitude={lat}
             longitude={lng}
             height="450px"
+            readOnly={true}
           />
         </div>
       </div>

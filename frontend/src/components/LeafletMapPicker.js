@@ -161,14 +161,26 @@ export default function LeafletMapPicker({
       mapInstanceRef.current = map;
       markerRef.current = marker;
 
-      // Invalidate size after 150ms to fix gray-tile glitch
-      const timer = setTimeout(() => {
+      // Invalidate size theo nhiều mốc thời gian để xử lý triệt để hiệu ứng chuyển cảnh của Bootstrap Modal (300ms)
+      const timer1 = setTimeout(() => {
         if (mapInstanceRef.current) {
           mapInstanceRef.current.invalidateSize();
         }
       }, 150);
 
-      // ResizeObserver to handle fluid container resizing
+      const timer2 = setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 350);
+
+      const timer3 = setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 600);
+
+      // ResizeObserver xử lý khi container thay đổi kích thước linh hoạt
       const ro = new ResizeObserver(() => {
         if (mapInstanceRef.current) {
           mapInstanceRef.current.invalidateSize();
@@ -176,8 +188,19 @@ export default function LeafletMapPicker({
       });
       ro.observe(mapContainerRef.current);
 
+      // Lắng nghe sự kiện resize của window (được kích hoạt khi Modal hoàn tất hiệu ứng mở)
+      const handleWindowResize = () => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      };
+      window.addEventListener('resize', handleWindowResize);
+
       return () => {
-        clearTimeout(timer);
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+        clearTimeout(timer3);
+        window.removeEventListener('resize', handleWindowResize);
         ro.disconnect();
         map.remove();
         mapInstanceRef.current = null;
@@ -206,6 +229,7 @@ export default function LeafletMapPicker({
       }
 
       if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
         // If the movement was triggered externally (not by local dragging), smoothly fly to target
         if (!isInternalMoveRef.current) {
           mapInstanceRef.current.flyTo([lat, lng], DEFAULT_ZOOM, {
@@ -226,7 +250,15 @@ export default function LeafletMapPicker({
   }, []);
 
   return (
-    <div className="leaflet-map-picker-wrapper" style={{ height }}>
+    <div
+      className="leaflet-map-picker-wrapper"
+      style={{ height }}
+      onMouseEnter={() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }}
+    >
       {/* Top Header Floating Glassmorphic Overlay */}
       <div className="leaflet-map-overlay-top">
         <div className={`leaflet-map-badge ${hasCoords ? 'gold' : ''}`}>

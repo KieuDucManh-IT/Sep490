@@ -54,18 +54,21 @@ export const formatOpeningHours = (fTime, tTime, fDay, tDay) => {
 };
 
 /**
- * OpeningHoursInput - Component for configuring showroom operating hours and days
+ * OpeningHoursInput - Component for configuring branch store operating hours and days
  */
 export default function OpeningHoursInput({
   value,
   onChange,
   isInvalid = false,
   errorMessage = '',
+  error = '',
   disabled = false,
   label = 'Thời Gian Mở Cửa & Hoạt Động',
   required = true,
   className = '',
 }) {
+  const effectiveError = errorMessage || error || '';
+  const effectiveIsInvalid = isInvalid || Boolean(error);
   const parsed = parseOpeningHours(value);
   const [fromTime, setFromTime] = useState(parsed.fromTime);
   const [toTime, setToTime] = useState(parsed.toTime);
@@ -102,7 +105,7 @@ export default function OpeningHoursInput({
   const toDayIndex = DAY_OPTIONS.indexOf(toDay);
   const isTimeOrderInvalid = Boolean(fromTime && toTime && toTime <= fromTime);
   const isDayOrderInvalid = Boolean(fromDayIndex !== -1 && toDayIndex !== -1 && toDayIndex < fromDayIndex);
-  const hasError = isInvalid || isTimeOrderInvalid || isDayOrderInvalid;
+  const hasError = effectiveIsInvalid || isTimeOrderInvalid || isDayOrderInvalid;
   const currentFormatted = formatOpeningHours(fromTime, toTime, fromDay, toDay);
 
   const handleFromDayChange = (newFromDay) => {
@@ -230,9 +233,9 @@ export default function OpeningHoursInput({
             <div className="text-danger fw-semibold" style={{ fontSize: '11.5px' }}>
               Thứ kết thúc ({toDay}) phải sau hoặc cùng Thứ bắt đầu ({fromDay}) trong tuần
             </div>
-          ) : errorMessage ? (
+          ) : effectiveError ? (
             <div className="text-danger fw-semibold" style={{ fontSize: '11.5px' }}>
-              {errorMessage}
+              {effectiveError}
             </div>
           ) : null}
         </div>

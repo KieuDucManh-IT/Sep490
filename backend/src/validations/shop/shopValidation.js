@@ -141,7 +141,7 @@ export const validateCreateBranchInput = (body) => {
 };
 
 /**
- * Validate payload for updating showroom address and GPS
+ * Validate payload for updating branch store address and GPS
  */
 export const validateUpdateShopAddressInput = (body) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -177,7 +177,7 @@ export const validateUpdateShopAddressInput = (body) => {
 };
 
 /**
- * Validate partial payload for updating showroom or branch information
+ * Validate partial payload for updating branch store information
  */
 export const validateUpdateShopInfoInput = (body) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {

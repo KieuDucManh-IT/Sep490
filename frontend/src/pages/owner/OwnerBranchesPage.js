@@ -59,7 +59,7 @@ export default function OwnerBranchesPage() {
     setSelectedCity,
     selectedStatus,
     setSelectedStatus,
-    showroomStats,
+    branchStats,
     loadData,
     handleToggleSuspend,
     handleDeleteBranch,
@@ -173,8 +173,8 @@ export default function OwnerBranchesPage() {
                   <Store size={18} />
                 </div>
                 <div className="clean-kpi-info">
-                  <span className="clean-kpi-label">Tổng Cơ Sở Showroom</span>
-                  <span className="clean-kpi-value">{showroomStats.total}</span>
+                  <span className="clean-kpi-label">Tổng Cơ Sở Cửa Hàng</span>
+                  <span className="clean-kpi-value">{branchStats.total}</span>
                   <span className="clean-kpi-desc">Mạng lưới toàn quốc</span>
                 </div>
               </div>
@@ -185,10 +185,10 @@ export default function OwnerBranchesPage() {
                 </div>
                 <div className="clean-kpi-info">
                   <span className="clean-kpi-label">Đang Hoạt Động</span>
-                  <span className="clean-kpi-value">{showroomStats.active}</span>
+                  <span className="clean-kpi-value">{branchStats.active}</span>
                   <span className="clean-kpi-desc">
-                    {showroomStats.total > 0
-                      ? `${Math.round((showroomStats.active / showroomStats.total) * 100)}% sẵn sàng đón khách`
+                    {branchStats.total > 0
+                      ? `${Math.round((branchStats.active / branchStats.total) * 100)}% sẵn sàng đón khách`
                       : 'Chưa có cơ sở'}
                   </span>
                 </div>
@@ -201,7 +201,7 @@ export default function OwnerBranchesPage() {
                 <div className="clean-kpi-info">
                   <span className="clean-kpi-label">Đã Có Vị Trí Bản Đồ</span>
                   <span className="clean-kpi-value">
-                    {showroomStats.mapped} <span className="kpi-subtext">/ {showroomStats.total}</span>
+                    {branchStats.mapped} <span className="kpi-subtext">/ {branchStats.total}</span>
                   </span>
                   <span className="clean-kpi-desc">Hiển thị trên bản đồ số</span>
                 </div>
@@ -214,11 +214,11 @@ export default function OwnerBranchesPage() {
                 <div className="clean-kpi-info">
                   <span className="clean-kpi-label">Bổ Nhiệm Quản Lý</span>
                   <span className="clean-kpi-value">
-                    {showroomStats.staffed} <span className="kpi-subtext">/ {showroomStats.total}</span>
+                    {branchStats.staffed} <span className="kpi-subtext">/ {branchStats.total}</span>
                   </span>
                   <span className="clean-kpi-desc">
-                    {showroomStats.total - showroomStats.staffed > 0
-                      ? `${showroomStats.total - showroomStats.staffed} cơ sở chưa có nhân sự`
+                    {branchStats.total - branchStats.staffed > 0
+                      ? `${branchStats.total - branchStats.staffed} cơ sở chưa có nhân sự`
                       : '100% đã có nhân sự phụ trách'}
                   </span>
                 </div>
@@ -261,7 +261,7 @@ export default function OwnerBranchesPage() {
             ) : (
               <Row className="g-4">
                 {filteredBranches.map((branch) => (
-                  <Col key={branch._id} md={6} lg={6} xl={6}>
+                  <Col key={branch._id} md={6} lg={6} xl={6} className="d-flex">
                     <BranchCard
                       branch={branch}
                       onEdit={handleOpenEditModal}

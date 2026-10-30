@@ -107,7 +107,7 @@ export default function BranchCard({
             </span>
           </div>
 
-          <div className="branch-card-meta-item">
+          <div className="branch-card-meta-item is-address">
             <MapPin size={14} className="branch-card-meta-icon" />
             <span className="branch-card-meta-text">
               {[branch.address, branch.ward, branch.city].filter(Boolean).join(', ') || 'Chưa cập nhật địa chỉ'}

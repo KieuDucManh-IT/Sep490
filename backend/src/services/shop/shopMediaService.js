@@ -6,11 +6,11 @@ import { uploadToCloudinary } from '../../config/cloudinary.js';
 import { validationError } from '../../validations/shop/shopValidation.js';
 
 /**
- * Xử lý tối ưu hóa hình ảnh gian hàng (Logo chi nhánh hoặc Ảnh bìa showroom):
+ * Xử lý tối ưu hóa hình ảnh gian hàng (Logo chi nhánh hoặc Ảnh bìa cửa hàng):
  * 1. Kiểm tra kích thước và định dạng file (tối đa 10MB).
  * 2. Nén và định cỡ bằng Sharp (WebP chất lượng 85%):
  *    - Logo chi nhánh (avatar): 512x512 pixels (fit cover).
- *    - Ảnh bìa showroom (banner): 1920x1080 pixels (fit inside).
+ *    - Ảnh bìa cửa hàng (banner): 1920x1080 pixels (fit inside).
  * 3. Tải lên dịch vụ lưu trữ đám mây Cloudinary.
  * 4. Tự động dự phòng lưu cục bộ (Local fallback) nếu Cloudinary mất kết nối mạng.
  *

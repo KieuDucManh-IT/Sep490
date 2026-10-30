@@ -53,7 +53,7 @@ export default function ShopLocationCard({
           <div>
             <h5 className="settings-card-title">Địa Chỉ & Ghim Vị Trí Bản Đồ</h5>
             <div className="settings-card-subtitle">
-              Định vị vị trí showroom để khách tìm đường và phục vụ tính cước giao đồ
+              Định vị vị trí cửa hàng để khách tìm đường và phục vụ tính cước giao đồ
             </div>
           </div>
         </div>
@@ -179,7 +179,7 @@ export default function ShopLocationCard({
       <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 pt-1">
         <span className="settings-map-hint">
           <Info size={13} className="text-slate-400" />
-          <span>Click vào vị trí trên bản đồ để di chuyển ghim đỏ tới showroom</span>
+          <span>Click vào vị trí trên bản đồ để di chuyển ghim đỏ tới cửa hàng</span>
         </span>
         {formData.latitude && formData.longitude && (
           <span className="settings-coords-chip">

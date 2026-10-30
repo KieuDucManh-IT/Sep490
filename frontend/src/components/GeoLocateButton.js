@@ -1,61 +1,37 @@
 import React, { useState } from 'react';
 import { Spinner, Button } from 'react-bootstrap';
 import { reverseGeocodeApi } from '../services/shopApi';
+import { PROVINCE_DEFAULT_COORDS } from '../pages/owner/branches/utils/branchConstants';
+import { getProvinceCoords } from '../pages/owner/branches/utils/branchHelpers';
 
-export const PROVINCE_DEFAULT_COORDS = {
-  'Hà Nội': { lat: 21.028511, lng: 105.854167 },
-  'Thành phố Hà Nội': { lat: 21.028511, lng: 105.854167 },
-  'Hồ Chí Minh': { lat: 10.776889, lng: 106.700806 },
-  'Thành phố Hồ Chí Minh': { lat: 10.776889, lng: 106.700806 },
-  'Đà Nẵng': { lat: 16.054407, lng: 108.202167 },
-  'Thành phố Đà Nẵng': { lat: 16.054407, lng: 108.202167 },
-  'Hải Phòng': { lat: 20.844912, lng: 106.688084 },
-  'Thành phố Hải Phòng': { lat: 20.844912, lng: 106.688084 },
-  'Cần Thơ': { lat: 10.045162, lng: 105.746857 },
-  'Thành phố Cần Thơ': { lat: 10.045162, lng: 105.746857 },
-  'Bình Dương': { lat: 10.980461, lng: 106.651871 },
-  'Đồng Nai': { lat: 10.957413, lng: 106.842713 },
-  'Thành phố Đồng Nai': { lat: 10.957413, lng: 106.842713 },
-  'Quảng Ninh': { lat: 20.950454, lng: 107.073364 },
-  'Thành phố Quảng Ninh': { lat: 20.950454, lng: 107.073364 },
-  'Khánh Hòa': { lat: 12.238791, lng: 109.196749 },
-  'Thừa Thiên Huế': { lat: 16.463713, lng: 107.590866 },
-  'Thành phố Huế': { lat: 16.463713, lng: 107.590866 },
-  'Lâm Đồng': { lat: 11.940419, lng: 108.458313 },
-};
-
-/**
- * Look up default geographic coordinates for a given Vietnamese province name
- */
-export const getProvinceCenterCoords = (name) => {
-  if (!name) return null;
-  const clean = name.trim().toLowerCase();
-  for (const [prov, coords] of Object.entries(PROVINCE_DEFAULT_COORDS)) {
-    const pClean = prov.toLowerCase();
-    if (clean === pClean || clean.includes(pClean) || pClean.includes(clean)) {
-      return coords;
-    }
-  }
-  return null;
-};
+export { PROVINCE_DEFAULT_COORDS };
+export const getProvinceCenterCoords = getProvinceCoords;
 
 export default function GeoLocateButton({
+  onClick,
+  loading = false,
   onLocationFound,
   onNotify,
   currentCity = 'Thành phố Hà Nội',
   disabled = false,
   label = 'Lấy vị trí GPS',
   size = 'sm',
-  style = {},
+  className = '',
 }) {
-  const [isLocating, setIsLocating] = useState(false);
+  const [internalLocating, setInternalLocating] = useState(false);
+  const isLocating = loading || internalLocating;
 
   const notify = (msg, type = 'info') => {
     if (onNotify) onNotify(msg, type);
   };
 
-  const handleLocate = () => {
+  const handleLocate = async (e) => {
     if (disabled || isLocating) return;
+
+    if (onClick) {
+      onClick(e);
+      return;
+    }
 
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       const fallback = getProvinceCenterCoords(currentCity) || PROVINCE_DEFAULT_COORDS['Hà Nội'];
@@ -85,7 +61,7 @@ export default function GeoLocateButton({
       return;
     }
 
-    setIsLocating(true);
+    setInternalLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
@@ -104,8 +80,7 @@ export default function GeoLocateButton({
               geoWard = geoRes.data.ward || '';
               geoStreet = geoRes.data.street || '';
             }
-          } catch (_) {
-          }
+          } catch (_) {}
 
           if (onLocationFound) {
             onLocationFound({
@@ -125,11 +100,11 @@ export default function GeoLocateButton({
         } catch (err) {
           notify(err.message || 'Lỗi khi xử lý vị trí GPS.', 'warning');
         } finally {
-          setIsLocating(false);
+          setInternalLocating(false);
         }
       },
       (err) => {
-        setIsLocating(false);
+        setInternalLocating(false);
         const fallback = getProvinceCenterCoords(currentCity) || PROVINCE_DEFAULT_COORDS['Hà Nội'];
         if (onLocationFound) {
           onLocationFound({
@@ -147,7 +122,7 @@ export default function GeoLocateButton({
 
         notify(msg, 'info');
       },
-      { timeout: 10000, enableHighAccuracy: true }
+      { timeout: 8000, enableHighAccuracy: false }
     );
   };
 
@@ -158,24 +133,13 @@ export default function GeoLocateButton({
       size={size}
       disabled={disabled || isLocating}
       onClick={handleLocate}
-      className="vestora-geolocate-btn d-inline-flex align-items-center gap-2"
-      style={{
-        borderRadius: '8px',
-        fontWeight: 600,
-        fontSize: size === 'sm' ? '12px' : '13px',
-        padding: size === 'sm' ? '6px 12px' : '8px 16px',
-        border: '1px solid #D97706',
-        color: '#B45309',
-        background: 'rgba(217, 119, 6, 0.05)',
-        transition: 'all 0.2s ease',
-        ...style,
-      }}
-      title="Bấm để lấy tọa độ thực tế từ GPS của thiết bị"
+      className={`vestora-geolocate-btn d-inline-flex align-items-center gap-2 ${className}`}
+      title="Bấm để lấy tọa độ thực tế từ GPS hoặc mạng của thiết bị"
     >
       {isLocating ? (
         <>
-          <Spinner animation="border" size="sm" role="status" style={{ width: '13px', height: '13px', borderWidth: '2px', color: '#D97706' }} />
-          <span>Đang Định Vị GPS...</span>
+          <Spinner animation="border" size="sm" role="status" className="vestora-geolocate-spinner" />
+          <span>Đang Định Vị...</span>
         </>
       ) : (
         <>

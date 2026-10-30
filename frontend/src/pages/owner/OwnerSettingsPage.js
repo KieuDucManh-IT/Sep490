@@ -83,13 +83,13 @@ export default function OwnerSettingsPage() {
               <div>
                 <h1 className="admin-page-title">
                   {isBranchManager
-                    ? 'Hồ Sơ Showroom Chi Nhánh & Ghim Map'
+                    ? 'Hồ Sơ Cửa Hàng Chi Nhánh & Ghim Map'
                     : 'Quản Lý Thông Tin Cửa Hàng'}
                 </h1>
                 <p className="admin-page-desc">
                   {isBranchManager
-                    ? 'Cập nhật hotline, giờ mở cửa, giới thiệu và định vị tọa độ GPS showroom phục vụ khách thử đồ và giao hàng.'
-                    : 'Cập nhật thông tin thương hiệu, hotline liên hệ, địa chỉ và định vị showroom trên bản đồ trực quan.'}
+                    ? 'Cập nhật hotline, giờ mở cửa, giới thiệu và định vị tọa độ GPS cửa hàng phục vụ khách thử đồ và giao hàng.'
+                    : 'Cập nhật thông tin thương hiệu, hotline liên hệ, địa chỉ và định vị cửa hàng trên bản đồ trực quan.'}
                 </p>
               </div>
 

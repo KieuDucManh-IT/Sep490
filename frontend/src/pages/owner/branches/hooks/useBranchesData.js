@@ -112,7 +112,7 @@ export function useBranchesData() {
     });
   }, [branches, selectedStatus, selectedCity, searchTerm]);
 
-  const showroomStats = useMemo(() => {
+  const branchStats = useMemo(() => {
     const total = branches.length;
     const active = branches.filter((b) => b.status === 'ACTIVE').length;
     const mapped = branches.filter((b) => b.latitude != null && b.longitude != null).length;
@@ -169,7 +169,7 @@ export function useBranchesData() {
     setSelectedCity,
     selectedStatus,
     setSelectedStatus,
-    showroomStats,
+    branchStats,
     loadData,
     handleToggleSuspend,
     handleDeleteBranch,

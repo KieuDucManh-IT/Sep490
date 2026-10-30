@@ -128,6 +128,41 @@ export default function OwnerTopHeader({
     }
   });
 
+  // Sắp xếp danh sách chi nhánh: Cũ nhất đẩy lên trên cùng (createdAt tăng dần hoặc theo ObjectId)
+  const sortedBranches = useMemo(() => {
+    if (!Array.isArray(managedBranches)) return [];
+    return [...managedBranches].sort((a, b) => {
+      // 1. So sánh theo createdAt nếu cả hai đều có
+      if (a.createdAt && b.createdAt) {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+          return timeA - timeB; // Cũ nhất lên đầu (tăng dần)
+        }
+      } else if (a.createdAt) {
+        return -1;
+      } else if (b.createdAt) {
+        return 1;
+      }
+
+      // 2. Dự phòng: Trích xuất timestamp từ MongoDB ObjectId (4 byte đầu tiên là unix timestamp)
+      const getTimestampFromId = (id) => {
+        if (!id) return 0;
+        const idStr = String(id);
+        if (idStr.length >= 8) {
+          const hex = idStr.substring(0, 8);
+          const parsed = parseInt(hex, 16);
+          return isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+      };
+
+      const idTimeA = getTimestampFromId(a._id);
+      const idTimeB = getTimestampFromId(b._id);
+      return idTimeA - idTimeB;
+    });
+  }, [managedBranches]);
+
   const loadBranchData = useCallback(async (targetBranchId) => {
     try {
       const res = await getAssignedBranchApi(targetBranchId);
@@ -306,17 +341,17 @@ export default function OwnerTopHeader({
                 <span className="owner-branch-switcher-label">Chi nhánh:</span>
                 <span className="owner-branch-switcher-name">
                   {assignedBranch?.name ||
-                    (managedBranches.length > 0
-                      ? managedBranches[0].name
+                    (sortedBranches.length > 0
+                      ? sortedBranches[0].name
                       : 'Chưa phân công')}
                 </span>
               </div>
-              {managedBranches.length > 1 && (
+              {sortedBranches.length > 1 && (
                 <span
                   className="owner-branch-count-badge"
-                  title={`Bạn đang quản lý ${managedBranches.length} chi nhánh`}
+                  title={`Bạn đang quản lý ${sortedBranches.length} chi nhánh`}
                 >
-                  {managedBranches.length}
+                  {sortedBranches.length}
                 </span>
               )}
               <ChevronDown
@@ -336,19 +371,19 @@ export default function OwnerTopHeader({
                     CHI NHÁNH PHỤ TRÁCH
                   </div>
                   <div className="owner-branch-dropdown-subtitle">
-                    {managedBranches.length > 0
-                      ? `${managedBranches.length} chi nhánh trực thuộc`
+                    {sortedBranches.length > 0
+                      ? `${sortedBranches.length} chi nhánh trực thuộc`
                       : 'Chưa có chi nhánh nào được gán'}
                   </div>
                 </div>
 
                 <div className="owner-branch-switcher-list">
-                  {managedBranches.length === 0 ? (
+                  {sortedBranches.length === 0 ? (
                     <div className="owner-branch-empty-text">
                       Bạn chưa được phân công quản lý chi nhánh nào.
                     </div>
                   ) : (
-                    managedBranches.map((branch) => {
+                    sortedBranches.map((branch) => {
                       const isSelected =
                         assignedBranch?._id?.toString() === branch._id?.toString();
                       return (

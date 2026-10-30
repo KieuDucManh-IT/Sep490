@@ -346,7 +346,7 @@ export const resolveAssignedBranchForUser = async ({ userId, userRole, branchId 
       managerId: userId,
       isDeleted: { $ne: true },
     })
-      .sort({ createdAt: 1 })
+      .sort({ createdAt: 1, _id: 1 })
       .populate('ownerId', 'FullName Email Role Status phone')
       .populate('managerId', 'FullName Email Role Status Information Avatar phone')
       .lean();
@@ -396,7 +396,7 @@ export const resolveAssignedBranchForUser = async ({ userId, userRole, branchId 
     isDeleted: { $ne: true },
   })
     .select('_id name address city ward status isHQ imageUrl phone createdAt')
-    .sort({ createdAt: 1 })
+    .sort({ createdAt: 1, _id: 1 })
     .lean();
 
   return {

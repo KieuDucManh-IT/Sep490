@@ -87,8 +87,7 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
           } catch {}
         }
       })
-      .catch(() => {})
-      .finally(() => {});
+      .catch(() => {});
 
     return () => {
       isMounted = false;
@@ -104,7 +103,7 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
         localStorage.removeItem('user');
       }
       navigate('/login');
-    } catch (err) {
+    } catch {
       navigate('/login');
     }
   }, [logout, navigate]);

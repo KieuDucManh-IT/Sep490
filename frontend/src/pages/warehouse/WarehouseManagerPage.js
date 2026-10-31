@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import WarehouseCrudModal from '../../components/WarehouseCrudModal';
 import WarehouseSidebar from '../../components/WarehouseSidebar';
+import BranchSidebar from '../../components/BranchSidebar';
+import OwnerSidebar from '../../components/OwnerSidebar';
+import OwnerTopHeader from '../../components/OwnerTopHeader';
+import { useAuth } from '../../context/AuthContext';
 import categoryService from '../../services/masterdata/categoryService';
 import productService from '../../services/masterdata/productService';
 import productVariantService from '../../services/masterdata/productVariantService';
@@ -10,6 +14,7 @@ import inventoryLocationService from '../../services/warehouse/inventoryLocation
 import warehouseManagerService from '../../services/warehouse/warehouseManagerService';
 import StorageLocationPage from './StorageLocationPage';
 import '../../styles/WarehouseManager.css';
+import '../../styles/ShopDashboard.css';
 
 const services = { categories: categoryService, products: productService, variants: productVariantService, suppliers: supplierService, inventoryLocations: inventoryLocationService, warehouseManagers: warehouseManagerService };
 const configs = {
@@ -45,6 +50,12 @@ export default function WarehouseManagerPage() {
 }
 
 function WarehouseResourceList({ config }) {
+  const { user } = useAuth();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const isBranchManager = /branch_manager/i.test(user?.roleName || user?.Role || user?.role || '');
+  const isShopOwner = /shop_owner|owner/i.test(user?.roleName || user?.Role || user?.role || '');
+  const isAtelierStaff = isBranchManager || isShopOwner;
+
   const service = services[config.service];
   const [rows, setRows] = useState([]);
   const [choices, setChoices] = useState({});
@@ -91,20 +102,98 @@ function WarehouseResourceList({ config }) {
     catch (err) { setError(err.message); }
   };
 
-  return <div className="wm-layout"><WarehouseSidebar /><main className="wm-main">
-    <header className="wm-header"><div><span>WAREHOUSE MANAGER / DANH MỤC DÙNG CHUNG</span><h1>{config.title}</h1></div><button className="wm-primary-button" onClick={() => setModal({ mode: 'create', record: null })}>+ Thêm mới</button></header>
-    {error && <div className="wm-error">{error}</div>}
-    <section className="wm-panel wm-list-panel">
-      <div className="wm-list-toolbar">
-        <label className="wm-search-field">Tìm kiếm<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={'Tìm ' + config.title.toLowerCase() + '...'} /></label>
-        {(config.filters || []).map(([field, label, options]) => <label key={field}>{label}<select value={filters[field] || ''} onChange={(event) => setFilters({ ...filters, [field]: event.target.value })}><option value="">Tất cả</option>{optionItems(options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}
-        <label className="wm-page-size">Số dòng<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select></label>
+  const resourceContent = (
+    <>
+      <header className="wm-header">
+        <div><span>WAREHOUSE MANAGER / DANH MỤC DÙNG CHUNG</span><h1>{config.title}</h1></div>
+        <button className="wm-primary-button" onClick={() => setModal({ mode: 'create', record: null })}>+ Thêm mới</button>
+      </header>
+      {error && <div className="wm-error">{error}</div>}
+      <section className="wm-panel wm-list-panel">
+        <div className="wm-list-toolbar">
+          <label className="wm-search-field">Tìm kiếm<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={'Tìm ' + config.title.toLowerCase() + '...'} /></label>
+          {(config.filters || []).map(([field, label, options]) => <label key={field}>{label}<select value={filters[field] || ''} onChange={(event) => setFilters({ ...filters, [field]: event.target.value })}><option value="">Tất cả</option>{optionItems(options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}
+          <label className="wm-page-size">Số dòng<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select></label>
+        </div>
+        <div className="wm-table-wrap">
+          <table>
+            <thead>
+              <tr>{config.fields.map(([key, label]) => <th key={key}>{label}</th>)}<th>Thao tác</th></tr>
+            </thead>
+            <tbody>
+              {loading ? <tr><td colSpan={config.fields.length + 1}>Đang tải dữ liệu...</td></tr> : pageRows.length ? pageRows.map((row) => (
+                <tr key={row._id}>
+                  {config.fields.map(([key]) => <td key={key}>{display(row[key])}</td>)}
+                  <td className="wm-actions">
+                    <button type="button" className="secondary" onClick={() => setModal({ mode: 'view', record: row })}>Xem</button>
+                    <button type="button" className="secondary" onClick={() => setModal({ mode: 'edit', record: row })}>Sửa</button>
+                    <button type="button" className="danger" onClick={() => remove(row)}>Xóa</button>
+                  </td>
+                </tr>
+              )) : <tr><td colSpan={config.fields.length + 1}>Không có dữ liệu phù hợp.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="wm-pagination">
+          <span>{filteredRows.length ? ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, filteredRows.length) + ' / ' + filteredRows.length : '0 kết quả'}</span>
+          <div>
+            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</button>
+            <span>Trang {page} / {pages}</span>
+            <button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)}>Sau</button>
+          </div>
+        </div>
+      </section>
+      {modal && <WarehouseCrudModal key={modal.mode + '-' + (modal.record?._id || 'new')} config={config} mode={modal.mode} record={modal.record} choices={choices} onClose={() => setModal(null)} onSave={save} />}
+    </>
+  );
+
+  if (isAtelierStaff) {
+    return (
+      <div className="shop-dashboard-layout">
+        {isBranchManager ? (
+          <BranchSidebar
+            isCollapsed={isSidebarCollapsed}
+            onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+          />
+        ) : (
+          <OwnerSidebar
+            isCollapsed={isSidebarCollapsed}
+            onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+          />
+        )}
+        <div className="admin-main-viewport">
+          <OwnerTopHeader
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+            breadcrumb={config.title}
+          />
+          <main className="shop-main-content">
+            <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
+              <div>
+                <h1 className="admin-page-title" style={{ fontSize: '26px', margin: 0 }}>
+                  {config.title}
+                </h1>
+                <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px', marginTop: '4px', margin: 0 }}>
+                  Quản lý danh mục & kho lưu trữ chi nhánh Vestora
+                </p>
+              </div>
+              <span className="badge bg-light text-dark border p-2" style={{ fontSize: '0.85rem' }}>
+                Sức chứa tính theo cái
+              </span>
+            </div>
+            {resourceContent}
+          </main>
+        </div>
       </div>
-      <div className="wm-table-wrap"><table><thead><tr>{config.fields.map(([key, label]) => <th key={key}>{label}</th>)}<th>Thao tác</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={config.fields.length + 1}>Đang tải dữ liệu...</td></tr> : pageRows.length ? pageRows.map((row) => <tr key={row._id}>{config.fields.map(([key]) => <td key={key}>{display(row[key])}</td>)}<td className="wm-actions"><button type="button" className="secondary" onClick={() => setModal({ mode: 'view', record: row })}>Xem</button><button type="button" className="secondary" onClick={() => setModal({ mode: 'edit', record: row })}>Sửa</button><button type="button" className="danger" onClick={() => remove(row)}>Xóa</button></td></tr>) : <tr><td colSpan={config.fields.length + 1}>Không có dữ liệu phù hợp.</td></tr>}</tbody>
-      </table></div>
-      <div className="wm-pagination"><span>{filteredRows.length ? ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, filteredRows.length) + ' / ' + filteredRows.length : '0 kết quả'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</button><span>Trang {page} / {pages}</span><button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)}>Sau</button></div></div>
-    </section>
-    {modal && <WarehouseCrudModal key={modal.mode + '-' + (modal.record?._id || 'new')} config={config} mode={modal.mode} record={modal.record} choices={choices} onClose={() => setModal(null)} onSave={save} />}
-  </main></div>;
+    );
+  }
+
+  return (
+    <div className="wm-layout">
+      <WarehouseSidebar />
+      <main className="wm-main">
+        {resourceContent}
+      </main>
+    </div>
+  );
 }

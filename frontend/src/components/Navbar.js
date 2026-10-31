@@ -49,7 +49,6 @@ export default function Navbar() {
           <Link to="/" className={`navbar-link ${isActive("/")}`}>
             Trang Chủ
           </Link>
-
           {/* Về VESTORA */}
           <div className="nav-dropdown-item">
             <Link to="/about" className={`navbar-link ${isActive("/about")}`}>
@@ -110,6 +109,32 @@ export default function Navbar() {
               <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
             </div>
           </div>
+
+          {/* Radar Cửa Hàng */}
+          <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
+            Radar Cửa Hàng
+          </Link>
+
+          {/* Quick Access for Management Roles */}
+          {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
+            <Link
+              to="/owner/branches"
+              className={`navbar-link ${isActive('/owner/branches') || isActive('/owner/manage-shops') ? 'active' : ''}`}
+              style={{ color: '#D97706', fontWeight: 600 }}
+            >
+              Quản Lý Chi Nhánh
+            </Link>
+          )}
+
+          {/branch_manager/i.test(user?.Role || user?.role || '') && (
+            <Link
+              to="/branch/dashboard"
+              className={`navbar-link ${isActive('/branch/dashboard') ? 'active' : ''}`}
+              style={{ color: '#059669', fontWeight: 600 }}
+            >
+              Vận Hành Chi Nhánh
+            </Link>
+          )}
         </nav>
 
         {/* Action Icons & User Account */}
@@ -181,22 +206,58 @@ export default function Navbar() {
                   >
                     <i className="fa-solid fa-wand-magic-sparkles menu-icon"></i> Tủ đồ cá nhân (AI)
                   </Link>
-                  {user.role === "shop_owner" && (
-                    <Link
-                      to="/shop/dashboard"
-                      className="menu-item"
-                      onClick={() => setDropdownOpen(false)}
-                    >
-                      <i className="fa-solid fa-store menu-icon"></i> Quản lý gian hàng
-                    </Link>
+                  {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
+                    <>
+                      <Link
+                        to="/owner/branches"
+                        className="menu-item"
+                        onClick={() => setDropdownOpen(false)}
+                      >
+                        <i className="fa-solid fa-store menu-icon"></i> Quản lý chi nhánh
+                      </Link>
+                      <Link
+                        to="/owner/dashboard"
+                        className="menu-item"
+                        onClick={() => setDropdownOpen(false)}
+                      >
+                        <i className="fa-solid fa-chart-line menu-icon"></i> Tổng quan chuỗi
+                      </Link>
+                    </>
                   )}
-                  {user.role === "admin" && (
+                  {/branch_manager/i.test(user?.Role || user?.role || '') && (
+                    <>
+                      <Link
+                        to="/branch/dashboard"
+                        className="menu-item"
+                        onClick={() => setDropdownOpen(false)}
+                      >
+                        <i className="fa-solid fa-store menu-icon"></i> Vận hành chi nhánh
+                      </Link>
+                      <Link
+                        to="/branch/settings"
+                        className="menu-item"
+                        onClick={() => setDropdownOpen(false)}
+                      >
+                        <i className="fa-solid fa-gear menu-icon"></i> Cài đặt cửa hàng & Bản đồ
+                      </Link>
+                    </>
+                  )}
+                  {/admin/i.test(user?.Role || user?.role || '') && (
                     <Link
                       to="/admin/dashboard"
                       className="menu-item"
                       onClick={() => setDropdownOpen(false)}
                     >
                       <i className="fa-solid fa-shield-halved menu-icon"></i> Quản trị hệ thống
+                    </Link>
+                  )}
+                  {/operation_staff/i.test(user?.Role || user?.role || '') && (
+                    <Link
+                      to="/ops/shops"
+                      className="menu-item"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <i className="fa-solid fa-boxes-packing menu-icon"></i> Vận hành OPS
                     </Link>
                   )}
                   <div className="menu-divider"></div>

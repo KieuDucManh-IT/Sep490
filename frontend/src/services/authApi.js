@@ -1,6 +1,7 @@
-const API_URL = (
+const rawApiUrl = (
   process.env.REACT_APP_API_URL || "http://localhost:5000/api"
-).replace(/\/$/, "");
+).replace(/\/+$/, "");
+const API_URL = rawApiUrl.endsWith("/api") ? rawApiUrl : `${rawApiUrl}/api`;
 
 async function request(path, { method = "GET", body } = {}) {
   let response;
@@ -124,11 +125,7 @@ export function logoutApi() {
 }
 
 export async function loginGoogleApi(credential) {
-  const apiUrl =
-    process.env.REACT_APP_API_URL ||
-    "http://localhost:5000/api";
-
-  const response = await fetch(`${apiUrl}/auth/google`, {
+  const response = await fetch(`${API_URL}/auth/google`, {
     method: "POST",
     credentials: "include",
     headers: {

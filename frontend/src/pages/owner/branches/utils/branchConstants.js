@@ -93,8 +93,8 @@ export const FALLBACK_PROVINCES = [
 
 export const INITIAL_BRANCH_FORM_DATA = {
   name: '',
-  imageUrl: '',
-  bannerUrl: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80',
+  imageUrl: 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286849/vestora/shops/avatar/1793286868885-6a291daa-8576-4622-bfde-842ca9b65cc6.webp',
+  bannerUrl: 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286857/vestora/shops/banner/1793286876464-e4aff2b7-36c9-45c7-85a0-f89084b489d5.webp',
   phone: '',
   openingHours: '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
   description: '',

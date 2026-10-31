@@ -578,17 +578,10 @@ export const createNewBranch = async (validated, currentUser) => {
     validManagerId = managerUser._id;
   }
 
-  let finalImageUrl = validated.imageUrl;
-  if (!finalImageUrl && resolvedOwnerId) {
-    const ownerUser = await User.findById(resolvedOwnerId).select('Avatar').lean();
-    if (ownerUser?.Avatar && typeof ownerUser.Avatar === 'string' && ownerUser.Avatar.trim()) {
-      finalImageUrl = ownerUser.Avatar.trim();
-    } else {
-      finalImageUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(validated.name)}&background=0F172A&color=D97706&size=200`;
-    }
-  }
+  const defaultShopAvatar = 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286849/vestora/shops/avatar/1793286868885-6a291daa-8576-4622-bfde-842ca9b65cc6.webp';
+  const finalImageUrl = validated.imageUrl || defaultShopAvatar;
 
-  const defaultShopBanner = 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80';
+  const defaultShopBanner = 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286857/vestora/shops/banner/1793286876464-e4aff2b7-36c9-45c7-85a0-f89084b489d5.webp';
   const finalBanner = validated.bannerUrl || defaultShopBanner;
 
   const existingBranchesCount = await Shop.countDocuments({

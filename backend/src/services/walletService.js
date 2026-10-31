@@ -271,11 +271,14 @@ export async function syncTopup(transactionId) {
   return WalletTransaction.findById(transactionId);
 }
 
-async function finishWithdrawal(transactionId, succeeded, state) {
+async function finishWithdrawal(transactionId, succeeded, state, guard = {}) {
   await inTransaction(async (session) => {
-    const current = await WalletTransaction.findById(
-      transactionId
-    ).session(session);
+    const current = await WalletTransaction.findOne({
+      _id: transactionId,
+      transactionType: "withdraw",
+      status: { $in: WITHDRAW_ACTIVE },
+      ...guard,
+    }).session(session);
 
     if (!current || !WITHDRAW_ACTIVE.includes(current.status)) {
       return;
@@ -308,11 +311,43 @@ async function finishWithdrawal(transactionId, succeeded, state) {
     await current.save({ session });
   });
 }
+export async function expireQueuedWithdrawals() {
+  const guard = {
+    transactionType: "withdraw",
+    status: "queued",
+    fundsReserved: true,
+    submittedAt: null,
+    payoutId: null,
+    withdrawDeadlineAt: { $lte: new Date() },
+  };
 
-export async function syncWithdrawal(transactionId) {
-  let transaction = await WalletTransaction.findById(
-    transactionId
-  ).select("+bankEncrypted");
+  const items = await WalletTransaction.find(guard)
+    .select("_id")
+    .limit(100)
+    .lean();
+
+  for (const item of items) {
+    try {
+      await finishWithdrawal(
+        item._id,
+        false,
+        "QUEUE_TIMEOUT",
+        guard
+      );
+    } catch {
+      console.error(
+        "Chưa giải phóng được khoản quá hạn:",
+        String(item._id)
+      );
+    }
+  }
+}
+export async function syncWithdrawal(
+  transactionId,
+  { throwOnError = false } = {}
+) {
+  let transaction = await WalletTransaction.findById(transactionId)
+    .select("+bankEncrypted");
 
   if (
     !transaction ||
@@ -322,13 +357,59 @@ export async function syncWithdrawal(transactionId) {
     return transaction;
   }
 
+  let claimedHere = false;
+  let callingCreate = false;
+
   try {
+    // Phục hồi nếu đã ghi nhận tạo lệnh bị từ chối,
+    // nhưng lần trước chưa hoàn tất giải phóng tiền.
+    if (transaction.createRejected && !transaction.payoutId) {
+      await finishWithdrawal(
+        transactionId,
+        false,
+        "CREATE_REJECTED",
+        {
+          createRejected: true,
+          payoutId: null,
+        }
+      );
+
+      return WalletTransaction.findById(transactionId);
+    }
+
     let payout;
 
-    // Chỉ một tiến trình được quyền gửi lệnh chi lần đầu.
     if (transaction.status === "queued") {
+      // Yêu cầu cũ còn trong hàng chờ, chưa gửi:
+      // bổ sung hạn một lần khi bắt đầu xử lý.
+      if (!transaction.withdrawDeadlineAt) {
+        await WalletTransaction.updateOne(
+          {
+            _id: transactionId,
+            status: "queued",
+            submittedAt: null,
+            payoutId: null,
+            withdrawDeadlineAt: null,
+          },
+          {
+            $set: {
+              withdrawDeadlineAt: new Date(Date.now() + 60000),
+            },
+          }
+        );
+      }
+
+      // Chỉ một tiến trình được gửi lệnh.
+      // Không nhận xử lý yêu cầu đã hết hạn.
       transaction = await WalletTransaction.findOneAndUpdate(
-        { _id: transactionId, status: "queued" },
+        {
+          _id: transactionId,
+          status: "queued",
+          fundsReserved: true,
+          submittedAt: null,
+          payoutId: null,
+          withdrawDeadlineAt: { $gt: new Date() },
+        },
         {
           $set: {
             status: "submitting",
@@ -342,17 +423,21 @@ export async function syncWithdrawal(transactionId) {
         return WalletTransaction.findById(transactionId);
       }
 
+      claimedHere = true;
+
       const bank = decryptValue(
         transaction.bankEncrypted,
         `${transaction._id}:bank`
       );
 
+      callingCreate = true;
       payout = await createPayout(transaction, bank);
     } else {
-      // Không đối soát khi lời gọi tạo payout còn đang chạy.
+      // Tránh đối soát khi yêu cầu tạo lệnh còn đang chạy.
       if (
         transaction.status === "submitting" &&
-        Date.now() - new Date(transaction.submittedAt).getTime() < 45000
+        Date.now() -
+        new Date(transaction.submittedAt).getTime() < 45000
       ) {
         return transaction;
       }
@@ -361,7 +446,13 @@ export async function syncWithdrawal(transactionId) {
     }
 
     if (!payout) {
-      throw new Error("Chưa tìm thấy lệnh chi để đối soát");
+      throw Object.assign(
+        new Error("Không tìm thấy payout"),
+        {
+          publicMessage:
+            "Chưa tìm thấy lệnh chi để đối soát. Chưa thể xác nhận hoàn tiền.",
+        }
+      );
     }
 
     const bank = decryptValue(
@@ -370,8 +461,6 @@ export async function syncWithdrawal(transactionId) {
     );
 
     const entries = Object.values(payout.transactions || {});
-
-    // Hướng dẫn này tạo lệnh chi đơn.
     const entry = entries.length === 1 ? entries[0] : null;
 
     if (
@@ -382,48 +471,131 @@ export async function syncWithdrawal(transactionId) {
       String(entry.toBin) !== bank.bankBin ||
       String(entry.toAccountNumber) !== bank.accountNumber
     ) {
-      throw new Error("Dữ liệu lệnh chi không khớp yêu cầu rút");
-    }
-
-    await WalletTransaction.updateOne(
-      { _id: transactionId, status: { $in: WITHDRAW_ACTIVE } },
-      {
-        $set: {
-          payoutId: payout.id,
-          providerState: entry.state,
-        },
-      }
-    );
-
-    if (entry.state === "SUCCEEDED") {
-      await finishWithdrawal(transactionId, true, entry.state);
-    } else if (["FAILED", "CANCELLED"].includes(entry.state)) {
-      await finishWithdrawal(transactionId, false, entry.state);
-    } else {
-      await WalletTransaction.updateOne(
-        { _id: transactionId, status: { $in: WITHDRAW_ACTIVE } },
-        { $set: { status: "processing" } }
+      throw Object.assign(
+        new Error("Payout không khớp giao dịch"),
+        {
+          publicMessage:
+            "Kết quả chuyển tiền chưa khớp yêu cầu rút.",
+        }
       );
     }
-  } catch (error) {
-    console.error("[wallet-withdraw]", {
-      transactionId: String(transactionId),
-      payoutId: transaction?.payoutId || null,
-      message: error.message,
-      httpStatus: error.httpStatus,
-      providerCode: error.providerCode,
-    });
 
-    // Chưa biết chắc kết quả chuyển tiền: tiếp tục giữ để đối soát.
     await WalletTransaction.updateOne(
       {
         _id: transactionId,
         status: { $in: WITHDRAW_ACTIVE },
       },
       {
-        $set: { status: "review" },
+        $set: {
+          payoutId: payout.id,
+          providerState: entry.state,
+        },
+        $unset: {
+          lastSyncError: 1,
+        },
       }
     );
+
+    if (entry.state === "SUCCEEDED") {
+      await finishWithdrawal(
+        transactionId,
+        true,
+        entry.state
+      );
+    } else if (["FAILED", "CANCELLED"].includes(entry.state)) {
+      await finishWithdrawal(
+        transactionId,
+        false,
+        entry.state
+      );
+    } else {
+      await WalletTransaction.updateOne(
+        {
+          _id: transactionId,
+          status: { $in: WITHDRAW_ACTIVE },
+        },
+        {
+          $set: {
+            status: "processing",
+          },
+        }
+      );
+    }
+  } catch (error) {
+    const message =
+      error.publicMessage ||
+      "Chưa xác minh được kết quả rút tiền. Giao dịch đang chờ đối soát.";
+
+    console.warn("[wallet-withdraw]", {
+      transactionId: String(transactionId),
+      operation: error.operation,
+      httpStatus: error.httpStatus,
+      providerCode: error.providerCode,
+    });
+
+    const definitelyNotCreated =
+      claimedHere &&
+      (!callingCreate || error.payoutNotCreated === true);
+
+    if (definitelyNotCreated) {
+      // Lưu bằng chứng trước khi giải phóng tiền.
+      await WalletTransaction.updateOne(
+        {
+          _id: transactionId,
+          status: { $in: WITHDRAW_ACTIVE },
+          payoutId: null,
+        },
+        {
+          $set: {
+            status: "review",
+            createRejected: true,
+            providerState: "CREATE_REJECTED",
+            lastSyncError: message,
+          },
+        }
+      );
+
+      await finishWithdrawal(
+        transactionId,
+        false,
+        "CREATE_REJECTED",
+        {
+          createRejected: true,
+          payoutId: null,
+        }
+      );
+
+      return WalletTransaction.findById(transactionId);
+    }
+
+    // Timeout hoặc lỗi tra cứu chưa chứng minh lệnh thất bại.
+    await WalletTransaction.updateOne(
+      {
+        _id: transactionId,
+        status: { $in: WITHDRAW_ACTIVE },
+      },
+      {
+        $set: {
+          status: "review",
+          lastSyncError: message,
+        },
+      }
+    );
+
+    const latest = await WalletTransaction.findById(transactionId);
+
+    if (
+      latest &&
+      !WITHDRAW_ACTIVE.includes(latest.status)
+    ) {
+      return latest;
+    }
+
+    if (throwOnError) {
+      fail(502, message);
+    }
+
+    return latest;
   }
 
   return WalletTransaction.findById(transactionId);

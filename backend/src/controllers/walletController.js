@@ -335,7 +335,7 @@ export async function createTopup(req, res) {
     const payment = await provider.paymentRequests.create({
       orderCode,
       amount,
-      description: "NAP VI",
+      description: String(req.user._id),
       returnUrl: `${origin}/wallet?orderCode=${orderCode}`,
       cancelUrl: `${origin}/wallet?orderCode=${orderCode}`,
       expiredAt: Math.floor(Date.now() / 1000) + 15 * 60,
@@ -381,7 +381,9 @@ export async function sendWithdrawOtp(req, res) {
     !/^\d{6}$/.test(bankBin) ||
     !/^\d{6,20}$/.test(accountNumber) ||
     accountName.length < 2 ||
-    accountName.length > 100
+    accountName.length > 100 ||
+    /[@\r\n]/.test(accountName) ||
+    !/\p{L}/u.test(accountName)
   ) {
     fail(400, "Thông tin tài khoản ngân hàng không hợp lệ");
   }
@@ -529,6 +531,7 @@ export async function confirmWithdraw(req, res) {
 
     transaction.fundsReserved = true;
     transaction.status = "queued";
+    transaction.withdrawDeadlineAt = new Date(Date.now() + 60000);
     transaction.nextCheckAt = new Date();
     transaction.otpHash = undefined;
 
@@ -542,7 +545,6 @@ export async function confirmWithdraw(req, res) {
 
 export async function syncTransaction(req, res) {
   await readyWallet(req.user._id);
-
   const transaction = await ownedTransaction(req);
 
   const claimed = await WalletTransaction.findOneAndUpdate(
@@ -567,15 +569,46 @@ export async function syncTransaction(req, res) {
   if (transaction.transactionType === "top_up") {
     result = await syncTopup(transaction._id);
   } else if (transaction.transactionType === "withdraw") {
-    result = await syncWithdrawal(transaction._id);
+    result = await syncWithdrawal(transaction._id, {
+      throwOnError: true,
+    });
   }
 
-  res.json({
+  if (!result) {
+    fail(404, "Không tìm thấy giao dịch");
+  }
+
+  let message;
+
+  if (result.transactionType === "withdraw") {
+    if (result.status === "success") {
+      message = "Rút tiền thành công. Số dư đã được cập nhật.";
+    } else if (
+      result.status === "failed" &&
+      result.fundsReserved === false
+    ) {
+      message =
+        "Rút tiền không thành công. Khoản tiền của giao dịch này không còn bị tạm khóa.";
+    } else if (result.status === "expired") {
+      message = "Yêu cầu rút tiền đã hết hạn.";
+    } else {
+      message =
+        result.lastSyncError ||
+        "Yêu cầu rút chưa có kết quả cuối cùng. Tiền đang chờ đối soát.";
+    }
+  } else if (result.status === "success") {
+    message = "Nạp tiền thành công. Số dư đã được cập nhật.";
+  } else if (["failed", "expired"].includes(result.status)) {
+    message = "Giao dịch nạp tiền đã thất bại hoặc hết hạn.";
+  } else {
+    message = "Chưa nhận được xác nhận nạp tiền thành công.";
+  }
+
+  return res.json({
     transaction: transactionDTO(result),
-    message: "Đã kiểm tra trạng thái giao dịch",
+    message,
   });
 }
-
 export async function syncReturnedTopup(req, res) {
   await readyWallet(req.user._id);
 

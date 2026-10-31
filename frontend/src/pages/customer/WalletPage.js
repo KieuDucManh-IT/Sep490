@@ -107,6 +107,7 @@ export default function WalletPage() {
   const busyRef = useRef(false);
   const loadingRef = useRef(null);
   const hasLoadedRef = useRef(false);
+  const returnSyncRef = useRef(null);
 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -215,15 +216,48 @@ export default function WalletPage() {
 
     if (!orderCode || !/^\d+$/.test(orderCode)) return;
 
-    walletPost(`/top-ups/${orderCode}/sync`)
-      .then(() => {
-        setNotice("Đã kiểm tra trạng thái nạp tiền.");
+    let active = true;
+
+    // Những lần Effect chạy lại dùng chung một request.
+    if (returnSyncRef.current?.orderCode !== orderCode) {
+      returnSyncRef.current = {
+        orderCode,
+        promise: walletPost(`/top-ups/${orderCode}/sync`),
+      };
+    }
+
+    returnSyncRef.current.promise
+      .then(async (result) => {
+        if (!active) return;
+
+        setPayment(result.transaction);
+        setNotice(result.message);
+
+        if (loadingRef.current) {
+          await loadingRef.current.promise.catch(() => { });
+        }
+
+        if (active) {
+          await load().catch((err) => {
+            console.warn("[wallet-refresh]", err.message);
+          });
+        }
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        if (active) {
+          setError(walletErrorMessage(err));
+        }
+      })
       .finally(() => {
-        window.history.replaceState({}, "", "/wallet");
+        if (active && window.location.pathname === "/wallet") {
+          window.history.replaceState({}, "", "/wallet");
+        }
       });
-  }, []);
+
+    return () => {
+      active = false;
+    };
+  }, [load]);
 
   async function run(action) {
     if (busyRef.current) return;

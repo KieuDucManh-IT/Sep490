@@ -92,6 +92,16 @@ const walletTransactionSchema = new mongoose.Schema(
     submittedAt: Date,
     providerState: String,
 
+    withdrawDeadlineAt: Date,
+
+    // Chỉ được đặt true khi xác nhận việc tạo lệnh bị từ chối.
+    createRejected: {
+      type: Boolean,
+      default: false,
+    },
+
+    lastSyncError: String,
+
     bankBin: String,
     bankLast4: String,
 
@@ -160,6 +170,10 @@ walletTransactionSchema.index(
 
 walletTransactionSchema.index({ userId: 1, createdAt: -1 });
 walletTransactionSchema.index({ status: 1, nextCheckAt: 1 });
+walletTransactionSchema.index({
+  status: 1,
+  withdrawDeadlineAt: 1,
+});
 
 export const WalletTransaction =
   mongoose.models.WalletTransaction ||

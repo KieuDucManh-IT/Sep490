@@ -40,61 +40,105 @@ export function checkPayoutConfig() {
   getPayoutClient();
 }
 
-async function payoutRequest(path, body, idempotencyKey) {
-  const client = getPayoutClient();
-  const credentials = config("PAYOS_PAYOUT");
+async function payoutRequest(path, body, idempotencyKey, deadline) {
+  const creating = Boolean(body);
+  let requestStarted = false;
 
-  const headers = {
-    "Content-Type": "application/json",
-    "x-client-id": credentials.clientId,
-    "x-api-key": credentials.apiKey,
-  };
+  try {
+    const client = getPayoutClient();
+    const credentials = config("PAYOS_PAYOUT");
 
-  if (body) {
-    headers["x-idempotency-key"] = idempotencyKey;
+    const headers = {
+      "Content-Type": "application/json",
+      "x-client-id": credentials.clientId,
+      "x-api-key": credentials.apiKey,
+    };
 
-    headers["x-signature"] = await client.crypto.createSignature(
-      credentials.checksumKey,
-      body
-    );
-  }
+    if (creating) {
+      headers["x-idempotency-key"] = idempotencyKey;
 
-  const response = await fetch(
-    `https://api-merchant.payos.vn${path}`,
-    {
-      method: body ? "POST" : "GET",
-      headers,
-      ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(15000),
+      headers["x-signature"] = await client.crypto.createSignature(
+        credentials.checksumKey,
+        body
+      );
     }
-  );
 
-  const data = await response.json();
+    const payload = creating ? JSON.stringify(body) : undefined;
 
-  if (!response.ok || data.code !== "00") {
-    const error = new Error(
-      data.desc || "payOS chưa xác nhận được kết quả lệnh chi"
+    // Kiểm tra lại hạn ngay trước khi gửi yêu cầu.
+    if (creating && deadline != null) {
+      const time = new Date(deadline).getTime();
+
+      if (!Number.isFinite(time) || time <= Date.now()) {
+        throw Object.assign(
+          new Error("Hết thời hạn gửi lệnh rút"),
+          {
+            publicMessage: "Yêu cầu rút đã hết thời hạn gửi lệnh.",
+          }
+        );
+      }
+    }
+
+    requestStarted = true;
+
+    const response = await fetch(
+      `https://api-merchant.payos.vn${path}`,
+      {
+        method: creating ? "POST" : "GET",
+        headers,
+        ...(creating ? { body: payload } : {}),
+        signal: AbortSignal.timeout(15000),
+      }
     );
 
-    error.httpStatus = response.status;
-    error.providerCode = data.code;
+    const data = await response.json().catch(() => null);
 
+    if (!response.ok || data?.code !== "00") {
+      const error = new Error(
+        data?.desc || "Phản hồi payOS không hợp lệ"
+      );
+
+      error.httpStatus = response.status;
+      error.providerCode = data?.code;
+
+      error.publicMessage = [401, 403].includes(response.status)
+        ? "Dịch vụ chuyển tiền từ chối kết nối của hệ thống."
+        : "Chưa xác minh được kết quả từ dịch vụ chuyển tiền.";
+
+      // GET bị 403 không được coi là tạo lệnh thất bại.
+      error.payoutNotCreated =
+        creating &&
+        [401, 403].includes(response.status) &&
+        data?.code !== "00";
+
+      throw error;
+    }
+
+    return data.data;
+  } catch (error) {
+    // Lỗi xảy ra trước khi gửi request: chắc chắn chưa tạo lệnh.
+    if (creating && !requestStarted) {
+      error.payoutNotCreated = true;
+    }
+
+    error.operation = creating ? "CREATE" : "LOOKUP";
     throw error;
   }
-
-  return data.data;
 }
 
 export function createPayout(transaction, bank) {
-  const body = {
-    referenceId: transaction.code,
-    amount: transaction.amount,
-    description: "Rut vi VESTORA",
-    toBin: bank.bankBin,
-    toAccountNumber: bank.accountNumber,
-  };
-
-  return payoutRequest("/v1/payouts", body, transaction.code);
+  return payoutRequest(
+    "/v1/payouts",
+    {
+      referenceId: transaction.code,
+      amount: transaction.amount,
+      description: "Rut vi VESTORA",
+      toBin: bank.bankBin,
+      toAccountNumber: bank.accountNumber,
+    },
+    transaction.code,
+    transaction.withdrawDeadlineAt
+  );
 }
 
 export async function findPayout(transaction) {

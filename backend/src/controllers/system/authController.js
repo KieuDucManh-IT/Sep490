@@ -10,7 +10,7 @@ import {
   changePassword as changeAccountPassword,
   updateAvatar as updateAccountAvatar,
   updateProfile as updateAccountProfile,
-} from "../services/authService.js";
+} from "../../services/authService.js";
 
 const COOKIE_NAME = "vestora_token";
 const COOKIE_MAX_AGE = 400 * 24 * 60 * 60 * 1000;

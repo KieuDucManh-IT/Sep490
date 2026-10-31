@@ -86,7 +86,7 @@ export default function FavoritesPage() {
       const existingCart = JSON.parse(localStorage.getItem('vestora_cart') || '[]');
       products.forEach((p) => {
         const isRental =
-          p.productType === 'rental' ||
+          p.tag === 'rental' ||
           p.tag === 'rental' ||
           (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
           (p.rentalPricePerDay && p.rentalPricePerDay > 0);
@@ -132,7 +132,7 @@ export default function FavoritesPage() {
   // Filter products by tab
   const filteredProducts = products.filter((p) => {
     const isRental =
-      p.productType === 'rental' ||
+      p.tag === 'rental' ||
       p.tag === 'rental' ||
       (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
       (p.rentalPricePerDay && p.rentalPricePerDay > 0);
@@ -238,7 +238,7 @@ export default function FavoritesPage() {
           <div className="fav-grid-container">
             {filteredProducts.map((item) => {
               const isRental =
-                item.productType === 'rental' ||
+                item.tag === 'rental' ||
                 item.tag === 'rental' ||
                 (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) ||
                 (item.rentalPricePerDay && item.rentalPricePerDay > 0);

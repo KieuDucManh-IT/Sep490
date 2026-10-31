@@ -26,8 +26,8 @@ const configs = {
   categories: { service: 'categories', title: 'Loại sản phẩm', fields: [
     ['parentCategoryId', 'Loại cha', 'relation', false, 'categories', 'name'], ['name', 'Tên loại', 'text', true], ['description', 'Mô tả', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
   ] },
-  products: { service: 'products', title: 'Sản phẩm', fields: [
-    ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['productType', 'Hình thức', 'select', true, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['trackingType', 'Kiểu quản lý', 'select', true, ['quantity:Theo số lượng', 'individual:Theo từng cá thể']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
+  products: { service: 'products', title: 'Sản phẩm', multipleFields: ['categoryId'], listFields: [['productCode', 'Mã sản phẩm'], ['name', 'Tên sản phẩm'], ['categoryId', 'Loại sản phẩm'], ['tag', 'Hình thức'], ['trackingType', 'Kiểu quản lý'], ['status', 'Trạng thái']], fields: [
+    ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['tag', 'Hình thức', 'select', false, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['trackingType', 'Kiểu quản lý', 'select', true, ['quantity:Theo số lượng', 'individual:Theo từng cá thể']], ['brand', 'Thương hiệu', 'text'], ['material', 'Chất liệu', 'text'], ['gender', 'Giới tính', 'text'], ['aiTryOn', 'Thử đồ AI', 'select', false, ['true:Có', 'false:Không']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
   ] },
   variants: { service: 'variants', title: 'Biến thể', fields: [
     ['productId', 'Sản phẩm', 'relation', true, 'products', 'name'], ['sku', 'SKU', 'text', true], ['variantName', 'Tên biến thể', 'text'], ['size', 'Kích thước', 'text'], ['color', 'Màu sắc', 'text'], ['salePrice', 'Giá bán', 'number'], ['rentalPricePerDay', 'Giá thuê/ngày', 'number'], ['depositAmount', 'Tiền cọc', 'number'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
@@ -72,6 +72,7 @@ function WarehouseResourceList({ config }) {
     try {
       setRows(await service.list());
       const related = [...new Set(config.fields.filter((field) => field[2] === 'relation').map((field) => field[4]))];
+      if (config.service === 'products') related.push('variants');
       const entries = await Promise.all(related.map(async (name) => [name, await services[name].list()]));
       setChoices(Object.fromEntries(entries));
     } catch (err) { setError(err.message); }
@@ -88,6 +89,7 @@ function WarehouseResourceList({ config }) {
   }), [rows, query, config, filters]);
   const pages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const pageRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+  const visibleFields = config.listFields || config.fields;
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   const save = async (payload) => {
@@ -118,19 +120,19 @@ function WarehouseResourceList({ config }) {
         <div className="wm-table-wrap">
           <table>
             <thead>
-              <tr>{config.fields.map(([key, label]) => <th key={key}>{label}</th>)}<th>Thao tác</th></tr>
+              <tr>{visibleFields.map(([key, label]) => <th key={key}>{label}</th>)}<th>Thao tác</th></tr>
             </thead>
             <tbody>
-              {loading ? <tr><td colSpan={config.fields.length + 1}>Đang tải dữ liệu...</td></tr> : pageRows.length ? pageRows.map((row) => (
+              {loading ? <tr><td colSpan={visibleFields.length + 1}>Đang tải dữ liệu...</td></tr> : pageRows.length ? pageRows.map((row) => (
                 <tr key={row._id}>
-                  {config.fields.map(([key]) => <td key={key}>{display(row[key])}</td>)}
+                  {visibleFields.map(([key]) => <td key={key}>{Array.isArray(row[key]) ? row[key].map(display).join(', ') : display(row[key])}</td>)}
                   <td className="wm-actions">
                     <button type="button" className="secondary" onClick={() => setModal({ mode: 'view', record: row })}>Xem</button>
                     <button type="button" className="secondary" onClick={() => setModal({ mode: 'edit', record: row })}>Sửa</button>
                     <button type="button" className="danger" onClick={() => remove(row)}>Xóa</button>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={config.fields.length + 1}>Không có dữ liệu phù hợp.</td></tr>}
+              )) : <tr><td colSpan={visibleFields.length + 1}>Không có dữ liệu phù hợp.</td></tr>}
             </tbody>
           </table>
         </div>

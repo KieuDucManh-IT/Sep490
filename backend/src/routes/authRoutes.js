@@ -13,7 +13,7 @@ import {
   changePassword,
   updateAvatar,
   updateProfile,
-} from "../controllers/authController.js";
+} from "../controllers/system/authController.js";
 
 import multer from "multer";
 

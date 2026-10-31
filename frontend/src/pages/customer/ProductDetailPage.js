@@ -165,9 +165,9 @@ export default function ProductDetailPage() {
   const isRental = useMemo(() => {
     if (!product) return true;
     return Boolean(
-      product.productType === 'rental' ||
       product.tag === 'rental' ||
-      product.productType === 'both' ||
+      product.tag === 'rental' ||
+      product.tag === 'both' ||
       Number(product.rentalPricePer3Days) > 0 ||
       Number(product.rentalPricePerDay) > 0
     );
@@ -1071,7 +1071,7 @@ export default function ProductDetailPage() {
                 >
                   <div className="card-media-box">
                     <span className="product-type-badge badge-rental" style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
-                      {item.productType === 'sale' ? 'Mua đồ cũ' : 'Thuê đồ'}
+                      {item.tag === 'sale' ? 'Mua đồ cũ' : 'Thuê đồ'}
                     </span>
 
                     {itemImg ? (

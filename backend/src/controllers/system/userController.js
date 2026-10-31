@@ -1,7 +1,7 @@
-import { User } from '../models/system/User.js';
+import { User } from '../../models/system/User.js';
 import bcrypt from 'bcryptjs';
-import { sendEmail } from '../utils/sendEmail.js';
-import { validateUserUpdate, validateUserCreate } from '../utils/userValidation.js';
+import { sendEmail } from '../../utils/sendEmail.js';
+import { validateUserUpdate, validateUserCreate } from '../../utils/userValidation.js';
 
 // Mẫu email thông báo khóa tài khoản dạng văn bản thuần (plain text)
 function buildLockEmailText(user, reason) {

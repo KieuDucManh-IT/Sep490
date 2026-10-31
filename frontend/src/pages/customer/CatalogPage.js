@@ -713,7 +713,7 @@ export default function CatalogPage() {
             <div className="catalog-grid-4cols">
               {products.map((item) => {
                 const isRental =
-                  item.productType === 'rental' ||
+                  item.tag === 'rental' ||
                   item.tag === 'rental' ||
                   (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) ||
                   (item.rentalPricePerDay && item.rentalPricePerDay > 0);

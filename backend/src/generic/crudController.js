@@ -1,6 +1,13 @@
 const handleError = (error, res, next) => {
   if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
-  if (error.code === 11000) return res.status(409).json({ success: false, message: 'Mã dữ liệu đã tồn tại.' });
+  if (error.code === 11000) {
+    const duplicate = Object.entries(error.keyValue || {})[0];
+    const labels = { productCode: 'Mã sản phẩm', sku: 'SKU', supplierCode: 'Mã nhà cung cấp', code: 'Mã dữ liệu' };
+    const message = duplicate
+      ? `${labels[duplicate[0]] || duplicate[0]} "${duplicate[1]}" đã tồn tại.`
+      : 'Giá trị bị trùng đã tồn tại.';
+    return res.status(409).json({ success: false, message });
+  }
   if (error.name === 'ValidationError' || error.name === 'CastError') {
     return res.status(400).json({ success: false, message: error.message });
   }

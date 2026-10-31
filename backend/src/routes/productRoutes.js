@@ -3,7 +3,7 @@ import {
   getProducts,
   getProductById,
   getFilterMeta,
-} from '../controllers/productController.js';
+} from '../controllers/masterdata/productController.js';
 
 const router = express.Router();
 

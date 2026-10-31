@@ -8,6 +8,10 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const keyOf = (locationId, storageId, variantId) => `${locationId}:${storageId || 'none'}:${variantId}`;
 const statusUnavailable = (item) => ['maintenance', 'unavailable'].includes(item.status) || ['damaged', 'unrepairable'].includes(item.condition);
+const categoryNamesForProduct = (product) => {
+  const categories = Array.isArray(product?.categoryId) ? product.categoryId : product?.categoryId ? [product.categoryId] : [];
+  return categories.map((category) => category?.name).filter(Boolean).join(', ');
+};
 
 const storageNodeAtLevel = (storageId, level, storageById) => {
   if (!storageId) return null;
@@ -54,7 +58,7 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
   const variantIds = [...new Set([...balances, ...individualItems].map((row) => String(row.variantId)))];
   const variants = await ProductVariant.find({ _id: { $in: variantIds } })
     .select('sku variantName size color productId')
-    .populate({ path: 'productId', select: 'productCode name trackingType productType categoryId', populate: { path: 'categoryId', select: 'name' } })
+    .populate({ path: 'productId', select: 'productCode name trackingType tag categoryId', populate: { path: 'categoryId', select: 'name' } })
     .lean();
   const variantById = new Map(variants.map((variant) => [String(variant._id), variant]));
   const grouped = new Map();
@@ -74,7 +78,7 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
         storagePath: storagePathFor(storageId, storageById),
         productCode: variant.productId?.productCode || '',
         productName: variant.productId?.name || 'Sản phẩm đã xóa',
-        categoryName: variant.productId?.categoryId?.name || '',
+        categoryName: categoryNamesForProduct(variant.productId),
         productId: variant.productId?._id || variant.productId || null,
         variantId: variant._id,
         sku: variant.sku,
@@ -123,7 +127,7 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
       storagePath: storagePathFor(item.storageId, storageById),
       productCode: variant.productId?.productCode || '',
       productName: variant.productId?.name || 'Sản phẩm đã xóa',
-      categoryName: variant.productId?.categoryId?.name || '',
+      categoryName: categoryNamesForProduct(variant.productId),
       productId: variant.productId?._id || variant.productId || null,
       variantId: variant._id,
       sku: variant.sku,

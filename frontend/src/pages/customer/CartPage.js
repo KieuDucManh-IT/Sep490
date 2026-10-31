@@ -96,7 +96,7 @@ export default function CartPage() {
 
             const realItemsFromDb = res.data.map((p, idx) => {
               const isRental =
-                p.productType === 'rental' ||
+                p.tag === 'rental' ||
                 p.tag === 'rental' ||
                 (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
                 (p.rentalPricePerDay && p.rentalPricePerDay > 0);
@@ -290,7 +290,7 @@ export default function CartPage() {
   // Thêm nhanh sản phẩm gợi ý từ database vào giỏ hàng
   const handleAddSuggestedProduct = (p) => {
     const isRental =
-      p.productType === 'rental' ||
+      p.tag === 'rental' ||
       p.tag === 'rental' ||
       (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
       (p.rentalPricePerDay && p.rentalPricePerDay > 0);

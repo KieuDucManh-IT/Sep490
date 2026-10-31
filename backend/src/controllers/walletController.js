@@ -349,6 +349,7 @@ export async function createTopup(req, res) {
           paymentLinkId: payment.paymentLinkId,
           checkoutUrl: payment.checkoutUrl,
           qrCode: payment.qrCode,
+          nextCheckAt: new Date(Date.now() + 10000),
         },
       }
     );
@@ -448,12 +449,22 @@ export async function sendWithdrawOtp(req, res) {
         "Không cung cấp OTP cho người khác.",
       ].join("\n")
     );
-  } catch {
+  } catch (error) {
+    console.error("[wallet/send-otp]", {
+      transactionId: String(id),
+      code: error.code || "EMAIL_ERROR",
+      command: error.command,
+      responseCode: error.responseCode,
+    });
+
     await WalletTransaction.updateOne(
       { _id: id, status: "otp_pending" },
       {
         $set: { status: "failed" },
-        $unset: { otpHash: 1 },
+        $unset: {
+          otpHash: 1,
+          otpExpiresAt: 1,
+        },
       }
     );
 

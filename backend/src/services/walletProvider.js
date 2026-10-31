@@ -72,7 +72,14 @@ async function payoutRequest(path, body, idempotencyKey) {
   const data = await response.json();
 
   if (!response.ok || data.code !== "00") {
-    throw new Error("payOS chưa xác nhận được kết quả lệnh chi");
+    const error = new Error(
+      data.desc || "payOS chưa xác nhận được kết quả lệnh chi"
+    );
+
+    error.httpStatus = response.status;
+    error.providerCode = data.code;
+
+    throw error;
   }
 
   return data.data;

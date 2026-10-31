@@ -4,7 +4,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-
+import { Modal, Button } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -80,6 +80,16 @@ function Field({ label, children }) {
   );
 }
 
+function walletErrorMessage(error) {
+  const message = error?.message || "";
+
+  if (/failed to fetch|networkerror|load failed/i.test(message)) {
+    return "Không kết nối được tới hệ thống. Nếu vừa gửi OTP hoặc xác nhận giao dịch, hãy kiểm tra email và lịch sử trước khi thực hiện lại.";
+  }
+
+  return message || "Không thực hiện được thao tác. Vui lòng thử lại.";
+}
+
 export default function WalletPage() {
   const [data, setData] = useState(null);
   const [history, setHistory] = useState({
@@ -95,7 +105,8 @@ export default function WalletPage() {
 
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const loadingRef = useRef(false);
+  const loadingRef = useRef(null);
+  const hasLoadedRef = useRef(false);
 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -121,45 +132,81 @@ export default function WalletPage() {
   const [withdrawOtp, setWithdrawOtp] = useState("");
 
   const load = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+    const key = JSON.stringify([page, type, status]);
+
+    while (loadingRef.current) {
+      const current = loadingRef.current;
+
+      if (current.key === key) return current.promise;
+
+      await current.promise.catch(() => { });
+    }
+
+    const request = {
+      key,
+      promise: (async () => {
+        const result = await walletRequest();
+
+        setData(result);
+        hasLoadedRef.current = true;
+
+        if (!result.requiresSetup && result.wallet.status === "active") {
+          const params = new URLSearchParams({
+            page: String(page),
+            type,
+            status,
+          });
+
+          const list = await walletRequest(`/transactions?${params}`);
+          setHistory(list);
+
+          setPayment((payment) => {
+            if (!payment) return payment;
+
+            return (
+              list.items.find((item) => item.id === payment.id) || payment
+            );
+          });
+        }
+      })(),
+    };
+
+    loadingRef.current = request;
 
     try {
-      const result = await walletRequest();
-      setData(result);
-
-      if (!result.requiresSetup && result.wallet.status === "active") {
-        const params = new URLSearchParams({
-          page: String(page),
-          type,
-          status,
-        });
-
-        const list = await walletRequest(`/transactions?${params}`);
-        setHistory(list);
-
-        setPayment((current) => {
-          if (!current) return current;
-
-          return (
-            list.items.find((item) => item.id === current.id) ||
-            current
-          );
-        });
-      }
+      await request.promise;
     } finally {
-      loadingRef.current = false;
+      if (loadingRef.current === request) {
+        loadingRef.current = null;
+      }
     }
   }, [page, type, status]);
 
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    let active = true;
+
+    load().catch((err) => {
+      if (!active) return;
+
+      if (!hasLoadedRef.current) {
+        setError(walletErrorMessage(err));
+      } else {
+        console.warn("[wallet-refresh]", err.message);
+      }
+    });
 
     const timer = setInterval(() => {
-      load().catch((err) => setError(err.message));
-    }, 10000);
+      if (document.hidden || busyRef.current) return;
 
-    return () => clearInterval(timer);
+      load().catch((err) => {
+        console.warn("[wallet-refresh]", err.message);
+      });
+    }, 5000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -187,14 +234,36 @@ export default function WalletPage() {
     setNotice("");
 
     try {
+      // Nút Tải lại/Làm mới gọi run() không truyền action.
+      if (typeof action !== "function") {
+        await load();
+        return;
+      }
+
       await action();
-      await load();
+
+      // Thao tác đã thành công. Lỗi tải lại không đổi kết quả thao tác.
+      try {
+        if (loadingRef.current) {
+          await loadingRef.current.promise.catch(() => { });
+        }
+
+        await load();
+      } catch (refreshError) {
+        console.warn("[wallet-refresh]", refreshError.message);
+      }
     } catch (err) {
-      setError(err.message || "Không thực hiện được thao tác");
+      setNotice("");
+      setError(walletErrorMessage(err));
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
+  }
+
+  function closeNotification() {
+    setError("");
+    setNotice("");
   }
 
   function changeWithdraw(event) {
@@ -267,6 +336,7 @@ export default function WalletPage() {
 
   const wallet = data?.wallet;
   const isLocked = wallet && wallet.status !== "active";
+  const insufficientBalance = (wallet?.availableBalance || 0) < 10000;
 
   return (
     <div className="vw-page">
@@ -293,24 +363,38 @@ export default function WalletPage() {
           </Link>
         </header>
 
-        {error && (
-          <div className="vw-message vw-error" role="alert">
-            {error}
-          </div>
-        )}
+        <Modal
+          show={Boolean(error || notice)}
+          onHide={closeNotification}
+          centered
+          aria-labelledby="wallet-notification-title"
+        >
+          <Modal.Header closeButton>
+            <Modal.Title
+              id="wallet-notification-title"
+              className={error ? "text-danger" : ""}
+            >
+              {error ? "Không thực hiện được thao tác" : "Thông báo"}
+            </Modal.Title>
+          </Modal.Header>
 
-        {notice && (
-          <div className="vw-message vw-notice" role="status">
-            {notice}
-          </div>
-        )}
+          <Modal.Body style={{ whiteSpace: "pre-line" }}>
+            {error || notice}
+          </Modal.Body>
+
+          <Modal.Footer>
+            <Button variant="dark" onClick={closeNotification}>
+              Đã hiểu
+            </Button>
+          </Modal.Footer>
+        </Modal>
 
         {!data ? (
           <section className="vw-card">
             <p>{error ? "Chưa tải được Ví." : "Đang tải Ví..."}</p>
             <button
               className="vw-secondary"
-              onClick={() => run(async () => {})}
+              onClick={() => run()}
               disabled={busy}
             >
               Tải lại
@@ -594,8 +678,13 @@ export default function WalletPage() {
                       <p className="vw-muted">
                         Khả dụng: {money(wallet.availableBalance)}
                       </p>
+                      {insufficientBalance && (
+                        <p className="vw-hint">
+                          Cần ít nhất 10.000đ số dư khả dụng để rút tiền.
+                        </p>
+                      )}
 
-                      <fieldset disabled={busy}>
+                      <fieldset disabled={busy || insufficientBalance}>
                         <div className="vw-two-columns">
                           <Field label="Số tiền rút (VND)">
                             <input
@@ -603,7 +692,7 @@ export default function WalletPage() {
                               type="number"
                               min={10000}
                               max={Math.min(
-                                wallet.availableBalance,
+                                Math.max(10000, wallet.availableBalance || 0),
                                 20000000
                               )}
                               step={1}
@@ -679,7 +768,7 @@ export default function WalletPage() {
                     <button
                       type="button"
                       className="vw-secondary"
-                      onClick={() => run(async () => {})}
+                      onClick={() => run(async () => { })}
                       disabled={busy}
                     >
                       Làm mới

@@ -405,12 +405,24 @@ export async function syncWithdrawal(transactionId) {
         { $set: { status: "processing" } }
       );
     }
-  } catch {
-    // Timeout không chứng minh tiền chưa được chuyển.
-    // Giữ tiền khóa để đối soát, không tạo payout mới.
+  } catch (error) {
+    console.error("[wallet-withdraw]", {
+      transactionId: String(transactionId),
+      payoutId: transaction?.payoutId || null,
+      message: error.message,
+      httpStatus: error.httpStatus,
+      providerCode: error.providerCode,
+    });
+
+    // Chưa biết chắc kết quả chuyển tiền: tiếp tục giữ để đối soát.
     await WalletTransaction.updateOne(
-      { _id: transactionId, status: { $in: WITHDRAW_ACTIVE } },
-      { $set: { status: "review" } }
+      {
+        _id: transactionId,
+        status: { $in: WITHDRAW_ACTIVE },
+      },
+      {
+        $set: { status: "review" },
+      }
     );
   }
 

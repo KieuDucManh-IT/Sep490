@@ -56,7 +56,22 @@ export function startWalletReconcileJob() {
 
         try {
           if (transaction.transactionType === "top_up") {
-            await syncTopup(transaction._id);
+            const synced = await syncTopup(transaction._id);
+
+            if (synced?.status === "pending") {
+              await WalletTransaction.updateOne(
+                {
+                  _id: transaction._id,
+                  status: "pending",
+                  nextCheckAt: transaction.nextCheckAt,
+                },
+                {
+                  $set: {
+                    nextCheckAt: new Date(Date.now() + 10000),
+                  },
+                }
+              );
+            }
           } else {
             await syncWithdrawal(transaction._id);
           }
@@ -74,7 +89,7 @@ export function startWalletReconcileJob() {
     }
   }
 
-  const timer = setInterval(run, 15000);
+  const timer = setInterval(run, 3000);
   timer.unref();
 
   void run();

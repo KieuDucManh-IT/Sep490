@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { Product } from '../models/masterdata/Product.js';
 import { Category } from '../models/masterdata/Category.js';
 import { ProductVariant } from '../models/masterdata/ProductVariant.js';
-import { Shop } from '../models/Shop.js';
+import { Shop } from '../models/shop/Shop.js';
 
 /**
  * Lấy danh sách sản phẩm theo bộ lọc, tìm kiếm, phân trang và sắp xếp

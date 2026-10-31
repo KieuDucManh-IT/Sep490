@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import './Category.js';
-import '../Shop.js';
+import '../shop/Shop.js';
 
 const productSchema = new mongoose.Schema({
   categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },

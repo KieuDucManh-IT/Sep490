@@ -25,11 +25,6 @@ import { resolveReverseGeocode } from '../../services/shop/geoService.js';
 import { processAndUploadShopMedia } from '../../services/shop/shopMediaService.js';
 
 /**
- * Controller: Quản lý chi nhánh & hồ sơ gian hàng (Role: Shop Owner, Branch Manager, Admin)
- * Phụ trách nhận HTTP Request, gọi các Service chuyên biệt và trả về HTTP Response chuẩn.
- */
-
-/**
  * Lấy danh sách hồ sơ chi nhánh có phân trang, bộ lọc và tìm kiếm
  * GET /api/shops
  */

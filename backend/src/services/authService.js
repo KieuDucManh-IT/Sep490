@@ -4,7 +4,7 @@ import { sendEmail } from "../utils/sendEmail.js";
 import { registerOtpTemplate } from "../utils/registerOtpTemplate.js";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
-import { v2 as cloudinary } from "cloudinary";
+import cloudinary, { uploadToCloudinary, deleteFromCloudinary } from "../config/cloudinary.js";
 import sharp from "sharp";
 
 const pendingRegistrations = new Map();
@@ -854,78 +854,20 @@ export async function changePassword(userId, data = {}) {
   };
 }
 
-function configureAvatarStorage() {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
-  const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
-  const apiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
-
-  if (!cloudName || !apiKey || !apiSecret) {
+function ensureCloudinaryConfigured() {
+  const cfg = cloudinary.config();
+  if (!cfg.cloud_name || !cfg.api_key || !cfg.api_secret) {
     fail(503, "Server chưa cấu hình đầy đủ Cloudinary");
   }
-
-  cloudinary.config({
-    cloud_name: cloudName,
-    api_key: apiKey,
-    api_secret: apiSecret,
-    secure: true,
-  });
-
-  return {
-    cloudName,
-    apiKey,
-    apiSecret,
-  };
 }
 
 async function cleanupAvatar(publicId) {
   if (!publicId) return;
 
   try {
-    const { cloudName, apiKey, apiSecret } =
-      configureAvatarStorage();
-
-    const authorization = Buffer.from(
-      `${apiKey}:${apiSecret}`
-    ).toString("base64");
-
-    const body = new URLSearchParams({
-      public_id: publicId,
-      invalidate: "true",
-    });
-
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/image/destroy`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${authorization}`,
-        },
-        body,
-        signal: AbortSignal.timeout(15000),
-      }
-    );
-
-    const responseText = await response.text();
-
-    let result = null;
-
-    try {
-      result = JSON.parse(responseText);
-    } catch {
-      // Phản hồi có thể không phải JSON.
-    }
-
-    if (
-      !response.ok ||
-      !["ok", "not found"].includes(result?.result)
-    ) {
-      console.error("Không dọn được ảnh Cloudinary:", {
-        publicId,
-        status: response.status,
-        message:
-          result?.error?.message ||
-          responseText.slice(0, 1000),
-      });
+    const result = await deleteFromCloudinary(publicId);
+    if (!["ok", "not found"].includes(result?.result)) {
+      console.error("Không dọn được ảnh Cloudinary:", { publicId, result });
     }
   } catch (error) {
     // Lỗi dọn ảnh không được che mất lỗi lưu MongoDB.
@@ -933,7 +875,6 @@ async function cleanupAvatar(publicId) {
       publicId,
       name: error.name,
       message: error.message,
-      code: error.cause?.code,
     });
   }
 }
@@ -952,8 +893,7 @@ export async function updateAvatar(userId, file) {
     );
   }
 
-  const { cloudName, apiKey, apiSecret } =
-    configureAvatarStorage();
+  ensureCloudinaryConfigured();
 
   const user = await User.findById(userId);
 
@@ -986,89 +926,24 @@ export async function updateAvatar(userId, file) {
     );
   }
 
-  const uploadForm = new FormData();
-
-  uploadForm.append(
-    "file",
-    new Blob([buffer], {
-      type: "image/webp",
-    }),
-    "avatar.webp"
-  );
-
-  uploadForm.append(
-    "public_id",
-    `vestora/avatars/${user._id.toString()}/${crypto.randomUUID()}`
-  );
-
-  uploadForm.append("overwrite", "false");
-
   let uploaded;
 
   try {
-    const authorization = Buffer.from(
-      `${apiKey}:${apiSecret}`
-    ).toString("base64");
+    uploaded = await uploadToCloudinary(buffer, {
+      folder: `vestora/avatars/${user._id.toString()}`,
+      public_id: crypto.randomUUID(),
+      overwrite: false,
+    }, 'image/webp');
 
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/image/upload`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${authorization}`,
-        },
-        body: uploadForm,
-        signal: AbortSignal.timeout(60000),
-      }
-    );
-
-    const responseText = await response.text();
-
-    let result = null;
-
-    try {
-      result = JSON.parse(responseText);
-    } catch {
-      // Giữ lại phản hồi dạng văn bản để chẩn đoán lỗi.
+    if (!uploaded?.secure_url || !uploaded?.public_id) {
+      fail(503, "Cloudinary chưa trả về thông tin ảnh hợp lệ");
     }
-
-    if (!response.ok) {
-      console.error("Cloudinary upload bị từ chối:", {
-        status: response.status,
-        contentType: response.headers.get("content-type"),
-        message:
-          result?.error?.message ||
-          responseText.slice(0, 1500),
-      });
-
-      fail(
-        503,
-        "Không tải được ảnh lên Cloudinary. Vui lòng thử lại"
-      );
-    }
-
-    if (!result?.secure_url || !result?.public_id) {
-      console.error("Cloudinary trả về kết quả không hợp lệ:", {
-        status: response.status,
-        contentType: response.headers.get("content-type"),
-      });
-
-      fail(
-        503,
-        "Cloudinary chưa trả về thông tin ảnh hợp lệ"
-      );
-    }
-
-    uploaded = result;
   } catch (error) {
-    if (error.status) {
-      throw error;
-    }
+    if (error.status) throw error;
 
     console.error("Lỗi kết nối khi upload Cloudinary:", {
       name: error.name,
       message: error.message,
-      code: error.cause?.code,
     });
 
     fail(

@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-const configuredApiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
-const API_BASE = `${configuredApiBase.replace(/(?:\/api)+$/, '')}/api`;
+// Chuẩn hóa Base URL: Mặc định cổng 5000 trùng với Backend server
+// Tự động cắt bỏ /api ở cuối (nếu có trong .env) để tránh bị lặp thành /api/api
+const rawBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').trim();
+const API_BASE = rawBase.replace(/\/api\/?$/, '').replace(/\/+$/, '');
 
 const apiClient = axios.create({
   baseURL: API_BASE,
@@ -14,6 +16,14 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
+    if (config.url) {
+      // Xử lý chống trùng lặp /api/api
+      config.url = config.url.replace(/^\/?api\/api\//, '/api/');
+      // Đảm bảo request luôn có tiền tố /api
+      if (!config.url.startsWith('/api') && !config.url.startsWith('http')) {
+        config.url = `/api${config.url.startsWith('/') ? '' : '/'}${config.url}`;
+      }
+    }
     try {
       const token = localStorage.getItem('token');
       if (token) {

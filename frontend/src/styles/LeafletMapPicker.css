@@ -1,0 +1,276 @@
+/* =====================================================================
+   LEAFLET MAP PICKER - VESTORA LUXURY DESIGN SYSTEM
+   ===================================================================== */
+
+.leaflet-map-picker-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #ECE7DD;
+  background: #FDFCF9;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.leaflet-map-picker-wrapper:hover {
+  border-color: #D97706;
+  box-shadow: 0 6px 24px rgba(217, 119, 6, 0.08);
+}
+
+.leaflet-map-container {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  z-index: 1;
+}
+
+/* =====================================================================
+   CUSTOM LUXURY 24K GOLD & OBSIDIAN PIN MARKER
+   ===================================================================== */
+.vestora-pin-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+}
+
+.vestora-pin-marker:hover {
+  transform: translateY(-6px) scale(1.08);
+  filter: drop-shadow(0 12px 18px rgba(217, 119, 6, 0.45));
+}
+
+.vestora-pin-marker:active {
+  cursor: grabbing;
+  transform: translateY(-10px) scale(1.18);
+  filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.4));
+}
+
+.vestora-pin-svg {
+  width: 38px;
+  height: 48px;
+  display: block;
+}
+
+/* Dual-Wave Radar Pulse underneath marker */
+.vestora-pin-pulse {
+  position: absolute;
+  bottom: -6px;
+  width: 16px;
+  height: 6px;
+  background: rgba(217, 119, 6, 0.6);
+  border-radius: 50%;
+  animation: vestoraPulse 2.2s infinite cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.vestora-pin-pulse::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.4);
+  animation: vestoraPulse 2.2s infinite 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes vestoraPulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+/* =====================================================================
+   TOP FLOATING GLASSMORPHIC CONTROLS
+   ===================================================================== */
+.leaflet-map-overlay-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 400;
+  pointer-events: none;
+}
+
+.leaflet-map-badge {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(18, 18, 20, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #FFFFFF;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  user-select: none;
+}
+
+.leaflet-map-badge.gold {
+  background: rgba(23, 23, 23, 0.92);
+  border-color: rgba(217, 119, 6, 0.4);
+}
+
+.leaflet-map-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 8px #10B981;
+  flex-shrink: 0;
+}
+
+.leaflet-map-badge-coords {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: #FCD34D;
+  background: rgba(217, 119, 6, 0.2);
+  padding: 2px 7px;
+  border-radius: 12px;
+  margin-left: 3px;
+  letter-spacing: 0;
+}
+
+.leaflet-map-recenter-btn {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #D1D5DB;
+  color: #18181B;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.leaflet-map-recenter-btn:hover {
+  background: #FFFFFF;
+  border-color: #D97706;
+  color: #B45309;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.18);
+}
+
+.leaflet-map-recenter-btn:active {
+  transform: scale(0.96);
+}
+
+/* =====================================================================
+   BOTTOM HELPER PILL
+   ===================================================================== */
+.leaflet-map-overlay-bottom {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  z-index: 400;
+  pointer-events: none;
+  max-width: 65%;
+}
+
+.leaflet-map-hint {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #374151;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+/* =====================================================================
+   LEAFLET NATIVE CONTROL OVERRIDES (LUXURY THEME)
+   ===================================================================== */
+.leaflet-top.leaflet-left {
+  top: 50px;
+  left: 12px;
+}
+
+.leaflet-bar {
+  border: 1px solid #E5E7EB !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08) !important;
+}
+
+.leaflet-bar a {
+  background: #FFFFFF !important;
+  color: #18181B !important;
+  border-bottom: 1px solid #F3F4F6 !important;
+  width: 30px !important;
+  height: 30px !important;
+  line-height: 30px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  transition: all 0.15s ease !important;
+}
+
+.leaflet-bar a:hover {
+  background: #FDFCF9 !important;
+  color: #D97706 !important;
+}
+
+.leaflet-bar a:last-child {
+  border-bottom: none !important;
+}
+
+/* Layer Switcher Styling (Bottom-Right) */
+.leaflet-control-layers {
+  border: 1px solid #E5E7EB !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(10px) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+  padding: 6px 12px !important;
+  font-family: inherit !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  color: #18181B !important;
+}
+
+.leaflet-control-layers-expanded {
+  padding: 10px 14px !important;
+}
+
+.leaflet-control-layers-toggle {
+  width: 32px !important;
+  height: 32px !important;
+}
+

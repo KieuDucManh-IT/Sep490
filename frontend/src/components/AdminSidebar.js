@@ -8,8 +8,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const searchParams = new URLSearchParams(location.search);
-  const currentTab = searchParams.get('tab') || 'PENDING';
+  const isOps = location.pathname.startsWith('/ops');
 
   const handleLogout = async () => {
     try {
@@ -21,12 +20,20 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
     }
   };
 
-  const isActive = (path, tab) => {
-    if (path === '/admin/shops') {
-      if (location.pathname !== '/admin/shops') return '';
-      if (tab === 'ACTIVE') return currentTab === 'ACTIVE' ? 'active' : '';
-      if (tab === 'PENDING') return currentTab === 'PENDING' || !searchParams.get('tab') ? 'active' : '';
-      return '';
+  const isActive = (path) => {
+    if (path.includes('/shops')) {
+      return (
+        location.pathname === '/ops/shops' ||
+        location.pathname === '/admin/shops' ||
+        location.pathname === '/ops/manage-shops' ||
+        location.pathname === '/admin/manage-shops'
+      ) ? 'active' : '';
+    }
+    if (path.includes('/moderation')) {
+      return (location.pathname === '/ops/moderation' || location.pathname === '/admin/moderation') ? 'active' : '';
+    }
+    if (path.includes('/disputes')) {
+      return (location.pathname === '/ops/disputes' || location.pathname === '/admin/disputes') ? 'active' : '';
     }
     return location.pathname === path ? 'active' : '';
   };
@@ -36,7 +43,11 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
       <div>
         <div className="admin-shops-sidebar__brand">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Link to="/admin/dashboard" className="admin-shops-sidebar__logo" title="VESTORA Admin">
+            <Link
+              to={isOps ? "/ops/shops" : "/admin/dashboard"}
+              className="admin-shops-sidebar__logo"
+              title={isOps ? "VESTORA Operations Staff" : "VESTORA Admin"}
+            >
               {isCollapsed ? 'V' : 'VESTORA'}
             </Link>
             {onToggle && (
@@ -57,7 +68,14 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
               </button>
             )}
           </div>
-          {!isCollapsed && <div className="admin-shops-sidebar__sub">QUẢN TRỊ HỆ THỐNG</div>}
+          {!isCollapsed && (
+            <div
+              className="admin-shops-sidebar__sub"
+              style={{ color: isOps ? '#059669' : '#737373', letterSpacing: '1px' }}
+            >
+              {isOps ? 'BỘ PHẬN VẬN HÀNH (OPS)' : 'QUẢN TRỊ HỆ THỐNG'}
+            </div>
+          )}
         </div>
 
         <nav className="admin-shops-sidebar__nav">

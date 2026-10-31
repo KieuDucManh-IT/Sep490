@@ -92,9 +92,4 @@ router.post(
   asyncRoute(controller.confirmWithdraw)
 );
 
-router.post(
-  "/transactions/:id/sync",
-  asyncRoute(controller.syncTransaction)
-);
-
 export default router;

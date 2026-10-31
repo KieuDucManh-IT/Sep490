@@ -56,14 +56,6 @@ const BANKS = [
   ["970405", "Agribank"],
 ];
 
-const SYNCABLE = new Set([
-  "pending",
-  "queued",
-  "submitting",
-  "processing",
-  "review",
-]);
-
 const money = (value) =>
   new Intl.NumberFormat("vi-VN", {
     style: "currency",
@@ -324,12 +316,32 @@ export default function WalletPage() {
     event.preventDefault();
 
     run(async () => {
+      // Xóa QR cũ khi bắt đầu tạo yêu cầu mới.
+      setPayment(null);
+
       const result = await walletPost("/top-ups", {
         amount: Number(topupAmount),
       });
 
-      setPayment(result.transaction);
-      setNotice(result.message);
+      const transaction = result.transaction;
+
+      if (!transaction) {
+        throw new Error(
+          "Máy chủ chưa trả về thông tin yêu cầu nạp tiền."
+        );
+      }
+
+      setPayment(transaction);
+
+      // Backend có thể trả HTTP 201 nhưng chưa lấy được QR từ payOS.
+      // Trường hợp này vẫn cần thông báo cho người dùng.
+      if (!transaction.qrCode && transaction.status !== "success") {
+        throw new Error(
+          "Chưa nhận được mã QR nạp tiền. Yêu cầu đang chờ xử lý."
+        );
+      }
+
+      // Thành công: hiển thị QR, không gọi setNotice().
     });
   }
 
@@ -901,6 +913,7 @@ export default function WalletPage() {
                                 <td>
                                   {item.status === "otp_pending" ? (
                                     <button
+                                      type="button"
                                       className="vw-text-button"
                                       disabled={busy}
                                       onClick={() => {
@@ -910,24 +923,6 @@ export default function WalletPage() {
                                       }}
                                     >
                                       Nhập OTP
-                                    </button>
-                                  ) : SYNCABLE.has(item.status) &&
-                                    ["top_up", "withdraw"].includes(
-                                      item.type
-                                    ) ? (
-                                    <button
-                                      className="vw-text-button"
-                                      disabled={busy}
-                                      onClick={() =>
-                                        run(async () => {
-                                          const result = await walletPost(
-                                            `/transactions/${item.id}/sync`
-                                          );
-                                          setNotice(result.message);
-                                        })
-                                      }
-                                    >
-                                      Kiểm tra
                                     </button>
                                   ) : (
                                     "—"

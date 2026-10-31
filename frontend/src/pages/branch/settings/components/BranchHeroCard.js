@@ -1,5 +1,6 @@
 import React from 'react';
 import { Eye, Store, Sparkles, Star, MapPin, Phone, Clock, Navigation } from 'lucide-react';
+import { DEFAULT_SHOP_BANNER } from '../../../owner/branches/utils/branchConstants';
 
 export default function BranchHeroCard({ shop, formData, onOpenLightbox }) {
   const isActive = Boolean(formData.isOpen);
@@ -11,7 +12,7 @@ export default function BranchHeroCard({ shop, formData, onOpenLightbox }) {
         <img
           src={
             formData.bannerUrl ||
-            'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'
+            DEFAULT_SHOP_BANNER
           }
           alt="Cover Banner"
           className="branch-hero-banner-img"
@@ -19,7 +20,7 @@ export default function BranchHeroCard({ shop, formData, onOpenLightbox }) {
             const bannerSrc =
               formData.bannerUrl ||
               shop?.bannerUrl ||
-              'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80';
+              DEFAULT_SHOP_BANNER;
             onOpenLightbox({
               url: bannerSrc,
               title: `${formData.name || shop?.name || 'Cửa Hàng'} — Ảnh Bìa (Kích Thước Thật)`,

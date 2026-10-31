@@ -2,6 +2,7 @@ import React from 'react';
 import { Row, Col, Form, Spinner } from 'react-bootstrap';
 import { Upload, Camera, Image as ImageIcon } from 'lucide-react';
 import OpeningHoursInput from '../../../../components/OpeningHoursInput';
+import { DEFAULT_SHOP_BANNER } from '../../branches/utils/branchConstants';
 
 export default function ShopIdentityCard({
   formData,
@@ -118,7 +119,7 @@ export default function ShopIdentityCard({
                   const bannerSrc =
                     formData.bannerUrl ||
                     shop?.bannerUrl ||
-                    'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80';
+                    DEFAULT_SHOP_BANNER;
                   onOpenLightbox({
                     url: bannerSrc,
                     title: `${formData.name || shop?.name || 'Cửa Hàng'} — Ảnh Bìa (Kích Thước Thật)`,
@@ -129,7 +130,7 @@ export default function ShopIdentityCard({
                 <img
                   src={
                     formData.bannerUrl ||
-                    'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80'
+                    DEFAULT_SHOP_BANNER
                   }
                   alt="Banner Cửa Hàng"
                   className="settings-banner-img"

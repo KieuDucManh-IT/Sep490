@@ -1,17 +1,7 @@
 import mongoose from 'mongoose';
-import { Shop } from '../../models/shop/Shop.js';
+import { Shop, DEFAULT_SHOP_IMAGE, DEFAULT_SHOP_BANNER } from '../../models/shop/Shop.js';
 import { User } from '../../models/system/User.js';
 import { validationError, validateObjectId } from '../../validations/shop/shopValidation.js';
-
-/**
- * Dịch vụ nghiệp vụ quản lý chi nhánh & bổ nhiệm Quản lý chi nhánh (Shop & Branch Service)
- * Đảm bảo các bất biến nghiệp vụ cốt lõi:
- * 1. Single-HQ Invariant: Toàn bộ chuỗi của mỗi Owner chỉ có duy nhất 1 Trụ sở chính (isHQ: true).
- * 2. HQ Protection: Trụ sở chính không bao giờ được phép xóa trực tiếp.
- * 3. Minimum Network: Chuỗi phải luôn có ít nhất 1 chi nhánh hoạt động.
- * 4. Multi-branch Manager (1:N): Một Quản lý chi nhánh có thể được giao quản lý nhiều chi nhánh cùng lúc.
- * 5. Strict Role Enforcement: Chỉ tài khoản có vai trò BRANCH_MANAGER mới được phép bổ nhiệm.
- */
 
 /**
  * Lấy danh sách hồ sơ chi nhánh có phân trang, bộ lọc và tìm kiếm đa năng
@@ -578,11 +568,8 @@ export const createNewBranch = async (validated, currentUser) => {
     validManagerId = managerUser._id;
   }
 
-  const defaultShopAvatar = 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286849/vestora/shops/avatar/1793286868885-6a291daa-8576-4622-bfde-842ca9b65cc6.webp';
-  const finalImageUrl = validated.imageUrl || defaultShopAvatar;
-
-  const defaultShopBanner = 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286857/vestora/shops/banner/1793286876464-e4aff2b7-36c9-45c7-85a0-f89084b489d5.webp';
-  const finalBanner = validated.bannerUrl || defaultShopBanner;
+  const finalImageUrl = validated.imageUrl || DEFAULT_SHOP_IMAGE;
+  const finalBanner = validated.bannerUrl || DEFAULT_SHOP_BANNER;
 
   const existingBranchesCount = await Shop.countDocuments({
     ownerId: resolvedOwnerId,

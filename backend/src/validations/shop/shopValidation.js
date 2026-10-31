@@ -87,9 +87,8 @@ export const validateCreateBranchInput = (body) => {
     ward,
     latitude,
     longitude,
-    avatarUrl,
-    bannerUrl,
     imageUrl,
+    bannerUrl,
     openingHours,
     managerId,
     isHQ = false,
@@ -131,7 +130,7 @@ export const validateCreateBranchInput = (body) => {
     ward: ward ? ward.trim() : '',
     latitude: coords.latitude,
     longitude: coords.longitude,
-    imageUrl: (imageUrl || avatarUrl)?.trim() || '',
+    imageUrl: imageUrl?.trim() || '',
     bannerUrl: bannerUrl?.trim() || '',
     openingHours: openingHours?.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
     isHQ: Boolean(isHQ),
@@ -228,8 +227,8 @@ export const validateUpdateShopInfoInput = (body) => {
     if (body.longitude !== undefined) result.longitude = coords.longitude;
   }
 
-  if (body.imageUrl !== undefined || body.avatarUrl !== undefined) {
-    result.imageUrl = (body.imageUrl !== undefined ? body.imageUrl : body.avatarUrl)?.trim() || '';
+  if (body.imageUrl !== undefined) {
+    result.imageUrl = body.imageUrl?.trim() || '';
   }
 
   if (body.bannerUrl !== undefined) {

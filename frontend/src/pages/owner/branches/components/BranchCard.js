@@ -11,6 +11,7 @@ import {
   AlertCircle,
   UserCheck,
 } from 'lucide-react';
+import { DEFAULT_SHOP_IMAGE, DEFAULT_SHOP_BANNER } from '../utils/branchConstants';
 
 export default function BranchCard({
   branch,
@@ -20,10 +21,8 @@ export default function BranchCard({
   onDelete,
   onOpenLightbox,
 }) {
-  const defaultBanner = 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286857/vestora/shops/banner/1793286876464-e4aff2b7-36c9-45c7-85a0-f89084b489d5.webp';
-  const defaultAvatar = 'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286849/vestora/shops/avatar/1793286868885-6a291daa-8576-4622-bfde-842ca9b65cc6.webp';
-  const bannerImage = branch.bannerUrl || defaultBanner;
-  const avatarImage = branch.imageUrl || branch.avatarUrl || defaultAvatar;
+  const bannerImage = branch.bannerUrl || DEFAULT_SHOP_BANNER;
+  const avatarImage = branch.imageUrl || DEFAULT_SHOP_IMAGE;
 
   const manager = branch.managerId;
   const isHQ = Boolean(branch.isHQ);

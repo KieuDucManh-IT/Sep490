@@ -8,6 +8,7 @@ const inventoryItemSchema = new mongoose.Schema({
   serialNumber: { type: String, trim: true },
   condition: { type: String, default: 'good', enum: ['new', 'good', 'worn', 'damaged', 'unrepairable'] },
   status: { type: String, default: 'available', enum: ['available', 'reserved', 'renting', 'maintenance', 'unavailable', 'disposed'] },
+  
 }, { timestamps: true });
 
 export const InventoryItem = mongoose.models.InventoryItem || mongoose.model('InventoryItem', inventoryItemSchema);

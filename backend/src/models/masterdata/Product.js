@@ -18,10 +18,11 @@ const productSchema = new mongoose.Schema({
   salePrice: { type: Number, default: 0 },
   deposit: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
-  inStock: { type: Boolean, default: true },
   aiTryOn: { type: Boolean, default: true },
   status: { type: String, default: 'active', enum: ['active', 'inactive', 'discontinued'] },
   isDeleted: { type: Boolean, default: false },
+  gender:{type: String, trim: true},
+  
 }, { timestamps: true, strict: false });
 
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);

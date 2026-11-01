@@ -121,9 +121,19 @@ export default function WalletPage() {
 
   const hasActiveTopup = Boolean(
     payment &&
-      ["pending", "review"].includes(payment.status) &&
-      new Date(payment.expiresAt).getTime() > now
+    ["pending", "review"].includes(payment.status) &&
+    new Date(payment.expiresAt).getTime() > now
   );
+
+  const activeTopupAmount = hasActiveTopup
+    ? payment?.amount
+    : null;
+
+  useEffect(() => {
+    if (activeTopupAmount == null) return;
+
+    setTopupAmount(String(activeTopupAmount));
+  }, [activeTopupAmount]);
 
   const [withdraw, setWithdraw] = useState({
     amount: "",
@@ -156,7 +166,7 @@ export default function WalletPage() {
         return current.promise;
       }
 
-      await current.promise.catch(() => {});
+      await current.promise.catch(() => { });
     }
 
     const request = {
@@ -179,15 +189,29 @@ export default function WalletPage() {
 
           // Ưu tiên yêu cầu nạp đang hoạt động do backend trả về.
           // Không phụ thuộc vào trang hoặc bộ lọc lịch sử hiện tại.
-          setPayment((current) =>
-            result.activeTopup ||
-            list.items.find((item) => item.id === current?.id) ||
-            null
-          );
+          setPayment((current) => {
+            const targetId = result.activeTopup?.id || current?.id;
 
-          if (result.activeTopup) {
-            setTopupAmount(String(result.activeTopup.amount));
-          }
+            // Lịch sử được tải sau thông tin ví:
+            // ưu tiên trạng thái mới hơn của cùng giao dịch.
+            const latest = list.items.find(
+              (item) => item.id === targetId
+            );
+
+            const next = latest || result.activeTopup || null;
+
+            // Không để dữ liệu chờ thanh toán cũ ghi đè
+            // giao dịch đã được xác nhận thành công.
+            if (
+              current?.status === "success" &&
+              current.id === next?.id &&
+              ["pending", "review"].includes(next.status)
+            ) {
+              return current;
+            }
+
+            return next;
+          });
         }
 
         hasLoadedRef.current = true;
@@ -258,7 +282,7 @@ export default function WalletPage() {
         setPayment(result.transaction);
 
         if (loadingRef.current) {
-          await loadingRef.current.promise.catch(() => {});
+          await loadingRef.current.promise.catch(() => { });
         }
 
         if (active) {
@@ -304,7 +328,7 @@ export default function WalletPage() {
       // Lỗi tải lại không làm thay đổi kết quả thao tác vừa thực hiện.
       try {
         if (loadingRef.current) {
-          await loadingRef.current.promise.catch(() => {});
+          await loadingRef.current.promise.catch(() => { });
         }
 
         await load();

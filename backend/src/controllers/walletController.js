@@ -41,7 +41,6 @@ import {
 
 const EPOCH = new Date(0);
 const TOPUP_TTL_MS = 15 * 60 * 1000;
-const TOPUP_MAX_PER_WINDOW = 5;
 
 function findActiveTopup(walletId, session = null) {
   const now = new Date();
@@ -378,21 +377,6 @@ export async function createTopup(req, res) {
         id: existing._id,
         created: false,
       };
-    }
-
-    const recentCount = await WalletTransaction.countDocuments({
-      walletId: wallet._id,
-      transactionType: "top_up",
-      createdAt: {
-        $gte: new Date(Date.now() - TOPUP_TTL_MS),
-      },
-    }).session(session);
-
-    if (recentCount >= TOPUP_MAX_PER_WINDOW) {
-      fail(
-        429,
-        "Chỉ được tạo tối đa 5 yêu cầu nạp mới trong 15 phút."
-      );
     }
 
     const id = new mongoose.Types.ObjectId();

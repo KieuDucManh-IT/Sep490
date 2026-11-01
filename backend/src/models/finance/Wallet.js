@@ -66,6 +66,11 @@ const walletSchema = new mongoose.Schema(
       enum: ["VND"],
     },
 
+    topupRequestVersion: {
+      type: Number,
+      default: 0,
+    },
+
     status: {
       type: String,
       default: "active",

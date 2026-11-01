@@ -40,6 +40,32 @@ import {
 } from "../services/walletProvider.js";
 
 const EPOCH = new Date(0);
+const TOPUP_TTL_MS = 15 * 60 * 1000;
+const TOPUP_MAX_PER_WINDOW = 5;
+
+function findActiveTopup(walletId, session = null) {
+  const now = new Date();
+
+  return WalletTransaction.findOne({
+    walletId,
+    transactionType: "top_up",
+    status: { $in: ["pending", "review"] },
+    $or: [
+      {
+        topupExpiresAt: { $gt: now },
+      },
+      {
+        // Hỗ trợ yêu cầu cũ chưa có trường hết hạn.
+        topupExpiresAt: null,
+        createdAt: {
+          $gt: new Date(now.getTime() - TOPUP_TTL_MS),
+        },
+      },
+    ],
+  })
+    .sort({ createdAt: -1, _id: -1 })
+    .session(session);
+}
 
 function requireId(id) {
   if (!/^[a-f0-9]{24}$/i.test(String(id))) {
@@ -163,8 +189,11 @@ export async function getWallet(req, res) {
     });
   }
 
+  const activeTopup = await findActiveTopup(wallet._id);
+
   return res.json({
     requiresSetup: false,
+    activeTopup: activeTopup ? transactionDTO(activeTopup) : null,
     wallet: {
       id: String(wallet._id),
       currency: wallet.currency,
@@ -312,61 +341,170 @@ export async function createTopup(req, res) {
   const amount = validateAmount(req.body.amount);
   const wallet = await readyWallet(req.user._id);
   const provider = getCollectClient();
+  const origin = new URL(process.env.FRONTEND_URL).origin;
 
-  const id = new mongoose.Types.ObjectId();
-  const orderCode = crypto.randomInt(1, 281474976710655);
+  const allocation = await inTransaction(async (session) => {
+    // Các request của cùng một ví phải cập nhật cùng bản ghi này.
+    // Nếu chạy đồng thời, MongoDB xử lý xung đột và retry transaction.
+    const lock = await Wallet.updateOne(
+      {
+        _id: wallet._id,
+        status: "active",
+      },
+      {
+        $inc: { topupRequestVersion: 1 },
+      },
+      { session }
+    );
 
-  // Ghi yêu cầu trước khi gọi nhà cung cấp.
-  const transaction = await WalletTransaction.create({
-    _id: id,
-    userId: req.user._id,
-    walletId: wallet._id,
-    code: `NAP${id}`,
-    transactionType: "top_up",
-    direction: "credit",
-    amount,
-    orderCode,
-    status: "pending",
+    if (lock.matchedCount !== 1) {
+      fail(423, "Ví không hoạt động");
+    }
+
+    const existing = await findActiveTopup(wallet._id, session);
+
+    if (existing) {
+      if (existing.amount !== amount) {
+        fail(
+          409,
+          "Bạn đang có yêu cầu nạp " +
+          existing.amount.toLocaleString("vi-VN") +
+          "đ. Hãy hoàn tất hoặc chờ yêu cầu này hết hạn."
+        );
+      }
+
+      // Dùng lại yêu cầu cũ, không tạo thêm bản ghi.
+      return {
+        id: existing._id,
+        created: false,
+      };
+    }
+
+    const recentCount = await WalletTransaction.countDocuments({
+      walletId: wallet._id,
+      transactionType: "top_up",
+      createdAt: {
+        $gte: new Date(Date.now() - TOPUP_TTL_MS),
+      },
+    }).session(session);
+
+    if (recentCount >= TOPUP_MAX_PER_WINDOW) {
+      fail(
+        429,
+        "Chỉ được tạo tối đa 5 yêu cầu nạp mới trong 15 phút."
+      );
+    }
+
+    const id = new mongoose.Types.ObjectId();
+
+    const expiresAt = new Date(
+      (Math.floor(Date.now() / 1000) + TOPUP_TTL_MS / 1000) * 1000
+    );
+
+    await WalletTransaction.create(
+      [
+        {
+          _id: id,
+          userId: req.user._id,
+          walletId: wallet._id,
+          code: `NAP${id}`,
+          transactionType: "top_up",
+          direction: "credit",
+          amount,
+          orderCode: crypto.randomInt(1, 281474976710655),
+          status: "pending",
+          topupExpiresAt: expiresAt,
+          nextCheckAt: new Date(Date.now() + 30000),
+        },
+      ],
+      { session }
+    );
+
+    return {
+      id,
+      created: true,
+    };
   });
 
-  try {
-    const origin = new URL(process.env.FRONTEND_URL).origin;
+  let transaction = await WalletTransaction.findById(allocation.id);
 
-    const payment = await provider.paymentRequests.create({
-      orderCode,
-      amount,
-      description: String(req.user._id),
-      returnUrl: `${origin}/wallet?orderCode=${orderCode}`,
-      cancelUrl: `${origin}/wallet?orderCode=${orderCode}`,
-      expiredAt: Math.floor(Date.now() / 1000) + 15 * 60,
-    });
-
-    // Không ghi đè trạng thái nếu webhook đã xử lý trước.
-    await WalletTransaction.updateOne(
-      { _id: id },
-      {
-        $set: {
-          paymentLinkId: payment.paymentLinkId,
-          checkoutUrl: payment.checkoutUrl,
-          qrCode: payment.qrCode,
-          nextCheckAt: new Date(Date.now() + 10000),
-        },
-      }
-    );
-  } catch {
-    await WalletTransaction.updateOne(
-      { _id: id, status: "pending" },
-      { $set: { status: "review" } }
-    );
+  if (!transaction) {
+    fail(500, "Không tìm thấy yêu cầu nạp tiền");
   }
 
-  const saved = await WalletTransaction.findById(transaction._id);
+  // Chỉ request thực sự tạo bản ghi mới được gọi payOS.
+  // Đặt ngoài MongoDB transaction để không gọi lại khi callback retry.
+  if (allocation.created) {
+    try {
+      const payment = await provider.paymentRequests.create({
+        orderCode: transaction.orderCode,
+        amount: transaction.amount,
+        description: String(req.user._id),
+        returnUrl: `${origin}/wallet?orderCode=${transaction.orderCode}`,
+        cancelUrl: `${origin}/wallet?orderCode=${transaction.orderCode}`,
+        expiredAt: Math.floor(
+          transaction.topupExpiresAt.getTime() / 1000
+        ),
+      });
 
-  res.status(201).json({
-    transaction: transactionDTO(saved),
-    message: saved.checkoutUrl
-      ? "Đã tạo yêu cầu nạp tiền"
-      : "Chưa nhận được link thanh toán; yêu cầu đang chờ đối soát",
+      if (
+        Number(payment.orderCode) !== transaction.orderCode ||
+        Number(payment.amount) !== transaction.amount ||
+        !payment.qrCode ||
+        !payment.checkoutUrl
+      ) {
+        throw new Error("Phản hồi tạo QR không hợp lệ");
+      }
+
+      await WalletTransaction.updateOne(
+        { _id: transaction._id },
+        {
+          $set: {
+            paymentLinkId: payment.paymentLinkId,
+            checkoutUrl: payment.checkoutUrl,
+            qrCode: payment.qrCode,
+            nextCheckAt: new Date(Date.now() + 5000),
+          },
+        }
+      );
+    } catch {
+      // Giữ yêu cầu để đối soát nếu kết quả tạo link chưa rõ.
+      await WalletTransaction.updateOne(
+        {
+          _id: transaction._id,
+          status: "pending",
+        },
+        {
+          $set: {
+            status: "review",
+            nextCheckAt: new Date(Date.now() + 5000),
+          },
+        }
+      );
+    }
+
+    transaction = await WalletTransaction.findById(transaction._id);
+  }
+
+  if (!transaction) {
+    fail(500, "Không tìm thấy yêu cầu nạp tiền");
+  }
+
+  if (transaction.status === "review") {
+    return res.status(503).json({
+      message:
+        "Chưa xác nhận được kết quả tạo QR. Yêu cầu đang chờ đối soát.",
+      transaction: transactionDTO(transaction),
+    });
+  }
+
+  const http = transaction.qrCode
+    ? (allocation.created ? 201 : 200)
+    : 202;
+
+  return res.status(http).json({
+    transaction: transactionDTO(transaction),
+    reused: !allocation.created,
   });
 }
 

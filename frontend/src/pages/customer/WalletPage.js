@@ -76,7 +76,11 @@ function walletErrorMessage(error) {
   const message = error?.message || "";
 
   if (/failed to fetch|networkerror|load failed/i.test(message)) {
-    return "Không kết nối được tới hệ thống. Nếu vừa gửi OTP hoặc xác nhận giao dịch, hãy kiểm tra email và lịch sử trước khi thực hiện lại.";
+    return (
+      "Không kết nối được tới hệ thống. " +
+      "Nếu vừa gửi OTP hoặc xác nhận giao dịch, " +
+      "hãy kiểm tra email và lịch sử trước khi thực hiện lại."
+    );
   }
 
   return message || "Không thực hiện được thao tác. Vui lòng thử lại.";
@@ -84,6 +88,7 @@ function walletErrorMessage(error) {
 
 export default function WalletPage() {
   const [data, setData] = useState(null);
+
   const [history, setHistory] = useState({
     items: [],
     pages: 1,
@@ -112,6 +117,13 @@ export default function WalletPage() {
 
   const [topupAmount, setTopupAmount] = useState("100000");
   const [payment, setPayment] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  const hasActiveTopup = Boolean(
+    payment &&
+      ["pending", "review"].includes(payment.status) &&
+      new Date(payment.expiresAt).getTime() > now
+  );
 
   const [withdraw, setWithdraw] = useState({
     amount: "",
@@ -124,15 +136,27 @@ export default function WalletPage() {
   const [pendingWithdrawal, setPendingWithdrawal] = useState(null);
   const [withdrawOtp, setWithdrawOtp] = useState("");
 
+  // Cập nhật giao diện khi QR hết hạn.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
   const load = useCallback(async () => {
     const key = JSON.stringify([page, type, status]);
 
+    // Dùng chung request đang chạy nếu cùng bộ lọc.
     while (loadingRef.current) {
       const current = loadingRef.current;
 
-      if (current.key === key) return current.promise;
+      if (current.key === key) {
+        return current.promise;
+      }
 
-      await current.promise.catch(() => { });
+      await current.promise.catch(() => {});
     }
 
     const request = {
@@ -141,7 +165,6 @@ export default function WalletPage() {
         const result = await walletRequest();
 
         setData(result);
-        hasLoadedRef.current = true;
 
         if (!result.requiresSetup && result.wallet.status === "active") {
           const params = new URLSearchParams({
@@ -151,16 +174,23 @@ export default function WalletPage() {
           });
 
           const list = await walletRequest(`/transactions?${params}`);
+
           setHistory(list);
 
-          setPayment((payment) => {
-            if (!payment) return payment;
+          // Ưu tiên yêu cầu nạp đang hoạt động do backend trả về.
+          // Không phụ thuộc vào trang hoặc bộ lọc lịch sử hiện tại.
+          setPayment((current) =>
+            result.activeTopup ||
+            list.items.find((item) => item.id === current?.id) ||
+            null
+          );
 
-            return (
-              list.items.find((item) => item.id === payment.id) || payment
-            );
-          });
+          if (result.activeTopup) {
+            setTopupAmount(String(result.activeTopup.amount));
+          }
         }
+
+        hasLoadedRef.current = true;
       })(),
     };
 
@@ -175,6 +205,7 @@ export default function WalletPage() {
     }
   }, [page, type, status]);
 
+  // Tải dữ liệu và tự cập nhật mỗi 5 giây.
   useEffect(() => {
     let active = true;
 
@@ -202,6 +233,8 @@ export default function WalletPage() {
     };
   }, [load]);
 
+  // Đồng bộ khi quay về từ payOS.
+  // Thành công cập nhật giao diện, lỗi mới hiện popup.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const orderCode = params.get("orderCode");
@@ -210,7 +243,7 @@ export default function WalletPage() {
 
     let active = true;
 
-    // Những lần Effect chạy lại dùng chung một request.
+    // Tránh gọi lại cùng request khi Effect chạy lại.
     if (returnSyncRef.current?.orderCode !== orderCode) {
       returnSyncRef.current = {
         orderCode,
@@ -223,10 +256,9 @@ export default function WalletPage() {
         if (!active) return;
 
         setPayment(result.transaction);
-        setNotice(result.message);
 
         if (loadingRef.current) {
-          await loadingRef.current.promise.catch(() => { });
+          await loadingRef.current.promise.catch(() => {});
         }
 
         if (active) {
@@ -268,10 +300,11 @@ export default function WalletPage() {
 
       await action();
 
-      // Thao tác đã thành công. Lỗi tải lại không đổi kết quả thao tác.
+      // Thao tác đã thành công.
+      // Lỗi tải lại không làm thay đổi kết quả thao tác vừa thực hiện.
       try {
         if (loadingRef.current) {
-          await loadingRef.current.promise.catch(() => { });
+          await loadingRef.current.promise.catch(() => {});
         }
 
         await load();
@@ -308,40 +341,34 @@ export default function WalletPage() {
       const result = await walletPost("/password/setup", setup);
 
       setNotice(result.message);
-      setSetup({ password: "", confirmPassword: "", otp: "" });
+
+      setSetup({
+        password: "",
+        confirmPassword: "",
+        otp: "",
+      });
     });
   }
 
   function submitTopup(event) {
     event.preventDefault();
 
-    run(async () => {
-      // Xóa QR cũ khi bắt đầu tạo yêu cầu mới.
-      setPayment(null);
+    if (hasActiveTopup) return;
 
+    run(async () => {
       const result = await walletPost("/top-ups", {
         amount: Number(topupAmount),
       });
 
-      const transaction = result.transaction;
-
-      if (!transaction) {
-        throw new Error(
-          "Máy chủ chưa trả về thông tin yêu cầu nạp tiền."
-        );
+      if (!result.transaction) {
+        throw new Error("Máy chủ chưa trả về yêu cầu nạp tiền.");
       }
 
-      setPayment(transaction);
+      setPayment(result.transaction);
+      setTopupAmount(String(result.transaction.amount));
 
-      // Backend có thể trả HTTP 201 nhưng chưa lấy được QR từ payOS.
-      // Trường hợp này vẫn cần thông báo cho người dùng.
-      if (!transaction.qrCode && transaction.status !== "success") {
-        throw new Error(
-          "Chưa nhận được mã QR nạp tiền. Yêu cầu đang chờ xử lý."
-        );
-      }
-
-      // Thành công: hiển thị QR, không gọi setNotice().
+      // Không hiện popup thành công.
+      // Nếu QR đang được tạo, các lần load() sau sẽ cập nhật.
     });
   }
 
@@ -438,7 +465,9 @@ export default function WalletPage() {
         {!data ? (
           <section className="vw-card">
             <p>{error ? "Chưa tải được Ví." : "Đang tải Ví..."}</p>
+
             <button
+              type="button"
               className="vw-secondary"
               onClick={() => run()}
               disabled={busy}
@@ -520,6 +549,7 @@ export default function WalletPage() {
                         const result = await walletPost(
                           "/password/send-otp"
                         );
+
                         setNotice(result.message);
                       })
                     }
@@ -571,6 +601,7 @@ export default function WalletPage() {
                     >
                       Nạp tiền
                     </button>
+
                     <button
                       type="button"
                       className={tab === "withdraw" ? "is-active" : ""}
@@ -585,11 +616,12 @@ export default function WalletPage() {
                     <div className="vw-action-grid">
                       <form onSubmit={submitTopup}>
                         <h2>Nạp vào Ví</h2>
+
                         <p className="vw-muted">
                           Thanh toán qua mã QR hoặc trang thanh toán.
                         </p>
 
-                        <fieldset disabled={busy}>
+                        <fieldset disabled={busy || hasActiveTopup}>
                           <Field label="Số tiền nạp (VND)">
                             <input
                               type="number"
@@ -619,15 +651,31 @@ export default function WalletPage() {
                           </div>
 
                           <button className="vw-primary" type="submit">
-                            {busy ? "Đang xử lý..." : "Tạo mã nạp tiền"}
+                            {busy
+                              ? "Đang xử lý..."
+                              : hasActiveTopup
+                                ? "Đang có yêu cầu nạp tiền"
+                                : "Tạo mã nạp tiền"}
                           </button>
                         </fieldset>
+
+                        {hasActiveTopup && (
+                          <p className="vw-hint">
+                            Bạn đang có yêu cầu nạp {money(payment.amount)}.
+                            Có thể tạo yêu cầu khác sau khi thanh toán xong
+                            hoặc yêu cầu hiện tại hết hạn.
+                          </p>
+                        )}
                       </form>
 
                       <div className="vw-payment-box">
                         {payment?.status === "success" ? (
-                          <p>Đã nạp thành công {money(payment.amount)}.</p>
-                        ) : payment?.qrCode ? (
+                          <p>
+                            Đã nạp thành công {money(payment.amount)}.
+                          </p>
+                        ) : hasActiveTopup &&
+                          payment.status === "pending" &&
+                          payment.qrCode ? (
                           <>
                             <QRCodeSVG
                               value={payment.qrCode}
@@ -635,6 +683,7 @@ export default function WalletPage() {
                               marginSize={4}
                               title="Mã QR nạp tiền Ví"
                             />
+
                             <strong>{money(payment.amount)}</strong>
 
                             <a
@@ -647,14 +696,23 @@ export default function WalletPage() {
                             </a>
 
                             <p className="vw-hint">
-                              Số dư được cập nhật sau khi xác nhận
-                              thanh toán thành công.
+                              Mã QR có hiệu lực đến{" "}
+                              {new Date(
+                                payment.expiresAt
+                              ).toLocaleTimeString("vi-VN")}.
+                              Số dư tự cập nhật sau khi xác nhận
+                              thanh toán.
                             </p>
                           </>
+                        ) : hasActiveTopup ? (
+                          <p>
+                            {payment.status === "review"
+                              ? "Yêu cầu đang chờ đối soát. Hệ thống sẽ tự cập nhật."
+                              : "Đang tạo mã QR. Vui lòng chờ hệ thống cập nhật."}
+                          </p>
                         ) : (
                           <p>
-                            Mã QR sẽ xuất hiện sau khi bạn tạo yêu cầu
-                            nạp tiền.
+                            Tạo yêu cầu nạp tiền để hiển thị mã QR.
                           </p>
                         )}
                       </div>
@@ -667,12 +725,18 @@ export default function WalletPage() {
                       <h2>Xác nhận rút tiền</h2>
 
                       <div className="vw-confirm-summary">
-                        <strong>{money(pendingWithdrawal.amount)}</strong>
+                        <strong>
+                          {money(pendingWithdrawal.amount)}
+                        </strong>
+
                         <p>
                           Tài khoản nhận:{" "}
                           {pendingWithdrawal.bankAccount}
                         </p>
-                        <p>Mã ngân hàng: {pendingWithdrawal.bankBin}</p>
+
+                        <p>
+                          Mã ngân hàng: {pendingWithdrawal.bankBin}
+                        </p>
                       </div>
 
                       <fieldset disabled={busy}>
@@ -721,9 +785,11 @@ export default function WalletPage() {
                       onSubmit={requestWithdrawal}
                     >
                       <h2>Rút về tài khoản ngân hàng</h2>
+
                       <p className="vw-muted">
                         Khả dụng: {money(wallet.availableBalance)}
                       </p>
+
                       {insufficientBalance && (
                         <p className="vw-hint">
                           Cần ít nhất 10.000đ số dư khả dụng để rút tiền.
@@ -738,7 +804,10 @@ export default function WalletPage() {
                               type="number"
                               min={10000}
                               max={Math.min(
-                                Math.max(10000, wallet.availableBalance || 0),
+                                Math.max(
+                                  10000,
+                                  wallet.availableBalance || 0
+                                ),
                                 20000000
                               )}
                               step={1}
@@ -797,7 +866,9 @@ export default function WalletPage() {
                         </Field>
 
                         <button className="vw-primary" type="submit">
-                          {busy ? "Đang xử lý..." : "Tiếp tục · Gửi OTP"}
+                          {busy
+                            ? "Đang xử lý..."
+                            : "Tiếp tục · Gửi OTP"}
                         </button>
                       </fieldset>
                     </form>
@@ -807,14 +878,16 @@ export default function WalletPage() {
                 <section className="vw-card vw-history">
                   <div className="vw-history-heading">
                     <div>
-                      <p className="vw-eyebrow">GIAO DỊCH CỦA BẠN</p>
+                      <p className="vw-eyebrow">
+                        GIAO DỊCH CỦA BẠN
+                      </p>
                       <h2>Lịch sử giao dịch</h2>
                     </div>
 
                     <button
                       type="button"
                       className="vw-secondary"
-                      onClick={() => run(async () => { })}
+                      onClick={() => run()}
                       disabled={busy}
                     >
                       Làm mới
@@ -831,6 +904,7 @@ export default function WalletPage() {
                       }}
                     >
                       <option value="all">Tất cả giao dịch</option>
+
                       {Object.entries(TYPES).map(([key, label]) => (
                         <option key={key} value={key}>
                           {label}
@@ -847,6 +921,7 @@ export default function WalletPage() {
                       }}
                     >
                       <option value="all">Tất cả trạng thái</option>
+
                       {Object.entries(STATUSES).map(([key, label]) => (
                         <option key={key} value={key}>
                           {label}
@@ -868,7 +943,6 @@ export default function WalletPage() {
                             <th>Thời gian</th>
                             <th>Số tiền</th>
                             <th>Trạng thái</th>
-                            <th>Thao tác</th>
                           </tr>
                         </thead>
 
@@ -880,25 +954,51 @@ export default function WalletPage() {
                             return (
                               <tr key={item.id}>
                                 <td>
-                                  <strong>{TYPES[item.type] || item.type}</strong>
+                                  <strong>
+                                    {TYPES[item.type] || item.type}
+                                  </strong>
+
                                   <small>{item.code}</small>
+
                                   {item.bankAccount && (
                                     <small>{item.bankAccount}</small>
                                   )}
+
+                                  {item.type === "withdraw" &&
+                                    item.status === "otp_pending" && (
+                                      <button
+                                        type="button"
+                                        className="vw-text-button"
+                                        disabled={busy}
+                                        onClick={() => {
+                                          setTab("withdraw");
+                                          setPendingWithdrawal(item);
+                                          setWithdrawOtp("");
+                                        }}
+                                      >
+                                        Nhập OTP
+                                      </button>
+                                    )}
                                 </td>
 
                                 <td>
-                                  {new Date(item.createdAt).toLocaleString(
-                                    "vi-VN"
-                                  )}
+                                  {new Date(
+                                    item.createdAt
+                                  ).toLocaleString("vi-VN")}
                                 </td>
 
                                 <td
                                   className={
-                                    completed && credit ? "vw-credit" : ""
+                                    completed && credit
+                                      ? "vw-credit"
+                                      : ""
                                   }
                                 >
-                                  {completed ? (credit ? "+" : "−") : ""}
+                                  {completed
+                                    ? credit
+                                      ? "+"
+                                      : "−"
+                                    : ""}
                                   {money(item.amount)}
                                 </td>
 
@@ -906,27 +1006,9 @@ export default function WalletPage() {
                                   <span
                                     className={`vw-badge vw-status-${item.status}`}
                                   >
-                                    {STATUSES[item.status] || item.status}
+                                    {STATUSES[item.status] ||
+                                      item.status}
                                   </span>
-                                </td>
-
-                                <td>
-                                  {item.status === "otp_pending" ? (
-                                    <button
-                                      type="button"
-                                      className="vw-text-button"
-                                      disabled={busy}
-                                      onClick={() => {
-                                        setTab("withdraw");
-                                        setPendingWithdrawal(item);
-                                        setWithdrawOtp("");
-                                      }}
-                                    >
-                                      Nhập OTP
-                                    </button>
-                                  ) : (
-                                    "—"
-                                  )}
                                 </td>
                               </tr>
                             );
@@ -938,6 +1020,7 @@ export default function WalletPage() {
 
                   <div className="vw-pagination">
                     <button
+                      type="button"
                       className="vw-secondary"
                       disabled={page <= 1 || busy}
                       onClick={() => setPage((value) => value - 1)}
@@ -950,6 +1033,7 @@ export default function WalletPage() {
                     </span>
 
                     <button
+                      type="button"
                       className="vw-secondary"
                       disabled={page >= history.pages || busy}
                       onClick={() => setPage((value) => value + 1)}

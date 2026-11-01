@@ -25,6 +25,61 @@ const WITHDRAW_ACTIVE = [
   "review",
 ];
 
+const TOPUP_FINAL = [
+  "success",
+  "reversed",
+];
+
+const TOPUP_OPEN = [
+  "pending",
+  "review",
+];
+
+function providerAmount(value) {
+  if (
+    typeof value !== "number" &&
+    !(typeof value === "string" && /^\d+$/.test(value))
+  ) {
+    return null;
+  }
+
+  const amount = Number(value);
+
+  return Number.isSafeInteger(amount) && amount >= 0
+    ? amount
+    : null;
+}
+
+function expiredQueueFilter() {
+  return {
+    transactionType: "withdraw",
+    status: "queued",
+    fundsReserved: true,
+    submittedAt: null,
+    payoutId: null,
+    withdrawDeadlineAt: { $lte: new Date() },
+  };
+}
+
+async function markTopupReview(transactionId, state, message) {
+  await WalletTransaction.updateOne(
+    {
+      _id: transactionId,
+      transactionType: "top_up",
+      status: { $nin: TOPUP_FINAL },
+    },
+    {
+      $set: {
+        status: "review",
+        providerState: state,
+        lastSyncError: message,
+      },
+    }
+  );
+
+  return WalletTransaction.findById(transactionId);
+}
+
 export async function inTransaction(callback) {
   const session = await mongoose.startSession();
 
@@ -32,6 +87,7 @@ export async function inTransaction(callback) {
     return await session.withTransaction(
       () => callback(session),
       {
+        readPreference: "primary",
         readConcern: { level: "snapshot" },
         writeConcern: { w: "majority" },
       }
@@ -60,6 +116,7 @@ export async function ensureWallet(userId) {
     if (error.code !== 11000) throw error;
 
     wallet = await Wallet.findOne({ userId });
+
     if (!wallet) throw error;
 
     return wallet;
@@ -73,6 +130,10 @@ export async function readyWallet(userId) {
     `${MONEY_SELECT} +passwordHash`
   );
 
+  if (!wallet) {
+    fail(404, "Không tìm thấy Ví");
+  }
+
   if (!wallet.passwordHash) {
     fail(403, "Bạn cần thiết lập mật khẩu Ví trước");
   }
@@ -85,6 +146,10 @@ export async function readyWallet(userId) {
 }
 
 export function readBalances(wallet) {
+  if (!wallet) {
+    throw new Error("Không tìm thấy Ví");
+  }
+
   const balance = decryptValue(
     wallet.balanceEncrypted,
     `${wallet._id}:balance`
@@ -121,13 +186,25 @@ export function transactionDTO(transaction) {
     status: transaction.status,
     createdAt: transaction.createdAt,
     completedAt: transaction.completedAt,
+
     orderCode: transaction.orderCode,
     checkoutUrl: transaction.checkoutUrl,
     qrCode: transaction.qrCode,
+
+    expiresAt:
+      transaction.transactionType === "top_up"
+        ? transaction.topupExpiresAt ||
+          new Date(
+            new Date(transaction.createdAt).getTime() +
+              15 * 60 * 1000
+          )
+        : undefined,
+
     bankBin: transaction.bankBin,
     bankAccount: transaction.bankLast4
       ? `******${transaction.bankLast4}`
       : undefined,
+
     referenceType: transaction.referenceType,
     referenceId: transaction.referenceId,
   };
@@ -143,7 +220,9 @@ export async function changeFunds(
   session
 ) {
   if (!session?.inTransaction()) {
-    throw new Error("Cập nhật tiền phải nằm trong database transaction");
+    throw new Error(
+      "Cập nhật tiền phải nằm trong database transaction"
+    );
   }
 
   const before = readBalances(wallet);
@@ -157,7 +236,10 @@ export async function changeFunds(
     lockedBalance < 0 ||
     balance < lockedBalance
   ) {
-    fail(409, "Số dư khả dụng không đủ hoặc tiền khóa không khớp");
+    fail(
+      409,
+      "Số dư khả dụng không đủ hoặc tiền khóa không khớp"
+    );
   }
 
   wallet.balanceEncrypted = encryptValue(
@@ -192,38 +274,83 @@ export async function changeFunds(
 }
 
 export async function syncTopup(transactionId) {
-  const transaction = await WalletTransaction.findById(transactionId);
+  const transaction = await WalletTransaction.findById(
+    transactionId
+  );
 
   if (!transaction || transaction.transactionType !== "top_up") {
     fail(404, "Không tìm thấy giao dịch nạp");
   }
 
-  if (transaction.status === "success") return transaction;
+  // Không cộng lại giao dịch đã thành công hoặc đã đảo.
+  if (TOPUP_FINAL.includes(transaction.status)) {
+    return transaction;
+  }
 
-  const payment = await getCollectClient().paymentRequests.get(
-    transaction.orderCode
-  );
+  let payment;
 
-  if (Number(payment.orderCode) !== transaction.orderCode) {
-    throw new Error("Mã thanh toán trả về không khớp");
+  try {
+    payment = await getCollectClient().paymentRequests.get(
+      transaction.orderCode
+    );
+  } catch {
+    const message =
+      "Chưa tra cứu được kết quả nạp tiền từ payOS. " +
+      "Hệ thống sẽ thử lại.";
+
+    await WalletTransaction.updateOne(
+      {
+        _id: transactionId,
+        transactionType: "top_up",
+        status: { $in: TOPUP_OPEN },
+      },
+      {
+        $set: { lastSyncError: message },
+      }
+    );
+
+    fail(502, message);
+  }
+
+  if (
+    !payment ||
+    Number(payment.orderCode) !== transaction.orderCode ||
+    typeof payment.id !== "string" ||
+    !payment.id ||
+    (
+      transaction.paymentLinkId &&
+      transaction.paymentLinkId !== payment.id
+    )
+  ) {
+    return markTopupReview(
+      transactionId,
+      "PAYMENT_MISMATCH",
+      "Thông tin link thanh toán không khớp yêu cầu nạp tiền."
+    );
+  }
+
+  const amount = providerAmount(payment.amount);
+  const amountPaid = providerAmount(payment.amountPaid);
+
+  if (
+    amount !== transaction.amount ||
+    amountPaid === null
+  ) {
+    return markTopupReview(
+      transactionId,
+      "AMOUNT_MISMATCH",
+      "Thông tin số tiền không khớp. Giao dịch cần được đối soát."
+    );
   }
 
   if (payment.status === "PAID") {
-    if (
-      Number(payment.amount) !== transaction.amount ||
-      Number(payment.amountPaid) !== transaction.amount
-    ) {
-      await WalletTransaction.updateOne(
-        { _id: transactionId, status: { $ne: "success" } },
-        {
-          $set: {
-            status: "review",
-            providerState: "AMOUNT_MISMATCH",
-          },
-        }
+    if (amountPaid !== transaction.amount) {
+      return markTopupReview(
+        transactionId,
+        "AMOUNT_MISMATCH",
+        "Số tiền thực nhận khác số tiền yêu cầu. " +
+          "Giao dịch cần đối soát."
       );
-
-      return WalletTransaction.findById(transactionId);
     }
 
     await inTransaction(async (session) => {
@@ -231,13 +358,41 @@ export async function syncTopup(transactionId) {
         transactionId
       ).session(session);
 
-      if (current.status === "success") return;
+      if (!current || current.transactionType !== "top_up") {
+        fail(404, "Không tìm thấy giao dịch nạp");
+      }
+
+      // Chặn cộng lặp khi webhook và job cùng xử lý.
+      if (TOPUP_FINAL.includes(current.status)) {
+        return;
+      }
+
+      if (
+        current.orderCode !== Number(payment.orderCode) ||
+        current.amount !== amountPaid ||
+        (
+          current.paymentLinkId &&
+          current.paymentLinkId !== payment.id
+        )
+      ) {
+        fail(
+          409,
+          "Thông tin giao dịch đã thay đổi; chưa thể cộng tiền"
+        );
+      }
 
       const wallet = await Wallet.findById(current.walletId)
         .select(MONEY_SELECT)
         .session(session);
 
-      if (!wallet) throw new Error("Không tìm thấy Ví");
+      if (
+        !wallet ||
+        String(wallet.userId) !== String(current.userId)
+      ) {
+        throw new Error(
+          "Không tìm thấy Ví phù hợp với giao dịch"
+        );
+      }
 
       await changeFunds(
         wallet,
@@ -250,28 +405,105 @@ export async function syncTopup(transactionId) {
 
       current.status = "success";
       current.providerState = "PAID";
+      current.paymentLinkId = payment.id;
       current.completedAt = new Date();
+      current.lastSyncError = undefined;
 
       await current.save({ session });
     });
   } else if (
     ["CANCELLED", "EXPIRED", "FAILED"].includes(payment.status)
   ) {
+    // Link kết thúc nhưng có tiền thực nhận:
+    // giữ lại để đối soát, không bỏ qua khoản tiền này.
+    if (amountPaid > 0) {
+      return markTopupReview(
+        transactionId,
+        payment.status,
+        "Link thanh toán đã kết thúc nhưng có tiền thực nhận. " +
+          "Cần đối soát."
+      );
+    }
+
     await WalletTransaction.updateOne(
-      { _id: transactionId, status: { $ne: "success" } },
+      {
+        _id: transactionId,
+        transactionType: "top_up",
+        status: { $nin: TOPUP_FINAL },
+      },
       {
         $set: {
-          status: payment.status === "EXPIRED" ? "expired" : "failed",
+          status:
+            payment.status === "EXPIRED"
+              ? "expired"
+              : "failed",
           providerState: payment.status,
+          paymentLinkId: payment.id,
+          completedAt: new Date(),
+        },
+        $unset: {
+          lastSyncError: 1,
         },
       }
+    );
+  } else if (payment.status === "PENDING") {
+    if (amountPaid > 0) {
+      return markTopupReview(
+        transactionId,
+        "PARTIAL_PAYMENT",
+        "Đã ghi nhận tiền nhưng thanh toán chưa hoàn tất. " +
+          "Cần đối soát."
+      );
+    }
+
+    const hasPaymentDetails = Boolean(
+      transaction.qrCode && transaction.checkoutUrl
+    );
+
+    const update = {
+      $set: {
+        status: hasPaymentDetails ? "pending" : "review",
+        providerState: "PENDING",
+        paymentLinkId: payment.id,
+      },
+    };
+
+    if (hasPaymentDetails) {
+      update.$unset = {
+        lastSyncError: 1,
+      };
+    } else {
+      update.$set.lastSyncError =
+        "payOS đã có link thanh toán nhưng hệ thống " +
+        "chưa nhận đủ dữ liệu QR.";
+    }
+
+    // Không để kết quả PENDING cũ ghi đè trạng thái đã hoàn tất.
+    await WalletTransaction.updateOne(
+      {
+        _id: transactionId,
+        transactionType: "top_up",
+        status: { $in: TOPUP_OPEN },
+      },
+      update
+    );
+  } else {
+    return markTopupReview(
+      transactionId,
+      "UNKNOWN_PAYMENT_STATE",
+      "Chưa xác định được trạng thái thanh toán. Cần đối soát."
     );
   }
 
   return WalletTransaction.findById(transactionId);
 }
 
-async function finishWithdrawal(transactionId, succeeded, state, guard = {}) {
+async function finishWithdrawal(
+  transactionId,
+  succeeded,
+  state,
+  guard = {}
+) {
   await inTransaction(async (session) => {
     const current = await WalletTransaction.findOne({
       _id: transactionId,
@@ -280,19 +512,26 @@ async function finishWithdrawal(transactionId, succeeded, state, guard = {}) {
       ...guard,
     }).session(session);
 
-    if (!current || !WITHDRAW_ACTIVE.includes(current.status)) {
+    if (
+      !current ||
+      !WITHDRAW_ACTIVE.includes(current.status)
+    ) {
       return;
     }
 
     if (!current.fundsReserved) {
-      throw new Error("Giao dịch rút chưa có tiền khóa tương ứng");
+      throw new Error(
+        "Giao dịch rút chưa có tiền khóa tương ứng"
+      );
     }
 
     const wallet = await Wallet.findById(current.walletId)
       .select(MONEY_SELECT)
       .session(session);
 
-    if (!wallet) throw new Error("Không tìm thấy Ví");
+    if (!wallet) {
+      throw new Error("Không tìm thấy Ví");
+    }
 
     await changeFunds(
       wallet,
@@ -308,18 +547,16 @@ async function finishWithdrawal(transactionId, succeeded, state, guard = {}) {
     current.providerState = state;
     current.completedAt = new Date();
 
+    if (succeeded) {
+      current.lastSyncError = undefined;
+    }
+
     await current.save({ session });
   });
 }
+
 export async function expireQueuedWithdrawals() {
-  const guard = {
-    transactionType: "withdraw",
-    status: "queued",
-    fundsReserved: true,
-    submittedAt: null,
-    payoutId: null,
-    withdrawDeadlineAt: { $lte: new Date() },
-  };
+  const guard = expiredQueueFilter();
 
   const items = await WalletTransaction.find(guard)
     .select("_id")
@@ -342,12 +579,14 @@ export async function expireQueuedWithdrawals() {
     }
   }
 }
+
 export async function syncWithdrawal(
   transactionId,
   { throwOnError = false } = {}
 ) {
-  let transaction = await WalletTransaction.findById(transactionId)
-    .select("+bankEncrypted");
+  let transaction = await WalletTransaction.findById(
+    transactionId
+  ).select("+bankEncrypted");
 
   if (
     !transaction ||
@@ -363,7 +602,10 @@ export async function syncWithdrawal(
   try {
     // Phục hồi nếu đã ghi nhận tạo lệnh bị từ chối,
     // nhưng lần trước chưa hoàn tất giải phóng tiền.
-    if (transaction.createRejected && !transaction.payoutId) {
+    if (
+      transaction.createRejected &&
+      !transaction.payoutId
+    ) {
       await finishWithdrawal(
         transactionId,
         false,
@@ -380,8 +622,7 @@ export async function syncWithdrawal(
     let payout;
 
     if (transaction.status === "queued") {
-      // Yêu cầu cũ còn trong hàng chờ, chưa gửi:
-      // bổ sung hạn một lần khi bắt đầu xử lý.
+      // Bổ sung hạn một lần cho yêu cầu cũ chưa từng gửi.
       if (!transaction.withdrawDeadlineAt) {
         await WalletTransaction.updateOne(
           {
@@ -393,14 +634,15 @@ export async function syncWithdrawal(
           },
           {
             $set: {
-              withdrawDeadlineAt: new Date(Date.now() + 60000),
+              withdrawDeadlineAt: new Date(
+                Date.now() + 60000
+              ),
             },
           }
         );
       }
 
       // Chỉ một tiến trình được gửi lệnh.
-      // Không nhận xử lý yêu cầu đã hết hạn.
       transaction = await WalletTransaction.findOneAndUpdate(
         {
           _id: transactionId,
@@ -420,6 +662,15 @@ export async function syncWithdrawal(
       ).select("+bankEncrypted");
 
       if (!transaction) {
+        // Có thể yêu cầu đã quá hạn hoặc được tiến trình khác nhận.
+        // Guard chỉ cho giải phóng yêu cầu chưa từng gửi sang payOS.
+        await finishWithdrawal(
+          transactionId,
+          false,
+          "QUEUE_TIMEOUT",
+          expiredQueueFilter()
+        );
+
         return WalletTransaction.findById(transactionId);
       }
 
@@ -431,13 +682,15 @@ export async function syncWithdrawal(
       );
 
       callingCreate = true;
+
       payout = await createPayout(transaction, bank);
     } else {
-      // Tránh đối soát khi yêu cầu tạo lệnh còn đang chạy.
+      // Tránh đối soát khi request tạo lệnh còn đang chạy.
       if (
         transaction.status === "submitting" &&
         Date.now() -
-        new Date(transaction.submittedAt).getTime() < 45000
+          new Date(transaction.submittedAt).getTime() <
+          45000
       ) {
         return transaction;
       }
@@ -450,7 +703,8 @@ export async function syncWithdrawal(
         new Error("Không tìm thấy payout"),
         {
           publicMessage:
-            "Chưa tìm thấy lệnh chi để đối soát. Chưa thể xác nhận hoàn tiền.",
+            "Chưa tìm thấy lệnh chi để đối soát. " +
+            "Chưa thể xác nhận hoàn tiền.",
         }
       );
     }
@@ -460,14 +714,21 @@ export async function syncWithdrawal(
       `${transaction._id}:bank`
     );
 
-    const entries = Object.values(payout.transactions || {});
-    const entry = entries.length === 1 ? entries[0] : null;
+    const entries = Object.values(
+      payout.transactions || {}
+    );
+
+    const entry = entries.length === 1
+      ? entries[0]
+      : null;
 
     if (
+      typeof payout.id !== "string" ||
+      !payout.id ||
       payout.referenceId !== transaction.code ||
       !entry ||
       entry.referenceId !== transaction.code ||
-      Number(entry.amount) !== transaction.amount ||
+      providerAmount(entry.amount) !== transaction.amount ||
       String(entry.toBin) !== bank.bankBin ||
       String(entry.toAccountNumber) !== bank.accountNumber
     ) {
@@ -502,7 +763,9 @@ export async function syncWithdrawal(
         true,
         entry.state
       );
-    } else if (["FAILED", "CANCELLED"].includes(entry.state)) {
+    } else if (
+      ["FAILED", "CANCELLED"].includes(entry.state)
+    ) {
       await finishWithdrawal(
         transactionId,
         false,
@@ -524,7 +787,8 @@ export async function syncWithdrawal(
   } catch (error) {
     const message =
       error.publicMessage ||
-      "Chưa xác minh được kết quả rút tiền. Giao dịch đang chờ đối soát.";
+      "Chưa xác minh được kết quả rút tiền. " +
+        "Giao dịch đang chờ đối soát.";
 
     console.warn("[wallet-withdraw]", {
       transactionId: String(transactionId),
@@ -535,10 +799,13 @@ export async function syncWithdrawal(
 
     const definitelyNotCreated =
       claimedHere &&
-      (!callingCreate || error.payoutNotCreated === true);
+      (
+        !callingCreate ||
+        error.payoutNotCreated === true
+      );
 
     if (definitelyNotCreated) {
-      // Lưu bằng chứng trước khi giải phóng tiền.
+      // Ghi nhận bằng chứng trước khi giải phóng tiền.
       await WalletTransaction.updateOne(
         {
           _id: transactionId,
@@ -568,11 +835,14 @@ export async function syncWithdrawal(
       return WalletTransaction.findById(transactionId);
     }
 
-    // Timeout hoặc lỗi tra cứu chưa chứng minh lệnh thất bại.
+    // Timeout/lỗi tra cứu không chứng minh lệnh chi thất bại.
+    // Giữ queued nếu chưa gửi để lần sau còn xử lý hoặc hết hạn.
     await WalletTransaction.updateOne(
       {
         _id: transactionId,
-        status: { $in: WITHDRAW_ACTIVE },
+        status: {
+          $in: ["submitting", "processing", "review"],
+        },
       },
       {
         $set: {
@@ -582,7 +852,9 @@ export async function syncWithdrawal(
       }
     );
 
-    const latest = await WalletTransaction.findById(transactionId);
+    const latest = await WalletTransaction.findById(
+      transactionId
+    );
 
     if (
       latest &&

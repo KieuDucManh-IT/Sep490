@@ -87,6 +87,7 @@ const walletTransactionSchema = new mongoose.Schema(
     paymentLinkId: String,
     checkoutUrl: String,
     qrCode: String,
+    topupExpiresAt: Date,
 
     payoutId: String,
     submittedAt: Date,

@@ -1,7 +1,9 @@
 import { validateInput } from '../../generic/inputValidation.js';
 import mongoose from 'mongoose';
 
-const fields = ['productCode', 'name', 'description', 'tag', 'trackingType', 'brand', 'material', 'rating', 'reviewsCount', 'rentalPricePerDay', 'salePrice', 'deposit', 'discount', 'aiTryOn', 'gender', 'status', 'isDeleted'];
+const fields = ['productCode', 'name', 'description', 'tag', 'trackingType', 'brand', 'material', 
+  'rating', 'reviewsCount', 'rentalPricePerDay', 'salePrice', 'deposit', 'discount', 'aiTryOn', 
+  'gender', 'status', 'isDeleted'];
 const rules = {
   productCode: { label: 'Mã sản phẩm', type: 'string', required: true, maxLength: 80 },
   name: { label: 'Tên sản phẩm', type: 'string', required: true, maxLength: 200 },

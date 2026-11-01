@@ -278,7 +278,8 @@
 }
 
 /* Input Field Group */
-.input-group {
+.auth-layout .input-group,
+.auth-form .input-group {
   display: flex;
   flex-direction: column;
   gap: 6px;

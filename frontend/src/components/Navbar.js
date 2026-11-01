@@ -85,17 +85,9 @@ export default function Navbar() {
           </Link>
 
           {/* Chính Sách */}
-          <div className="nav-dropdown-item">
-            <Link to="/policy" className={`navbar-link ${isActive("/policy")}`}>
-              Chính Sách <i className="fa-solid fa-chevron-down nav-arrow"></i>
-            </Link>
-            <div className="nav-dropdown-menu">
-              <Link to="/policy" className="nav-sublink">Chính sách thuê đồ</Link>
-              <Link to="/policy" className="nav-sublink">Thanh toán Escrow</Link>
-              <Link to="/policy" className="nav-sublink">Đổi trả & Hoàn cọc</Link>
-              <Link to="/policy" className="nav-sublink">Bảo mật thông tin</Link>
-            </div>
-          </div>
+          <Link to="/policy" className={`navbar-link ${isActive("/policy")}`}>
+            Chính Sách
+          </Link>
 
           {/* Tủ Đồ Cá Nhân */}
           <div className="nav-dropdown-item">

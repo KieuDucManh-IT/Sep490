@@ -24,6 +24,7 @@ import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
 import WardrobePage from './pages/customer/WardrobePage';
+import WalletPage from './pages/customer/WalletPage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -95,6 +96,7 @@ function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Cửa Hàng)

@@ -98,7 +98,7 @@ async function reserveOtpAttempt(model, filter, context, otp) {
       otpAttempts: { $lt: 5 },
     },
     { $inc: { otpAttempts: 1 } },
-    { new: true }
+    { returnDocument: "after" }
   ).select("+otpHash");
 
   if (!document) {
@@ -223,7 +223,7 @@ export async function sendSetupOtp(req, res) {
         nextOtpAt: new Date(Date.now() + 60000),
       },
     },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!updated) {
@@ -679,7 +679,7 @@ export async function syncTransaction(req, res) {
         nextUserSyncAt: new Date(Date.now() + 10000),
       },
     },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!claimed) {

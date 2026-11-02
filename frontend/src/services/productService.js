@@ -30,6 +30,16 @@ export const productService = {
       throw error;
     }
   },
+
+  updatePricing: async (id, pricingData) => {
+    try {
+      const response = await apiClient.patch(`/products/${id}/pricing`, pricingData);
+      return response;
+    } catch (error) {
+      console.error('Lỗi khi gọi API cập nhật bảng giá /api/products/:id/pricing:', error);
+      throw error;
+    }
+  },
 };
 
 export default productService;

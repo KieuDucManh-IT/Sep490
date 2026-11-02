@@ -160,7 +160,7 @@ export const updatePolicyByKey = async (req, res) => {
     const updated = await BusinessPolicy.findOneAndUpdate(
       filter,
       { $set: updateFields },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updated) {

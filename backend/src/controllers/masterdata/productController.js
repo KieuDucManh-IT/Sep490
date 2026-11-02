@@ -251,27 +251,15 @@ export const getProducts = async (req, res, next) => {
       // Giá thuê thực tế
       let rentalPricePerDay = p.rentalPricePerDay || 0;
       let rentalPricePer3Days = p.rentalPricePer3Days || 0;
-      if (!rentalPricePerDay && pVariants.length > 0) {
-        const variantPrices = pVariants.map((v) => v.rentalPricePerDay).filter(Boolean);
-        if (variantPrices.length > 0) rentalPricePerDay = Math.min(...variantPrices);
-      }
       if (!rentalPricePer3Days && rentalPricePerDay) {
         rentalPricePer3Days = rentalPricePerDay * 3;
       }
 
       // Giá bán thực tế
       let salePrice = p.salePrice || 0;
-      if (!salePrice && pVariants.length > 0) {
-        const variantSales = pVariants.map((v) => v.salePrice).filter(Boolean);
-        if (variantSales.length > 0) salePrice = Math.min(...variantSales);
-      }
 
       // Tiền cọc thực tế
       let deposit = p.deposit || 0;
-      if (!deposit && pVariants.length > 0) {
-        const variantDeposits = pVariants.map((v) => v.depositAmount).filter(Boolean);
-        if (variantDeposits.length > 0) deposit = Math.min(...variantDeposits);
-      }
 
       // Hình ảnh thực tế từ database
       const imageRecords = imagesByProduct[String(p._id)] || [];

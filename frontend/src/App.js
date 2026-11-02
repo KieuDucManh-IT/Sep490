@@ -42,6 +42,7 @@ import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
+import WarehouseStockControlPage from './pages/warehouse/WarehouseStockControlPage';
 
 // 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
@@ -189,6 +190,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/warehousemanager/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="adjustments" /></ProtectedRoute>} />
         <Route
           path="/warehousemanager/:resource"
           element={
@@ -233,6 +236,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/inventory" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />

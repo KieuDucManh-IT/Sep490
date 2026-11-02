@@ -8,6 +8,7 @@ import productRoutes from './productRoutes.js';
 
 import inboundReceiptRoutes from './inboundReceiptRoutes.js';
 import warehouseReportRoutes from './warehouseReportRoutes.js';
+import warehouseStockControlRoutes from './warehouseStockControlRoutes.js';
 const router = express.Router();
 
 router.get('/health', (req, res) => {
@@ -28,4 +29,5 @@ router.use('/warehouse/masterdata', masterdataRoutes);
 router.use('/warehouse/locations', warehouseLocationRoutes);
 router.use('/warehouse/inbound-receipts', inboundReceiptRoutes);
 router.use('/warehouse/reports', warehouseReportRoutes);
+router.use('/warehouse', warehouseStockControlRoutes);
 export default router;

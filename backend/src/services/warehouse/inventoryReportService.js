@@ -53,7 +53,7 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
 
   const [balances, individualItems] = await Promise.all([
     InventoryBalance.find({ locationId: { $in: locationIds } }).lean(),
-    InventoryItem.find({ locationId: { $in: locationIds }, status: { $nin: ['disposed', 'renting'] } }).lean(),
+    InventoryItem.find({ locationId: { $in: locationIds }, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).lean(),
   ]);
   const variantIds = [...new Set([...balances, ...individualItems].map((row) => String(row.variantId)))];
   const variants = await ProductVariant.find({ _id: { $in: variantIds } })
@@ -212,7 +212,7 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     if (!variant || variant.productId?.trackingType !== 'individual') throw invalid('Mặt hàng này không quản lý theo serial.');
     variantIds = [variant._id];
   }
-  const query = { locationId, variantId: { $in: variantIds }, status: { $nin: ['disposed', 'renting'] } };
+  const query = { locationId, variantId: { $in: variantIds }, status: { $nin: ['disposed', 'renting', 'in_transit'] } };
   if (storageId === 'none' || !storageId) query.storageId = null;
   else {
     const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId').lean();

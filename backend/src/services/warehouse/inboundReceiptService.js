@@ -42,7 +42,7 @@ const getPhysicalCapacity = async (locationId) => {
     { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: '$quantityOnHand' } } },
   ]);
   const itemRows = await InventoryItem.aggregate([
-    { $match: { locationId: new mongoose.Types.ObjectId(locationId), status: { $nin: ['disposed', 'renting'] } } },
+    { $match: { locationId: new mongoose.Types.ObjectId(locationId), status: { $nin: ['disposed', 'renting', 'in_transit'] } } },
     { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: 1 } } },
   ]);
   const variantIds = [...new Set([...balanceRows, ...itemRows].map((row) => String(row._id.variantId)))];

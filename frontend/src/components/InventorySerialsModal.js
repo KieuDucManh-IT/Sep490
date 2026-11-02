@@ -10,7 +10,9 @@ export default function InventorySerialsModal({ item, onClose }) {
 
   useEffect(() => {
     let active = true;
-    inventoryReportService.getItemDetails({ locationId: item.locationId, storageId: item.storageId, variantId: item.variantId, productId: item.productId, itemLevel: item.itemLevel })
+    (item.branchId
+      ? inventoryReportService.getBranchItemDetails({ branchId: item.branchId, storageId: item.storageId, variantId: item.variantId, productId: item.productId, itemLevel: item.itemLevel })
+      : inventoryReportService.getItemDetails({ locationId: item.locationId, storageId: item.storageId, variantId: item.variantId, productId: item.productId, itemLevel: item.itemLevel }))
       .then((rows) => { if (active) setSerials(rows); })
       .catch((err) => { if (active) setError(err.message); })
       .finally(() => { if (active) setLoading(false); });

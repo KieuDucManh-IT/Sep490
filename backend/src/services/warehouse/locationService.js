@@ -2,6 +2,7 @@ import { InventoryLocation } from '../../models/warehouse/location/InventoryLoca
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { validateInventoryLocation, validateStorageLocation } from '../../validations/warehouse/locationValidation.js';
 import User from '../../models/system/User.js';
+import { Shop } from '../../models/shop/Shop.js';
 
 const capacityConflict = (message) => Object.assign(new Error(message), { statusCode: 409 });
 const capacityOf = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
@@ -11,10 +12,12 @@ const childCapacityTotal = async (filter) => {
 };
 
 export const inventoryLocationService = {
-  list: () => InventoryLocation.find().sort({ createdAt: -1 }).populate('managerId', 'FullName Email Role'),
+  list: () => InventoryLocation.find().sort({ createdAt: -1 }).populate('managerId', 'FullName Email Role').populate('shopId', 'name status isDeleted'),
   create: async (payload) => {
     const data = validateInventoryLocation(payload);
     await validateWarehouseManager(data.managerId);
+    await validateShopLink(data);
+    if (data.type === 'warehouse') data.shopId = null;
     return InventoryLocation.create(data);
   },
   update: async (id, payload) => {
@@ -22,6 +25,9 @@ export const inventoryLocationService = {
     if (!location) return null;
     const changes = validateInventoryLocation(payload, location.toObject());
     await validateWarehouseManager(Object.hasOwn(changes, 'managerId') ? changes.managerId : location.managerId);
+    const candidate = { ...location.toObject(), ...changes };
+    await validateShopLink(candidate, location._id);
+    if (candidate.type === 'warehouse') changes.shopId = null;
     const childrenCapacity = await childCapacityTotal({ locationId: location._id, parentStorageId: null });
     const nextCapacity = Object.hasOwn(changes, 'maxCapacity') ? changes.maxCapacity : location.maxCapacity;
     if (childrenCapacity > capacityOf(nextCapacity)) {
@@ -34,6 +40,18 @@ export const inventoryLocationService = {
     if (await StorageLocation.exists({ locationId: id })) throw capacityConflict('Không thể xóa kho/cửa hàng khi vẫn còn vị trí lưu trữ bên trong.');
     return InventoryLocation.findByIdAndDelete(id);
   },
+};
+
+const validateShopLink = async (candidate, currentId = null) => {
+  if (candidate.type === 'warehouse') return;
+  if (!candidate.shopId) throw Object.assign(new Error('Kho cửa hàng phải được liên kết với một chi nhánh.'), { statusCode: 400 });
+  const shop = await Shop.findOne({ _id: candidate.shopId, status: 'ACTIVE', isDeleted: { $ne: true } }).select('_id');
+  if (!shop) throw Object.assign(new Error('Chi nhánh liên kết không tồn tại hoặc không hoạt động.'), { statusCode: 400 });
+  if ((candidate.status || 'active') === 'active') {
+    const duplicateFilter = { shopId: shop._id, type: 'store', status: 'active' };
+    if (currentId) duplicateFilter._id = { $ne: currentId };
+    if (await InventoryLocation.exists(duplicateFilter)) throw Object.assign(new Error('Chi nhánh này đã có một kho cửa hàng đang hoạt động.'), { statusCode: 409 });
+  }
 };
 
 const validateWarehouseManager = async (managerId) => {

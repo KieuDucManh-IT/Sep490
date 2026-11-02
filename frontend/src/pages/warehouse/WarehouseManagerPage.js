@@ -12,16 +12,17 @@ import productVariantService from '../../services/masterdata/productVariantServi
 import supplierService from '../../services/masterdata/supplierService';
 import inventoryLocationService from '../../services/warehouse/inventoryLocationService';
 import warehouseManagerService from '../../services/warehouse/warehouseManagerService';
+import shopBranchService from '../../services/warehouse/shopBranchService';
 import StorageLocationPage from './StorageLocationPage';
 import '../../styles/WarehouseManager.css';
 import '../../styles/ShopDashboard.css';
 
-const services = { categories: categoryService, products: productService, variants: productVariantService, suppliers: supplierService, inventoryLocations: inventoryLocationService, warehouseManagers: warehouseManagerService };
+const services = { categories: categoryService, products: productService, variants: productVariantService, suppliers: supplierService, inventoryLocations: inventoryLocationService, warehouseManagers: warehouseManagerService, shops: shopBranchService };
 const configs = {
   'inventory-locations': { service: 'inventoryLocations', title: 'Kho / cửa hàng', searchFields: ['code', 'name', 'address'], filters: [
     ['type', 'Loại vị trí', ['warehouse:Kho', 'store:Cửa hàng']], ['status', 'Trạng thái', ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
   ], fields: [
-    ['code', 'Mã vị trí', 'text', true], ['name', 'Tên vị trí', 'text', true], ['type', 'Loại', 'select', true, ['warehouse:Kho', 'store:Cửa hàng']], ['address', 'Địa chỉ', 'text'], ['managerId', 'Quản lý kho', 'relation', false, 'warehouseManagers', 'FullName'], ['maxCapacity', 'Sức chứa tối đa (cái)', 'number'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
+    ['code', 'Mã vị trí', 'text', true], ['name', 'Tên vị trí', 'text', true], ['type', 'Loại', 'select', true, ['warehouse:Kho', 'store:Cửa hàng']], ['address', 'Địa chỉ', 'text'], ['shopId', 'Chi nhánh liên kết', 'relation', false, 'shops', 'name'], ['managerId', 'Quản lý kho', 'relation', false, 'warehouseManagers', 'FullName'], ['maxCapacity', 'Sức chứa tối đa (cái)', 'number'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
   ] },
   categories: { service: 'categories', title: 'Loại sản phẩm', fields: [
     ['parentCategoryId', 'Loại cha', 'relation', false, 'categories', 'name'], ['name', 'Tên loại', 'text', true], ['description', 'Mô tả', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],

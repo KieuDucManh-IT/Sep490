@@ -25,11 +25,12 @@ export default function WarehouseCrudModal({ config, mode, record, choices, onCl
     setSaving(true); setError('');
     const payload = {};
     config.fields.forEach(([key, , type, required]) => {
+      const fieldRequired = required || (config.service === 'inventoryLocations' && key === 'shopId' && form.type === 'store');
       if (config.multipleFields?.includes(key)) {
         if (form[key]?.length) payload[key] = form[key];
       } else if (form[key] !== '') payload[key] = type === 'number' ? Number(form[key]) : key === 'aiTryOn' ? form[key] === 'true' : form[key];
-      else if (!required && type === 'relation') payload[key] = null;
-      else if (!required && type === 'text') payload[key] = '';
+      else if (!fieldRequired && type === 'relation') payload[key] = null;
+      else if (!fieldRequired && type === 'text') payload[key] = '';
     });
     if (isProduct) payload.images = images.map(({ _id, imageUrl, imageType, isPrimary, displayOrder, variantId }) => ({ _id, imageUrl, imageType, isPrimary: Boolean(isPrimary), displayOrder: Number(displayOrder || 0), variantId: variantId || null }));
     try { await onSave(payload); onClose(); }
@@ -44,13 +45,14 @@ export default function WarehouseCrudModal({ config, mode, record, choices, onCl
       {readOnly ? <><div className="wm-detail-grid">{config.fields.map(([key, label]) => <div key={key}><small>{label}</small><strong>{key === 'aiTryOn' ? (record?.[key] ? 'Có' : 'Không') : Array.isArray(record?.[key]) ? record[key].map(display).join(', ') : display(record?.[key]) || '—'}</strong></div>)}</div>{isProduct && <ProductImagesEditor readOnly images={images} />}</> : <form className="wm-form" onSubmit={submit}>
         {config.fields.map(([key, label, type, required, optionOrResource, displayKey]) => {
           const multiple = config.multipleFields?.includes(key);
+          const fieldRequired = required || (config.service === 'inventoryLocations' && key === 'shopId' && form.type === 'store');
           const selectItems = (type === 'relation' ? choices[optionOrResource] || [] : (optionOrResource || []).map((option) => { const [value, text] = option.split(':'); return { _id: value, [displayKey || 'name']: text }; }))
             .filter((item) => key !== 'parentCategoryId' || item._id !== record?._id)
             .map((item) => ({ value: item._id, label: item[displayKey || 'name'] || item.code || item._id }));
           if (multiple) return <div className="wm-form-field" key={key}><span>{label}</span><MultiSelect options={selectItems} value={form[key]} onChange={(value) => setForm({ ...form, [key]: value })} placeholder="Select product categories..." /></div>;
-          return <label key={key}>{label}
-          {type === 'select' || type === 'relation' ? <select required={required} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })}>
-            <option value="">{required ? 'Select...' : 'Optional'}</option>
+          return <label key={key}>{label}{config.service === 'inventoryLocations' && key === 'shopId' && form.type !== 'warehouse' ? ' (bắt buộc với cửa hàng)' : ''}
+          {type === 'select' || type === 'relation' ? <select required={fieldRequired} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })}>
+            <option value="">{fieldRequired ? 'Chọn...' : 'Không chọn'}</option>
             {selectItems.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select> : <input required={required} type={type} min={type === 'number' ? '0' : undefined} max={key === 'rating' ? '5' : key === 'discount' ? '100' : undefined} step={type === 'number' ? 'any' : undefined} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} />}
         </label>})}

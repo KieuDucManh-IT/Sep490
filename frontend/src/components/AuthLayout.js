@@ -1,17 +1,14 @@
-import React from 'react';
-import '../styles/AuthLayout.css';
+import React from "react";
+import "../styles/AuthLayout.css";
 
-/**
- * AuthLayout — Shared layout wrapper for all authentication pages.
- * Left panel: Brand imagery with gradient overlay, logo, and quote.
- * Right panel: Form content (children).
- */
+const BRAND_IMAGE =
+  `${process.env.PUBLIC_URL || ""}/images/auth/auth-1.jpg`;
+
 const AuthLayout = ({
   children,
-  brandImageSrc,
-  badgeText = 'ATELIER PRIVÉ PROTECTION',
+  badgeText = "ATELIER PRIVÉ PROTECTION",
   quoteText = '"Nơi nghệ thuật thượng lưu giao thoa cùng công nghệ — định nghĩa lại trải nghiệm thời trang đích thực."',
-  logoSubtitle = 'HAUTE COUTURE & ARCHIVE',
+  logoSubtitle = "HAUTE COUTURE & ARCHIVE",
   footerText,
   footerSubText,
   showTopSpacer = false,
@@ -19,43 +16,55 @@ const AuthLayout = ({
 }) => {
   return (
     <div className="auth-layout">
-      {/* === Left Brand Panel === */}
       <section className="auth-brand" aria-label="Vestora Brand">
-        {/* Background Image */}
-        {brandImageSrc && (
-          <img
-            className="auth-brand__image"
-            src={brandImageSrc}
-            alt="Vestora haute couture editorial"
-            loading="eager"
-          />
-        )}
+        <img
+          className="auth-brand__image"
+          src={BRAND_IMAGE}
+          alt="Thời trang Vestora"
+          loading="eager"
+        />
 
-        {/* Gradient Overlay */}
-        <div className="auth-brand__overlay" aria-hidden="true" />
+        <div
+          className="auth-brand__overlay"
+          aria-hidden="true"
+        />
 
-        {/* Logo */}
-        <a href="/" className="auth-brand__logo" aria-label="Trang chủ Vestora">
-          <span className="auth-brand__logo-name">VESTORA</span>
-          <span className="auth-brand__logo-tagline">{logoSubtitle}</span>
+        <a
+          href="/"
+          className="auth-brand__logo"
+          aria-label="Trang chủ Vestora"
+        >
+          <span className="auth-brand__logo-name">
+            VESTORA
+          </span>
+
+          <span className="auth-brand__logo-tagline">
+            {logoSubtitle}
+          </span>
         </a>
 
-        {/* Bottom Quote Area */}
         <div className="auth-brand__bottom">
-          {/* Badge Pill */}
           <div className="auth-brand__badge">
-            <span className="auth-brand__badge-dot" aria-hidden="true" />
-            <span className="auth-brand__badge-text">{badgeText}</span>
+            <span
+              className="auth-brand__badge-dot"
+              aria-hidden="true"
+            />
+
+            <span className="auth-brand__badge-text">
+              {badgeText}
+            </span>
           </div>
 
-          {/* Blockquote */}
-          <blockquote className="auth-brand__quote">{quoteText}</blockquote>
+          <blockquote className="auth-brand__quote">
+            {quoteText}
+          </blockquote>
         </div>
       </section>
 
-      {/* === Right Form Panel === */}
-      <section className="auth-form-panel" aria-label="Authentication Form">
-        {/* Top Spacer */}
+      <section
+        className="auth-form-panel"
+        aria-label="Authentication Form"
+      >
         {showTopSpacer && (
           <div className="auth-form-panel__top-spacer">
             {topSpacerContent || (
@@ -66,14 +75,25 @@ const AuthLayout = ({
           </div>
         )}
 
-        {/* Main Form Wrapper */}
-        <div className="auth-form-wrapper">{children}</div>
+        <div className="auth-form-wrapper">
+          {children}
+        </div>
 
-        {/* Footer */}
         {footerText && (
-          <footer className={`auth-footer ${footerSubText ? 'auth-footer--bordered' : ''}`}>
-            <p className="auth-footer__text">{footerText}</p>
-            {footerSubText && <p className="auth-footer__sub">{footerSubText}</p>}
+          <footer
+            className={`auth-footer ${
+              footerSubText ? "auth-footer--bordered" : ""
+            }`}
+          >
+            <p className="auth-footer__text">
+              {footerText}
+            </p>
+
+            {footerSubText && (
+              <p className="auth-footer__sub">
+                {footerSubText}
+              </p>
+            )}
           </footer>
         )}
       </section>

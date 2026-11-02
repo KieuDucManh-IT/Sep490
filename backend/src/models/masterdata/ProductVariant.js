@@ -7,9 +7,6 @@ const productVariantSchema = new mongoose.Schema({
   size: { type: String, trim: true },
   color: { type: String, trim: true },
   attributes: { type: mongoose.Schema.Types.Mixed, default: {} },
-  salePrice: { type: Number, min: 0 },
-  rentalPricePerDay: { type: Number, min: 0 },
-  depositAmount: { type: Number, min: 0, default: 0 },
   status: { type: String, default: 'active', enum: ['active', 'inactive'] },
 }, { timestamps: true });
 

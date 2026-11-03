@@ -3,11 +3,14 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
+import chatApi from '../../services/chatApi';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/ProductDetail.css';
 
 export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // State Management
   const [product, setProduct] = useState(null);
@@ -299,10 +302,36 @@ export default function ProductDetailPage() {
     navigate('/cart');
   };
 
-  // Handle Chat with Shop (Brand Manager - dự kiến phát triển sau)
-  const handleChatWithShop = () => {
-    const shopName = product?.shopId?.name || product?.brand || 'Shop';
-    showToast(`Tính năng nhắn tin trực tiếp với ${shopName} đang được phát triển!`);
+  // Handle Chat with Shop (Brand Manager)
+  const handleChatWithShop = async () => {
+    if (!user) {
+      showToast('Vui lòng đăng nhập để nhắn tin tư vấn với Shop!', 'info');
+      navigate(`/login?returnUrl=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+
+    try {
+      showToast('Đang kết nối với Shop...', 'info');
+      const targetShopId = product?.shopId?._id || product?.shopId;
+      const res = await chatApi.getOrCreateConversation({
+        productId: product?._id,
+        shopId: targetShopId,
+      });
+
+      if (res?.conversation?._id) {
+        navigate(`/chat/${res.conversation._id}`);
+      } else {
+        showToast('Không thể tạo cuộc trò chuyện với Shop. Vui lòng thử lại sau!', 'error');
+      }
+    } catch (err) {
+      console.error('Lỗi mở chat tư vấn:', err);
+      if (err.response?.status === 401 || err.status === 401) {
+        showToast('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại!', 'error');
+        navigate(`/login?returnUrl=${encodeURIComponent(window.location.pathname)}`);
+        return;
+      }
+      showToast(err.message || 'Không thể kết nối tư vấn với Shop', 'error');
+    }
   };
 
   // AI Size Calculation

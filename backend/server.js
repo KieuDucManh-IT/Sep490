@@ -13,6 +13,9 @@ import userRoutes from "./src/routes/userRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
+import conversationRoutes from "./src/routes/conversationRoutes.js";
+import { initSocket } from "./src/socket/index.js";
+import http from "http";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
 import walletRoutes, {
@@ -90,6 +93,7 @@ app.use("/api/admin/shops", shopRoutes);
 app.use("/api/ops/shops", shopRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/conversations", conversationRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api", apiRoutes);
 
@@ -144,7 +148,10 @@ async function startServer() {
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);
 
-    app.listen(PORT, () => {
+    const httpServer = http.createServer(app);
+    initSocket(httpServer, allowedOrigins);
+
+    httpServer.listen(PORT, () => {
       console.log(`Backend đang chạy tại http://localhost:${PORT}`);
     });
   } catch (error) {

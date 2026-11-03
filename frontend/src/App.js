@@ -27,6 +27,8 @@ import WardrobePage from './pages/customer/WardrobePage';
 import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
+import ChatPage from './pages/customer/ChatPage';
+import BranchChatPage from './pages/branch/BranchChatPage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -106,6 +108,8 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+        <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Cửa Hàng)
@@ -115,6 +119,22 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <BranchDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/chat"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER']}>
+              <BranchChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/chat/:conversationId"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER']}>
+              <BranchChatPage />
             </ProtectedRoute>
           }
         />

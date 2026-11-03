@@ -144,6 +144,18 @@ export default function Navbar() {
             <i className="fa-regular fa-bell"></i>
           </Link>
 
+          {/* Consultation Chat Icon */}
+          {user && (
+            <Link
+              to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
+              className={`navbar-icon-btn ${isActive('/chat') || isActive('/branch/chat') ? 'active' : ''}`}
+              title="Tin nhắn tư vấn"
+              aria-label="Tin nhắn tư vấn"
+            >
+              <i className="fa-regular fa-comment-dots"></i>
+            </Link>
+          )}
+
           {/* Cart Icon with badge 0 (Đặt trước tên customer) */}
           <Link to="/cart" className={`navbar-icon-btn navbar-cart-btn ${isActive('/cart')}`} title="Giỏ hàng" aria-label="Giỏ hàng">
             <i className="fa-solid fa-bag-shopping"></i>
@@ -197,6 +209,13 @@ export default function Navbar() {
                     onClick={() => setDropdownOpen(false)}
                   >
                     <i className="fa-solid fa-bag-shopping menu-icon"></i> Giỏ hàng & Đơn thuê
+                  </Link>
+                  <Link
+                    to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
+                    className="menu-item"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <i className="fa-regular fa-comment-dots menu-icon"></i> Tin nhắn tư vấn
                   </Link>
                   <Link
                     to="/favorites"

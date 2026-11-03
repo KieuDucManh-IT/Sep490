@@ -11,6 +11,7 @@ import {
   Boxes,
   PackageCheck,
   Star,
+  MessageSquareText,
   Compass,
   LogOut,
   ChevronLeft,
@@ -212,6 +213,12 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
         id: 'customer',
         title: 'KHÁCH HÀNG & ĐÁNH GIÁ',
         items: [
+          {
+            path: '/branch/chat',
+            label: 'Tư Vấn Khách Hàng',
+            icon: MessageSquareText,
+            desc: 'Nhắn tin tư vấn trực tiếp theo thời gian thực',
+          },
           {
             path: '/branch/reviews',
             label: 'Đánh Giá Khách Hàng',

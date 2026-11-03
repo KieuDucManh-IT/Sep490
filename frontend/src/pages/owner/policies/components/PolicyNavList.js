@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import { Plus, Check } from 'lucide-react';
+import { Plus, Check, Layers } from 'lucide-react';
 
 /**
  * PolicyNavList - Danh sách chuyển đổi tab chính sách kinh doanh động
@@ -51,7 +51,10 @@ function PolicyNavList({
   return (
     <nav className="policy-nav-card" aria-label="Điều hướng danh mục chính sách chuỗi">
       <div className="policy-nav-header">
-        <span>Danh Mục Chính Sách</span>
+        <span className="d-flex align-items-center gap-2">
+          <Layers size={13} className="text-gold" aria-hidden="true" />
+          <span>Danh Mục Chính Sách</span>
+        </span>
         <span className="policy-nav-count-badge">
           {list.length} MỤC
         </span>
@@ -125,7 +128,7 @@ function PolicyNavList({
         title="Thêm một chính sách kinh doanh mới cho chuỗi"
       >
         <Plus size={16} />
-        <span>+ Thêm Chính Sách Mới</span>
+        <span>Thêm Chính Sách Mới</span>
       </button>
     </nav>
   );

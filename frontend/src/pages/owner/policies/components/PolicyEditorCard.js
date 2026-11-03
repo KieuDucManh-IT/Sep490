@@ -1,10 +1,7 @@
 import React, { memo, useState } from 'react';
 import { Form, Spinner } from 'react-bootstrap';
-import { Sparkles, Eye, Info, Edit3, ShieldCheck, Database, Trash2, FileText } from 'lucide-react';
+import { Sparkles, Eye, Info, Edit3, Trash2, FileText } from 'lucide-react';
 
-/**
- * Phân tích nội dung văn bản điều khoản thành các thẻ heading, ul, p để xem trước thực tế
- */
 function renderFormattedPreview(text) {
   if (!text) {
     return <p className="text-muted fst-italic">Chưa có nội dung điều khoản chi tiết.</p>;
@@ -105,7 +102,7 @@ function PolicyEditorCard({
           <div>
             <div className="d-flex align-items-center gap-2 mb-1">
               <span className="policy-editor-kicker">
-                CHAIN MANAGEMENT
+                CHÍNH SÁCH VẬN HÀNH CHUỖI
               </span>
             </div>
             <h2 className="policy-editor-heading">
@@ -129,7 +126,7 @@ function PolicyEditorCard({
               htmlFor={`toggle-${activeKey}`}
               className="policy-editor-status-label"
             >
-              {isActive ? 'Đang hiển thị' : 'Tạm ẩn'}
+              {isActive ? 'Đang áp dụng (BẬT)' : 'Tạm ẩn'}
             </label>
           </div>
 
@@ -259,18 +256,6 @@ function PolicyEditorCard({
               {renderFormattedPreview(content)}
             </div>
           )}
-        </div>
-
-        {/* 4. Khung thông tin phạm vi áp dụng */}
-        <div className="policy-editor-scope-box">
-          <div className="policy-editor-scope-item">
-            <ShieldCheck size={16} className="text-gold" />
-            <span><strong>Phạm vi:</strong> Áp dụng thống nhất cho toàn chuỗi showroom VESTORA</span>
-          </div>
-          <div className="policy-editor-scope-item">
-            <Database size={16} className="text-gold" />
-            <span><strong>Lưu trữ:</strong> Đồng bộ trực tiếp với MongoDB Atlas (collection <code>businesspolicies</code>)</span>
-          </div>
         </div>
       </div>
     </section>

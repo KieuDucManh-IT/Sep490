@@ -16,9 +16,8 @@ const productName = (line) => {
   return [product?.name, variant?.variantName, variant?.sku].filter(Boolean).join(' · ') || 'Mặt hàng';
 };
 
-export default function InboundReceiptModal({ mode, role, receipt, locations, suppliers, products, variants, staff, shelves, onClose, onCreate, onReceive, onApprove, onPutaway }) {
+export default function InboundReceiptModal({ mode, role, receipt, centralLocation, suppliers, products, variants, staff, shelves, onClose, onCreate, onReceive, onApprove, onPutaway }) {
   const [activeMode, setActiveMode] = useState(mode);
-  const [locationId, setLocationId] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [assignedStaffId, setAssignedStaffId] = useState('');
   const [note, setNote] = useState('');
@@ -60,8 +59,9 @@ export default function InboundReceiptModal({ mode, role, receipt, locations, su
 
   const submitCreate = async (event) => {
     event.preventDefault(); setSaving(true); setError('');
+    if (!centralLocation?._id) { setError('Cần cấu hình duy nhất một kho tổng đang hoạt động.'); setSaving(false); return; }
     const payload = {
-      locationId, supplierId, assignedStaffId, note,
+      locationId: centralLocation._id, supplierId, assignedStaffId, note,
       items: lines.map((line) => ({ variantId: line.variantId, quantityExpected: Number(line.quantityExpected), unitCost: Number(line.unitCost) })),
     };
     try {
@@ -102,7 +102,7 @@ export default function InboundReceiptModal({ mode, role, receipt, locations, su
       <header><div><span>QUY TRÌNH NHẬP KHO</span><h2 id="inbound-modal-title">{title}</h2></div><button type="button" className="wm-modal-close" onClick={onClose} aria-label="Đóng"><X size={20} /></button></header>
       {error && <div className="wm-error">{error}</div>}
       {activeMode === 'create' && <form className="wm-form" onSubmit={submitCreate}>
-        <label>Kho / cửa hàng<select required value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Chọn kho/cửa hàng</option>{locations.map((location) => <option key={location._id} value={location._id}>{location.code} — {location.name}</option>)}</select></label>
+        <div className="wm-central-warehouse"><small>Kho nhận hàng (kho tổng)</small><strong>{centralLocation ? `${centralLocation.code} — ${centralLocation.name}` : 'Chưa xác định duy nhất kho tổng'}</strong></div>
         <label>Nhà cung cấp<select required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Chọn nhà cung cấp</option>{suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.supplierCode} — {supplier.name}</option>)}</select></label>
         <label>Nhân viên kho được giao<select required value={assignedStaffId} onChange={(event) => setAssignedStaffId(event.target.value)}><option value="">Chọn nhân viên</option>{staff.map((person) => <option key={person._id} value={person._id}>{person.FullName} — {person.Email}</option>)}</select></label>
         <div className="wm-inbound-lines">

@@ -14,7 +14,6 @@ export default function WarehouseSidebar({ mode = 'manager' }) {
       {nav('/warehousemanager/storage-locations', <MapPin size={17} />, 'Vị trí lưu trữ')}
       {nav('/warehousemanager/categories', <Tags size={17} />, 'Loại sản phẩm')}
       {nav('/warehousemanager/products', <Package size={17} />, 'Sản phẩm')}
-      {nav('/warehousemanager/variants', <Layers3 size={17} />, 'Biến thể')}
       {nav('/warehousemanager/suppliers', <Package size={17} />, 'Nhà cung cấp')}
       <p>Quản lý phiếu</p>
       {nav('/warehousemanager/inbound-receipts', <ClipboardList size={17} />, 'Nhập kho')}

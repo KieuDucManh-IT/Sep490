@@ -4,6 +4,7 @@ import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
+import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
 
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const keyOf = (locationId, storageId, variantId) => `${locationId}:${storageId || 'none'}:${variantId}`;
@@ -196,23 +197,24 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
   return { items, summary, locations };
 };
 
-export const getIndividualItemDetails = async ({ locationId, storageId, variantId, productId, itemLevel = 'variant' }) => {
+export const getIndividualItemDetails = async ({ locationId, storageId, variantId, productId, itemLevel = 'variant', availableOnly = false }) => {
   if (!mongoose.isValidObjectId(locationId)) throw invalid('Kho/cửa hàng không hợp lệ.');
   if (storageId && storageId !== 'none' && !mongoose.isValidObjectId(storageId)) throw invalid('Vị trí lưu trữ không hợp lệ.');
   if (!['product', 'variant'].includes(itemLevel)) throw invalid('Cấp mặt hàng không hợp lệ.');
   let variantIds;
   if (itemLevel === 'product') {
     if (!mongoose.isValidObjectId(productId)) throw invalid('Sản phẩm không hợp lệ.');
-    const variants = await ProductVariant.find({ productId }).select('_id productId').populate({ path: 'productId', select: 'trackingType' });
-    if (!variants.length || variants.some((variant) => variant.productId?.trackingType !== 'individual')) throw invalid('Sản phẩm này không quản lý theo serial.');
+    const variants = await ProductVariant.find({ productId }).select('_id');
+    if (!variants.length) return [];
     variantIds = variants.map((variant) => variant._id);
   } else {
     if (!mongoose.isValidObjectId(variantId)) throw invalid('Biến thể không hợp lệ.');
-    const variant = await ProductVariant.findById(variantId).populate('productId', 'trackingType').select('productId');
-    if (!variant || variant.productId?.trackingType !== 'individual') throw invalid('Mặt hàng này không quản lý theo serial.');
+    const variant = await ProductVariant.findById(variantId).select('_id');
+    if (!variant) throw invalid('Không tìm thấy biến thể.');
     variantIds = [variant._id];
   }
-  const query = { locationId, variantId: { $in: variantIds }, status: { $nin: ['disposed', 'renting', 'in_transit'] } };
+  const onlyAvailable = availableOnly === true || String(availableOnly).toLowerCase() === 'true';
+  const query = { locationId, variantId: { $in: variantIds }, status: onlyAvailable ? 'available' : { $nin: ['disposed', 'renting', 'in_transit'] } };
   if (storageId === 'none' || !storageId) query.storageId = null;
   else {
     const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId').lean();
@@ -230,6 +232,28 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     }).map((storage) => storage._id);
     query.storageId = { $in: descendantIds };
   }
-  const rows = await InventoryItem.find(query).select('itemCode serialNumber condition status').populate('variantId', 'sku variantName size color').sort({ itemCode: 1 }).lean();
+  const rows = await InventoryItem.find(query).select('itemCode serialNumber condition status inboundReceiptDetail').populate('variantId', 'sku variantName size color').populate({ path: 'inboundReceiptDetail', select: 'receiptDetailCode receiptId', populate: { path: 'receiptId', select: 'receiptCode' } }).sort({ itemCode: 1 }).lean();
+  const missingReceiptCodes = rows.filter((row) => row.inboundReceiptDetail && !row.inboundReceiptDetail.receiptDetailCode);
+  const receiptIds = [...new Set(missingReceiptCodes.map((row) => String(row.inboundReceiptDetail.receiptId?._id || row.inboundReceiptDetail.receiptId)).filter(Boolean))];
+  for (const receiptId of receiptIds) {
+    const receiptCode = missingReceiptCodes.find((row) => String(row.inboundReceiptDetail.receiptId?._id || row.inboundReceiptDetail.receiptId) === receiptId)?.inboundReceiptDetail.receiptId?.receiptCode;
+    const details = await InboundReceiptDetail.find({ receiptId }).sort({ createdAt: 1, _id: 1 }).select('_id receiptDetailCode').lean();
+    const occupied = new Set(details.map((detail) => detail.receiptDetailCode).filter(Boolean));
+    const updates = [];
+    for (let index = 0; index < details.length; index += 1) {
+      const detail = details[index];
+      if (detail.receiptDetailCode) continue;
+      const prefix = receiptCode || `PND-${String(receiptId).slice(-8).toUpperCase()}`;
+      let code = `${prefix}-${String(index + 1).padStart(2, '0')}`;
+      let suffix = 2;
+      while (occupied.has(code)) code = `${prefix}-${String(index + 1).padStart(2, '0')}-${suffix++}`;
+      occupied.add(code);
+      updates.push({ updateOne: { filter: { _id: detail._id }, update: { $set: { receiptDetailCode: code } } } });
+      for (const row of missingReceiptCodes) {
+        if (String(row.inboundReceiptDetail._id) === String(detail._id)) row.inboundReceiptDetail.receiptDetailCode = code;
+      }
+    }
+    if (updates.length) await InboundReceiptDetail.bulkWrite(updates);
+  }
   return rows;
 };

@@ -37,10 +37,16 @@ export const validateTransferDecision = (payload) => {
   if (!Array.isArray(payload.items) || payload.items.length === 0) throw badRequest('Cần duyệt số lượng cho các mặt hàng.');
   const items = payload.items.map((item) => {
     if (!isObject(item)) throw badRequest('Dòng duyệt không hợp lệ.');
+    const itemIds = item.itemIds == null ? [] : item.itemIds;
+    if (!Array.isArray(itemIds)) throw badRequest('Danh sách InventoryItem phải là một danh sách.');
+    const normalizedItemIds = itemIds.map((id) => objectId(id, 'InventoryItem'));
+    if (new Set(normalizedItemIds).size !== normalizedItemIds.length) throw badRequest('InventoryItem được chọn bị trùng.');
+    if (Number(item.quantityApproved) === 0 && normalizedItemIds.length) throw badRequest('Không thể chọn InventoryItem khi số lượng duyệt bằng 0.');
     return {
       detailId: objectId(item.detailId, 'Dòng điều chuyển'),
       quantityApproved: integer(item.quantityApproved, 'Số lượng duyệt'),
       fromStorageId: item.fromStorageId ? objectId(item.fromStorageId, 'Vị trí xuất') : null,
+      itemIds: normalizedItemIds,
     };
   });
   if (new Set(items.map((item) => item.detailId)).size !== items.length) throw badRequest('Dòng duyệt bị trùng.');

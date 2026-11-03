@@ -45,6 +45,10 @@ import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 import WarehouseStockControlPage from './pages/warehouse/WarehouseStockControlPage';
 import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
+import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
+import ProductManagementPage from './pages/warehouse/ProductManagementPage';
+import SupplierManagementPage from './pages/warehouse/SupplierManagementPage';
+import InventoryLocationManagementPage from './pages/warehouse/InventoryLocationManagementPage';
 
 // 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
@@ -198,6 +202,10 @@ function App() {
         <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="adjustments" /></ProtectedRoute>} />
         <Route path="/warehousemanager/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/transfers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/products" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><ProductManagementPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/suppliers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}><SupplierManagementPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/inventory-locations" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><InventoryLocationManagementPage /></ProtectedRoute>} />
         <Route
           path="/warehousemanager/:resource"
           element={

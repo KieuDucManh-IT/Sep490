@@ -8,6 +8,7 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Shop } from '../../models/shop/Shop.js';
 import { StockTransfer } from '../../models/warehouse/transfer/StockTransfer.js';
 import { StockTransferDetail } from '../../models/warehouse/transfer/StockTransferDetail.js';
+import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import {
   validateCreateTransferRequest,
   validateTransferDecision,
@@ -161,12 +162,14 @@ export const decideTransferRequest = async (transferId, payload, user) => {
         if (line.quantityApproved > 0) {
           const variant = await ProductVariant.findById(detail.variantId).select('productId').populate('productId', 'trackingType').session(session).lean();
           if (variant?.productId?.trackingType === 'individual') {
-            const available = await InventoryItem.countDocuments({
-              locationId: transfer.fromLocationId, storageId: line.fromStorageId || null,
-              variantId: detail.variantId, status: 'available',
-            }).session(session);
-            if (available < line.quantityApproved) throw fail(`Kho tổng chỉ còn ${available} mã cá thể khả dụng cho biến thể ${detail.variantId}.`, 409);
+            if (line.itemIds.length !== line.quantityApproved) throw fail('Cần chọn đúng số InventoryItem tương ứng số lượng duyệt.', 400);
+            const selectedItems = await InventoryItem.find({
+              _id: { $in: line.itemIds }, locationId: transfer.fromLocationId,
+              storageId: line.fromStorageId || null, variantId: detail.variantId, status: 'available',
+            }).session(session).distinct('_id');
+            if (selectedItems.length !== line.quantityApproved) throw fail('Một hoặc nhiều InventoryItem đã đổi vị trí/trạng thái hoặc không thuộc biến thể này.', 409);
           } else {
+            if (line.itemIds.length) throw fail('Không chọn InventoryItem cho mặt hàng quản lý theo số lượng.');
             const balance = await InventoryBalance.findOne({
               locationId: transfer.fromLocationId, storageId: line.fromStorageId || null,
               variantId: detail.variantId,
@@ -177,6 +180,7 @@ export const decideTransferRequest = async (transferId, payload, user) => {
         }
         detail.quantityApproved = line.quantityApproved;
         detail.fromStorageId = line.fromStorageId;
+        detail.itemIds = line.itemIds;
         if (line.quantityApproved > 0) anyApproved = true;
         await detail.save({ session });
       }
@@ -206,17 +210,19 @@ export const shipTransfer = async (transferId, user) => {
         if (!quantity) continue;
         const individual = tracking.get(String(detail.variantId)) === 'individual';
         if (individual) {
-          const items = await InventoryItem.find({ locationId: transfer.fromLocationId, storageId: detail.fromStorageId || null, variantId: detail.variantId, status: 'available' }).sort({ createdAt: 1 }).limit(quantity).session(session);
+          const items = detail.itemIds?.length
+            ? await InventoryItem.find({ _id: { $in: detail.itemIds }, locationId: transfer.fromLocationId, storageId: detail.fromStorageId || null, variantId: detail.variantId, status: 'available' }).session(session)
+            : await InventoryItem.find({ locationId: transfer.fromLocationId, storageId: detail.fromStorageId || null, variantId: detail.variantId, status: 'available' }).sort({ createdAt: 1 }).limit(quantity).session(session);
           if (items.length !== quantity) throw fail(`Kho tổng không đủ ${quantity} cá thể khả dụng cho biến thể ${detail.variantId}.`, 409);
           detail.itemIds = items.map((item) => item._id);
           for (const item of items) {
             item.status = 'in_transit';
             await item.save({ session });
-            await StockMovement.create([{
+            await recordStockMovement({
               variantId: detail.variantId, itemId: item._id, locationId: transfer.fromLocationId,
               storageId: detail.fromStorageId || null, movementType: 'transfer_out', quantityChange: -1,
               referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id,
-            }], { session });
+            }, session);
           }
         } else {
           const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: detail.fromStorageId || null, variantId: detail.variantId }).session(session);
@@ -224,11 +230,11 @@ export const shipTransfer = async (transferId, user) => {
           if (available < quantity) throw fail(`Kho tổng không đủ tồn khả dụng cho biến thể ${detail.variantId}.`, 409);
           balance.quantityOnHand -= quantity;
           await balance.save({ session });
-          await StockMovement.create([{
+          await recordStockMovement({
             variantId: detail.variantId, locationId: transfer.fromLocationId,
             storageId: detail.fromStorageId || null, movementType: 'transfer_out', quantityChange: -quantity,
             referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id,
-          }], { session });
+          }, session);
         }
         detail.quantityShipped = quantity;
         await detail.save({ session });
@@ -317,11 +323,11 @@ export const receiveTransfer = async (transferId, payload, user) => {
             if (isDamaged) item.condition = 'damaged';
             await item.save({ session });
             if (!previousReceived.has(itemId)) {
-              await StockMovement.create([{
+              await recordStockMovement({
                 variantId: detail.variantId, itemId: item._id, locationId: destination._id,
                 movementType: 'transfer_in', quantityChange: 1, referenceType: 'stock_transfer',
                 referenceId: transfer._id, createdBy: user._id,
-              }], { session });
+              }, session);
             }
           }
           if (receipt.complete) {
@@ -331,17 +337,16 @@ export const receiveTransfer = async (transferId, payload, user) => {
           }
         } else {
           if (receivedDelta > 0 || damagedDelta > 0) {
-            const balance = await InventoryBalance.findOneAndUpdate(
-              { locationId: destination._id, storageId: null, variantId: detail.variantId },
-              { $inc: { quantityOnHand: receivedDelta, quantityUnavailable: damagedDelta } },
-              { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true, session },
-            );
+            const balance = await increaseInventoryBalance({
+              locationId: destination._id, storageId: null, variantId: detail.variantId,
+              quantity: receivedDelta, increments: { quantityUnavailable: damagedDelta }, session,
+            });
             if (balance.quantityOnHand < balance.quantityReserved + balance.quantityUnavailable) throw fail('Số lượng khả dụng của chi nhánh không thể âm.', 409);
-            await StockMovement.create([{
+            await recordStockMovement({
               variantId: detail.variantId, locationId: destination._id, storageId: null,
               movementType: 'transfer_in', quantityChange: receivedDelta,
               referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id,
-            }], { session });
+            }, session);
           }
         }
       }

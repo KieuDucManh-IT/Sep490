@@ -1,7 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
+import productService from '../../services/productService';
+import { getShopsListApi } from '../../services/shopApi';
+import { getUserLocation } from '../../utils/userLocation';
+import {
+  calculateHaversineDistanceKm,
+  estimateRoadDistanceKm,
+  formatDistanceLabel,
+  isValidCoordinate,
+} from '../../utils/geoUtils';
 import '../../styles/HomePage.css';
 
 // 5 Featured Products exactly matching the reference mockup
@@ -135,27 +144,208 @@ const STYLE_CATEGORIES = [
 export default function HomePage() {
   const navigate = useNavigate();
   const [productFilter, setProductFilter] = useState('ALL');
-  const [favorites, setFavorites] = useState({});
   const [quickMode, setQuickMode] = useState('thue-do');
+  const [carouselIndex, setCarouselIndex] = useState(0);
+
+  // Real backend products & showrooms state
+  const [apiProducts, setApiProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [apiShowrooms, setApiShowrooms] = useState([]);
+  const [loadingShowrooms, setLoadingShowrooms] = useState(true);
+
+  // Sync favorites with localStorage
+  const [favoriteIds, setFavoriteIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('vestora_favorites') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const syncFav = () => {
+      try {
+        setFavoriteIds(JSON.parse(localStorage.getItem('vestora_favorites') || '[]'));
+      } catch {}
+    };
+    window.addEventListener('favoritesUpdated', syncFav);
+    return () => window.removeEventListener('favoritesUpdated', syncFav);
+  }, []);
 
   const toggleFavorite = (e, id) => {
     e.preventDefault();
     e.stopPropagation();
-    setFavorites((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
+    setFavoriteIds((prev) => {
+      const isFav = prev.includes(id);
+      const next = isFav ? prev.filter((item) => item !== id) : [...prev, id];
+      try {
+        localStorage.setItem('vestora_favorites', JSON.stringify(next));
+        window.dispatchEvent(new Event('favoritesUpdated'));
+      } catch {}
+      return next;
+    });
   };
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('vi-VN').format(val) + 'đ';
   };
 
-  const filteredProducts = FEATURED_PRODUCTS.filter((item) => {
-    if (productFilter === 'RENTAL') return item.isRental;
-    if (productFilter === 'RESALE') return !item.isRental;
-    return true;
-  });
+  // 1. Fetch real products from backend API (/api/products)
+  useEffect(() => {
+    let isMounted = true;
+    async function loadBackendProducts() {
+      try {
+        setLoadingProducts(true);
+        const res = await productService.getProducts({
+          limit: 20,
+          sort: 'newest',
+        });
+        if (isMounted && res?.data && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped = res.data.map((p) => {
+            const isRental =
+              p.tag === 'rental' ||
+              (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
+              (p.rentalPricePerDay && p.rentalPricePerDay > 0);
+
+            const price = isRental
+              ? (p.rentalPricePer3Days || (p.rentalPricePerDay ? p.rentalPricePerDay * 3 : 0))
+              : (p.salePrice || 0);
+
+            const mainImage = (p.images && p.images.length > 0 && p.images[0]) || p.image || '/assets/purple_gown.jpg';
+
+            return {
+              id: p._id || p.productCode || p.sku,
+              type: isRental ? 'Thuê đồ' : 'Mua đồ cũ',
+              typeBadge: isRental ? 'rental' : 'resale',
+              title: p.name,
+              rating: typeof p.rating === 'number' ? Number(p.rating).toFixed(1) : '4.9',
+              reviews: typeof p.reviewsCount === 'number' ? p.reviewsCount : 95,
+              inStock: p.inStock !== false,
+              price: price,
+              priceUnit: isRental && price > 0 ? '/ 3 ngày' : '',
+              image: mainImage,
+              isRental: isRental,
+              raw: p,
+            };
+          });
+          setApiProducts(mapped);
+        }
+      } catch (err) {
+        console.warn('Không thể kết nối API /api/products, sử dụng dữ liệu mặc định:', err);
+      } finally {
+        if (isMounted) setLoadingProducts(false);
+      }
+    }
+    loadBackendProducts();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Fetch real showrooms from backend API (/api/shops)
+  useEffect(() => {
+    let isMounted = true;
+    async function loadRealShowrooms() {
+      try {
+        setLoadingShowrooms(true);
+        const res = await getShopsListApi({ limit: 20 });
+        if (isMounted && res?.success && Array.isArray(res.data) && res.data.length > 0) {
+          const userLoc = getUserLocation();
+          const hasUserGps = isValidCoordinate(userLoc?.latitude, userLoc?.longitude);
+
+          const activeShops = res.data.filter(
+            (s) => s.status !== 'SUSPENDED' && s.status !== 'REJECTED' && !s.isDeleted
+          );
+
+          const fallbackImgs = [
+            'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=300&q=80',
+            'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=300&q=80',
+            'https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=300&q=80',
+          ];
+
+          const mapped = activeShops.map((shop, index) => {
+            const hasShopCoords = isValidCoordinate(shop.latitude, shop.longitude);
+            let roadDistanceKm = null;
+            if (hasUserGps && hasShopCoords) {
+              const haversineKm = calculateHaversineDistanceKm(
+                userLoc.latitude,
+                userLoc.longitude,
+                parseFloat(shop.latitude),
+                parseFloat(shop.longitude)
+              );
+              roadDistanceKm = estimateRoadDistanceKm(haversineKm);
+            }
+
+            return {
+              id: shop._id || index + 1,
+              name: shop.name || `Showroom VESTORA #${index + 1}`,
+              address: [shop.address, shop.ward, shop.city].filter(Boolean).join(', ') || 'Hà Nội',
+              rating: shop.rating ? Number(shop.rating).toFixed(1) : (4.7 + (index % 3) * 0.1).toFixed(1),
+              reviews: shop.reviewsCount || (85 + index * 12),
+              distance: roadDistanceKm != null ? formatDistanceLabel(roadDistanceKm) : `${(1.2 + index * 1.4).toFixed(1)} km`,
+              roadDistanceKm,
+              image: shop.imageUrl || fallbackImgs[index % fallbackImgs.length],
+              latitude: hasShopCoords ? parseFloat(shop.latitude) : null,
+              longitude: hasShopCoords ? parseFloat(shop.longitude) : null,
+            };
+          });
+
+          // Sắp xếp showroom gần nhất trước nếu có tọa độ GPS
+          mapped.sort((a, b) => {
+            if (a.roadDistanceKm != null && b.roadDistanceKm != null) {
+              return a.roadDistanceKm - b.roadDistanceKm;
+            }
+            if (a.roadDistanceKm != null) return -1;
+            if (b.roadDistanceKm != null) return 1;
+            return 0;
+          });
+
+          if (mapped.length > 0) {
+            setApiShowrooms(mapped);
+          }
+        }
+      } catch (err) {
+        console.warn('Không thể kết nối API /api/shops, sử dụng showroom mẫu:', err);
+      } finally {
+        if (isMounted) setLoadingShowrooms(false);
+      }
+    }
+    loadRealShowrooms();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Filter products by mode (Cho thuê / Mua đồ cũ / Tất cả)
+  const allFilteredProducts = useMemo(() => {
+    const source = apiProducts.length > 0 ? apiProducts : FEATURED_PRODUCTS;
+    return source.filter((item) => {
+      if (productFilter === 'RENTAL') return item.isRental;
+      if (productFilter === 'RESALE') return !item.isRental;
+      return true;
+    });
+  }, [apiProducts, productFilter]);
+
+  // Carousel pagination for featured products (5 items per page)
+  const pageSize = 5;
+  const maxPages = Math.ceil(allFilteredProducts.length / pageSize) || 1;
+  const visibleProducts = useMemo(() => {
+    const start = (carouselIndex % maxPages) * pageSize;
+    return allFilteredProducts.slice(start, start + pageSize);
+  }, [allFilteredProducts, carouselIndex, maxPages]);
+
+  const handleNextCarousel = () => {
+    if (carouselIndex + 1 < maxPages) {
+      setCarouselIndex((prev) => prev + 1);
+    } else {
+      navigate('/catalog');
+    }
+  };
+
+  // Top 3 Showrooms
+  const visibleShowrooms = useMemo(() => {
+    return apiShowrooms.length > 0 ? apiShowrooms.slice(0, 3) : NEARBY_SHOWROOMS;
+  }, [apiShowrooms]);
 
   return (
     <div className="vestora-home-wrapper">
@@ -351,8 +541,8 @@ export default function HomePage() {
 
             <button
               className="carousel-nav-btn"
-              onClick={() => navigate('/catalog')}
-              title="Xem thêm sản phẩm"
+              onClick={handleNextCarousel}
+              title={carouselIndex + 1 < maxPages ? "Xem các sản phẩm tiếp theo" : "Xem tất cả trong bộ sưu tập"}
             >
               <i className="fa-solid fa-chevron-right"></i>
             </button>
@@ -360,51 +550,58 @@ export default function HomePage() {
 
           {/* Product Cards Row */}
           <div className="products-carousel-grid">
-            {filteredProducts.map((product) => (
-              <div key={product.id} className="modern-product-card">
-                <div className="card-media-box">
-                  <span className={`product-type-badge badge-${product.typeBadge}`}>
-                    {product.type}
-                  </span>
-                  <button
-                    className={`card-heart-btn ${favorites[product.id] ? 'favorited' : ''}`}
-                    onClick={(e) => toggleFavorite(e, product.id)}
-                    aria-label="Thêm vào yêu thích"
-                  >
-                    <i className={favorites[product.id] ? 'fa-solid fa-heart' : 'fa-regular fa-heart'}></i>
-                  </button>
-                  <img
-                    src={product.image}
-                    alt={product.title}
-                    className="product-card-img"
-                  />
-                </div>
-
-                <div className="card-info-box">
-                  <h3 className="card-product-name">{product.title}</h3>
-                  <div className="card-meta-line">
-                    <i className="fa-solid fa-star rating-star"></i>
-                    <span className="rating-score">{product.rating}</span>
-                    <span className="rating-count">({product.reviews})</span>
-                    <span className="meta-separator">•</span>
-                    <span className="stock-indicator">
-                      <span className="stock-dot"></span> Còn hàng
+            {visibleProducts.map((product) => {
+              const isFav = favoriteIds.includes(String(product.id));
+              return (
+                <div key={product.id} className="modern-product-card">
+                  <div className="card-media-box">
+                    <span className={`product-type-badge badge-${product.typeBadge}`}>
+                      {product.type}
                     </span>
+                    <button
+                      className={`card-heart-btn ${isFav ? 'favorited' : ''}`}
+                      onClick={(e) => toggleFavorite(e, String(product.id))}
+                      aria-label="Thêm vào yêu thích"
+                      title={isFav ? "Bỏ yêu thích" : "Lưu vào yêu thích"}
+                    >
+                      <i className={isFav ? 'fa-solid fa-heart' : 'fa-regular fa-heart'}></i>
+                    </button>
+                    <img
+                      src={product.image}
+                      alt={product.title}
+                      className="product-card-img"
+                      onError={(e) => {
+                        e.target.src = '/assets/purple_gown.jpg';
+                      }}
+                    />
                   </div>
 
-                  <div className="card-pricing-line">
-                    <span className="price-main">{formatCurrency(product.price)}</span>
-                    {product.priceUnit && (
-                      <span className="price-unit">{product.priceUnit}</span>
-                    )}
-                  </div>
+                  <div className="card-info-box">
+                    <h3 className="card-product-name" title={product.title}>{product.title}</h3>
+                    <div className="card-meta-line">
+                      <i className="fa-solid fa-star rating-star"></i>
+                      <span className="rating-score">{product.rating}</span>
+                      <span className="rating-count">({product.reviews})</span>
+                      <span className="meta-separator">•</span>
+                      <span className="stock-indicator">
+                        <span className="stock-dot"></span> Còn hàng
+                      </span>
+                    </div>
 
-                  <Link to={`/product/${product.id}`} className="card-action-btn">
-                    Xem chi tiết
-                  </Link>
+                    <div className="card-pricing-line">
+                      <span className="price-main">{formatCurrency(product.price)}</span>
+                      {product.priceUnit && (
+                        <span className="price-unit">{product.priceUnit}</span>
+                      )}
+                    </div>
+
+                    <Link to={`/product/${product.id}`} className="card-action-btn">
+                      Xem chi tiết
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
@@ -466,16 +663,20 @@ export default function HomePage() {
 
               {/* Showroom List */}
               <div className="showrooms-vertical-list">
-                {NEARBY_SHOWROOMS.map((store) => (
+                {visibleShowrooms.map((store) => (
                   <div
                     key={store.id}
                     className="showroom-item-card"
                     onClick={() => navigate('/map')}
+                    title="Xem chi tiết trên bản đồ Showroom"
                   >
                     <img
                       src={store.image}
                       alt={store.name}
                       className="showroom-thumb"
+                      onError={(e) => {
+                        e.target.src = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=300&q=80';
+                      }}
                     />
                     <div className="showroom-details">
                       <h4 className="showroom-name">{store.name}</h4>

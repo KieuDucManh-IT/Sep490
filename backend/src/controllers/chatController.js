@@ -242,7 +242,14 @@ export const chatWithStylist = async (req, res) => {
       .json({ success: false, error: 'Chưa cấu hình GEMINI_API_KEY trong hệ thống.' });
   }
 
-  const modelName = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-flash-lite';
+  const candidateModels = [
+    process.env.GEMINI_TEXT_MODEL,
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-3.1-flash-lite',
+  ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
 
@@ -264,27 +271,47 @@ export const chatWithStylist = async (req, res) => {
 
     const contents = [...history, { role: 'user', parts: [{ text: message }] }];
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemText }] },
-          contents,
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.6 },
-        }),
-        signal: controller.signal,
-      }
-    );
+    let payload = null;
+    let lastError = null;
 
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      console.error('Gemini error payload:', payload);
-      throw new Error(payload?.error?.message || `Gemini API trả mã lỗi ${response.status}`);
+    // Tự động chuyển đổi qua model dự phòng nếu model chính bị 503 (High Demand) hoặc 429
+    for (const currentModel of candidateModels) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemText }] },
+              contents,
+              generationConfig: { responseMimeType: 'application/json', temperature: 0.6 },
+            }),
+            signal: controller.signal,
+          }
+        );
+
+        const data = await response.json().catch(() => null);
+        if (response.ok && data?.candidates?.[0]?.content?.parts) {
+          payload = data;
+          break; // Thành công!
+        }
+
+        console.warn(`[AI Stylist] Model ${currentModel} quá tải/lỗi (${response.status}):`, data?.error?.message || response.statusText);
+        lastError = new Error(data?.error?.message || `Gemini API trả mã lỗi ${response.status}`);
+      } catch (callErr) {
+        if (callErr.name === 'AbortError') throw callErr;
+        console.warn(`[AI Stylist] Lỗi kết nối model ${currentModel}:`, callErr.message);
+        lastError = callErr;
+      }
+    }
+
+    if (!payload) {
+      console.error('Tất cả các model Gemini đều không phản hồi:', lastError);
+      throw lastError || new Error('Tất cả các model Gemini đều đang bận, vui lòng thử lại sau giây lát.');
     }
 
     const generatedText = payload?.candidates?.[0]?.content?.parts

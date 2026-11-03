@@ -819,7 +819,7 @@ export default function AdminAccountsPage() {
             </div>
           </div>
 
-          {/* 4 Core Stat Cards (Calculated from Real MongoDB Data) */}
+
           <div className="admin-acc-kpis">
             {/* Card 1: Tổng tài khoản */}
             <div className="admin-acc-kpi-card">

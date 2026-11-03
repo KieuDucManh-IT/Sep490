@@ -44,7 +44,7 @@ export default function AdminSidebar({ isCollapsed, onToggle }) {
         <div className="admin-shops-sidebar__brand">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Link
-              to={isOps ? "/ops/shops" : "/admin/dashboard"}
+              to={isOps ? "/ops/shops" : "/admin/accounts"}
               className="admin-shops-sidebar__logo"
               title={isOps ? "VESTORA Operations Staff" : "VESTORA Admin"}
             >

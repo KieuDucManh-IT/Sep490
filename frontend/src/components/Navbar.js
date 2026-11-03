@@ -250,7 +250,7 @@ export default function Navbar() {
                   )}
                   {/admin/i.test(user?.Role || user?.role || '') && (
                     <Link
-                      to="/admin/dashboard"
+                      to="/admin/accounts"
                       className="menu-item"
                       onClick={() => setDropdownOpen(false)}
                     >

@@ -10,7 +10,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000,
+  timeout: 60000,
   withCredentials: true,
 });
 
@@ -39,7 +39,12 @@ apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
     const errorData = error.response?.data;
-    const message = errorData?.message || error.message || 'Có lỗi kết nối, vui lòng thử lại sau.';
+    const message =
+      errorData?.error ||
+      errorData?.message ||
+      (error.code === 'ECONNABORTED'
+        ? 'Thời gian chờ phản hồi quá 60s, vui lòng bấm thử lại.'
+        : error.message || 'Có lỗi kết nối, vui lòng thử lại sau.');
     const customError = new Error(message);
     customError.response = error.response;
     customError.data = errorData;

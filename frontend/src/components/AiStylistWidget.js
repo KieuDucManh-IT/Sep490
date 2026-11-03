@@ -69,11 +69,19 @@ export default function AiStylistWidget() {
         throw new Error(res?.error || 'Lỗi kết nối');
       }
     } catch (err) {
+      console.error('Lỗi khi gửi tin nhắn cho AI Stylist:', err);
+      const errMsg =
+        err?.data?.error ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'Stylist tạm thời gián đoạn kết nối.';
       setMessages((prev) => [
         ...prev.slice(0, -1),
         {
           role: 'model',
-          text: 'Rất tiếc, Stylist chưa thể phản hồi lúc này. Bạn vui lòng thử lại nhé!',
+          text: `Rất tiếc, Stylist gặp sự cố (${errMsg}). Bạn có thể bấm nút "Thử lại" bên dưới nhé!`,
+          isError: true,
+          failedText: text,
         },
       ]);
     } finally {
@@ -141,13 +149,36 @@ export default function AiStylistWidget() {
                 <div key={i} className={`stylist-wmsg ${isUser ? 'from-user' : 'from-stylist'}`}>
                   {!isUser && <span className="stylist-wmsg-avatar">V</span>}
                   <div className="stylist-wmsg-body">
-                    <div className={`stylist-wbubble ${isUser ? 'user' : 'stylist'}`}>
+                    <div className={`stylist-wbubble ${isUser ? 'user' : 'stylist'} ${m.isError ? 'error-bubble' : ''}`}>
                       {m.pending ? (
                         <span>
                           <i className="fa-solid fa-circle-notch fa-spin"></i> Đang duyệt đồ...
                         </span>
                       ) : (
                         m.text
+                      )}
+                      {m.isError && m.failedText && (
+                        <div style={{ marginTop: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleSend(m.failedText)}
+                            style={{
+                              background: '#435339',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '14px',
+                              padding: '5px 12px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <i className="fa-solid fa-rotate-right"></i> Thử lại câu này
+                          </button>
+                        </div>
                       )}
                     </div>
 

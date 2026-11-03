@@ -355,11 +355,7 @@ function App() {
         />
         <Route
           path="/admin/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <OwnerDashboardPage />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/admin/accounts" replace />}
         />
         <Route path="/admin/shops" element={<Navigate to="/owner/branches" replace />} />
         <Route

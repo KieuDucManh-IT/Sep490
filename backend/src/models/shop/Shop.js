@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 import '../system/User.js';
 
+export const DEFAULT_SHOP_IMAGE =
+  'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286849/vestora/shops/avatar/1793286868885-6a291daa-8576-4622-bfde-842ca9b65cc6.webp';
+export const DEFAULT_SHOP_BANNER =
+  'https://res.cloudinary.com/dw00bqqfi/image/upload/v1793286857/vestora/shops/banner/1793286876464-e4aff2b7-36c9-45c7-85a0-f89084b489d5.webp';
+
 const shopSchema = new mongoose.Schema(
   {
     ownerId: {
@@ -55,8 +60,8 @@ const shopSchema = new mongoose.Schema(
       min: [-180, 'Kinh độ không hợp lệ (-180 đến 180)'],
       max: [180, 'Kinh độ không hợp lệ (-180 đến 180)'],
     },
-    imageUrl: { type: String, default: '', trim: true },
-    bannerUrl: { type: String, default: '', trim: true },
+    imageUrl: { type: String, default: DEFAULT_SHOP_IMAGE, trim: true },
+    bannerUrl: { type: String, default: DEFAULT_SHOP_BANNER, trim: true },
     openingHours: {
       type: String,
       default: '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
@@ -85,16 +90,6 @@ shopSchema.index({ managerId: 1 });
 shopSchema.index({ city: 1 });
 shopSchema.index({ status: 1, createdAt: -1 });
 shopSchema.index({ name: 1 });
-
-shopSchema.set('toJSON', { virtuals: true });
-shopSchema.set('toObject', { virtuals: true });
-
-/**
- * Virtual alias for backwards compatibility: avatarUrl -> imageUrl
- */
-shopSchema.virtual('avatarUrl').get(function () {
-  return this.imageUrl || '';
-});
 
 export const Shop = mongoose.models.Shop || mongoose.model('Shop', shopSchema);
 export default Shop;

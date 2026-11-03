@@ -5,6 +5,7 @@ import '../shop/Shop.js';
 const productSchema = new mongoose.Schema({
   categoryId: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true }],
   category: [{ type: String }],
+  shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', default: null },
   productCode: { type: String, required: true, unique: true, trim: true },
   name: { type: String, required: true, trim: true },
   description: { type: String, trim: true },

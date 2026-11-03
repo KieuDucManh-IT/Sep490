@@ -6,8 +6,6 @@ import React, {
 } from "react";
 import { Modal, Button } from "react-bootstrap";
 import { Link } from "react-router-dom";
-import { QRCodeSVG } from "qrcode.react";
-
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 
@@ -17,6 +15,22 @@ import {
 } from "../../services/walletApi";
 
 import "../../styles/Wallet.css";
+
+// Component hiển thị QR code an toàn, không phụ thuộc thư viện ngoài chưa install
+function QRCodeSVG({ value, size = 190, marginSize = 4, title = "Mã QR nạp tiền Ví" }) {
+  if (!value) return null;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=${marginSize}&data=${encodeURIComponent(value)}`;
+  return (
+    <img
+      src={qrUrl}
+      alt={title}
+      width={size}
+      height={size}
+      style={{ display: "block", margin: "0 auto", borderRadius: "8px", background: "#FFFFFF", padding: "4px" }}
+      loading="lazy"
+    />
+  );
+}
 
 const TYPES = {
   top_up: "Nạp tiền",

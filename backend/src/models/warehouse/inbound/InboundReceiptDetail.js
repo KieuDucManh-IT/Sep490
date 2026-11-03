@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const inboundReceiptDetailSchema = new mongoose.Schema({
+  receiptDetailCode: { type: String, required: true, unique: true, sparse: true, trim: true },
   receiptId: { type: mongoose.Schema.Types.ObjectId, ref: 'InboundReceipt', required: true, index: true },
   variantId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant', required: true },
   storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },

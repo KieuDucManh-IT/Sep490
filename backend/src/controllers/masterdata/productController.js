@@ -10,7 +10,6 @@ import { createCrudController } from '../../generic/crudController.js';
 /**
  * Lấy danh sách sản phẩm theo bộ lọc, tìm kiếm, phân trang và sắp xếp
  * Endpoint: GET /api/products
- * 100% dữ liệu thực từ MongoDB Atlas, không sử dụng mock data.
  */
 export const getProducts = async (req, res, next) => {
   try {
@@ -192,8 +191,8 @@ export const getProducts = async (req, res, next) => {
           .lean(),
         Product.countDocuments(query),
       ]);
-    } catch (popErr) {
-      console.warn('Populate lỗi, fallback về truy vấn không populate:', popErr.message);
+    } catch (_) {
+      // Fallback nếu populate gặp lỗi kết nối
       [products, total] = await Promise.all([
         Product.find(query)
           .select('-productType')

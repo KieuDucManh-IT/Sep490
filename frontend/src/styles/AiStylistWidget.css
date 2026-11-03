@@ -110,7 +110,7 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
   font-size: 18px;
   font-style: italic;
   display: grid;
@@ -178,7 +178,7 @@
   border-radius: 50%;
   background: #5b6e4e;
   color: white;
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
   font-style: italic;
   font-size: 12px;
   display: grid;

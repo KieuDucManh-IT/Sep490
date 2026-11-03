@@ -62,7 +62,7 @@ export default function InventoryReportPage() {
         <tbody>{loading ? <tr><td colSpan={9}>Đang tải báo cáo...</td></tr> : visible.length ? visible.map((item) => <tr key={item.key}>
           <td><strong>{item.locationCode}</strong><br />{item.locationName}</td><td>{item.managerName || '—'}</td><td>{item.storagePath}</td>
           <td><strong>{item.productName}</strong><br /><small>{[item.productCode, item.sku, item.variantName, item.size, item.color].filter(Boolean).join(' · ')}</small></td>
-          <td>{item.trackingType === 'individual' ? <><span>{number(item.itemCount)} mã hàng</span><br /><button type="button" className="wm-text-button" onClick={() => setSerialDetail(item)}>Xem serial / mã hàng</button></> : '—'}</td>
+          <td><span>{item.trackingType === 'individual' ? `${number(item.itemCount)} mã hàng` : 'Quản lý theo số lượng'}</span><br /><button type="button" className="wm-text-button" onClick={() => setSerialDetail(item)}>Xem InventoryItem tại vị trí</button></td>
           <td>{number(item.quantityOnHand)}</td><td>{number(item.quantityAvailable)}</td><td>{number(item.quantityReserved)}</td><td>{number(item.quantityUnavailable)}</td>
         </tr>) : <tr><td colSpan={9}>Không có tồn kho phù hợp.</td></tr>}</tbody>
       </table></div>

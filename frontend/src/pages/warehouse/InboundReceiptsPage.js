@@ -48,7 +48,7 @@ export default function InboundReceiptsPage({ mode = 'manager' }) {
       if (mode === 'manager') requests.push(supplierService.list(), productService.list(), productVariantService.list(), inboundReceiptService.listStaff());
       const values = await Promise.all(requests);
       setReceipts(values[0]);
-      setLocations(values[1]);
+      setLocations(values[1].filter((location) => location.type === 'warehouse' && location.status === 'active'));
       setShelves(values[2].filter((item) => item.type === 'shelf' && item.status === 'active'));
       if (mode === 'manager') {
         setSuppliers(values[3].filter((item) => item.status === 'active'));
@@ -102,6 +102,6 @@ export default function InboundReceiptsPage({ mode = 'manager' }) {
       </table></div>
       <div className="wm-pagination"><span>{filtered.length ? ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, filtered.length) + ' / ' + filtered.length : '0 kết quả'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</button><span>Trang {page} / {pages}</span><button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)}>Sau</button></div></div>
     </section>
-    {modalMode && <InboundReceiptModal key={modalMode + '-' + (selected?._id || 'new')} mode={modalMode} role={role} receipt={selected} locations={locations.filter((item) => item.status === 'active')} suppliers={suppliers} products={products} variants={variants} staff={staff} shelves={shelves} onClose={() => { setSelected(null); setModalMode(''); }} onCreate={saveCreate} onReceive={saveReceive} onApprove={decide} onPutaway={savePutaway} />}
+    {modalMode && <InboundReceiptModal key={modalMode + '-' + (selected?._id || 'new')} mode={modalMode} role={role} receipt={selected} centralLocation={locations.length === 1 ? locations[0] : null} locations={locations} suppliers={suppliers} products={products} variants={variants} staff={staff} shelves={shelves} onClose={() => { setSelected(null); setModalMode(''); }} onCreate={saveCreate} onReceive={saveReceive} onApprove={decide} onPutaway={savePutaway} />}
   </main></div>;
 }

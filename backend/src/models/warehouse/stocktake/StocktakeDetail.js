@@ -7,6 +7,8 @@ const stocktakeDetailSchema = new mongoose.Schema({
   storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
   systemQuantity: { type: Number, required: true, min: 0 },
   countedQuantity: { type: Number, required: true, min: 0 },
+  countedCondition: { type: String, enum: ['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'], default: null },
+  countedItemStatus: { type: String, enum: ['available', 'reserved', 'maintenance', 'unavailable'], default: null },
   countedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   countedAt: { type: Date, default: null },
   isCounted: { type: Boolean, default: false },

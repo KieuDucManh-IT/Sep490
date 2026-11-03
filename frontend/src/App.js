@@ -36,6 +36,7 @@ import BranchReturnsPage from './pages/branch/BranchReturnsPage';
 import BranchReviewsPage from './pages/branch/BranchReviewsPage';
 import BranchAnalyticsPage from './pages/branch/BranchAnalyticsPage';
 import BranchSettingsPage from './pages/branch/BranchSettingsPage';
+import BranchInventoryPage from './pages/branch/BranchInventoryPage.js';
 
 // 4. Role Warehouse Manager (UC-15..UC-28)
 import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';
@@ -45,6 +46,11 @@ import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 import WarehouseStockControlPage from './pages/warehouse/WarehouseStockControlPage';
+import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
+import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
+import ProductManagementPage from './pages/warehouse/ProductManagementPage';
+import SupplierManagementPage from './pages/warehouse/SupplierManagementPage';
+import InventoryLocationManagementPage from './pages/warehouse/InventoryLocationManagementPage';
 
 // 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
@@ -54,6 +60,7 @@ import OwnerAnalyticsPage from './pages/owner/OwnerAnalyticsPage';
 import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
 import OwnerBranchesListPage from './pages/owner/OwnerBranchesListPage';
+import OwnerPoliciesPage from './pages/owner/OwnerPoliciesPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
@@ -91,9 +98,7 @@ function App() {
         <Route path="/blog/:id" element={<BlogPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
-        <Route path="/policy/:tab" element={<PolicyPage />} />
         <Route path="/wardrobe" element={<WardrobePage />} />
-        <Route path="/stylist" element={<StylistPage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
 
         <Route path="/login" element={<LoginPage />} />
@@ -161,6 +166,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/branch/stock-requests" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><WarehouseTransfersPage mode="branch" /></ProtectedRoute>} />
+        <Route path="/branch/inventory" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><BranchInventoryPage /></ProtectedRoute>} />
         <Route
           path="/branch/showroom"
           element={
@@ -195,6 +202,12 @@ function App() {
         />
         <Route path="/warehousemanager/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
         <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="adjustments" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/transfers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/products" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><ProductManagementPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/suppliers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}><SupplierManagementPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/inventory-locations" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><InventoryLocationManagementPage /></ProtectedRoute>} />
         <Route
           path="/warehousemanager/:resource"
           element={
@@ -242,7 +255,7 @@ function App() {
         <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
-        <Route path="/warehouse/inventory" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
+        <Route path="/warehouse/inventory" element={<Navigate to="/branch/inventory" replace />} />
         <Route path="/warehouse" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
 
         {/* ========================================================
@@ -317,6 +330,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <OwnerBranchesListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/policies"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerPoliciesPage />
             </ProtectedRoute>
           }
         />

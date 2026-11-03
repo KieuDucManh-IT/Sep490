@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NavbarLocationWidget from "./NavbarLocationWidget";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
@@ -63,14 +64,15 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Tủ Đồ Cá Nhân (Đổi vị trí lên cạnh Sản Phẩm) */}
+
+          {/* Tủ Đồ Cá Nhân */}
           <div className="nav-dropdown-item">
             <Link to="/wardrobe" className={`navbar-link ${isActive("/wardrobe")}`}>
               Tủ Đồ Cá Nhân <i className="fa-solid fa-chevron-down nav-arrow"></i>
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
-              <Link to="/stylist" className="nav-sublink">Tư vấn AI Stylist ✨</Link>
+              <Link to="/stylist" className="nav-sublink">Tư vấn AI Stylist </Link>
               <Link to="/wardrobe?filter=tryon-history" className="nav-sublink">Đã thử qua AI / Camera</Link>
               <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
             </div>
@@ -124,6 +126,9 @@ export default function Navbar() {
 
         {/* Action Icons & User Account */}
         <div className="navbar-actions">
+          {/* Quick Location Picker */}
+          <NavbarLocationWidget />
+
           {/* Search Icon */}
           <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
             <i className="fa-solid fa-magnifying-glass"></i>
@@ -282,7 +287,7 @@ export default function Navbar() {
             </Link>
           )}
 
-          
+
         </div>
       </div>
     </header>

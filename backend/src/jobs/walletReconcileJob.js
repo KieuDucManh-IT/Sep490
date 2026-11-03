@@ -25,7 +25,9 @@ export function startWalletReconcileJob() {
     try {
       await expireQueuedWithdrawals();
     } catch {
-      console.error("Chưa chạy được tác vụ giải phóng tiền quá hạn");
+      if (process.env.DEBUG_WALLET) {
+        console.error("Chưa chạy được tác vụ giải phóng tiền quá hạn");
+      }
     } finally {
       expiring = false;
     }
@@ -47,7 +49,7 @@ export function startWalletReconcileJob() {
           },
         },
         {
-          new: true,
+          returnDocument: "after",
           sort: { nextCheckAt: 1 },
         }
       );
@@ -61,16 +63,18 @@ export function startWalletReconcileJob() {
           ? await syncTopup(transaction._id)
           : await syncWithdrawal(transaction._id);
       } catch {
-        console.warn(
-          "Chưa đối soát được giao dịch:",
-          String(transaction._id)
-        );
+        if (process.env.DEBUG_WALLET) {
+          console.warn(
+            "Chưa đối soát được giao dịch:",
+            String(transaction._id)
+          );
+        }
       } finally {
         const delay = !result || result.status === "review"
-          ? 30000
+          ? 60000
           : transaction.transactionType === "top_up"
-            ? 10000
-            : 5000;
+            ? 30000
+            : 30000;
 
         await WalletTransaction.updateOne(
           {
@@ -111,11 +115,13 @@ export function startWalletReconcileJob() {
         worker(),
       ]);
 
-      if (results.some((item) => item.status === "rejected")) {
+      if (results.some((item) => item.status === "rejected") && process.env.DEBUG_WALLET) {
         console.error("Một tiến trình đối soát Ví gặp lỗi database");
       }
     } catch {
-      console.error("Tác vụ đối soát Ví gặp lỗi");
+      if (process.env.DEBUG_WALLET) {
+        console.error("Tác vụ đối soát Ví gặp lỗi");
+      }
     } finally {
       running = false;
     }

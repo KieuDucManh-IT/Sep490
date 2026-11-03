@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Store,
+  ScrollText,
   BadgePercent,
   BarChart3,
   Scale,
@@ -105,53 +106,72 @@ export default function OwnerSidebar({ isCollapsed: externalCollapsed, onToggle:
     [location.pathname]
   );
 
+  // Kiểm tra quyền Shop Owner / Admin và ngữ cảnh kho
+  const userRole = String(user?.roleName || user?.Role || user?.role || '').trim().toLowerCase();
+  const isShopOwnerOrAdmin = /^(shop_owner|owner|admin)$/i.test(userRole) || /shop_owner|owner|admin/i.test(userRole);
+  const isWarehouseContext = location.pathname.startsWith('/warehouse') || /warehouse/i.test(userRole);
+
   // Grouped operational domains for Shop Owner
   const navGroups = useMemo(
-    () => [
-      {
-        id: 'operations',
-        title: 'VẬN HÀNH CHUỖI',
-        items: [
-          {
-            path: '/owner/dashboard',
-            label: 'Tổng Quan Chuỗi',
-            icon: LayoutDashboard,
-            desc: 'Báo cáo tổng hợp vận hành toàn chuỗi',
-          },
-          {
-            path: '/owner/branches',
-            label: 'Quản Lý Chi Nhánh',
-            icon: Store,
-            desc: 'Quản lý danh sách chi nhánh & bổ nhiệm quản lý',
-          },
-        ],
-      },
-      {
-        id: 'finance',
-        title: 'TÀI CHÍNH & KINH DOANH',
-        items: [
-          {
-            path: '/owner/pricing',
-            label: 'Bảng Giá & Tiền Cọc',
-            icon: BadgePercent,
-            desc: 'Chính sách giá thuê, giá bán & tỷ lệ cọc',
-          },
-          {
-            path: '/owner/analytics',
-            label: 'Báo Cáo Tài Chính',
-            icon: BarChart3,
-            desc: 'Doanh thu toàn chuỗi & dòng tiền đối soát',
-          },
-          {
-            path: '/owner/disputes',
-            label: 'Khiếu Nại & Cọc',
-            icon: Scale,
-            desc: 'Xử lý tranh chấp và tiền cọc Escrow',
-          },
-        ],
-      },
-    ],
-    []
+    () => {
+      const operationsItems = [
+        {
+          path: '/owner/dashboard',
+          label: 'Tổng Quan Chuỗi',
+          icon: LayoutDashboard,
+          desc: 'Báo cáo tổng hợp vận hành toàn chuỗi',
+        },
+        {
+          path: '/owner/branches',
+          label: 'Quản Lý Chi Nhánh',
+          icon: Store,
+          desc: 'Quản lý danh sách chi nhánh & bổ nhiệm quản lý',
+        },
+      ];
+
+      // Chỉ hiển thị Cấu hình Chính Sách cho role Shop Owner/Admin và ngoài phạm vi nghiệp vụ kho
+      if (isShopOwnerOrAdmin && !isWarehouseContext) {
+        operationsItems.push({
+          path: '/owner/policies',
+          label: 'Chính Sách Vận Hành',
+          icon: ScrollText,
+          desc: 'Cấu hình 7 chính sách kinh doanh toàn chuỗi',
+        });
+      }
+
+      return [
+        {
+          id: 'operations',
+          title: 'VẬN HÀNH CHUỖI',
+          items: operationsItems,
+        },
+        {
+          id: 'finance',
+          title: 'TÀI CHÍNH & KINH DOANH',
+          items: [
+            {
+              path: '/owner/pricing',
+              label: 'Bảng Giá & Tiền Cọc',
+              icon: BadgePercent,
+              desc: 'Chính sách giá thuê, giá bán & tỷ lệ cọc',
+            },
+            {
+              path: '/owner/analytics',
+              label: 'Báo Cáo Tài Chính',
+              icon: BarChart3,
+              desc: 'Doanh thu toàn chuỗi & dòng tiền đối soát',
+            },
+            {
+              path: '/owner/disputes',
+              label: 'Khiếu Nại & Cọc',
+              icon: Scale,
+              desc: 'Xử lý tranh chấp và tiền cọc Escrow',
+            },
+          ],
+        },
+      ];
+    },
+    [isShopOwnerOrAdmin, isWarehouseContext]
   );
 
   return (

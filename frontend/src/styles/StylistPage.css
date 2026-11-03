@@ -68,7 +68,7 @@
 }
 
 .stylist-hero-title {
-  font-family: Georgia, "Playfair Display", serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
   font-size: clamp(32px, 3.8vw, 48px);
   font-weight: 400;
   line-height: 1.15;
@@ -147,7 +147,7 @@
   border-radius: 50%;
   background: var(--stylist-olive);
   color: #fff;
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
   font-size: 28px;
   font-style: italic;
   display: grid;
@@ -217,7 +217,7 @@
   border-radius: 50%;
   background: linear-gradient(135deg, var(--stylist-olive) 0%, var(--stylist-olive-dark) 100%);
   color: #ffffff;
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
   font-style: italic;
   font-size: 22px;
   display: grid;
@@ -307,7 +307,7 @@
   border-radius: 50%;
   background: var(--stylist-olive);
   color: white;
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
   font-style: italic;
   font-size: 15px;
   display: grid;
@@ -415,7 +415,7 @@
 .stylist-rec-img-fallback {
   color: var(--stylist-muted);
   font-size: 24px;
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
 }
 
 .stylist-rec-content {
@@ -640,7 +640,7 @@
 }
 
 .stylist-catalog-heading h3 {
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
   font-size: 19px;
   font-weight: 500;
   margin: 0;
@@ -756,7 +756,7 @@
 .stylist-mini-placeholder {
   font-size: 28px;
   color: var(--stylist-muted);
-  font-family: Georgia, serif;
+  font-family: 'Playfair Display', var(--font-display), serif;
 }
 
 .stylist-mini-info {

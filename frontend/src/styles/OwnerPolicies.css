@@ -29,112 +29,7 @@
   max-width: 1240px;
   margin: 0 auto;
   padding-bottom: 96px;
-}
-
-/* Page Header & Hero */
-.owner-policies-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--vp-gold);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  background: var(--vp-gold-light);
-  border: 1px solid var(--vp-gold-border);
-  padding: 4px 12px;
-  border-radius: 9999px;
-}
-
-.owner-policies-badge::before {
-  content: "";
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background-color: var(--vp-gold);
-}
-
-.owner-policies-title {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--vp-slate-900);
-  margin: 0 0 8px 0;
-  letter-spacing: -0.02em;
-}
-
-.owner-policies-desc {
-  color: var(--vp-slate-600);
-  font-size: 14px;
-  margin: 0;
-  line-height: 1.6;
-  max-width: 780px;
-}
-
-/* Header Action Buttons */
-.owner-policies-btn-create {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: linear-gradient(135deg, #111827 0%, #1F2937 100%);
-  color: #ffffff;
-  border: 1px solid #374151;
-  font-size: 13.5px;
-  font-weight: 600;
-  padding: 10px 20px;
-  border-radius: 12px;
-  min-height: 44px;
-  cursor: pointer;
-  transition: var(--vp-transition);
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.15);
-  user-select: none;
-}
-
-.owner-policies-btn-create:hover:not(:disabled) {
-  background: linear-gradient(135deg, #1F2937 0%, #030712 100%);
-  border-color: var(--vp-gold);
-  color: #FAF8F5;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(166, 134, 90, 0.25);
-}
-
-.owner-policies-btn-create:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.owner-policies-btn-create:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.owner-policies-btn-refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 9px 18px;
-  min-height: 44px;
-  border-radius: 12px;
-  border: 1px solid var(--vp-slate-200);
-  background: #ffffff;
-  color: var(--vp-slate-700);
-  transition: var(--vp-transition);
-  cursor: pointer;
-}
-
-.owner-policies-btn-refresh:hover:not(:disabled) {
-  background: var(--vp-slate-50);
-  border-color: #CBD5E1;
-  color: var(--vp-slate-900);
-  transform: translateY(-1px);
-}
-
-.owner-policies-btn-refresh:focus-visible {
-  outline: 2px solid var(--vp-gold);
-  outline-offset: 2px;
+  font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* ==========================================================================
@@ -779,97 +674,43 @@
   gap: 16px;
 }
 
-.owner-policies-btn-init {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 28px;
-  border-radius: 12px;
-  background: var(--vp-slate-900);
-  color: #ffffff;
-  border: 1px solid var(--vp-slate-900);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
+/* ==========================================================================
+   CREATE POLICY MODAL STYLES (Vestora Modal Specification)
+   ========================================================================== */
+.policy-create-modal-dialog {
+  max-width: 680px !important;
+}
+
+.policy-create-modal-dialog .vestora-modal-body {
+  background: var(--vp-slate-50) !important;
+}
+
+.policy-create-modal-dialog .modal-section-card {
+  background: #FFFFFF;
+  border: 1px solid var(--vp-slate-200);
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
   transition: var(--vp-transition);
 }
 
-.owner-policies-btn-init:hover {
-  background: #000000;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
-}
-
-/* ==========================================================================
-   CREATE POLICY MODAL STYLES (.owner-policy-create-modal)
-   ========================================================================== */
-.owner-policy-create-modal .modal-content {
-  border-radius: 20px;
-  border: 1px solid var(--vp-slate-200);
-  box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.22);
-  overflow: hidden;
-}
-
-.owner-policy-create-modal .modal-header {
-  background: #ffffff;
-  border-bottom: 1px solid var(--vp-slate-100);
-}
-
-.owner-policy-create-modal .modal-body {
-  background: #ffffff;
-}
-
-.owner-policy-create-modal .form-control {
+.policy-create-modal-dialog .form-control {
   border-radius: 10px;
   border: 1px solid var(--vp-slate-200);
-  font-size: 14px;
+  font-size: 13.5px;
   padding: 10px 14px;
   transition: var(--vp-transition);
-}
-
-.owner-policy-create-modal .form-control:focus {
-  border-color: var(--vp-gold);
-  box-shadow: 0 0 0 3px rgba(166, 134, 90, 0.16);
-}
-
-.owner-policy-create-modal .modal-footer {
-  background: var(--vp-slate-50);
-  border-top: 1px solid var(--vp-slate-100);
-}
-
-.owner-policy-create-modal .modal-footer .btn-outline-secondary {
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 13.5px;
-  min-height: 42px;
-  border-color: var(--vp-slate-200);
-  color: var(--vp-slate-700);
-  transition: var(--vp-transition);
-}
-
-.owner-policy-create-modal .modal-footer .btn-outline-secondary:hover {
-  background: var(--vp-slate-100);
-  border-color: var(--vp-slate-300);
   color: var(--vp-slate-900);
 }
 
-.owner-policy-create-modal .modal-footer .btn-dark {
-  background: linear-gradient(135deg, #111827 0%, #1F2937 100%);
-  border: 1px solid #374151;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 13.5px;
-  min-height: 42px;
-  color: #ffffff;
-  transition: var(--vp-transition);
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.15);
+.policy-create-modal-dialog .form-control:focus {
+  border-color: var(--vp-gold);
+  box-shadow: 0 0 0 3px rgba(166, 134, 90, 0.16);
+  background: #FFFFFF;
 }
 
-.owner-policy-create-modal .modal-footer .btn-dark:hover:not(:disabled) {
-  background: linear-gradient(135deg, #1F2937 0%, #030712 100%);
-  border-color: var(--vp-gold);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(166, 134, 90, 0.25);
+.policy-create-modal-dialog textarea.form-control {
+  line-height: 1.6;
 }
 
 /* ==========================================================================

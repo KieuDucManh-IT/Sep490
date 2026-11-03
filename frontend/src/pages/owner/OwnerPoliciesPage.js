@@ -250,10 +250,10 @@ export default function OwnerPoliciesPage() {
             {/* Tiêu đề trang & Tác vụ nhanh */}
             <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
               <div>
-                <h1 className="admin-page-title owner-policies-title">
+                <h1 className="admin-page-title">
                   Cấu Hình Chính Sách Kinh Doanh Chuỗi
                 </h1>
-                <p className="admin-page-desc owner-policies-desc">
+                <p className="admin-page-desc">
                   Toàn quyền tạo mới, chỉnh sửa, xem và xóa các chính sách hoạt động áp dụng thống nhất cho toàn chuỗi showroom VESTORA.
                 </p>
               </div>
@@ -261,24 +261,23 @@ export default function OwnerPoliciesPage() {
               <div className="d-flex align-items-center gap-2">
                 <button
                   type="button"
-                  className="owner-policies-btn-create"
+                  className="taskbar-add-btn"
                   onClick={() => setShowCreateModal(true)}
                   disabled={loading}
                   title="Tạo thêm chính sách mới cho chuỗi"
                 >
-                  <Plus size={16} />
+                  <Plus size={15} />
                   <span>Tạo Chính Sách Mới</span>
                 </button>
 
                 <button
                   type="button"
-                  className="btn-tail-outline owner-policies-btn-refresh"
+                  className="taskbar-refresh-btn"
                   onClick={fetchPoliciesData}
                   disabled={loading}
                   title="Tải lại dữ liệu từ máy chủ"
                 >
                   <RefreshCw size={14} className={loading ? 'fa-spin' : ''} />
-                  <span>Làm mới</span>
                 </button>
               </div>
             </div>
@@ -304,11 +303,11 @@ export default function OwnerPoliciesPage() {
                 <div className="owner-policies-empty-actions">
                   <button
                     type="button"
-                    className="owner-policies-btn-init"
+                    className="taskbar-add-btn"
                     onClick={() => setShowCreateModal(true)}
                   >
-                    <Plus size={16} />
-                    <span>+ Tạo Chính Sách Đầu Tiên</span>
+                    <Plus size={15} />
+                    <span>Tạo Chính Sách Đầu Tiên</span>
                   </button>
                 </div>
               </div>

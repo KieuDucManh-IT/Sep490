@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NavbarLocationWidget from "./NavbarLocationWidget";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
@@ -85,17 +86,9 @@ export default function Navbar() {
           </Link>
 
           {/* Chính Sách */}
-          <div className="nav-dropdown-item">
-            <Link to="/policy" className={`navbar-link ${isActive("/policy")}`}>
-              Chính Sách <i className="fa-solid fa-chevron-down nav-arrow"></i>
-            </Link>
-            <div className="nav-dropdown-menu">
-              <Link to="/policy" className="nav-sublink">Chính sách thuê đồ</Link>
-              <Link to="/policy" className="nav-sublink">Thanh toán Escrow</Link>
-              <Link to="/policy" className="nav-sublink">Đổi trả & Hoàn cọc</Link>
-              <Link to="/policy" className="nav-sublink">Bảo mật thông tin</Link>
-            </div>
-          </div>
+          <Link to="/policy" className={`navbar-link ${isActive("/policy")}`}>
+            Chính Sách
+          </Link>
 
           {/* Tủ Đồ Cá Nhân */}
           <div className="nav-dropdown-item">
@@ -139,6 +132,9 @@ export default function Navbar() {
 
         {/* Action Icons & User Account */}
         <div className="navbar-actions">
+          {/* Quick Location Picker */}
+          <NavbarLocationWidget />
+
           {/* Search Icon */}
           <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
             <i className="fa-solid fa-magnifying-glass"></i>

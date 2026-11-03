@@ -306,7 +306,7 @@ export default function BranchDashboardPage() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <img
-                    src={shop.imageUrl || shop.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(shop.name)}&background=0F172A&color=D97706&size=100`}
+                    src={shop.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(shop.name)}&background=0F172A&color=D97706&size=100`}
                     alt={shop.name}
                     style={{
                       width: '56px',
@@ -314,10 +314,10 @@ export default function BranchDashboardPage() {
                       borderRadius: '12px',
                       objectFit: 'cover',
                       border: '1px solid #E2E8F0',
-                      cursor: (shop.imageUrl || shop.avatarUrl) ? 'pointer' : 'default',
+                      cursor: shop.imageUrl ? 'pointer' : 'default',
                     }}
                     onClick={() => {
-                      const logoSrc = shop.imageUrl || shop.avatarUrl;
+                      const logoSrc = shop.imageUrl;
                       if (logoSrc) {
                         setLightboxImage({
                           url: logoSrc,
@@ -325,7 +325,7 @@ export default function BranchDashboardPage() {
                         });
                       }
                     }}
-                    title={(shop.imageUrl || shop.avatarUrl) ? 'Bấm để xem ảnh logo chi tiết' : shop.name}
+                    title={shop.imageUrl ? 'Bấm để xem ảnh logo chi tiết' : shop.name}
                   />
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>

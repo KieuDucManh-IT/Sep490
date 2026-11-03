@@ -16,6 +16,14 @@ import {
   getBranchManagers,
   uploadShopImage,
 } from '../controllers/shop/shopController.js';
+import {
+  getMyPolicy,
+  createPolicy,
+  updateMyPolicy,
+  updatePolicyByKey,
+  deletePolicy,
+  getPublicPolicies,
+} from '../controllers/shop/businessPolicyController.js';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
 import { Shop } from '../models/shop/Shop.js';
 
@@ -79,6 +87,42 @@ router.get(
   getAssignedBranch
 );
 router.get('/reverse-geocode', reverseGeocodeAddress);
+
+// ==========================================
+// BUSINESS POLICIES (Chain Management)
+// ==========================================
+router.get(
+  '/policies/my-policy',
+  authMiddleware,
+  requireRole('admin', 'shop_owner', 'owner'),
+  getMyPolicy
+);
+router.post(
+  '/policies',
+  authMiddleware,
+  requireRole('admin', 'shop_owner', 'owner'),
+  createPolicy
+);
+router.put(
+  '/policies/my-policy',
+  authMiddleware,
+  requireRole('admin', 'shop_owner', 'owner'),
+  updateMyPolicy
+);
+router.put(
+  '/policies/:key',
+  authMiddleware,
+  requireRole('admin', 'shop_owner', 'owner'),
+  updatePolicyByKey
+);
+router.delete(
+  '/policies/:key',
+  authMiddleware,
+  requireRole('admin', 'shop_owner', 'owner'),
+  deletePolicy
+);
+router.get('/policies/public', getPublicPolicies);
+
 router.get('/', getShopApplications);
 router.get('/:id', getShopById);
 router.post(

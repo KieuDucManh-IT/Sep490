@@ -8,15 +8,17 @@ export async function authMiddleware(req, res, next) {
     : null) || req.cookies?.vestora_token || null;
 
   if (!token) {
-    return next(
-      Object.assign(new Error("Bạn chưa đăng nhập"), {
-        status: 401,
-      })
-    );
+    return res.status(401).json({
+      success: false,
+      message: "Bạn chưa đăng nhập",
+    });
   }
 
   if (!process.env.JWT_SECRET) {
-    return next(new Error("Server chưa cấu hình JWT_SECRET"));
+    return res.status(500).json({
+      success: false,
+      message: "Server chưa cấu hình JWT_SECRET",
+    });
   }
 
   let payload;
@@ -28,43 +30,37 @@ export async function authMiddleware(req, res, next) {
       audience: "vestora-web",
     });
   } catch {
-    return next(
-      Object.assign(
-        new Error("Thông tin đăng nhập không hợp lệ"),
-        { status: 401 }
-      )
-    );
+    return res.status(401).json({
+      success: false,
+      message: "Thông tin đăng nhập không hợp lệ hoặc đã hết hạn",
+    });
   }
 
   if (
     typeof payload.sub !== "string" ||
     !/^[a-f0-9]{24}$/i.test(payload.sub)
   ) {
-    return next(
-      Object.assign(
-        new Error("Thông tin đăng nhập không hợp lệ"),
-        { status: 401 }
-      )
-    );
+    return res.status(401).json({
+      success: false,
+      message: "Thông tin đăng nhập không hợp lệ",
+    });
   }
 
   try {
     const user = await User.findById(payload.sub);
 
     if (!user) {
-      return next(
-        Object.assign(new Error("Tài khoản không còn tồn tại"), {
-          status: 401,
-        })
-      );
+      return res.status(401).json({
+        success: false,
+        message: "Tài khoản không còn tồn tại",
+      });
     }
 
     if (user.Status !== "active") {
-      return next(
-        Object.assign(new Error("Tài khoản đã bị vô hiệu hóa"), {
-          status: 403,
-        })
-      );
+      return res.status(403).json({
+        success: false,
+        message: "Tài khoản đã bị vô hiệu hóa",
+      });
     }
 
     req.user = user;
@@ -93,6 +89,20 @@ export function requireRole(...allowedRoles) {
 }
 
 export const requireRoles = requireRole;
+
+export function requireShopOwnerOnly(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: "Bạn chưa đăng nhập" });
+  }
+  const userRole = String(req.user.Role || req.user.role || "").trim().toLowerCase();
+  if (userRole !== "shop_owner" && userRole !== "owner") {
+    return res.status(403).json({
+      success: false,
+      message: "Chỉ Shop Owner mới có quyền cấu hình bảng giá và tiền cọc.",
+    });
+  }
+  return next();
+}
 
 export function notFound(req, res) {
   return res.status(404).json({
@@ -146,12 +156,17 @@ export function errorHandler(error, req, res, next) {
       ? error.status
       : 500;
 
-  console.error(
-    `Lỗi API ${req.method} ${req.path}:`,
-    error.stack || error.message
-  );
+  // CHỈ log stack trace khi là lỗi máy chủ thực sự (status >= 500)
+  // Các lỗi 4xx client thông thường (400, 401, 403, 404) không in stack trace gây rác log
+  if (status >= 500) {
+    console.error(
+      `[LỖI SERVER ${status}] ${req.method} ${req.originalUrl || req.path}:`,
+      error.stack || error.message
+    );
+  }
 
   return res.status(status).json({
+    success: false,
     message: error.status === status
       ? error.message
       : "Có lỗi phía server. Vui lòng thử lại",

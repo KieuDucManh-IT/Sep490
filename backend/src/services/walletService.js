@@ -658,7 +658,7 @@ export async function syncWithdrawal(
             submittedAt: new Date(),
           },
         },
-        { new: true }
+        { returnDocument: "after" }
       ).select("+bankEncrypted");
 
       if (!transaction) {
@@ -790,12 +790,14 @@ export async function syncWithdrawal(
       "Chưa xác minh được kết quả rút tiền. " +
         "Giao dịch đang chờ đối soát.";
 
-    console.warn("[wallet-withdraw]", {
-      transactionId: String(transactionId),
-      operation: error.operation,
-      httpStatus: error.httpStatus,
-      providerCode: error.providerCode,
-    });
+    if (process.env.DEBUG_WALLET) {
+      console.warn("[wallet-withdraw]", {
+        transactionId: String(transactionId),
+        operation: error.operation,
+        httpStatus: error.httpStatus,
+        providerCode: error.providerCode,
+      });
+    }
 
     const definitelyNotCreated =
       claimedHere &&

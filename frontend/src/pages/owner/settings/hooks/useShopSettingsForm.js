@@ -65,7 +65,7 @@ export function useShopSettingsForm() {
           latitude: s.latitude != null ? String(s.latitude) : '',
           longitude: s.longitude != null ? String(s.longitude) : '',
           bannerUrl: s.bannerUrl || '',
-          imageUrl: s.imageUrl || s.avatarUrl || '',
+          imageUrl: s.imageUrl || '',
           openingHours: s.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
           isOpen: s.status === 'ACTIVE',
         });
@@ -400,7 +400,7 @@ export function useShopSettingsForm() {
       String(formData.latitude || '') !== String(shop.latitude != null ? shop.latitude : '') ||
       String(formData.longitude || '') !== String(shop.longitude != null ? shop.longitude : '') ||
       (formData.bannerUrl || '') !== (shop.bannerUrl || '') ||
-      (formData.imageUrl || '') !== (shop.imageUrl || shop.avatarUrl || '') ||
+      (formData.imageUrl || '') !== (shop.imageUrl || '') ||
       (formData.openingHours || '').trim() !== (shop.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)').trim() ||
       Boolean(formData.isOpen) !== (shop.status === 'ACTIVE')
     );
@@ -431,7 +431,7 @@ export function useShopSettingsForm() {
         latitude: shop.latitude != null ? String(shop.latitude) : '',
         longitude: shop.longitude != null ? String(shop.longitude) : '',
         bannerUrl: shop.bannerUrl || '',
-        imageUrl: shop.imageUrl || shop.avatarUrl || '',
+        imageUrl: shop.imageUrl || '',
         openingHours: shop.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
         isOpen: shop.status === 'ACTIVE',
       });

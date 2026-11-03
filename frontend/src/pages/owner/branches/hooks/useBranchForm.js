@@ -25,7 +25,7 @@ export function useBranchForm({ provinces, fetchWardsByProvince, setWards, showT
       const fallbackCoords = getProvinceCoords(branchToEdit.city) || PROVINCE_DEFAULT_COORDS['Thành phố Hà Nội'];
       setFormData({
         name: branchToEdit.name || '',
-        imageUrl: branchToEdit.imageUrl || branchToEdit.avatarUrl || '',
+        imageUrl: branchToEdit.imageUrl || '',
         bannerUrl: branchToEdit.bannerUrl || INITIAL_BRANCH_FORM_DATA.bannerUrl,
         phone: branchToEdit.phone || '',
         openingHours: branchToEdit.openingHours || INITIAL_BRANCH_FORM_DATA.openingHours,

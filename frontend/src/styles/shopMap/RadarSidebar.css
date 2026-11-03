@@ -1,0 +1,362 @@
+/* ==========================================================================
+   VESTORA — Radar Sidebar & Store Cards Stylesheet
+   Store cards, meta tags, distance badge, skeletons, and empty state
+   ========================================================================== */
+
+.radar-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--vestora-surface);
+  border-radius: 16px;
+  border: 1px solid var(--vestora-border-subtle);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  height: calc(100vh - 200px);
+  min-height: 560px;
+}
+
+.radar-sidebar-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--vestora-border-subtle);
+  background: var(--vestora-surface-alt);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.radar-sidebar-count {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--vestora-charcoal);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.radar-sidebar-sort-tag {
+  font-size: 11.5px;
+  color: var(--vestora-orange);
+  font-weight: 600;
+  background: var(--vestora-orange-light);
+  border: 1px solid var(--vestora-orange-border);
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.radar-sidebar-list {
+  padding: 12px 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+/* Store Card */
+.radar-shop-card {
+  background: var(--vestora-surface);
+  border: 1px solid var(--vestora-border-subtle);
+  border-radius: 14px;
+  padding: 15px;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  outline: none;
+  contain: content;
+  content-visibility: auto;
+  contain-intrinsic-size: 160px;
+}
+
+.radar-shop-card:hover {
+  border-color: var(--vestora-orange);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+}
+
+.radar-shop-card.selected {
+  border-color: var(--vestora-orange);
+  background: #fffdfb;
+  box-shadow: 0 0 0 1px var(--vestora-orange), 0 6px 18px rgba(234, 88, 12, 0.12);
+}
+
+.radar-shop-card:focus-visible {
+  border-color: var(--vestora-orange);
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.2);
+}
+
+.radar-card-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.radar-card-avatar-wrap {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f4f4f5;
+  border: 1px solid var(--vestora-border-subtle);
+}
+
+.radar-card-avatar-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.radar-card-title-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.radar-card-title-group h3 {
+  font-family: var(--font-serif-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--vestora-charcoal);
+  margin: 0 0 4px 0;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radar-card-status-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  display: inline-block;
+}
+
+.radar-card-status-badge.active {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.radar-card-status-badge.inactive {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.radar-card-distance-badge {
+  background: var(--vestora-orange-light);
+  border: 1px solid var(--vestora-orange-border);
+  color: var(--vestora-orange);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.radar-card-distance-badge.no-gps {
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+  color: #71717a;
+}
+
+.radar-card-address {
+  font-size: 13px;
+  color: var(--vestora-text-muted);
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.radar-card-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--vestora-text-subtle);
+}
+
+.radar-phone-link {
+  color: var(--vestora-text-subtle);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.radar-phone-link:hover {
+  color: var(--vestora-orange);
+  text-decoration: underline;
+}
+
+.radar-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid #f4f4f5;
+}
+
+.radar-btn-outline {
+  padding: 8px 12px;
+  background: var(--vestora-surface);
+  border: 1px solid var(--vestora-border);
+  color: var(--vestora-charcoal);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.radar-btn-outline:hover {
+  background: var(--vestora-orange-light);
+  border-color: var(--vestora-orange-border);
+  color: var(--vestora-orange);
+}
+
+.radar-btn-outline:focus-visible {
+  outline: 2px solid var(--vestora-orange);
+}
+
+.radar-btn-gold {
+  padding: 8px 12px;
+  background: var(--vestora-charcoal);
+  border: 1px solid var(--vestora-charcoal);
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.radar-btn-gold:hover {
+  background: var(--vestora-orange);
+  border-color: var(--vestora-orange);
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.25);
+}
+
+.radar-btn-gold:focus-visible {
+  outline: 2px solid var(--vestora-orange);
+  outline-offset: 1px;
+}
+
+/* Shimmer Skeleton Cards */
+.radar-card-skeleton {
+  background: var(--vestora-surface);
+  border: 1px solid var(--vestora-border-subtle);
+  border-radius: 14px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #f8f8f8 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: radar-shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes radar-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Empty State */
+.radar-empty-state {
+  padding: 50px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.radar-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--vestora-orange-light);
+  border: 1px solid var(--vestora-orange-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--vestora-orange);
+  margin-bottom: 4px;
+}
+
+.radar-empty-title {
+  font-family: var(--font-serif-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--vestora-charcoal);
+  margin: 0;
+}
+
+.radar-empty-desc {
+  font-size: 13px;
+  color: var(--vestora-text-muted);
+  max-width: 280px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.radar-empty-btn {
+  margin-top: 8px;
+  padding: 8px 18px;
+  background: var(--vestora-orange-light);
+  border: 1px solid var(--vestora-orange-border);
+  color: var(--vestora-orange);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.radar-empty-btn:hover {
+  background: var(--vestora-orange);
+  color: #ffffff;
+}
+
+@media (max-width: 1024px) {
+  .radar-sidebar {
+    height: 480px;
+    order: 2;
+  }
+}

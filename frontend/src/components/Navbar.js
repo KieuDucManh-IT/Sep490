@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NavbarLocationWidget from "./NavbarLocationWidget";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
@@ -131,6 +132,9 @@ export default function Navbar() {
 
         {/* Action Icons & User Account */}
         <div className="navbar-actions">
+          {/* Quick Location Picker */}
+          <NavbarLocationWidget />
+
           {/* Search Icon */}
           <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
             <i className="fa-solid fa-magnifying-glass"></i>

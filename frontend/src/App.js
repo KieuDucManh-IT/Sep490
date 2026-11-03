@@ -24,6 +24,8 @@ import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
 import WardrobePage from './pages/customer/WardrobePage';
+import StylistPage from './pages/customer/StylistPage';
+import AiStylistWidget from './components/AiStylistWidget';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -89,6 +91,7 @@ function App() {
           <Route path="/policy" element={<PolicyPage />} />
           <Route path="/policy/:tab" element={<PolicyPage />} />
           <Route path="/wardrobe" element={<WardrobePage />} />
+          <Route path="/stylist" element={<StylistPage />} />
           <Route path="/my-wardrobe" element={<WardrobePage />} />
 
           <Route path="/login" element={<LoginPage />} />
@@ -393,6 +396,7 @@ function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <AiStylistWidget />
     </Router>
   );
 }

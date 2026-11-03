@@ -1,0 +1,835 @@
+/* ==========================================================================
+   VESTORA AI STYLIST STUDIO - LUXURY EDITORIAL THEME
+   ========================================================================== */
+
+:root {
+  --stylist-ink: #1f2421;
+  --stylist-muted: #6c7569;
+  --stylist-olive: #5b6e4e;
+  --stylist-olive-dark: #435339;
+  --stylist-olive-light: #eff2eb;
+  --stylist-gold: #c5a059;
+  --stylist-line: #e3e4dc;
+  --stylist-card-bg: #ffffff;
+  --stylist-bg-soft: #f8f8f4;
+  --stylist-radius: 12px;
+}
+
+.stylist-page-root {
+  min-height: 100vh;
+  background-color: var(--stylist-bg-soft);
+  color: var(--stylist-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.stylist-container {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+/* ==========================================================================
+   HERO BANNER
+   ========================================================================== */
+.stylist-hero {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 36px;
+  align-items: center;
+  background: linear-gradient(135deg, #f3f5ee 0%, #e6ebe0 100%);
+  border: 1px solid var(--stylist-line);
+  border-radius: var(--stylist-radius);
+  padding: 44px 48px;
+  margin-bottom: 36px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stylist-hero-content {
+  position: relative;
+  z-index: 2;
+}
+
+.stylist-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--stylist-olive);
+  margin-bottom: 14px;
+}
+
+.stylist-eyebrow .sparkle {
+  color: var(--stylist-gold);
+  font-size: 14px;
+}
+
+.stylist-hero-title {
+  font-family: Georgia, "Playfair Display", serif;
+  font-size: clamp(32px, 3.8vw, 48px);
+  font-weight: 400;
+  line-height: 1.15;
+  margin: 0 0 16px;
+  color: var(--stylist-ink);
+}
+
+.stylist-hero-title em {
+  font-style: italic;
+  color: var(--stylist-olive);
+  font-weight: 500;
+}
+
+.stylist-hero-desc {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--stylist-muted);
+  max-width: 540px;
+  margin: 0 0 24px;
+}
+
+.stylist-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.stylist-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(91, 110, 78, 0.2);
+  padding: 6px 14px;
+  border-radius: 20px;
+  color: var(--stylist-olive-dark);
+  font-weight: 500;
+}
+
+.stylist-hero-art {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.stylist-art-orbit {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  border: 1px dashed rgba(91, 110, 78, 0.35);
+  display: grid;
+  place-items: center;
+}
+
+.stylist-art-card {
+  width: 170px;
+  height: 210px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(45, 55, 40, 0.12);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid var(--stylist-line);
+  text-align: center;
+}
+
+.stylist-art-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--stylist-olive);
+  color: #fff;
+  font-family: Georgia, serif;
+  font-size: 28px;
+  font-style: italic;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+}
+
+.stylist-art-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--stylist-ink);
+  margin-top: 8px;
+}
+
+.stylist-art-tag {
+  font-size: 10px;
+  color: var(--stylist-olive);
+  background: var(--stylist-olive-light);
+  padding: 4px 8px;
+  border-radius: 12px;
+  display: inline-block;
+  align-self: center;
+}
+
+/* ==========================================================================
+   MAIN WORKSPACE (Chat Panel + Live Catalog)
+   ========================================================================== */
+.stylist-workspace {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 28px;
+  align-items: start;
+}
+
+/* ==========================================================================
+   CHAT PANEL
+   ========================================================================== */
+.stylist-chat-card {
+  background: var(--stylist-card-bg);
+  border: 1px solid var(--stylist-line);
+  border-radius: var(--stylist-radius);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  height: 680px;
+  overflow: hidden;
+}
+
+.stylist-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--stylist-line);
+}
+
+.stylist-header-profile {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.stylist-avatar-bubble {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--stylist-olive) 0%, var(--stylist-olive-dark) 100%);
+  color: #ffffff;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 22px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 10px rgba(91, 110, 78, 0.25);
+}
+
+.stylist-profile-info strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--stylist-ink);
+}
+
+.stylist-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--stylist-muted);
+  margin-top: 2px;
+}
+
+.stylist-status-indicator .online-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  animation: pulse-dot 2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+.stylist-chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stylist-btn-clear {
+  border: none;
+  background: transparent;
+  color: var(--stylist-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.stylist-btn-clear:hover {
+  background: #f1f2ec;
+  color: var(--stylist-ink);
+}
+
+/* ==========================================================================
+   CHAT MESSAGES
+   ========================================================================== */
+.stylist-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 20px;
+  background: #fafaf7;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stylist-msg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 92%;
+}
+
+.stylist-msg-row.from-user {
+  margin-left: auto;
+  flex-direction: row-reverse;
+}
+
+.stylist-msg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--stylist-olive);
+  color: white;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.stylist-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stylist-bubble {
+  padding: 14px 18px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stylist-bubble.stylist-speech {
+  background: #ffffff;
+  color: var(--stylist-ink);
+  border: 1px solid var(--stylist-line);
+  border-radius: 4px 18px 18px 18px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+}
+
+.stylist-bubble.user-speech {
+  background: var(--stylist-olive);
+  color: #ffffff;
+  border-radius: 18px 4px 18px 18px;
+  box-shadow: 0 2px 8px rgba(91, 110, 78, 0.25);
+}
+
+.stylist-msg-time {
+  font-size: 10px;
+  color: #9da096;
+  margin-top: 3px;
+  align-self: flex-start;
+}
+
+.stylist-msg-row.from-user .stylist-msg-time {
+  align-self: flex-end;
+}
+
+/* ==========================================================================
+   RECOMMENDED PRODUCTS INSIDE CHAT
+   ========================================================================== */
+.stylist-recommendations-box {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stylist-rec-header {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--stylist-olive);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stylist-rec-card {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  background: #ffffff;
+  border: 1px solid var(--stylist-line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-decoration: none;
+  color: inherit;
+}
+
+.stylist-rec-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  border-color: var(--stylist-olive);
+}
+
+.stylist-rec-img-wrap {
+  width: 84px;
+  height: 105px;
+  background: #eef0ea;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stylist-rec-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stylist-rec-img-fallback {
+  color: var(--stylist-muted);
+  font-size: 24px;
+  font-family: Georgia, serif;
+}
+
+.stylist-rec-content {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.stylist-rec-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--stylist-ink);
+  margin: 0 0 3px;
+  line-height: 1.3;
+}
+
+.stylist-rec-cat {
+  font-size: 10px;
+  color: var(--stylist-olive);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.stylist-rec-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px dashed #e8e9e1;
+  padding-top: 6px;
+}
+
+.stylist-rec-rent-price {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2b3823;
+}
+
+.stylist-rec-rent-price small {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--stylist-muted);
+}
+
+.stylist-rec-deposit {
+  font-size: 10px;
+  color: var(--stylist-muted);
+}
+
+.stylist-rec-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.stylist-tag-micro {
+  font-size: 9px;
+  padding: 2px 6px;
+  background: #f1f3ec;
+  border-radius: 4px;
+  color: #555b4e;
+}
+
+/* Pending / Loading dots */
+.stylist-typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+}
+
+.stylist-typing-dots span {
+  width: 7px;
+  height: 7px;
+  background: var(--stylist-olive);
+  border-radius: 50%;
+  display: inline-block;
+  animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.stylist-typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.stylist-typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ==========================================================================
+   QUICK PROMPTS
+   ========================================================================== */
+.stylist-quick-prompts {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 18px;
+  background: #ffffff;
+  border-top: 1px solid var(--stylist-line);
+  scrollbar-width: thin;
+}
+
+.stylist-quick-btn {
+  white-space: nowrap;
+  border: 1px solid #d9dcce;
+  background: #fbfbf9;
+  color: #4b5343;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.stylist-quick-btn:hover:not(:disabled) {
+  background: var(--stylist-olive-light);
+  border-color: var(--stylist-olive);
+  color: var(--stylist-olive-dark);
+}
+
+.stylist-quick-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   CHAT COMPOSER
+   ========================================================================== */
+.stylist-composer-wrapper {
+  padding: 14px 18px;
+  background: #ffffff;
+  border-top: 1px solid var(--stylist-line);
+}
+
+.stylist-composer-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f8f8f4;
+  border: 1px solid #dcded3;
+  border-radius: 30px;
+  padding: 6px 8px 6px 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.stylist-composer-form:focus-within {
+  border-color: var(--stylist-olive);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(91, 110, 78, 0.12);
+}
+
+.stylist-composer-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+  color: var(--stylist-ink);
+  min-width: 0;
+}
+
+.stylist-composer-input::placeholder {
+  color: #a4a79b;
+}
+
+.stylist-send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--stylist-olive);
+  color: white;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 15px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.stylist-send-btn:hover:not(:disabled) {
+  background: var(--stylist-olive-dark);
+  transform: scale(1.04);
+}
+
+.stylist-send-btn:disabled {
+  background: #cfd2c5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.stylist-composer-footnote {
+  font-size: 10px;
+  color: #9ea294;
+  text-align: center;
+  margin: 6px 0 0;
+}
+
+/* ==========================================================================
+   SIDE CATALOG GALLERY
+   ========================================================================== */
+.stylist-side-catalog {
+  background: var(--stylist-card-bg);
+  border: 1px solid var(--stylist-line);
+  border-radius: var(--stylist-radius);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  height: 680px;
+}
+
+.stylist-catalog-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.stylist-catalog-heading h3 {
+  font-family: Georgia, serif;
+  font-size: 19px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--stylist-ink);
+}
+
+.stylist-catalog-count {
+  font-size: 11px;
+  color: var(--stylist-muted);
+  letter-spacing: 0.08em;
+}
+
+.stylist-catalog-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stylist-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #f7f7f3;
+  border: 1px solid var(--stylist-line);
+  border-radius: 20px;
+}
+
+.stylist-search-box i {
+  color: #92958a;
+  font-size: 13px;
+}
+
+.stylist-search-box input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+  width: 100%;
+  color: var(--stylist-ink);
+}
+
+.stylist-cat-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.stylist-cat-chip {
+  padding: 5px 11px;
+  border-radius: 16px;
+  font-size: 11px;
+  border: 1px solid transparent;
+  background: #f0f1ea;
+  color: #555c4e;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.stylist-cat-chip.active,
+.stylist-cat-chip:hover {
+  background: var(--stylist-olive);
+  color: #ffffff;
+}
+
+.stylist-catalog-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  padding-right: 4px;
+}
+
+.stylist-mini-card {
+  background: #ffffff;
+  border: 1px solid var(--stylist-line);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s;
+}
+
+.stylist-mini-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--stylist-olive);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.stylist-mini-thumb {
+  height: 120px;
+  background: #eceee6;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stylist-mini-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stylist-mini-placeholder {
+  font-size: 28px;
+  color: var(--stylist-muted);
+  font-family: Georgia, serif;
+}
+
+.stylist-mini-info {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.stylist-mini-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--stylist-ink);
+  line-height: 1.3;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.stylist-mini-price {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--stylist-olive-dark);
+  margin-top: auto;
+}
+
+.stylist-mini-price small {
+  font-size: 8.5px;
+  font-weight: normal;
+  color: var(--stylist-muted);
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN
+   ========================================================================== */
+@media (max-width: 1024px) {
+  .stylist-workspace {
+    grid-template-columns: 1fr;
+  }
+  .stylist-hero {
+    grid-template-columns: 1fr;
+    padding: 32px 28px;
+  }
+  .stylist-hero-art {
+    display: none;
+  }
+  .stylist-side-catalog {
+    height: 480px;
+  }
+}
+
+@media (max-width: 640px) {
+  .stylist-container {
+    padding: 14px 12px 40px;
+  }
+  .stylist-hero {
+    padding: 22px 18px;
+    margin-bottom: 20px;
+  }
+  .stylist-chat-card {
+    height: 600px;
+  }
+  .stylist-chat-messages {
+    padding: 16px 12px;
+  }
+  .stylist-msg-row {
+    max-width: 98%;
+  }
+  .stylist-catalog-scroll {
+    grid-template-columns: 1fr;
+  }
+}
+

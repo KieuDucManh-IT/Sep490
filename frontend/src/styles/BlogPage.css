@@ -16,7 +16,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 2px;
-  color: #9c7148;
+  color: #5b6e4e;
   display: inline-block;
   margin-bottom: 12px;
 }
@@ -80,7 +80,7 @@
   left: 14px;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(4px);
-  color: #9c7148;
+  color: #5b6e4e;
   font-size: 11.5px;
   font-weight: 700;
   padding: 4px 12px;
@@ -117,7 +117,7 @@
 }
 
 .blog-post-title a:hover {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .blog-excerpt {
@@ -134,7 +134,7 @@
   gap: 6px;
   font-size: 13.5px;
   font-weight: 600;
-  color: #9c7148;
+  color: #5b6e4e;
   text-decoration: none;
   transition: gap 0.2s;
 }

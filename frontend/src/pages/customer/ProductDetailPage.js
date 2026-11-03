@@ -18,7 +18,7 @@ export default function ProductDetailPage() {
   // User Interactive Choices
   const [selectedImgIndex, setSelectedImgIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState('M');
-  const [rentalDuration, setRentalDuration] = useState(3); // 3, 5, 7 days
+  const [rentalDuration, setRentalDuration] = useState(1); // 3, 5, 7 days
   const [quantity, setQuantity] = useState(1);
   const [startDate, setStartDate] = useState(() => {
     const tomorrow = new Date();
@@ -173,38 +173,27 @@ export default function ProductDetailPage() {
     );
   }, [product]);
 
-  // Dynamic Prices for 3, 5, 7 days
-  const baseRental3Days = useMemo(() => {
-    if (!product) return 2500000;
-    if (product.rentalPricePer3Days && product.rentalPricePer3Days > 0) {
-      return product.rentalPricePer3Days;
-    }
+  // Giá thuê mặc định 1 ngày
+  const rentalPricePerDay = useMemo(() => {
+    if (!product) return 0;
     if (product.rentalPricePerDay && product.rentalPricePerDay > 0) {
-      return product.rentalPricePerDay * 3;
+      return product.rentalPricePerDay;
     }
-    return 2500000;
+    if (product.rentalPricePer3Days && product.rentalPricePer3Days > 0) {
+      return Math.round(product.rentalPricePer3Days / 3);
+    }
+    return 0;
   }, [product]);
 
-  const priceByDuration = useMemo(() => {
-    const p3 = baseRental3Days;
-    const p5 = Math.round((p3 * (5 / 3) * 0.9) / 10000) * 10000; // Chiết khấu ngày 5
-    const p7 = Math.round((p3 * (7 / 3) * 0.85) / 10000) * 10000; // Chiết khấu ngày 7
-    return {
-      3: p3,
-      5: p5,
-      7: p7,
-    };
-  }, [baseRental3Days]);
-
   const currentPrice = isRental
-    ? priceByDuration[rentalDuration] || baseRental3Days
+    ? rentalPricePerDay
     : product?.salePrice || 0;
 
   // Hàng mua bán thì không có tiền cọc
   const depositAmount = useMemo(() => {
     if (!isRental) return 0;
-    return Number(product?.deposit || product?.depositPrice || Math.round(baseRental3Days * 3.2));
-  }, [isRental, product, baseRental3Days]);
+    return Number(product?.deposit || product?.depositAmount || 0);
+  }, [isRental, product]);
 
   // Available Sizes
   const sizeOptions = useMemo(() => {
@@ -478,38 +467,6 @@ export default function ProductDetailPage() {
 
         {/* RIGHT COLUMN: Info & Booking Modules */}
         <div className="pdetail-info-column">
-          {/* Atelier / Shop Header Box */}
-          <div className="pdetail-atelier-card">
-            <div className="pdetail-atelier-left">
-              <div className="pdetail-atelier-avatar">
-                {(product.shopId?.name || 'Vestora Master Atelier').charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div className="pdetail-atelier-name-row">
-                  <span>{product.shopId?.name || 'Vestora Master Atelier'}</span>
-                  <i className="fa-solid fa-circle-check pdetail-verified-badge" title="Đã xác minh uy tín"></i>
-                </div>
-                <div className="pdetail-atelier-meta">
-                  <i className="fa-solid fa-star rating-star"></i>
-                  <span>{product.rating || '4.9'} ({product.reviewsCount || 128} đánh giá)</span>
-                  <span>•</span>
-                  <span>Đã tham gia 2 năm</span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              className="pdetail-btn-follow"
-              onClick={() => {
-                setIsFollowing(!isFollowing);
-                showToast(isFollowing ? 'Đã hủy theo dõi gian hàng' : 'Đã theo dõi gian hàng thành công!');
-              }}
-            >
-              <i className={isFollowing ? 'fa-solid fa-check' : 'fa-solid fa-user-plus'}></i>
-              {isFollowing ? 'Đang theo dõi' : 'Theo dõi'}
-            </button>
-          </div>
-
           {/* Product Title */}
           <h1 className="pdetail-title">{product.name}</h1>
 
@@ -537,7 +494,7 @@ export default function ProductDetailPage() {
               <div className="pdetail-price-left">
                 <span className="pdetail-price-main">{formatVND(currentPrice)}</span>
                 {isRental ? (
-                  <span className="pdetail-price-unit">/ {rentalDuration} ngày</span>
+                  <span className="pdetail-price-unit">/ ngày</span>
                 ) : (
                   <span className="pdetail-price-unit" style={{ color: '#059669', fontWeight: 600 }}>
                     (Giá sở hữu)
@@ -574,7 +531,7 @@ export default function ProductDetailPage() {
                 <i className="fa-solid fa-shirt"></i> Chọn kích thước (Size)
               </span>
               <button className="pdetail-ai-size-btn" onClick={() => setShowAiModal(true)}>
-                <i className="fa-solid fa-wand-magic-sparkles"></i> Tư vấn size bằng AI &gt;
+                <i className="fa-solid fa-ruler-combined"></i> Gợi ý chọn size theo số đo &gt;
               </button>
             </div>
 
@@ -592,32 +549,6 @@ export default function ProductDetailPage() {
               ))}
             </div>
           </div>
-
-          {/* Rental Duration Selection (Chỉ hiển thị khi là đồ thuê) */}
-          {isRental ? (
-            <div className="pdetail-section-group">
-              <div className="pdetail-section-header">
-                <span className="pdetail-section-title">
-                  <i className="fa-regular fa-calendar"></i> Chọn thời gian thuê
-                </span>
-              </div>
-
-              <div className="pdetail-durations-grid">
-                {[3, 5, 7].map((days) => (
-                  <div
-                    key={days}
-                    className={`pdetail-duration-card ${rentalDuration === days ? 'active' : ''}`}
-                    onClick={() => setRentalDuration(days)}
-                  >
-                    <span className="pdetail-duration-days">{days} ngày</span>
-                    <span className="pdetail-duration-price">
-                      {formatVND(priceByDuration[days])}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
 
           {/* Quantity & Delivery */}
           <div className="pdetail-qty-date-container">
@@ -716,7 +647,7 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
                 <div className="pdetail-timeline-divider">
-                  <span>{rentalDuration} ngày</span>
+                  <span>1 ngày</span>
                   <i className="fa-solid fa-arrow-right-long"></i>
                 </div>
                 <div className="pdetail-timeline-item">
@@ -1106,8 +1037,7 @@ export default function ProductDetailPage() {
           <div className="pdetail-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="pdetail-modal-header">
               <h3 className="pdetail-modal-title">
-                <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#6e3eb3' }}></i>
-                Tư vấn size thông minh bằng AI
+                <i className="fa-solid fa-ruler-combined" style={{ color: '#6e3eb3' }}></i> Gợi ý kích cỡ chuẩn theo số đo
               </h3>
               <button className="pdetail-modal-close-btn" onClick={() => setShowAiModal(false)}>
                 <i className="fa-solid fa-xmark"></i>
@@ -1115,7 +1045,7 @@ export default function ProductDetailPage() {
             </div>
 
             <p style={{ fontSize: '13.5px', color: '#71717a', margin: 0, lineHeight: 1.5 }}>
-              Nhập 3 chỉ số cơ thể của bạn (cm) để thuật toán VESTORA AI tính toán độ co giãn của vải và gợi ý kích thước vừa vặn nhất:
+              Nhập 3 chỉ số cơ thể của bạn (cm) để hệ thống tự động đối chiếu bảng size chuẩn và gợi ý kích cỡ vừa vặn nhất:
             </p>
 
             <form onSubmit={handleCalculateAiSize} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1178,7 +1108,7 @@ export default function ProductDetailPage() {
                 className="pdetail-btn-rent-now"
                 style={{ width: '100%', marginTop: '6px' }}
               >
-                <i className="fa-solid fa-calculator"></i> Phân tích vóc dáng
+                <i className="fa-solid fa-calculator"></i> Tính kích cỡ phù hợp
               </button>
             </form>
           </div>

@@ -16,7 +16,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 2px;
-  color: #9c7148;
+  color: #5b6e4e;
   display: inline-block;
   margin-bottom: 12px;
 }
@@ -59,14 +59,14 @@
 }
 
 .policy-tab-btn:hover {
-  border-color: #9c7148;
-  color: #9c7148;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 .policy-tab-btn.active {
-  background: #9c7148;
+  background: #5b6e4e;
   color: #ffffff;
-  border-color: #9c7148;
+  border-color: #5b6e4e;
 }
 
 .policy-content-card {

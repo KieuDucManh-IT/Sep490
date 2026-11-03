@@ -104,16 +104,13 @@ export default function Navbar() {
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
-              <Link to="/wardrobe?filter=ai-suggested" className="nav-sublink">Gợi ý AI Stylist</Link>
+              <Link to="/stylist" className="nav-sublink">Tư vấn AI Stylist ✨</Link>
               <Link to="/wardrobe?filter=tryon-history" className="nav-sublink">Đã thử qua AI / Camera</Link>
               <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
             </div>
           </div>
 
-          {/* Radar Cửa Hàng */}
-          <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
-            Radar Cửa Hàng
-          </Link>
+          
 
           {/* Quick Access for Management Roles */}
           {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
@@ -142,6 +139,22 @@ export default function Navbar() {
           {/* Search Icon */}
           <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
             <i className="fa-solid fa-magnifying-glass"></i>
+          </Link>
+
+          {/* Favorites Heart Icon (Sản phẩm yêu thích) */}
+          <Link to="/favorites" className={`navbar-icon-btn navbar-fav-btn ${isActive('/favorites')}`} title="Sản phẩm yêu thích" aria-label="Sản phẩm yêu thích">
+            <i className="fa-regular fa-heart"></i>
+          </Link>
+
+          {/* Notification Bell Icon (Chuông thông báo) */}
+          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
+            <i className="fa-regular fa-bell"></i>
+          </Link>
+
+          {/* Cart Icon with badge 0 (Đặt trước tên customer) */}
+          <Link to="/cart" className={`navbar-icon-btn navbar-cart-btn ${isActive('/cart')}`} title="Giỏ hàng" aria-label="Giỏ hàng">
+            <i className="fa-solid fa-bag-shopping"></i>
+            <span className="cart-badge-count">0</span>
           </Link>
 
           {/* User Account / Login Button */}
@@ -281,11 +294,7 @@ export default function Navbar() {
             </Link>
           )}
 
-          {/* Cart Icon with badge 0 */}
-          <Link to="/cart" className="navbar-icon-btn navbar-cart-btn" title="Giỏ hàng" aria-label="Giỏ hàng">
-            <i className="fa-solid fa-bag-shopping"></i>
-            <span className="cart-badge-count">0</span>
-          </Link>
+          
         </div>
       </div>
     </header>

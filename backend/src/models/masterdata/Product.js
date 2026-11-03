@@ -21,8 +21,8 @@ const productSchema = new mongoose.Schema({
   aiTryOn: { type: Boolean, default: true },
   status: { type: String, default: 'active', enum: ['active', 'inactive', 'discontinued'] },
   isDeleted: { type: Boolean, default: false },
-  gender:{type: String, trim: true},
-  
+  gender: { type: String, trim: true },
+
 }, { timestamps: true, strict: false });
 
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);

@@ -10,21 +10,21 @@
 /* CSS Custom Properties (Design Tokens) */
 :root {
   /* === Colors === */
-  --color-dark: #171717;
-  --color-dark-alt: #1A1A1A;
-  --color-gold: #C5A880;
-  --color-gold-dark: #A6865A;
+  --color-dark: #1f2421;
+  --color-dark-alt: #293227;
+  --color-gold: #5b6e4e;
+  --color-gold-dark: #435339;
   --color-white: #FFFFFF;
-  --color-off-white: #FEFEFE;
-  --color-warm-bg: #F5F3EF;
-  --color-warm-bg-alt: #FBF9F5;
-  --color-text-primary: #404040;
-  --color-text-secondary: #525252;
-  --color-text-muted: #737373;
+  --color-off-white: #f7f8f4;
+  --color-warm-bg: #eff2eb;
+  --color-warm-bg-alt: #f4f6f1;
+  --color-text-primary: #1f2421;
+  --color-text-secondary: #4a5246;
+  --color-text-muted: #6e7569;
   --color-text-placeholder: #A3A3A3;
-  --color-border: #E5E0D8;
-  --color-border-light: rgba(229, 224, 216, 0.6);
-  --color-success: #059669;
+  --color-border: #e2e6dc;
+  --color-border-light: rgba(226, 230, 220, 0.75);
+  --color-success: #5b6e4e;
   --color-error: #DC2626;
 
   --font-display: 'Newsreader', 'Georgia', serif;

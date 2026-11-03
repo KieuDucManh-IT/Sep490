@@ -85,17 +85,6 @@ export function usePricingData() {
     fetchProducts();
   }, [fetchProducts]);
 
-  // Đóng modal khi nhấn phím Escape
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && editingItem && !submitting) {
-        setEditingItem(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editingItem, submitting]);
-
   // Danh mục lấy từ dữ liệu thực kèm số lượng sản phẩm mỗi danh mục
   const categoryOptions = useMemo(() => {
     const map = new Map();
@@ -199,7 +188,7 @@ export function usePricingData() {
     });
   }, []);
 
-  // Handler khi Shop Owner nhập % giá thuê mỗi ngày
+  // Handler khi Shop Owner nhập % giá thuê mỗi ngày (hoặc click nút % gợi ý nhanh)
   const handleRentalPercentChange = useCallback((val) => {
     const p = val === '' ? '' : Math.max(0, Math.min(100, Number(val)));
     setEditForm((prev) => {
@@ -212,19 +201,7 @@ export function usePricingData() {
     });
   }, []);
 
-  // Handler khi Shop Owner click các nút % gợi ý nhanh cho giá thuê
-  const handleQuickRentalPercent = useCallback((pct) => {
-    setEditForm((prev) => {
-      const autoRental = calculateRentalPrice(prev.salePrice, pct);
-      return {
-        ...prev,
-        rentalPercent: pct,
-        rentalPricePerDay: autoRental,
-      };
-    });
-  }, []);
-
-  // Handler khi Shop Owner nhập số % cọc bằng tay
+  // Handler khi Shop Owner nhập số % cọc bằng tay (hoặc click nút % gợi ý nhanh)
   const handleDepositPercentChange = useCallback((val) => {
     const p = val === '' ? '' : Math.max(0, Math.min(200, Number(val)));
     setEditForm((prev) => {
@@ -237,17 +214,8 @@ export function usePricingData() {
     });
   }, []);
 
-  // Handler khi Shop Owner click các nút % gợi ý nhanh cho tiền cọc
-  const handleQuickDepositPercent = useCallback((pct) => {
-    setEditForm((prev) => {
-      const autoDeposit = calculateDeposit(prev.salePrice, pct);
-      return {
-        ...prev,
-        depositPercent: pct,
-        deposit: autoDeposit,
-      };
-    });
-  }, []);
+  const handleQuickRentalPercent = handleRentalPercentChange;
+  const handleQuickDepositPercent = handleDepositPercentChange;
 
   // Handler lưu bảng giá (chỉ lưu các trường hiện có trong DB)
   const handleSavePrice = async (e) => {

@@ -1,28 +1,26 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   RotateCcw,
   Sparkles,
-  TrendingUp,
   Calendar,
   ShieldCheck,
-  CheckCircle2,
   AlertCircle,
-  Search,
-  X,
-  SlidersHorizontal,
 } from 'lucide-react';
 import OwnerSidebar from '../../components/OwnerSidebar';
 import OwnerTopHeader from '../../components/OwnerTopHeader';
 import PricingTable from './pricing/components/PricingTable';
 import PricingEditModal from './pricing/components/PricingEditModal';
+import PricingFilterBar from './pricing/components/PricingFilterBar';
 import { usePricingData } from './pricing/hooks/usePricingData';
 import { fmtCurrency } from './pricing/utils/pricingHelpers';
 
-import '../../styles/AdminDashboard.css';
 import '../../styles/OpsShops.css';
+import '../../styles/ShopDashboard.css';
+import '../../styles/ShopBranches.css';
+import '../../styles/AdminDashboard.css';
 import '../../styles/OwnerPricing.css';
 
-// Re-export để đảm bảo tính tương thích ngược với các unit test / modules khác
+// Re-export để đảm bảo tính tương thích ngược với các modules khác
 export {
   calculateAmountByPercent,
   calculateDeposit,
@@ -33,9 +31,10 @@ export {
 
 /**
  * Controller View: Quản lý Biểu Phí, Giá Thuê & Tiền Cọc Chuỗi (Role: Shop Owner)
- * Cấu trúc module chuẩn hóa tương tự OwnerBranchesPage và OwnerPoliciesPage:
- * - Điều phối dữ liệu từ custom hook usePricingData
- * - Render giao diện chính, KPI, Bộ lọc và kết nối các sub-components độc lập (PricingTable, PricingEditModal)
+ * Cấu trúc giao diện đồng bộ hoàn toàn với hệ sinh thái Shop Owner (OwnerBranchesPage, OwnerPoliciesPage):
+ * - Layout container: shop-dashboard-layout -> admin-main-viewport -> shop-main-content -> store-mgmt-container
+ * - Bảng số liệu: clean-kpi-grid, clean-kpi-card
+ * - Không thay đổi bất kỳ trường dữ liệu hoặc logic tính toán nào (salePrice, rentalPricePerDay, deposit)
  */
 export default function OwnerPricingPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -68,7 +67,7 @@ export default function OwnerPricingPage() {
   } = usePricingData();
 
   return (
-    <div className="admin-layout">
+    <div className="shop-dashboard-layout">
       {/* 1. Sidebar điều hướng Shop Owner */}
       <OwnerSidebar
         isCollapsed={isSidebarCollapsed}
@@ -76,166 +75,123 @@ export default function OwnerPricingPage() {
       />
 
       {/* 2. Khung nhìn chính của trang */}
-      <div className="admin-main-viewport">
+      <div className="admin-main-viewport owner-branches-viewport">
         <OwnerTopHeader
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-          breadcrumb="Bảng Giá & Tiền Cọc Toàn Chuỗi"
+          breadcrumb="Cấu Hình Bảng Giá & Tiền Cọc Chuỗi"
         />
 
-        <main className="admin-content-body pricing-content-body">
-          {/* Header & Nút Làm Mới */}
-          <div className="pricing-header-wrapper">
-            <div>
-              <h1 className="pricing-header-title">Bảng Giá & Tiền Cọc</h1>
-              <p className="pricing-header-subtitle">
-                Cài đặt giá thuê theo ngày, giá bán và mức tiền cọc cho từng mẫu trang phục
-              </p>
+        <main className="shop-main-content owner-branches-main-content">
+          <div className="store-mgmt-container owner-pricing-container">
+            {/* Header & Tiêu đề trang chuẩn Shop Owner */}
+            <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
+              <div>
+                <h1 className="admin-page-title">
+                  Cấu Hình Biểu Phí & Tiền Cọc Chuỗi
+                </h1>
+                <p className="admin-page-desc">
+                  Toàn quyền cài đặt giá trị trang phục, tỷ lệ giá thuê theo ngày và mức tiền cọc bảo đảm áp dụng thống nhất cho toàn chuỗi showroom VESTORA.
+                </p>
+              </div>
+
+              <div className="d-flex align-items-center gap-2">
+                <span className="badge bg-light text-dark border px-3 py-2">
+                  Hiển thị <strong>{filteredItems.length}</strong> / {items.length} mẫu trang phục
+                </span>
+
+                <button
+                  type="button"
+                  className="btn-tail-outline owner-pricing-refresh-btn"
+                  onClick={fetchProducts}
+                  disabled={loading}
+                  title="Tải lại danh sách từ hệ thống"
+                  aria-label="Làm mới bảng giá"
+                >
+                  <RotateCcw size={14} className={loading ? 'spin-anim' : ''} />
+                  <span>{loading ? 'Đang cập nhật...' : 'Làm mới'}</span>
+                </button>
+              </div>
             </div>
 
-            <button
-              type="button"
-              className="btn-tail-outline pricing-refresh-btn"
-              onClick={fetchProducts}
-              disabled={loading}
-              aria-label="Làm mới danh sách trang phục"
-            >
-              <RotateCcw size={14} className={loading ? 'spin-anim' : ''} />
-              <span>{loading ? 'Đang cập nhật...' : 'Làm mới'}</span>
-            </button>
-          </div>
-
-          {/* Thẻ Thống Kê KPI */}
-          <section aria-label="Thống kê tổng quan bảng giá" className="pricing-kpi-section">
-            <div className="pricing-kpi-grid">
+            {/* Thẻ Thống Kê KPI Chuẩn Hệ Thống */}
+            <section aria-label="Thống kê tổng quan bảng giá" className="clean-kpi-grid mb-4">
               {/* KPI 1: Tổng mẫu */}
-              <div className="pricing-kpi-card">
-                <div className="pricing-kpi-header">
-                  <span className="pricing-kpi-label">TỔNG MẪU TRANG PHỤC</span>
-                  <div className="pricing-kpi-icon-wrap icon-gold">
-                    <Sparkles size={17} />
-                  </div>
+              <div className="clean-kpi-card">
+                <div className="clean-kpi-icon">
+                  <Sparkles size={18} />
                 </div>
-                <div className="pricing-kpi-value val-slate">
-                  {kpiStats.total} <span className="pricing-kpi-unit unit-slate">Mẫu</span>
-                </div>
-                <div className="pricing-kpi-footer footer-emerald">
-                  <TrendingUp size={13} />
-                  <span>Trang phục đang kinh doanh</span>
+                <div className="clean-kpi-info">
+                  <span className="clean-kpi-label">Tổng Mẫu Trang Phục</span>
+                  <span className="clean-kpi-value">
+                    {kpiStats.total} <span className="clean-kpi-unit">Mẫu</span>
+                  </span>
+                  <span className="clean-kpi-desc">Trang phục đang kinh doanh</span>
                 </div>
               </div>
 
               {/* KPI 2: Giá thuê trung bình */}
-              <div className="pricing-kpi-card">
-                <div className="pricing-kpi-header">
-                  <span className="pricing-kpi-label">GIÁ THUÊ TRUNG BÌNH</span>
-                  <div className="pricing-kpi-icon-wrap icon-amber">
-                    <Calendar size={17} />
-                  </div>
+              <div className="clean-kpi-card">
+                <div className="clean-kpi-icon warning">
+                  <Calendar size={18} />
                 </div>
-                <div className="pricing-kpi-value val-amber">
-                  {fmtCurrency(kpiStats.avgRental)}{' '}
-                  <span className="pricing-kpi-unit unit-amber">/ ngày</span>
-                </div>
-                <div className="pricing-kpi-footer footer-slate">
-                  <span>Tính theo ngày thuê thực tế</span>
+                <div className="clean-kpi-info">
+                  <span className="clean-kpi-label">Giá Thuê Trung Bình</span>
+                  <span className="clean-kpi-value text-amber">
+                    {fmtCurrency(kpiStats.avgRental)}{' '}
+                    <span className="clean-kpi-unit">/ ngày</span>
+                  </span>
+                  <span className="clean-kpi-desc">Tính theo ngày thuê thực tế</span>
                 </div>
               </div>
 
               {/* KPI 3: Tiền cọc trung bình */}
-              <div className="pricing-kpi-card">
-                <div className="pricing-kpi-header">
-                  <span className="pricing-kpi-label">TIỀN CỌC TRUNG BÌNH</span>
-                  <div className="pricing-kpi-icon-wrap icon-emerald">
-                    <ShieldCheck size={17} />
-                  </div>
+              <div className="clean-kpi-card">
+                <div className="clean-kpi-icon success">
+                  <ShieldCheck size={18} />
                 </div>
-                <div className="pricing-kpi-value val-emerald">
-                  {fmtCurrency(kpiStats.avgDeposit)}
-                </div>
-                <div className="pricing-kpi-footer footer-emerald">
-                  <CheckCircle2 size={13} />
-                  <span>Đảm bảo an toàn khi cho thuê</span>
+                <div className="clean-kpi-info">
+                  <span className="clean-kpi-label">Tiền Cọc Trung Bình</span>
+                  <span className="clean-kpi-value text-emerald">
+                    {fmtCurrency(kpiStats.avgDeposit)}
+                  </span>
+                  <span className="clean-kpi-desc">Bảo đảm an toàn tài sản</span>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          {/* Error Banner nếu có lỗi API */}
-          {errorMsg && (
-            <div role="alert" className="pricing-alert-banner">
-              <AlertCircle size={18} className="pricing-alert-icon" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          {/* Thanh Công Cụ Tìm Kiếm & Lọc Danh Mục */}
-          <section className="pricing-filter-wrapper">
-            <div className="pricing-filter-top">
-              {/* Ô tìm kiếm */}
-              <div className="pricing-search-container">
-                <Search size={16} className="pricing-search-icon" />
-                <input
-                  type="text"
-                  placeholder="Tìm theo mã trang phục, tên, thương hiệu..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Tìm kiếm trang phục"
-                  className="pricing-search-input"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => setSearch('')}
-                    aria-label="Xóa từ khóa tìm kiếm"
-                    className="pricing-search-clear"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
+            {/* Error Banner nếu có lỗi API */}
+            {errorMsg ? (
+              <div role="alert" className="pricing-alert-banner mb-4">
+                <AlertCircle size={18} className="pricing-alert-icon" />
+                <span>{errorMsg}</span>
               </div>
+            ) : null}
 
-              {/* Bộ đếm kết quả */}
-              <div className="pricing-filter-counter">
-                <SlidersHorizontal size={14} />
-                <span>
-                  Hiển thị <strong>{filteredItems.length}</strong> / {items.length} mẫu trang phục
-                </span>
-              </div>
-            </div>
+            {/* Thanh Công Cụ Tìm Kiếm & Lọc Danh Mục */}
+            <PricingFilterBar
+              search={search}
+              onSearchChange={setSearch}
+              onClearSearch={() => setSearch('')}
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              categoryOptions={categoryOptions}
+              totalCount={items.length}
+              filteredCount={filteredItems.length}
+            />
 
-            {/* Các nút bấm chọn nhanh danh mục */}
-            <div className="pricing-categories-row">
-              <span className="pricing-categories-title">Danh mục:</span>
-              {categoryOptions.map((cat) => {
-                const isActive = selectedCategory === cat.name;
-                return (
-                  <button
-                    key={cat.name}
-                    type="button"
-                    aria-pressed={isActive}
-                    onClick={() => setSelectedCategory(cat.name)}
-                    className={`pricing-category-pill ${isActive ? 'active' : ''}`}
-                  >
-                    <span>{cat.label}</span>
-                    <span className="pricing-category-badge">{cat.count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Bảng Danh Sách Trang Phục & Bảng Giá */}
-          <PricingTable
-            items={filteredItems}
-            loading={loading}
-            onOpenEdit={handleOpenEdit}
-            onResetFilters={() => {
-              setSearch('');
-              setSelectedCategory('ALL');
-            }}
-            hasActiveFilters={Boolean(search || selectedCategory !== 'ALL')}
-          />
+            {/* Bảng Danh Sách Trang Phục & Bảng Giá */}
+            <PricingTable
+              items={filteredItems}
+              loading={loading}
+              onOpenEdit={handleOpenEdit}
+              onResetFilters={() => {
+                setSearch('');
+                setSelectedCategory('ALL');
+              }}
+              hasActiveFilters={Boolean(search || selectedCategory !== 'ALL')}
+            />
+          </div>
         </main>
       </div>
 

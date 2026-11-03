@@ -1,4 +1,4 @@
-import React from 'react';
+import { memo } from 'react';
 import { Search, ShieldCheck, Edit3, Sparkles } from 'lucide-react';
 import { fmtCurrency, formatDate } from '../utils/pricingHelpers';
 
@@ -9,8 +9,9 @@ import { fmtCurrency, formatDate } from '../utils/pricingHelpers';
  * - Vector icon thay thế hoàn toàn emoji
  * - Tabular numbers căn chỉnh số tiền không bị nhảy layout
  * - Trạng thái rỗng (Empty state) trực quan có nút xóa bộ lọc
+ * - Memoized component chống lãng phí re-render
  */
-export default function PricingTable({
+function PricingTable({
   items,
   loading,
   onOpenEdit,
@@ -20,7 +21,7 @@ export default function PricingTable({
   return (
     <div className="admin-card-table-wrapper pricing-table-card">
       <div className="tailadmin-table-container">
-        <table className="tailadmin-table pricing-table">
+        <table className="tailadmin-table pricing-table" aria-label="Bảng giá thuê và tiền cọc trang phục">
           <thead className="pricing-table-head">
             <tr>
               <th scope="col" className="pricing-th th-product">
@@ -90,15 +91,17 @@ export default function PricingTable({
                           loading="lazy"
                           className="pricing-product-thumb"
                           onError={(e) => {
-                            e.currentTarget.classList.add('hidden');
-                            if (e.currentTarget.nextElementSibling) {
-                              e.currentTarget.nextElementSibling.classList.remove('hidden');
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback) {
+                              fallback.style.display = 'flex';
                             }
                           }}
                         />
                       ) : null}
                       <div
-                        className={`pricing-product-avatar-fallback ${it.image ? 'hidden' : ''}`}
+                        className="pricing-product-avatar-fallback"
+                        style={{ display: it.image ? 'none' : 'flex' }}
                         aria-hidden="true"
                       >
                         <Sparkles size={16} />
@@ -106,11 +109,11 @@ export default function PricingTable({
                       <div>
                         <div className="pricing-product-code-row">
                           <span className="pricing-product-code">{it.code}</span>
-                          {it.variantsCount > 0 && (
+                          {it.variantsCount > 0 ? (
                             <span className="pricing-variants-badge">
                               {it.variantsCount} kích cỡ/màu
                             </span>
-                          )}
+                          ) : null}
                         </div>
                         <div className="pricing-product-name">{it.name}</div>
                         <div className="pricing-product-updated">
@@ -130,27 +133,26 @@ export default function PricingTable({
                     <div className="pricing-cell-rental">
                       {fmtCurrency(it.rentalPricePerDay)}
                     </div>
-                    <div className="pricing-cell-subtext">/ ngày</div>
-                    {it.salePrice > 0 && it.rentalPricePerDay > 0 && (
+                    {it.salePrice > 0 && it.rentalPricePerDay > 0 ? (
                       <div className="pricing-rental-ratio">
                         ≈ {Math.round((it.rentalPricePerDay / it.salePrice) * 100)}% giá trị
                       </div>
-                    )}
+                    ) : null}
                   </td>
 
                   {/* Deposit Amount */}
                   <td className="pricing-td">
                     <div className="pricing-deposit-amount-row">
-                      <ShieldCheck size={15} color="#059669" />
+                      <ShieldCheck size={15} color="#059669" aria-hidden="true" />
                       <span className="pricing-cell-deposit">
                         {fmtCurrency(it.deposit)}
                       </span>
                     </div>
-                    {it.salePrice > 0 && it.deposit > 0 && (
+                    {it.salePrice > 0 && it.deposit > 0 ? (
                       <div className="pricing-deposit-ratio">
                         ≈ {Math.round((it.deposit / it.salePrice) * 100)}% giá trị
                       </div>
-                    )}
+                    ) : null}
                   </td>
 
                   {/* Sale / Appraisal Price */}
@@ -168,7 +170,7 @@ export default function PricingTable({
                       onClick={() => onOpenEdit(it)}
                       aria-label={`Sửa bảng giá và tiền cọc cho ${it.name}`}
                     >
-                      <Edit3 size={13.5} className="pricing-edit-icon" />
+                      <Edit3 size={13.5} className="pricing-edit-icon" aria-hidden="true" />
                       <span>Sửa giá & cọc</span>
                     </button>
                   </td>
@@ -177,7 +179,7 @@ export default function PricingTable({
             )}
 
             {/* Empty State */}
-            {items.length === 0 && !loading && (
+            {items.length === 0 && !loading ? (
               <tr>
                 <td colSpan="6" className="pricing-empty-cell">
                   <div className="pricing-empty-container">
@@ -190,7 +192,7 @@ export default function PricingTable({
                     <p className="pricing-empty-desc">
                       Vui lòng thử lại với từ khóa khác hoặc chọn danh mục "Tất cả danh mục".
                     </p>
-                    {hasActiveFilters && (
+                    {hasActiveFilters ? (
                       <button
                         type="button"
                         onClick={onResetFilters}
@@ -198,14 +200,16 @@ export default function PricingTable({
                       >
                         Xóa bộ lọc tìm kiếm
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </td>
               </tr>
-            )}
+            ) : null}
           </tbody>
         </table>
       </div>
     </div>
   );
 }
+
+export default memo(PricingTable);

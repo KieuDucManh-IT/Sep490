@@ -4,7 +4,7 @@ import CategoryManagementPage from './CategoryManagementPage';
 import ProductManagementPage from './ProductManagementPage';
 import SupplierManagementPage from './SupplierManagementPage';
 import InventoryLocationManagementPage from './InventoryLocationManagementPage';
-import StorageLocationManagementPage from './StorageLocationManagementPage';
+import StorageLocationManagementPage from './StorageLocationManagementPage.js';
 
 const screens = {
   categories: CategoryManagementPage,

@@ -34,7 +34,7 @@ import BranchReturnsPage from './pages/branch/BranchReturnsPage';
 import BranchReviewsPage from './pages/branch/BranchReviewsPage';
 import BranchAnalyticsPage from './pages/branch/BranchAnalyticsPage';
 import BranchSettingsPage from './pages/branch/BranchSettingsPage';
-import BranchInventoryPage from './pages/branch/BranchInventoryPage';
+import BranchInventoryPage from './pages/branch/BranchInventoryPage.js';
 
 // 4. Role Warehouse Manager (UC-15..UC-28)
 import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';

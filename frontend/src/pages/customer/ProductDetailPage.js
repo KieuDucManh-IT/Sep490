@@ -299,6 +299,12 @@ export default function ProductDetailPage() {
     navigate('/cart');
   };
 
+  // Handle Chat with Shop (Brand Manager - dự kiến phát triển sau)
+  const handleChatWithShop = () => {
+    const shopName = product?.shopId?.name || product?.brand || 'Shop';
+    showToast(`Tính năng nhắn tin trực tiếp với ${shopName} đang được phát triển!`);
+  };
+
   // AI Size Calculation
   const handleCalculateAiSize = (e) => {
     e.preventDefault();
@@ -686,6 +692,16 @@ export default function ProductDetailPage() {
               <span>Thử đồ AI</span>
             </button>
           </div>
+
+          {/* Full-width Chat with Shop Button */}
+          <button
+            type="button"
+            className="pdetail-btn-chat-shop"
+            onClick={handleChatWithShop}
+          >
+            <i className="fa-regular fa-comment-dots"></i>
+            <span>Nhắn tin tư vấn với Shop</span>
+          </button>
         </div>
       </div>
 

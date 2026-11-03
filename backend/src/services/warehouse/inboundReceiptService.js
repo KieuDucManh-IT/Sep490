@@ -10,6 +10,8 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Supplier } from '../../models/masterdata/Supplier.js';
 import User from '../../models/system/User.js';
 import { validateCreateInboundReceipt, validatePutaway, validateReceiptCheck } from '../../validations/warehouse/inboundReceiptValidation.js';
+import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
+import { assertCentralWarehouse } from './centralWarehouseService.js';
 
 const openStatuses = ['awaiting_receiving', 'received', 'approved'];
 const receiptStatuses = [...openStatuses, 'completed', 'rejected', 'cancelled'];
@@ -42,7 +44,7 @@ const getPhysicalCapacity = async (locationId) => {
     { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: '$quantityOnHand' } } },
   ]);
   const itemRows = await InventoryItem.aggregate([
-    { $match: { locationId: new mongoose.Types.ObjectId(locationId), status: { $nin: ['disposed', 'renting'] } } },
+    { $match: { locationId: new mongoose.Types.ObjectId(locationId), status: { $nin: ['disposed', 'renting', 'in_transit'] } } },
     { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: 1 } } },
   ]);
   const variantIds = [...new Set([...balanceRows, ...itemRows].map((row) => String(row._id.variantId)))];
@@ -118,6 +120,7 @@ export const createInboundReceipt = async (payload, userId) => {
     ProductVariant.find({ _id: { $in: data.items.map((item) => item.variantId) }, status: 'active' }).populate('productId', 'status'),
   ]);
   if (!location || location.status !== 'active') throw fail('Kho/cửa hàng không tồn tại hoặc đang ngừng hoạt động.', 400);
+  await assertCentralWarehouse(location._id);
   if (!supplier) throw fail('Nhà cung cấp không tồn tại hoặc đang ngừng hoạt động.', 400);
   if (!staff) throw fail('Nhân viên được giao không tồn tại, không phải nhân viên kho hoặc đã ngừng hoạt động.', 400);
   if (variants.length !== new Set(data.items.map((item) => item.variantId)).size || variants.some((variant) => !variant.productId || variant.productId.status !== 'active')) throw fail('Một hoặc nhiều biến thể không tồn tại hoặc đang ngừng kinh doanh.', 400);
@@ -134,7 +137,11 @@ export const createInboundReceipt = async (payload, userId) => {
     note: data.note,
   });
   try {
-    await InboundReceiptDetail.insertMany(data.items.map((item) => ({ receiptId: receipt._id, ...item })));
+    await InboundReceiptDetail.insertMany(data.items.map((item, index) => ({
+      receiptId: receipt._id,
+      receiptDetailCode: `${code}-${String(index + 1).padStart(2, '0')}`,
+      ...item,
+    })));
   } catch (error) {
     await InboundReceipt.findByIdAndDelete(receipt._id);
     throw error;
@@ -217,23 +224,20 @@ export const putawayReceipt = async (receiptId, payload, user) => {
     .select('productId').populate('productId', 'trackingType').lean();
   const trackingByVariant = new Map(variantTracking.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
   for (const line of toStore) {
-    await InventoryBalance.findOneAndUpdate(
-      { locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId },
-      { $inc: { quantityOnHand: line.quantity } },
-      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-    );
+    await increaseInventoryBalance({ locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId, quantity: line.quantity });
     if (trackingByVariant.get(String(line.detail.variantId)) === 'individual') {
       const items = Array.from({ length: line.quantity }, () => ({
         variantId: line.detail.variantId,
         locationId: receipt.locationId,
         storageId: line.storageId,
+        inboundReceiptDetail: line.detail._id,
         itemCode: `ITM-${new mongoose.Types.ObjectId().toString().toUpperCase()}`,
         condition: 'new',
         status: 'available',
       }));
       await InventoryItem.insertMany(items);
     }
-    await StockMovement.create({
+    await recordStockMovement({
       variantId: line.detail.variantId,
       locationId: receipt.locationId,
       storageId: line.storageId,

@@ -1,6 +1,6 @@
 import { validateInput } from '../../generic/inputValidation.js';
 
-const inventoryFields = ['code', 'name', 'type', 'address', 'maxCapacity', 'managerId', 'status'];
+const inventoryFields = ['code', 'name', 'type', 'address', 'maxCapacity', 'managerId', 'shopId', 'status'];
 const inventoryRules = {
   code: { label: 'Mã vị trí', type: 'string', required: true, maxLength: 60 },
   name: { label: 'Tên vị trí', type: 'string', required: true, maxLength: 160 },
@@ -8,6 +8,7 @@ const inventoryRules = {
   address: { label: 'Địa chỉ', type: 'string', maxLength: 500 },
   maxCapacity: { label: 'Sức chứa tối đa', type: 'number', min: 0, integer: true, nullable: true },
   managerId: { label: 'Người quản lý', type: 'objectId', nullable: true },
+  shopId: { label: 'Chi nhánh liên kết', type: 'objectId', nullable: true },
   status: { label: 'Trạng thái', type: 'string', enum: ['active', 'inactive'] },
 };
 

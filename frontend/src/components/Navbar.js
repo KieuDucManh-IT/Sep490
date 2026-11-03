@@ -49,17 +49,6 @@ export default function Navbar() {
           <Link to="/" className={`navbar-link ${isActive("/")}`}>
             Trang Chủ
           </Link>
-          {/* Về VESTORA */}
-          <div className="nav-dropdown-item">
-            <Link to="/about" className={`navbar-link ${isActive("/about")}`}>
-              Về VESTORA <i className="fa-solid fa-chevron-down nav-arrow"></i>
-            </Link>
-            <div className="nav-dropdown-menu">
-              <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
-              <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
-              <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
-            </div>
-          </div>
 
           {/* Sản Phẩm */}
           <div className="nav-dropdown-item">
@@ -74,30 +63,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Blog VESTORA */}
-          <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
-            Blog VESTORA
-          </Link>
-
-          {/* Liên Hệ */}
-          <Link to="/contact" className={`navbar-link ${isActive("/contact")}`}>
-            Liên Hệ
-          </Link>
-
-          {/* Chính Sách */}
-          <div className="nav-dropdown-item">
-            <Link to="/policy" className={`navbar-link ${isActive("/policy")}`}>
-              Chính Sách <i className="fa-solid fa-chevron-down nav-arrow"></i>
-            </Link>
-            <div className="nav-dropdown-menu">
-              <Link to="/policy" className="nav-sublink">Chính sách thuê đồ</Link>
-              <Link to="/policy" className="nav-sublink">Thanh toán Escrow</Link>
-              <Link to="/policy" className="nav-sublink">Đổi trả & Hoàn cọc</Link>
-              <Link to="/policy" className="nav-sublink">Bảo mật thông tin</Link>
-            </div>
-          </div>
-
-          {/* Tủ Đồ Cá Nhân */}
+          {/* Tủ Đồ Cá Nhân (Đổi vị trí lên cạnh Sản Phẩm) */}
           <div className="nav-dropdown-item">
             <Link to="/wardrobe" className={`navbar-link ${isActive("/wardrobe")}`}>
               Tủ Đồ Cá Nhân <i className="fa-solid fa-chevron-down nav-arrow"></i>
@@ -110,7 +76,29 @@ export default function Navbar() {
             </div>
           </div>
 
-          
+          {/* Blog VESTORA */}
+          <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
+            Blog VESTORA
+          </Link>
+
+          {/* Liên Hệ (Gồm Liên hệ, Về VESTORA và Chính Sách) */}
+          <div className="nav-dropdown-item">
+            <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
+              Liên Hệ <i className="fa-solid fa-chevron-down nav-arrow"></i>
+            </Link>
+            <div className="nav-dropdown-menu">
+              <Link to="/contact" className="nav-sublink">Liên hệ & Hỗ trợ</Link>
+              <div className="nav-dropdown-divider"></div>
+              <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
+              <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
+              <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
+              <div className="nav-dropdown-divider"></div>
+              <Link to="/policy" className="nav-sublink">Chính sách thuê đồ</Link>
+              <Link to="/policy" className="nav-sublink">Thanh toán Escrow</Link>
+              <Link to="/policy" className="nav-sublink">Đổi trả & Hoàn cọc</Link>
+              <Link to="/policy" className="nav-sublink">Bảo mật thông tin</Link>
+            </div>
+          </div>
 
           {/* Quick Access for Management Roles */}
           {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (

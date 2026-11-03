@@ -137,6 +137,12 @@
   transition: background 0.15s, color 0.15s;
 }
 
+.nav-dropdown-divider {
+  height: 1px;
+  background-color: #ebe5dc;
+  margin: 4px 0;
+}
+
 .nav-sublink:hover {
   background: #fbf8f4;
   color: #5b6e4e;

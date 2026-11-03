@@ -26,6 +26,7 @@ import PolicyPage from './pages/customer/PolicyPage';
 import WardrobePage from './pages/customer/WardrobePage';
 import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
+import WalletPage from './pages/customer/WalletPage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -43,6 +44,7 @@ import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
+import WarehouseStockControlPage from './pages/warehouse/WarehouseStockControlPage';
 
 // 5. Role Shop Owner / CEO (UC-12, UC-13, UC-14, UC-56..UC-64)
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
@@ -84,20 +86,21 @@ function App() {
         <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
         <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/blog" element={<BlogPage />} />
-          <Route path="/blog/:id" element={<BlogPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/policy" element={<PolicyPage />} />
-          <Route path="/policy/:tab" element={<PolicyPage />} />
-          <Route path="/wardrobe" element={<WardrobePage />} />
-          <Route path="/stylist" element={<StylistPage />} />
-          <Route path="/my-wardrobe" element={<WardrobePage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/blog" element={<BlogPage />} />
+        <Route path="/blog/:id" element={<BlogPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/policy" element={<PolicyPage />} />
+        <Route path="/policy/:tab" element={<PolicyPage />} />
+        <Route path="/wardrobe" element={<WardrobePage />} />
+        <Route path="/stylist" element={<StylistPage />} />
+        <Route path="/my-wardrobe" element={<WardrobePage />} />
 
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Cửa Hàng)
@@ -190,6 +193,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/warehousemanager/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="adjustments" /></ProtectedRoute>} />
         <Route
           path="/warehousemanager/:resource"
           element={
@@ -234,6 +239,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/inventory" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />

@@ -4,6 +4,8 @@ const stockAdjustmentDetailSchema = new mongoose.Schema({
   adjustmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'StockAdjustment', required: true, index: true },
   variantId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant', required: true },
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
+  itemCode: { type: String, trim: true, default: null },
+  serialNumber: { type: String, trim: true, default: null },
   storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
   quantityBefore: { type: Number, min: 0 },
   quantityChange: { type: Number, required: true },

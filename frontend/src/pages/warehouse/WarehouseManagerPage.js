@@ -30,7 +30,7 @@ const configs = {
     ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['tag', 'Hình thức', 'select', false, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['trackingType', 'Kiểu quản lý', 'select', true, ['quantity:Theo số lượng', 'individual:Theo từng cá thể']], ['brand', 'Thương hiệu', 'text'], ['material', 'Chất liệu', 'text'], ['gender', 'Giới tính', 'text'], ['aiTryOn', 'Thử đồ AI', 'select', false, ['true:Có', 'false:Không']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
   ] },
   variants: { service: 'variants', title: 'Biến thể', fields: [
-    ['productId', 'Sản phẩm', 'relation', true, 'products', 'name'], ['sku', 'SKU', 'text', true], ['variantName', 'Tên biến thể', 'text'], ['size', 'Kích thước', 'text'], ['color', 'Màu sắc', 'text'], ['salePrice', 'Giá bán', 'number'], ['rentalPricePerDay', 'Giá thuê/ngày', 'number'], ['depositAmount', 'Tiền cọc', 'number'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
+    ['productId', 'Sản phẩm', 'relation', true, 'products', 'name'], ['sku', 'SKU', 'text', true], ['variantName', 'Tên biến thể', 'text'], ['size', 'Kích thước', 'text'], ['color', 'Màu sắc', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
   ] },
   suppliers: { service: 'suppliers', title: 'Nhà cung cấp', searchFields: ['supplierCode', 'name', 'contactName', 'phone', 'email', 'taxCode'], filters: [
     ['status', 'Trạng thái', ['active:Hoạt động', 'inactive:Ngừng hoạt động']],

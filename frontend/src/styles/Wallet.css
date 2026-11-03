@@ -1,0 +1,480 @@
+.vw-page {
+  min-height: 100vh;
+  background: var(--color-warm-bg, #f5f3ef);
+  color: var(--color-text-primary, #404040);
+  font-family: var(--font-farfetch-basis, sans-serif);
+}
+
+.vw-main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 48px 72px;
+}
+
+.vw-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 28px;
+  color: var(--color-text-muted, #737373);
+  font-size: 12px;
+}
+
+.vw-heading,
+.vw-history-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.vw-eyebrow {
+  color: var(--color-gold-dark, #a6865a);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.vw-page h1,
+.vw-page h2 {
+  font-family: var(--font-display, Georgia, serif);
+  color: var(--color-dark, #171717);
+}
+
+.vw-page h1 {
+  font-size: clamp(32px, 4vw, 44px);
+  margin: 0 0 8px;
+}
+
+.vw-page h2 {
+  font-size: 27px;
+  margin: 0 0 12px;
+}
+
+.vw-heading p,
+.vw-muted,
+.vw-hint {
+  color: var(--color-text-muted, #737373);
+}
+
+.vw-heading p,
+.vw-muted {
+  font-size: 14px;
+}
+
+.vw-hint {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 10px 0 16px;
+}
+
+.vw-card {
+  background: var(--color-white, white);
+  border: 1px solid var(--color-border, #e5e0d8);
+  border-radius: 18px;
+  padding: 28px;
+}
+
+.vw-balances {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 18px;
+  margin: 26px 0;
+}
+
+.vw-balance-main {
+  background: var(--color-dark, #171717);
+  color: white;
+  border-radius: 18px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.vw-balance-main span {
+  color: #e1c9aa;
+  font-size: 13px;
+}
+
+.vw-balance-main strong {
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1.3;
+  margin: 14px 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.vw-balance-main p {
+  color: #c6c6c6;
+  font-size: 12px;
+}
+
+.vw-balance-small {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.vw-balance-small span,
+.vw-balance-small small {
+  color: var(--color-text-muted, #737373);
+}
+
+.vw-balance-small strong {
+  color: var(--color-dark, #171717);
+  font-size: 26px;
+  overflow-wrap: anywhere;
+}
+
+.vw-primary,
+.vw-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 11px 18px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.vw-primary {
+  background: var(--color-dark, #171717);
+  border: 1px solid var(--color-dark, #171717);
+  color: white;
+}
+
+.vw-primary:hover:not(:disabled) {
+  background: #35302a;
+}
+
+.vw-secondary {
+  background: white;
+  border: 1px solid var(--color-border, #e5e0d8);
+  color: var(--color-dark, #171717);
+}
+
+.vw-secondary:hover:not(:disabled) {
+  background: var(--color-warm-bg-alt, #fbf9f5);
+}
+
+.vw-page button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.vw-page button:focus-visible,
+.vw-page a:focus-visible,
+.vw-page input:focus-visible,
+.vw-page select:focus-visible {
+  outline: 2px solid var(--color-gold-dark, #a6865a);
+  outline-offset: 3px;
+}
+
+.vw-page fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.vw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vw-field input,
+.vw-field select,
+.vw-filters select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--color-border, #e5e0d8);
+  border-radius: 10px;
+  padding: 11px 13px;
+  background: white;
+  color: var(--color-dark, #171717);
+  font: inherit;
+  font-size: 16px;
+}
+
+.vw-setup {
+  max-width: 580px;
+  margin: 32px auto;
+}
+
+.vw-setup > p:not(.vw-eyebrow) {
+  font-size: 14px;
+  color: var(--color-text-muted, #737373);
+}
+
+.vw-otp-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.vw-otp-row .vw-field {
+  flex: 1;
+}
+
+.vw-otp-row > button {
+  margin-top: 25px;
+}
+
+.vw-tabs {
+  display: flex;
+  gap: 26px;
+  border-bottom: 1px solid var(--color-border, #e5e0d8);
+  margin-bottom: 28px;
+}
+
+.vw-tabs button {
+  padding: 0 0 15px;
+  color: var(--color-text-muted, #737373);
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.vw-tabs button.is-active {
+  color: var(--color-dark, #171717);
+  border-bottom-color: var(--color-gold-dark, #a6865a);
+}
+
+.vw-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 0.85fr;
+  gap: 48px;
+  align-items: start;
+}
+
+.vw-payment-box {
+  min-height: 250px;
+  padding: 24px;
+  border-radius: 14px;
+  background: var(--color-warm-bg-alt, #fbf9f5);
+  border: 1px dashed var(--color-border, #e5e0d8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.vw-presets,
+.vw-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.vw-presets button {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #e5e0d8);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.vw-withdraw-form {
+  max-width: 760px;
+}
+
+.vw-two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 20px;
+}
+
+.vw-confirm-summary {
+  padding: 18px;
+  background: var(--color-warm-bg-alt, #fbf9f5);
+  border-radius: 10px;
+}
+
+.vw-confirm-summary strong {
+  font-size: 25px;
+}
+
+.vw-confirm-summary p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.vw-message {
+  padding: 13px 16px;
+  border-radius: 10px;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.vw-error {
+  background: #fff1f1;
+  border: 1px solid #f1d5d5;
+  color: #a52a2a;
+}
+
+.vw-notice {
+  background: #f0f7f1;
+  border: 1px solid #d7e7d8;
+  color: #246b3d;
+}
+
+.vw-history {
+  margin-top: 26px;
+}
+
+.vw-filters {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.vw-filters select {
+  max-width: 250px;
+  font-size: 13px;
+}
+
+.vw-table-wrap {
+  overflow-x: auto;
+}
+
+.vw-page table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  font-size: 13px;
+}
+
+.vw-page th {
+  text-align: left;
+  background: var(--color-warm-bg-alt, #fbf9f5);
+  color: var(--color-text-muted, #737373);
+  font-size: 11px;
+}
+
+.vw-page th,
+.vw-page td {
+  padding: 16px 12px;
+  border-bottom: 1px solid var(--color-border, #e5e0d8);
+  vertical-align: middle;
+}
+
+.vw-page td small {
+  display: block;
+  color: var(--color-text-muted, #737373);
+  font-size: 10px;
+  margin-top: 5px;
+}
+
+.vw-credit {
+  color: #23724b;
+  font-weight: 700;
+}
+
+.vw-badge {
+  display: inline-block;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #f4eee3;
+  color: #826329;
+  font-size: 11px;
+}
+
+.vw-status-success {
+  background: #eaf5ee;
+  color: #23724b;
+}
+
+.vw-status-failed,
+.vw-status-expired {
+  background: #faeeee;
+  color: #9d3d3d;
+}
+
+.vw-text-button {
+  color: var(--color-gold-dark, #a6865a);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.vw-empty {
+  padding: 42px 16px;
+  text-align: center;
+  color: var(--color-text-muted, #737373);
+}
+
+.vw-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 22px;
+  font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .vw-main {
+    padding: 24px 20px 48px;
+  }
+
+  .vw-balances {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .vw-balance-main {
+    grid-column: 1 / -1;
+  }
+
+  .vw-action-grid {
+    gap: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .vw-heading,
+  .vw-history-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vw-card {
+    padding: 20px;
+  }
+
+  .vw-action-grid,
+  .vw-two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .vw-balances {
+    gap: 12px;
+  }
+
+  .vw-balance-small {
+    padding: 18px;
+  }
+
+  .vw-balance-small strong {
+    font-size: 20px;
+  }
+
+  .vw-filters {
+    flex-direction: column;
+  }
+
+  .vw-filters select {
+    max-width: none;
+  }
+}

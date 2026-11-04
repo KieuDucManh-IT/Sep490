@@ -357,70 +357,43 @@ export const resolveAssignedBranchForUser = async ({ userId, userRole, branchId 
     throw validationError('Chưa xác thực người dùng. Vui lòng đăng nhập lại.', 401);
   }
 
-  let shop = null;
-
-  // Ưu tiên 1: Chi nhánh chỉ định theo branchId nếu người dùng là Quản lý
-  if (branchId && mongoose.Types.ObjectId.isValid(branchId)) {
-    shop = await Shop.findOne({
-      _id: branchId,
-      managerId: userId,
-      isDeleted: { $ne: true },
-    })
+  const populateShop = (query) =>
+    query
       .populate('ownerId', 'FullName Email Role Status phone')
       .populate('managerId', 'FullName Email Role Status Information Avatar phone')
       .lean();
-  }
 
-  // Ưu tiên 2: Chi nhánh đầu tiên mà người dùng làm Quản lý (theo thứ tự ngày tạo từ cũ đến mới)
-  if (!shop) {
-    shop = await Shop.findOne({
+  const validBranchId = branchId && mongoose.Types.ObjectId.isValid(branchId) ? branchId : null;
+
+  // Ưu tiên 1: Chi nhánh chỉ định theo branchId hoặc chi nhánh đầu tiên user làm quản lý
+  let shop = await populateShop(
+    Shop.findOne({
       managerId: userId,
       isDeleted: { $ne: true },
-    })
-      .sort({ createdAt: 1, _id: 1 })
-      .populate('ownerId', 'FullName Email Role Status phone')
-      .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-      .lean();
-  }
+      ...(validBranchId ? { _id: validBranchId } : {}),
+    }).sort({ createdAt: 1, _id: 1 })
+  );
 
-  // Ưu tiên 3: Dự phòng theo vai trò Shop Owner hoặc Admin
+  // Ưu tiên 2: Dự phòng theo vai trò Shop Owner hoặc Admin
   if (!shop) {
     const role = cleanUserRole({ Role: userRole });
     const isOwnerRole = ['shopowner', 'owner'].includes(role);
-    if (isOwnerRole) {
-      shop = await Shop.findOne({
-        ownerId: userId,
-        isHQ: true,
+
+    if (isOwnerRole || role === 'admin') {
+      const fallbackFilter = {
         isDeleted: { $ne: true },
-      })
-        .populate('ownerId', 'FullName Email Role Status phone')
-        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-        .lean();
+        ...(isOwnerRole ? { ownerId: userId } : {}),
+        ...(validBranchId ? { _id: validBranchId } : {}),
+      };
 
-      if (!shop) {
-        shop = await Shop.findOne({
-          ownerId: userId,
-          isDeleted: { $ne: true },
-        })
-          .sort({ isHQ: -1, createdAt: 1 })
-          .populate('ownerId', 'FullName Email Role Status phone')
-          .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-          .lean();
-      }
-    }
+      shop = await populateShop(
+        Shop.findOne(fallbackFilter).sort({ isHQ: -1, createdAt: 1, _id: 1 })
+      );
 
-    if (!shop && (isOwnerRole || role === 'admin')) {
-      shop = await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } })
-        .populate('ownerId', 'FullName Email Role Status phone')
-        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-        .lean();
-
-      if (!shop) {
-        shop = await Shop.findOne({ isDeleted: { $ne: true } })
-          .sort({ isHQ: -1, createdAt: 1 })
-          .populate('ownerId', 'FullName Email Role Status phone')
-          .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-          .lean();
+      if (!shop && (isOwnerRole || role === 'admin')) {
+        shop = await populateShop(
+          Shop.findOne({ isDeleted: { $ne: true } }).sort({ isHQ: -1, createdAt: 1, _id: 1 })
+        );
       }
     }
   }

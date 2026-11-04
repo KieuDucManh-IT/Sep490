@@ -3,6 +3,43 @@ import { Shop, DEFAULT_SHOP_IMAGE, DEFAULT_SHOP_BANNER } from '../../models/shop
 import { User } from '../../models/system/User.js';
 import { validationError, validateObjectId } from '../../validations/shop/shopValidation.js';
 
+const cleanUserRole = (u) => String(u?.Role || u?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+const isShopOwner = (u, s) => Boolean(u && (['shopowner', 'owner'].includes(cleanUserRole(u)) || (s?.ownerId && s.ownerId.toString() === u._id.toString())));
+
+/**
+ * Đảm bảo bất biến toàn hệ thống: Chỉ được phép có DUY NHẤT 1 Trụ sở chính (Single-HQ Invariant).
+ * 1. Nếu có nhiều hơn 1 HQ trong hệ thống: giữ lại 1 chi nhánh (ưu tiên chi nhánh tạo sớm nhất), hủy cờ HQ của tất cả các chi nhánh còn lại.
+ * 2. Nếu có chi nhánh tồn tại nhưng không có chi nhánh nào là HQ: tự động gán chi nhánh đầu tiên làm HQ.
+ */
+export const ensureSingleHQInvariant = async () => {
+  try {
+    const hqs = await Shop.find({ isHQ: true, isDeleted: { $ne: true } })
+      .sort({ createdAt: 1, _id: 1 });
+
+    if (hqs.length > 1) {
+      const activeHQ = hqs.find((h) => h.status === 'ACTIVE') || hqs[0];
+      const primaryHQId = activeHQ._id;
+      await Shop.updateMany(
+        { _id: { $ne: primaryHQId }, isHQ: true },
+        { $set: { isHQ: false } }
+      );
+    } else if (hqs.length === 0) {
+      let targetBranch = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
+        .sort({ createdAt: 1, _id: 1 });
+      if (!targetBranch) {
+        targetBranch = await Shop.findOne({ isDeleted: { $ne: true } })
+          .sort({ createdAt: 1, _id: 1 });
+      }
+      if (targetBranch) {
+        targetBranch.isHQ = true;
+        await targetBranch.save();
+      }
+    }
+  } catch (err) {
+    console.error('[Single-HQ Invariant] Error ensuring single HQ:', err.message);
+  }
+};
+
 /**
  * Lấy danh sách hồ sơ chi nhánh có phân trang, bộ lọc và tìm kiếm đa năng
  */
@@ -14,6 +51,9 @@ export const listShopApplications = async ({
   page = 1,
   limit = 10,
 }) => {
+  // Tự động chuẩn hóa dữ liệu: đảm bảo toàn hệ thống luôn có DUY NHẤT 1 Trụ sở chính
+  await ensureSingleHQInvariant();
+
   const filter = { isDeleted: { $ne: true } };
 
   if (status) {
@@ -168,8 +208,9 @@ export const toggleShopSuspension = async (shopId, currentUser) => {
     throw validationError('Không tìm thấy gian hàng.', 404);
   }
 
-  const isOwner = currentUser && shop.ownerId && shop.ownerId.toString() === currentUser._id.toString();
-  const isAdminOrOps = currentUser && ['admin', 'ADMIN', 'operation_staff', 'OPERATION_STAFF'].includes(currentUser.Role);
+  const role = cleanUserRole(currentUser);
+  const isOwner = isShopOwner(currentUser, shop);
+  const isAdminOrOps = currentUser && ['admin', 'operationstaff'].includes(role);
   if (currentUser && !isOwner && !isAdminOrOps) {
     throw validationError('Bạn không có quyền thay đổi trạng thái chi nhánh này.', 403);
   }
@@ -344,7 +385,9 @@ export const resolveAssignedBranchForUser = async ({ userId, userRole, branchId 
 
   // Ưu tiên 3: Dự phòng theo vai trò Shop Owner hoặc Admin
   if (!shop) {
-    if (['shop_owner', 'owner'].includes(userRole)) {
+    const role = cleanUserRole({ Role: userRole });
+    const isOwnerRole = ['shopowner', 'owner'].includes(role);
+    if (isOwnerRole) {
       shop = await Shop.findOne({
         ownerId: userId,
         isHQ: true,
@@ -364,7 +407,9 @@ export const resolveAssignedBranchForUser = async ({ userId, userRole, branchId 
           .populate('managerId', 'FullName Email Role Status Information Avatar phone')
           .lean();
       }
-    } else if (['admin'].includes(userRole)) {
+    }
+
+    if (!shop && (isOwnerRole || role === 'admin')) {
       shop = await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
@@ -407,9 +452,10 @@ export const updateBranchAddress = async (shopId, validatedData, currentUser) =>
     throw validationError('Không tìm thấy gian hàng.', 404);
   }
 
-  const isOwner = currentUser && shop.ownerId && shop.ownerId.toString() === currentUser._id.toString();
+  const role = cleanUserRole(currentUser);
+  const isOwner = isShopOwner(currentUser, shop);
   const isManager = currentUser && shop.managerId && shop.managerId.toString() === currentUser._id.toString();
-  const isAdmin = currentUser && ['admin', 'ADMIN'].includes(currentUser.Role);
+  const isAdmin = currentUser && role === 'admin';
 
   if (currentUser && !isOwner && !isManager && !isAdmin) {
     throw validationError('Bạn không có quyền chỉnh sửa địa chỉ chi nhánh này.', 403);
@@ -442,9 +488,10 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
     throw validationError('Không tìm thấy gian hàng.', 404);
   }
 
-  const isOwner = currentUser && shop.ownerId && shop.ownerId.toString() === currentUser._id.toString();
+  const role = cleanUserRole(currentUser);
+  const isOwner = isShopOwner(currentUser, shop);
   const isManager = currentUser && shop.managerId && shop.managerId.toString() === currentUser._id.toString();
-  const isAdmin = currentUser && ['admin', 'ADMIN'].includes(currentUser.Role);
+  const isAdmin = currentUser && role === 'admin';
 
   if (currentUser && !isOwner && !isManager && !isAdmin) {
     throw validationError('Bạn không có quyền cập nhật thông tin chi nhánh này.', 403);
@@ -496,29 +543,26 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
     }
   }
 
-  // Bất biến: Duy nhất 1 Trụ sở chính (Single-HQ Invariant)
+  // Bất biến: Duy nhất 1 Trụ sở chính trên toàn hệ thống (Single-HQ Invariant)
   if (validated.isHQ !== undefined && (isOwner || isAdmin)) {
     if (validated.isHQ) {
-      // Khi chi nhánh này được đặt làm Trụ sở chính, hủy cờ HQ của tất cả các chi nhánh khác cùng Owner
+      // Khi chi nhánh này được đặt làm Trụ sở chính, hủy cờ HQ của tất cả các chi nhánh khác trên toàn hệ thống
       await Shop.updateMany(
-        { _id: { $ne: shop._id }, ownerId: shop.ownerId, isHQ: true, isDeleted: { $ne: true } },
+        { _id: { $ne: shop._id }, isHQ: true },
         { $set: { isHQ: false } }
       );
       shop.isHQ = true;
     } else if (shop.isHQ && !validated.isHQ) {
-      const otherHQ = await Shop.findOne({
-        _id: { $ne: shop._id },
-        ownerId: shop.ownerId,
-        isHQ: true,
-        isDeleted: { $ne: true },
-      });
-      if (!otherHQ) {
-        throw validationError('Chuỗi phải luôn có một Trụ sở chính. Hãy chỉ định chi nhánh khác làm Trụ sở chính thay vì hủy bỏ trực tiếp.', 400);
-      }
-      shop.isHQ = false;
-    } else {
-      shop.isHQ = false;
+      // Chi nhánh hiện tại đang là Trụ sở chính duy nhất -> Không thể tự bỏ cờ HQ mà không chuyển giao cho chi nhánh khác
+      throw validationError(
+        'Hệ thống phải luôn có duy nhất một Trụ sở chính. Để thay đổi, vui lòng chọn một chi nhánh khác và đặt làm Trụ sở chính.',
+        400
+      );
     }
+  }
+
+  if (!shop.ownerId && isOwner && currentUser?._id) {
+    shop.ownerId = currentUser._id;
   }
 
   await shop.save();
@@ -534,9 +578,7 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
  */
 export const createNewBranch = async (validated, currentUser) => {
   let resolvedOwnerId = currentUser?._id;
-  const userRole = (currentUser?.Role || '').toLowerCase();
-
-  if (['admin'].includes(userRole) && validated.ownerId) {
+  if (cleanUserRole(currentUser) === 'admin' && validated.ownerId) {
     resolvedOwnerId = validated.ownerId;
   }
 
@@ -571,11 +613,10 @@ export const createNewBranch = async (validated, currentUser) => {
   const finalImageUrl = validated.imageUrl || DEFAULT_SHOP_IMAGE;
   const finalBanner = validated.bannerUrl || DEFAULT_SHOP_BANNER;
 
-  const existingBranchesCount = await Shop.countDocuments({
-    ownerId: resolvedOwnerId,
-    isDeleted: { $ne: true },
-  });
-  const resolvedIsHQ = Boolean(validated.isHQ || existingBranchesCount === 0);
+  // Bất biến toàn hệ thống: Chỉ duy nhất 1 Trụ sở chính (Single-HQ)
+  const existingHQ = await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } });
+  // Nếu hệ thống chưa có HQ nào -> chi nhánh này tự động là HQ. Nếu đã có HQ -> chỉ là HQ nếu người dùng chủ động chọn.
+  const resolvedIsHQ = Boolean(validated.isHQ || !existingHQ);
 
   const newBranch = new Shop({
     ownerId: resolvedOwnerId,
@@ -597,10 +638,10 @@ export const createNewBranch = async (validated, currentUser) => {
 
   await newBranch.save();
 
-  // Bất biến: Nếu chi nhánh mới là Trụ sở chính, hủy cờ HQ của tất cả các chi nhánh cũ
+  // Bất biến: Nếu chi nhánh mới là Trụ sở chính, hủy cờ HQ của tất cả các chi nhánh khác trên toàn hệ thống
   if (resolvedIsHQ) {
     await Shop.updateMany(
-      { _id: { $ne: newBranch._id }, ownerId: resolvedOwnerId, isHQ: true, isDeleted: { $ne: true } },
+      { _id: { $ne: newBranch._id }, isHQ: true },
       { $set: { isHQ: false } }
     );
   }
@@ -625,8 +666,9 @@ export const removeBranch = async (shopId, currentUser) => {
     throw validationError('Không tìm thấy chi nhánh cần xóa.', 404);
   }
 
-  const isOwner = currentUser && branch.ownerId && branch.ownerId.toString() === currentUser._id.toString();
-  const isAdmin = currentUser && ['admin', 'ADMIN'].includes(currentUser.Role);
+  const role = cleanUserRole(currentUser);
+  const isOwner = isShopOwner(currentUser, branch);
+  const isAdmin = currentUser && role === 'admin';
   if (currentUser && !isOwner && !isAdmin) {
     throw validationError('Bạn không có quyền xóa chi nhánh này.', 403);
   }
@@ -638,7 +680,6 @@ export const removeBranch = async (shopId, currentUser) => {
 
   // Ràng buộc 2: Duy trì tối thiểu một chi nhánh trong hệ thống
   const totalBranches = await Shop.countDocuments({
-    ownerId: branch.ownerId,
     isDeleted: { $ne: true },
   });
   if (totalBranches <= 1) {
@@ -674,7 +715,7 @@ export const listEligibleBranchManagers = async () => {
 
   // Bộ lọc nghiêm ngặt: Đảm bảo không tài khoản khách hàng hay vai trò nào khác lọt vào
   const validBranchManagers = (users || []).filter((u) => {
-    const r = String(u?.Role || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+    const r = cleanUserRole(u);
     return (r === 'branchmanager' || r === 'brandmanager') && r !== 'customer';
   });
 

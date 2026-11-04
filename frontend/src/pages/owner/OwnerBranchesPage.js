@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Row, Col, Spinner, Button } from 'react-bootstrap';
-import { Store, CheckCircle2, Navigation, Users, Plus } from 'lucide-react';
+import { Store, CheckCircle2, Navigation, Users, Plus, AlertCircle, X } from 'lucide-react';
 import OwnerSidebar from '../../components/OwnerSidebar';
 import OwnerTopHeader from '../../components/OwnerTopHeader';
 import ImageLightboxModal from '../../components/ImageLightboxModal';
@@ -52,6 +52,7 @@ export default function OwnerBranchesPage() {
     managers,
     loading,
     toast,
+    setToast,
     showToast,
     searchTerm,
     setSearchTerm,
@@ -327,9 +328,27 @@ export default function OwnerBranchesPage() {
       />
 
       {toast && (
-        <div className={`store-floating-toast ${toast.type}`}>
-          <span>{toast.type === 'success' ? '✓' : '⚠️'}</span>
-          <span>{toast.message}</span>
+        <div
+          className={`branch-floating-toast store-floating-toast ${toast.type}`}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="branch-toast-icon">
+            {toast.type === 'success' ? (
+              <CheckCircle2 size={18} color="#10B981" />
+            ) : (
+              <AlertCircle size={18} color="#F59E0B" />
+            )}
+          </div>
+          <span className="branch-toast-message">{toast.message}</span>
+          <button
+            type="button"
+            className="branch-toast-close-btn"
+            onClick={() => setToast && setToast(null)}
+            aria-label="Đóng thông báo"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
     </div>

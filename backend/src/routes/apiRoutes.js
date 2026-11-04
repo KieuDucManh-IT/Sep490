@@ -24,6 +24,7 @@ router.get('/health', (req, res) => {
 
 router.use('/products', productRoutes);
 router.use('/shops', shopRoutes);
+router.use('/admin/shops', shopRoutes);
 router.use('/users', userRoutes);
 router.use('/admin', adminRoutes);
 router.use('/warehouse/masterdata', masterdataRoutes);

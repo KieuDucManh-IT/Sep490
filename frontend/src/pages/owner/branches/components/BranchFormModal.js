@@ -516,11 +516,11 @@ export default function BranchFormModal({
               <Col md={6}>
                 <div className="d-flex align-items-center justify-content-between p-3 border rounded-3 bg-light">
                   <div>
-                    <div className="small fw-bold text-dark">Đặt Làm Trụ Sở Chính</div>
+                    <div className="small fw-bold text-dark">Đặt Làm Trụ Sở Chính (HQ)</div>
                     <div className="text-muted form-switch-description">
                       {isEditMode && Boolean(activeBranch?.isHQ)
-                        ? 'Chi nhánh này đang là Trụ sở chính. Để chuyển giao, hãy chọn chi nhánh khác.'
-                        : 'Toàn chuỗi chỉ có duy nhất 1 chi nhánh giữ vai trò Trụ sở chính.'}
+                        ? 'Chi nhánh này đang là Trụ sở chính duy nhất của chuỗi. Để chuyển giao, hãy chỉnh sửa chi nhánh khác và đặt làm Trụ sở chính.'
+                        : 'Toàn hệ thống chỉ có duy nhất 1 Trụ sở chính. Khi kích hoạt, chi nhánh này sẽ thành Trụ sở chính và chi nhánh cũ tự động chuyển thành chi nhánh thường.'}
                     </div>
                   </div>
                   <Form.Check

@@ -71,13 +71,15 @@ export async function authMiddleware(req, res, next) {
   }
 }
 
+const normalizeRole = (r) => String(r || '').trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
+
 export function requireRole(...allowedRoles) {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: "Bạn chưa đăng nhập" });
     }
-    const userRole = String(req.user.Role || req.user.role || "").trim().toLowerCase();
-    const normalizedAllowed = allowedRoles.map((r) => String(r).trim().toLowerCase());
+    const userRole = normalizeRole(req.user.Role || req.user.role);
+    const normalizedAllowed = allowedRoles.map(normalizeRole);
     if (userRole !== "admin" && !normalizedAllowed.includes(userRole)) {
       return res.status(403).json({
         success: false,
@@ -94,8 +96,8 @@ export function requireShopOwnerOnly(req, res, next) {
   if (!req.user) {
     return res.status(401).json({ success: false, message: "Bạn chưa đăng nhập" });
   }
-  const userRole = String(req.user.Role || req.user.role || "").trim().toLowerCase();
-  if (userRole !== "shop_owner" && userRole !== "owner") {
+  const userRole = normalizeRole(req.user.Role || req.user.role);
+  if (!["shopowner", "owner", "admin"].includes(userRole)) {
     return res.status(403).json({
       success: false,
       message: "Chỉ Shop Owner mới có quyền cấu hình bảng giá và tiền cọc.",

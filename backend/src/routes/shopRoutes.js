@@ -48,8 +48,8 @@ router.post(
   '/upload-image',
   authMiddleware,
   async (req, res, next) => {
-    const userRole = (req.user?.Role || '').toLowerCase();
-    if (['admin', 'shop_owner', 'owner', 'branch_manager'].includes(userRole)) {
+    const userRole = String(req.user?.Role || req.user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+    if (['admin', 'shopowner', 'owner', 'branchmanager', 'brandmanager'].includes(userRole)) {
       return next();
     }
     try {

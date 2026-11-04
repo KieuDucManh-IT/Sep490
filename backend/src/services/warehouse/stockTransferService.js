@@ -32,7 +32,7 @@ const transferPopulation = [
 ];
 
 const loadDetails = (transferId) => StockTransferDetail.find({ transferId }).sort({ createdAt: 1 })
-  .populate({ path: 'variantId', select: 'sku variantName size color productId', populate: { path: 'productId', select: 'productCode name trackingType' } })
+  .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'productCode name trackingType' } })
   .populate('fromStorageId', 'code name type')
   .populate('itemIds', 'itemCode serialNumber condition status');
 

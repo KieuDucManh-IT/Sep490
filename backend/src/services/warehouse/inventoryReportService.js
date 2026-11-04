@@ -58,7 +58,7 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
   ]);
   const variantIds = [...new Set([...balances, ...individualItems].map((row) => String(row.variantId)))];
   const variants = await ProductVariant.find({ _id: { $in: variantIds } })
-    .select('sku variantName size color productId')
+    .select('sku size color productId')
     .populate({ path: 'productId', select: 'productCode name trackingType tag categoryId', populate: { path: 'categoryId', select: 'name' } })
     .lean();
   const variantById = new Map(variants.map((variant) => [String(variant._id), variant]));
@@ -83,7 +83,6 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
         productId: variant.productId?._id || variant.productId || null,
         variantId: variant._id,
         sku: variant.sku,
-        variantName: variant.variantName || '',
         size: variant.size || '',
         color: variant.color || '',
         itemCode: '',
@@ -132,7 +131,6 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
       productId: variant.productId?._id || variant.productId || null,
       variantId: variant._id,
       sku: variant.sku,
-      variantName: variant.variantName || '',
       size: variant.size || '',
       color: variant.color || '',
       itemCount: 0,
@@ -167,7 +165,6 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
         storageId: storage?._id || null,
         storagePath: storagePathFor(storage?._id, storageById),
         sku: itemLevel === 'product' ? '' : source.sku,
-        variantName: itemLevel === 'product' ? '' : source.variantName,
         size: itemLevel === 'product' ? '' : source.size,
         color: itemLevel === 'product' ? '' : source.color,
         variantId: itemLevel === 'product' ? null : source.variantId,
@@ -232,7 +229,7 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     }).map((storage) => storage._id);
     query.storageId = { $in: descendantIds };
   }
-  const rows = await InventoryItem.find(query).select('itemCode serialNumber condition status inboundReceiptDetail').populate('variantId', 'sku variantName size color').populate({ path: 'inboundReceiptDetail', select: 'receiptDetailCode receiptId', populate: { path: 'receiptId', select: 'receiptCode' } }).sort({ itemCode: 1 }).lean();
+  const rows = await InventoryItem.find(query).select('itemCode serialNumber condition status inboundReceiptDetail').populate('variantId', 'sku size color').populate({ path: 'inboundReceiptDetail', select: 'receiptDetailCode receiptId', populate: { path: 'receiptId', select: 'receiptCode' } }).sort({ itemCode: 1 }).lean();
   const missingReceiptCodes = rows.filter((row) => row.inboundReceiptDetail && !row.inboundReceiptDetail.receiptDetailCode);
   const receiptIds = [...new Set(missingReceiptCodes.map((row) => String(row.inboundReceiptDetail.receiptId?._id || row.inboundReceiptDetail.receiptId)).filter(Boolean))];
   for (const receiptId of receiptIds) {

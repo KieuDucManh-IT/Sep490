@@ -83,6 +83,7 @@ export const getProducts = async (req, res, next) => {
         let matchedCategoryIds = [];
         try {
           const matchedCats = await Category.find({
+            isDeleted: { $ne: true },
             name: { $in: categoryList.map((c) => new RegExp(`^${c}$`, 'i')) },
           }).select('_id').lean();
           matchedCategoryIds = matchedCats.map((c) => c._id);
@@ -220,7 +221,8 @@ export const getProducts = async (req, res, next) => {
       variants = await ProductVariant.find({
         productId: { $in: productIds },
         status: { $nin: ['inactive', 'INACTIVE'] },
-      }).lean();
+        isDeleted: { $ne: true },
+      }).select('-variantName').lean();
     } catch (varErr) {
       console.warn('Lỗi lấy variants:', varErr.message);
     }
@@ -396,7 +398,8 @@ export const getProductById = async (req, res, next) => {
       variants = await ProductVariant.find({
         productId: product._id,
         status: { $nin: ['inactive', 'INACTIVE'] },
-      }).lean();
+        isDeleted: { $ne: true },
+      }).select('-variantName').lean();
     } catch (e) {
       console.warn('Lỗi lấy variants:', e.message);
     }
@@ -524,11 +527,11 @@ export const getProductById = async (req, res, next) => {
 export const getFilterMeta = async (req, res, next) => {
   try {
     const [categories, products, variants] = await Promise.all([
-      Category.find({ status: { $nin: ['inactive', 'INACTIVE'] } }).lean(),
+      Category.find({ status: { $nin: ['inactive', 'INACTIVE'] }, isDeleted: { $ne: true } }).lean(),
       Product.find({ isDeleted: { $ne: true }, status: { $nin: ['inactive', 'INACTIVE'] } })
         .populate('categoryId')
         .lean(),
-      ProductVariant.find({ status: { $nin: ['inactive', 'INACTIVE'] } }).lean(),
+      ProductVariant.find({ status: { $nin: ['inactive', 'INACTIVE'] }, isDeleted: { $ne: true } }).select('-variantName').lean(),
     ]);
 
     const categoryCounts = {};

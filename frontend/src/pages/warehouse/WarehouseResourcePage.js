@@ -14,6 +14,7 @@ import inventoryLocationService from '../../services/warehouse/inventoryLocation
 import warehouseManagerService from '../../services/warehouse/warehouseManagerService';
 import shopBranchService from '../../services/warehouse/shopBranchService';
 import StorageLocationPage from './StorageLocationPage';
+import ProductVariantsModal from '../../components/ProductVariantsModal';
 import '../../styles/WarehouseManager.css';
 import '../../styles/ShopDashboard.css';
 
@@ -27,7 +28,7 @@ const configs = {
   categories: { service: 'categories', title: 'Loại sản phẩm', fields: [
     ['parentCategoryId', 'Loại cha', 'relation', false, 'categories', 'name'], ['name', 'Tên loại', 'text', true], ['description', 'Mô tả', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
   ] },
-  products: { service: 'products', title: 'Sản phẩm', multipleFields: ['categoryId'], listFields: [['productCode', 'Mã sản phẩm'], ['name', 'Tên sản phẩm'], ['categoryId', 'Loại sản phẩm'], ['tag', 'Hình thức'], ['quantity', 'Số lượng tồn'], ['branchAddress', 'Địa chỉ chi nhánh'], ['trackingType', 'Kiểu quản lý'], ['status', 'Trạng thái']], fields: [
+  products: { service: 'products', title: 'Sản phẩm', multipleFields: ['categoryId'], listFields: [['productCode', 'Mã sản phẩm'], ['name', 'Tên sản phẩm'], ['categoryId', 'Loại sản phẩm'], ['variantCount', 'Số biến thể'], ['tag', 'Hình thức'], ['quantity', 'Số lượng tồn'], ['branchAddress', 'Địa chỉ chi nhánh'], ['trackingType', 'Kiểu quản lý'], ['status', 'Trạng thái']], fields: [
     ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['tag', 'Hình thức', 'select', false, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['trackingType', 'Kiểu quản lý', 'select', true, ['quantity:Theo số lượng', 'individual:Theo từng cá thể']], ['brand', 'Thương hiệu', 'text'], ['material', 'Chất liệu', 'text'], ['gender', 'Giới tính', 'text'], ['aiTryOn', 'Thử đồ AI', 'select', false, ['true:Có', 'false:Không']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
   ] },
   suppliers: { service: 'suppliers', title: 'Nhà cung cấp', searchFields: ['supplierCode', 'name', 'contactName', 'phone', 'email', 'taxCode'], filters: [
@@ -99,6 +100,7 @@ function WarehouseResourceList({ config }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState(new Set());
+  const [variantProduct, setVariantProduct] = useState(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -175,9 +177,10 @@ function WarehouseResourceList({ config }) {
             <tbody>
               {loading ? <tr><td colSpan={visibleFields.length + 1}>Đang tải dữ liệu...</td></tr> : pageRows.length ? pageRows.map((row) => (
                 <tr key={row._id}>
-                  {visibleFields.map(([key]) => <td key={key}>{config.service === 'categories' && key === 'name' ? <span style={{ paddingLeft: `${categoryDepth(row, rows) * 20}px`, display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rows.some((item) => String(item.parentCategoryId?._id || item.parentCategoryId || '') === String(row._id)) ? <button type="button" className="wm-category-toggle" aria-label="Mở hoặc thu gọn loại con" onClick={() => setExpandedCategories((old) => { const next = new Set(old); next.has(String(row._id)) ? next.delete(String(row._id)) : next.add(String(row._id)); return next; })}>{expandedCategories.has(String(row._id)) ? '▾' : '▸'}</button> : <span className="wm-category-toggle-spacer" />}<span>{display(row[key])}</span></span> : Array.isArray(row[key]) ? row[key].map(display).join(', ') : display(row[key])}</td>)}
+                  {visibleFields.map(([key]) => <td key={key}>{key === 'variantCount' ? (row.variants?.length || 0) : config.service === 'categories' && key === 'name' ? <span style={{ paddingLeft: `${categoryDepth(row, rows) * 20}px`, display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rows.some((item) => String(item.parentCategoryId?._id || item.parentCategoryId || '') === String(row._id)) ? <button type="button" className="wm-category-toggle" aria-label="Mở hoặc thu gọn loại con" onClick={() => setExpandedCategories((old) => { const next = new Set(old); next.has(String(row._id)) ? next.delete(String(row._id)) : next.add(String(row._id)); return next; })}>{expandedCategories.has(String(row._id)) ? '▾' : '▸'}</button> : <span className="wm-category-toggle-spacer" />}<span>{display(row[key])}</span></span> : Array.isArray(row[key]) ? row[key].map(display).join(', ') : display(row[key])}</td>)}
                   <td className="wm-actions">
                     {config.service === 'categories' && <button type="button" className="secondary" onClick={() => { setExpandedCategories((old) => new Set(old).add(String(row._id))); setModal({ mode: 'create', record: { parentCategoryId: row._id } }); }}>+ Loại con</button>}
+                    {config.service === 'products' && <button type="button" className="secondary" onClick={() => setVariantProduct(row)}>Biến thể ({row.variants?.length || 0})</button>}
                     <button type="button" className="secondary" onClick={() => setModal({ mode: 'view', record: row })}>Xem</button>
                     <button type="button" className="secondary" onClick={() => setModal({ mode: 'edit', record: row })}>Sửa</button>
                     <button type="button" className="danger" onClick={() => remove(row)}>Xóa</button>
@@ -197,6 +200,7 @@ function WarehouseResourceList({ config }) {
         </div>
       </section>
       {modal && <WarehouseCrudModal key={modal.mode + '-' + (modal.record?._id || 'new')} config={config} mode={modal.mode} record={modal.record} choices={choices} onClose={() => setModal(null)} onSave={save} />}
+      {variantProduct && <ProductVariantsModal product={variantProduct} onClose={() => setVariantProduct(null)} onChanged={load} />}
     </>
   );
 

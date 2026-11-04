@@ -38,7 +38,7 @@ export default function BranchInventoryPage() {
   useEffect(() => { setPage(1); }, [branchId, query, pageSize]);
 
   const filtered = useMemo(() => report.items.filter((item) => {
-    const text = [item.productCode, item.productName, item.categoryName, item.sku, item.variantName, item.size, item.color].join(' ').toLowerCase();
+    const text = [item.productCode, item.productName, item.categoryName, item.sku, item.size, item.color].join(' ').toLowerCase();
     return !query || text.includes(query.toLowerCase());
   }), [report.items, query]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -67,7 +67,7 @@ export default function BranchInventoryPage() {
         </div>
         <div className="wm-table-wrap"><table><thead><tr><th>Sản phẩm / biến thể</th><th>Mã / SKU</th><th>Tồn tại chi nhánh</th><th>Có thể sử dụng</th><th>Đang giữ</th><th>Không khả dụng</th></tr></thead>
           <tbody>{loading ? <tr><td colSpan={6}>Đang tải tồn kho...</td></tr> : visible.length ? visible.map((item) => <tr key={item.key}>
-            <td><strong>{item.productName}</strong><br /><small>{[item.variantName, item.size, item.color].filter(Boolean).join(' · ')}</small></td>
+            <td><strong>{item.productName}</strong><br /><small>{[item.size, item.color].filter(Boolean).join(' · ')}</small></td>
             <td>{item.productCode}{item.sku ? <><br /><small>{item.sku}</small></> : null}{item.trackingType === 'individual' && <><br /><button type="button" className="wm-text-button" onClick={() => setSerialDetail({ ...item, branchId })}>Xem {number(item.itemCount)} mã hàng</button></>}</td>
             <td>{number(item.quantityOnHand)}</td><td>{number(item.quantityAvailable)}</td><td>{number(item.quantityReserved)}</td><td>{number(item.quantityUnavailable)}</td>
           </tr>) : <tr><td colSpan={6}>Chi nhánh hiện chưa có tồn kho phù hợp.</td></tr>}</tbody>

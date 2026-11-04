@@ -17,7 +17,7 @@ const statusLabels = {
   received: 'Đã nhận hàng', cancelled: 'Đã hủy',
 };
 const idOf = (value) => String(value?._id || value || '');
-const variantLabel = (item) => [item.variantId?.productId?.name, item.variantId?.sku, item.variantId?.variantName, item.variantId?.size, item.variantId?.color].filter(Boolean).join(' · ');
+const variantLabel = (item) => [item.variantId?.productId?.name, item.variantId?.sku, item.variantId?.size, item.variantId?.color].filter(Boolean).join(' · ');
 const itemIdsOf = (detail) => (detail.itemIds || []).map((item) => idOf(item));
 
 export default function WarehouseTransfersPage({ mode = 'branch' }) {
@@ -167,7 +167,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
       {showCreate && !isWarehouse && <form className="wm-panel wm-form wm-stock-create" onSubmit={createRequest}>
         <div className="wm-transfer-request-lines"><strong>Mặt hàng cần bổ sung</strong>{requestLines.map((line, index) => <div className="wm-new-item-row" key={index}>
           <select required value={line.productId} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, productId: event.target.value, variantId: '' } : row))}><option value="">Chọn sản phẩm</option>{products.map((product) => <option key={product._id} value={product._id}>{product.name}</option>)}</select>
-          <select required disabled={!line.productId} value={line.variantId} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, variantId: event.target.value } : row))}><option value="">Chọn biến thể</option>{detailVariantOptions.filter((variant) => idOf(variant.productId) === line.productId).map((variant) => <option key={variant._id} value={variant._id}>{variant.sku} · {variant.variantName} · {variant.size} · {variant.color}</option>)}</select>
+          <select required disabled={!line.productId} value={line.variantId} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, variantId: event.target.value } : row))}><option value="">Chọn biến thể</option>{detailVariantOptions.filter((variant) => idOf(variant.productId) === line.productId).map((variant) => <option key={variant._id} value={variant._id}>{variant.sku} · {variant.size} · {variant.color}</option>)}</select>
           <input required type="number" min="1" step="1" value={line.quantityRequested} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, quantityRequested: event.target.value } : row))} aria-label="Số lượng yêu cầu" />
           <button type="button" className="danger" disabled={requestLines.length === 1} onClick={() => setRequestLines(requestLines.filter((_, i) => i !== index))}>Xóa</button>
         </div>)}<button className="secondary" type="button" onClick={() => setRequestLines([...requestLines, { productId: '', variantId: '', quantityRequested: 1 }])}>+ Thêm mặt hàng</button></div>

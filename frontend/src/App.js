@@ -24,6 +24,8 @@ import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
 import WardrobePage from './pages/customer/WardrobePage';
+import StylistPage from './pages/customer/StylistPage';
+import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
@@ -91,19 +93,19 @@ function App() {
         <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
         <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/blog" element={<BlogPage />} />
-          <Route path="/blog/:id" element={<BlogPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/policy" element={<PolicyPage />} />
-          <Route path="/wardrobe" element={<WardrobePage />} />
-          <Route path="/my-wardrobe" element={<WardrobePage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/blog" element={<BlogPage />} />
+        <Route path="/blog/:id" element={<BlogPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/policy" element={<PolicyPage />} />
+        <Route path="/wardrobe" element={<WardrobePage />} />
+        <Route path="/my-wardrobe" element={<WardrobePage />} />
 
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Cửa Hàng)
@@ -353,11 +355,7 @@ function App() {
         />
         <Route
           path="/admin/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
-              <OwnerDashboardPage />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/admin/accounts" replace />}
         />
         <Route path="/admin/shops" element={<Navigate to="/owner/branches" replace />} />
         <Route
@@ -421,6 +419,7 @@ function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <AiStylistWidget />
     </Router>
   );
 }

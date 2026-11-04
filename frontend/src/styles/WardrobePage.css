@@ -67,7 +67,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #44374c;
+  background: #435339;
   color: #ffffff;
   font-size: 14px;
   font-weight: 600;
@@ -102,8 +102,8 @@
 
 .btn-header-explore:hover {
   background: #fbf9f5;
-  border-color: #9c7148;
-  color: #9c7148;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 /* Toast Alert */
@@ -205,9 +205,9 @@
 }
 
 .w-tab-btn.active {
-  background: #44374c;
+  background: #435339;
   color: #ffffff;
-  border-color: #44374c;
+  border-color: #435339;
   box-shadow: 0 4px 12px rgba(68, 55, 76, 0.2);
 }
 
@@ -343,7 +343,7 @@
 }
 
 .item-category-tag {
-  color: #9c7148;
+  color: #5b6e4e;
   font-weight: 600;
 }
 
@@ -365,7 +365,7 @@
 }
 
 .item-title a:hover {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 /* AI Stylist Note Box */
@@ -448,7 +448,7 @@
 }
 
 .btn-rent-now {
-  background: #9c7148;
+  background: #5b6e4e;
   color: #ffffff;
   border: none;
   padding: 7px 16px;
@@ -479,7 +479,7 @@
   height: 70px;
   border-radius: 50%;
   background: #f7f3ee;
-  color: #9c7148;
+  color: #5b6e4e;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -512,7 +512,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #44374c;
+  background: #435339;
   color: #ffffff;
   padding: 10px 22px;
   border-radius: 999px;

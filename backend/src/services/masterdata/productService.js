@@ -7,6 +7,7 @@ import { validateProductVariant } from '../../validations/masterdata/productVari
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
+import { enrichProductsWithInventory } from '../warehouse/productInventoryHelper.js';
 
 const imageError = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const populateProduct = (query) => query.populate('categoryId').lean();
@@ -123,7 +124,7 @@ const syncProductVariants = async (productId, productCode, incoming) => {
 
 export const productService = {
   list: async () => {
-    const products = await populateProduct(Product.find().select('-productType').sort({ createdAt: -1 }));
+    const products = await populateProduct(Product.find().select('-productType').populate('shopId').sort({ createdAt: -1 }));
     const ids = products.map((product) => product._id);
     const images = await ProductImage.find({ productId: { $in: ids } }).sort({ displayOrder: 1 }).lean();
     const byProduct = new Map();
@@ -134,12 +135,13 @@ export const productService = {
     const variants = await ProductVariant.find({ productId: { $in: ids } }).sort({ createdAt: 1 }).lean();
     const variantsByProduct = new Map();
     for (const variant of variants) variantsByProduct.set(String(variant.productId), [...(variantsByProduct.get(String(variant.productId)) || []), variant]);
-    return products.map((product) => {
+    const mapped = products.map((product) => {
       const images = byProduct.get(String(product._id));
       if (images?.length) return { ...product, images, variants: variantsByProduct.get(String(product._id)) || [] };
       const legacyImages = Array.isArray(product.images) ? product.images.filter((image) => typeof image === 'string' && image.trim()).map((imageUrl, index) => ({ imageUrl, imageType: index === 0 ? 'MAIN' : 'GALLERY', isPrimary: index === 0, displayOrder: index, variantId: null })) : [];
       return { ...product, images: legacyImages, variants: variantsByProduct.get(String(product._id)) || [] };
     });
+    return enrichProductsWithInventory(mapped, variants);
   },
   create: async (payload) => {
     const { images, variants, ...productPayload } = payload || {};

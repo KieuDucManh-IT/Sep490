@@ -50,17 +50,6 @@ export default function Navbar() {
           <Link to="/" className={`navbar-link ${isActive("/")}`}>
             Trang Chủ
           </Link>
-          {/* Về VESTORA */}
-          <div className="nav-dropdown-item">
-            <Link to="/about" className={`navbar-link ${isActive("/about")}`}>
-              Về VESTORA <i className="fa-solid fa-chevron-down nav-arrow"></i>
-            </Link>
-            <div className="nav-dropdown-menu">
-              <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
-              <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
-              <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
-            </div>
-          </div>
 
           {/* Sản Phẩm */}
           <div className="nav-dropdown-item">
@@ -75,20 +64,6 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Blog VESTORA */}
-          <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
-            Blog VESTORA
-          </Link>
-
-          {/* Liên Hệ */}
-          <Link to="/contact" className={`navbar-link ${isActive("/contact")}`}>
-            Liên Hệ
-          </Link>
-
-          {/* Chính Sách */}
-          <Link to="/policy" className={`navbar-link ${isActive("/policy")}`}>
-            Chính Sách
-          </Link>
 
           {/* Tủ Đồ Cá Nhân */}
           <div className="nav-dropdown-item">
@@ -97,16 +72,35 @@ export default function Navbar() {
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
-              <Link to="/wardrobe?filter=ai-suggested" className="nav-sublink">Gợi ý AI Stylist</Link>
+              <Link to="/stylist" className="nav-sublink">Tư vấn AI Stylist </Link>
               <Link to="/wardrobe?filter=tryon-history" className="nav-sublink">Đã thử qua AI / Camera</Link>
               <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
             </div>
           </div>
 
-          {/* Radar Cửa Hàng */}
-          <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
-            Radar Cửa Hàng
+          {/* Blog VESTORA */}
+          <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
+            Blog VESTORA
           </Link>
+
+          {/* Liên Hệ (Gồm Liên hệ, Về VESTORA và Chính Sách) */}
+          <div className="nav-dropdown-item">
+            <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
+              Liên Hệ <i className="fa-solid fa-chevron-down nav-arrow"></i>
+            </Link>
+            <div className="nav-dropdown-menu">
+              <Link to="/contact" className="nav-sublink">Liên hệ & Hỗ trợ</Link>
+              <div className="nav-dropdown-divider"></div>
+              <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
+              <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
+              <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
+              <div className="nav-dropdown-divider"></div>
+              <Link to="/policy" className="nav-sublink">Chính sách thuê đồ</Link>
+              <Link to="/policy" className="nav-sublink">Thanh toán Escrow</Link>
+              <Link to="/policy" className="nav-sublink">Đổi trả & Hoàn cọc</Link>
+              <Link to="/policy" className="nav-sublink">Bảo mật thông tin</Link>
+            </div>
+          </div>
 
           {/* Quick Access for Management Roles */}
           {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
@@ -138,6 +132,22 @@ export default function Navbar() {
           {/* Search Icon */}
           <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
             <i className="fa-solid fa-magnifying-glass"></i>
+          </Link>
+
+          {/* Favorites Heart Icon (Sản phẩm yêu thích) */}
+          <Link to="/favorites" className={`navbar-icon-btn navbar-fav-btn ${isActive('/favorites')}`} title="Sản phẩm yêu thích" aria-label="Sản phẩm yêu thích">
+            <i className="fa-regular fa-heart"></i>
+          </Link>
+
+          {/* Notification Bell Icon (Chuông thông báo) */}
+          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
+            <i className="fa-regular fa-bell"></i>
+          </Link>
+
+          {/* Cart Icon with badge 0 (Đặt trước tên customer) */}
+          <Link to="/cart" className={`navbar-icon-btn navbar-cart-btn ${isActive('/cart')}`} title="Giỏ hàng" aria-label="Giỏ hàng">
+            <i className="fa-solid fa-bag-shopping"></i>
+            <span className="cart-badge-count">0</span>
           </Link>
 
           {/* User Account / Login Button */}
@@ -240,7 +250,7 @@ export default function Navbar() {
                   )}
                   {/admin/i.test(user?.Role || user?.role || '') && (
                     <Link
-                      to="/admin/dashboard"
+                      to="/admin/accounts"
                       className="menu-item"
                       onClick={() => setDropdownOpen(false)}
                     >
@@ -277,11 +287,7 @@ export default function Navbar() {
             </Link>
           )}
 
-          {/* Cart Icon with badge 0 */}
-          <Link to="/cart" className="navbar-icon-btn navbar-cart-btn" title="Giỏ hàng" aria-label="Giỏ hàng">
-            <i className="fa-solid fa-bag-shopping"></i>
-            <span className="cart-badge-count">0</span>
-          </Link>
+
         </div>
       </div>
     </header>

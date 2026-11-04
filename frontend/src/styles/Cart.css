@@ -97,7 +97,7 @@
   width: 18px;
   height: 18px;
   border-radius: 5px;
-  accent-color: #6e3eb3;
+  accent-color: #5b6e4e;
   cursor: pointer;
 }
 
@@ -218,7 +218,7 @@
 
 .badge-rental {
   background: #eee8f8;
-  color: #6e3eb3;
+  color: #5b6e4e;
 }
 
 .badge-resale {
@@ -268,7 +268,7 @@
 .cart-btn-edit-date {
   background: none;
   border: none;
-  color: #6e3eb3;
+  color: #5b6e4e;
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
@@ -301,7 +301,7 @@
 
 .tag-ai-ready {
   background: #f5f0fb;
-  color: #6e3eb3;
+  color: #5b6e4e;
 }
 
 .tag-in-stock {
@@ -530,7 +530,7 @@
 }
 
 .cart-summary-header i {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .cart-summary-rows-list {
@@ -608,11 +608,11 @@
 }
 
 .cart-coupon-input:focus {
-  border-color: #6e3eb3;
+  border-color: #5b6e4e;
 }
 
 .cart-coupon-btn {
-  background: #6e3eb3;
+  background: #5b6e4e;
   color: #ffffff;
   border: none;
   border-radius: 10px;
@@ -659,13 +659,13 @@
 }
 
 .cart-deposit-refund-note i {
-  color: #6e3eb3;
+  color: #5b6e4e;
   margin-top: 2px;
 }
 
 /* Checkout Button */
 .cart-btn-checkout {
-  background: #18181b;
+  background: #435339;
   color: #ffffff;
   border: none;
   border-radius: 12px;
@@ -678,13 +678,13 @@
   justify-content: center;
   gap: 10px;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 14px rgba(67, 83, 57, 0.28);
 }
 
 .cart-btn-checkout:hover {
-  background: #27272a;
+  background: #34422c;
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 18px rgba(67, 83, 57, 0.35);
 }
 
 /* Trust Payments Section */

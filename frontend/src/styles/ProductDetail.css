@@ -35,7 +35,7 @@
 }
 
 .pdetail-breadcrumb-bar a:hover {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .pdetail-breadcrumb-separator {
@@ -85,7 +85,7 @@
   border-radius: 20px;
   overflow: hidden;
   background-color: #f4f4f5;
-  border: 1px solid #ebe8e1;
+  border: 1px solid #e2e6dc;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,7 +121,7 @@
 }
 
 .pdetail-badge-top-left i {
-  color: #6e3eb3;
+  color: #5b6e4e;
 }
 
 .pdetail-heart-top-right {
@@ -205,13 +205,13 @@
 }
 
 .pdetail-thumb-item:hover {
-  border-color: #c084fc;
+  border-color: #8da280;
   transform: translateY(-2px);
 }
 
 .pdetail-thumb-item.active {
-  border-color: #6e3eb3;
-  box-shadow: 0 0 0 2px rgba(110, 62, 179, 0.2);
+  border-color: #5b6e4e;
+  box-shadow: 0 0 0 2px rgba(91, 110, 78, 0.2);
 }
 
 .pdetail-thumb-item img {
@@ -245,7 +245,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 18px;
-  border: 1px solid #ebe8e1;
+  border: 1px solid #e2e6dc;
   border-radius: 14px;
   background: #ffffff;
   transition: box-shadow 0.2s ease;
@@ -358,8 +358,8 @@
 
 /* Pricing Card Box */
 .pdetail-pricing-box {
-  background: #faf8f5;
-  border: 1px solid #ebe8e1;
+  background: #f7f8f4;
+  border: 1px solid #e2e6dc;
   border-radius: 16px;
   padding: 20px 24px;
   display: flex;
@@ -403,12 +403,12 @@
 }
 
 .pdetail-deposit-right i {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .pdetail-deposit-amount {
   font-weight: 700;
-  color: #9c7148;
+  color: #5b6e4e;
   font-size: 15px;
 }
 
@@ -456,9 +456,9 @@
 }
 
 .pdetail-ai-size-btn {
-  background: #f5f0fb;
-  border: 1px solid #dfd1ef;
-  color: #6e3eb3;
+  background: #eff2eb;
+  border: 1px solid #d2ded0;
+  color: #5b6e4e;
   padding: 5px 14px;
   border-radius: 999px;
   font-size: 12px;
@@ -471,8 +471,8 @@
 }
 
 .pdetail-ai-size-btn:hover {
-  background: #ede4f7;
-  border-color: #6e3eb3;
+  background: #e2e9dc;
+  border-color: #5b6e4e;
 }
 
 .pdetail-size-buttons-row {
@@ -499,15 +499,15 @@
 }
 
 .pdetail-size-btn:hover:not(:disabled) {
-  border-color: #6e3eb3;
-  color: #6e3eb3;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 .pdetail-size-btn.active {
-  background: #4a1d96;
-  border-color: #4a1d96;
+  background: #435339;
+  border-color: #435339;
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(74, 29, 150, 0.25);
+  box-shadow: 0 2px 8px rgba(67, 83, 57, 0.25);
 }
 
 .pdetail-size-btn:disabled {
@@ -538,13 +538,13 @@
 }
 
 .pdetail-duration-card:hover {
-  border-color: #c084fc;
+  border-color: #8da280;
 }
 
 .pdetail-duration-card.active {
-  border-color: #6e3eb3;
+  border-color: #5b6e4e;
   background: #fbf9fd;
-  box-shadow: 0 2px 8px rgba(110, 62, 179, 0.12);
+  box-shadow: 0 2px 8px rgba(91, 110, 78, 0.12);
 }
 
 .pdetail-duration-days {
@@ -560,7 +560,7 @@
 }
 
 .pdetail-duration-card.active .pdetail-duration-price {
-  color: #6e3eb3;
+  color: #5b6e4e;
 }
 
 /* Quantity & Date Row */
@@ -604,14 +604,14 @@
 
 .pdetail-quick-date-pill:hover {
   background: #ede9fe;
-  color: #6e3eb3;
+  color: #5b6e4e;
   border-color: #c4b5fd;
 }
 
 .pdetail-quick-date-pill.active {
-  background: #4a1d96;
+  background: #435339;
   color: #ffffff;
-  border-color: #4a1d96;
+  border-color: #435339;
 }
 
 /* Rental Timeline */
@@ -650,7 +650,7 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  color: #6e3eb3;
+  color: #5b6e4e;
   font-size: 11px;
   font-weight: 700;
 }
@@ -806,7 +806,7 @@
 }
 
 .pdetail-btn-rent-now {
-  background: #4a1d96;
+  background: #435339;
   color: #ffffff;
   border: none;
   border-radius: 12px;
@@ -819,13 +819,13 @@
   justify-content: center;
   gap: 8px;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(74, 29, 150, 0.28);
+  box-shadow: 0 4px 14px rgba(67, 83, 57, 0.28);
 }
 
 .pdetail-btn-rent-now:hover {
-  background: #3b0764;
+  background: #34422c;
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(74, 29, 150, 0.35);
+  box-shadow: 0 6px 18px rgba(67, 83, 57, 0.35);
 }
 
 .pdetail-btn-add-cart {
@@ -866,10 +866,44 @@
 }
 
 .pdetail-btn-ai-tryon:hover {
-  background: #f5f0fb;
-  border-color: #6e3eb3;
-  color: #6e3eb3;
+  background: #eff2eb;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
+/* Full-width Chat with Shop Button */
+.pdetail-btn-chat-shop {
+  width: 100%;
+  margin-top: 12px;
+  background-color: #435339;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  height: 48px;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(67, 83, 57, 0.25);
+}
+
+.pdetail-btn-chat-shop:hover {
+  background-color: #34422c;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(67, 83, 57, 0.35);
+}
+
+.pdetail-btn-chat-shop:active {
+  transform: translateY(0);
+}
+
+.pdetail-btn-chat-shop i {
+  font-size: 16px;
+}
+
 
 /* ============================================
    TABS & DETAILS LOWER SECTION
@@ -883,7 +917,7 @@
 .pdetail-tabs-header-bar {
   display: flex;
   gap: 32px;
-  border-bottom: 1.5px solid #ebe8e1;
+  border-bottom: 1.5px solid #e2e6dc;
   margin-bottom: 28px;
   overflow-x: auto;
 }
@@ -962,7 +996,7 @@
   height: 18px;
   border-radius: 50%;
   background: #fbf5ed;
-  color: #9c7148;
+  color: #5b6e4e;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -987,7 +1021,7 @@
 }
 
 .pdetail-policy-title i {
-  color: #6e3eb3;
+  color: #5b6e4e;
 }
 
 .pdetail-policy-bullets {
@@ -1040,7 +1074,7 @@
   gap: 6px;
   font-size: 11.5px;
   font-weight: 700;
-  color: #6e3eb3;
+  color: #5b6e4e;
   margin-bottom: 8px;
 }
 
@@ -1064,7 +1098,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #6e3eb3;
+  background: #5b6e4e;
   color: #ffffff;
   padding: 8px 18px;
   border-radius: 999px;
@@ -1117,7 +1151,7 @@
 }
 
 .pdetail-similar-title i {
-  color: #9c7148;
+  color: #5b6e4e;
   font-size: 20px;
 }
 
@@ -1133,7 +1167,7 @@
 }
 
 .pdetail-similar-more-link:hover {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .pdetail-similar-grid-5cols {
@@ -1308,5 +1342,5 @@
 }
 
 .pdetail-input-group input:focus {
-  border-color: #6e3eb3;
+  border-color: #5b6e4e;
 }

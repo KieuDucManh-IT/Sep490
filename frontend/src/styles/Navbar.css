@@ -5,7 +5,7 @@
 
 .vestora-navbar {
   background: #FFFFFF;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid #e2e6dc;
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -64,12 +64,12 @@
 }
 
 .navbar-link:hover {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 /* Active State: màu nâu vàng kèm đường gạch chân */
 .navbar-link.active {
-  color: #9c7148;
+  color: #5b6e4e;
   font-weight: 600;
 }
 
@@ -80,7 +80,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #9c7148;
+  background: #5b6e4e;
   border-radius: 2px;
 }
 
@@ -137,9 +137,15 @@
   transition: background 0.15s, color 0.15s;
 }
 
+.nav-dropdown-divider {
+  height: 1px;
+  background-color: #ebe5dc;
+  margin: 4px 0;
+}
+
 .nav-sublink:hover {
   background: #fbf8f4;
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 /* Action Icons & User */
@@ -168,7 +174,7 @@
 }
 
 .navbar-icon-btn:hover {
-  color: #9c7148;
+  color: #5b6e4e;
   background-color: #f7f5f0;
 }
 
@@ -226,7 +232,7 @@
 }
 
 .navbar-search-submit-btn {
-  background: #9c7148;
+  background: #5b6e4e;
   border: none;
   color: #ffffff;
   width: 26px;
@@ -259,6 +265,18 @@
   background: #e11d48 !important;
 }
 
+/* Notification Bell Icon */
+.navbar-bell-btn {
+  position: relative;
+}
+
+.navbar-bell-btn.active,
+.navbar-fav-btn.active,
+.navbar-cart-btn.active {
+  color: #5b6e4e;
+  background-color: #eff2eb;
+}
+
 /* Shopping Cart Badge */
 .navbar-cart-btn {
   position: relative;
@@ -268,7 +286,7 @@
   position: absolute;
   top: 1px;
   right: 1px;
-  background: #9d7147;
+  background: #5b6e4e;
   color: #ffffff;
   font-size: 10px;
   font-weight: 700;
@@ -300,8 +318,8 @@
 
 .navbar-login-btn:hover {
   background: #fbf9f5;
-  border-color: #9c7148;
-  color: #9c7148;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 /* User Profile Pill khi đã đăng nhập */
@@ -432,11 +450,11 @@
 
 .menu-item:hover {
   background-color: #fbf9f5;
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .menu-item:hover .menu-icon {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .menu-item-logout {
@@ -455,9 +473,9 @@
 
 .btn-retry-auth {
   font-size: 12px;
-  color: #9c7148;
+  color: #5b6e4e;
   background: none;
-  border: 1px solid #9c7148;
+  border: 1px solid #5b6e4e;
   border-radius: 14px;
   padding: 3px 10px;
   cursor: pointer;

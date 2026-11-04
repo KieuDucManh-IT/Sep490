@@ -37,7 +37,7 @@
 }
 
 .catalog-breadcrumb a:hover {
-  color: #9c7148;
+  color: #5b6e4e;
 }
 
 .catalog-breadcrumb-separator {
@@ -108,8 +108,8 @@
 }
 
 .catalog-search-wrapper:focus-within {
-  border-color: #9c7148;
-  box-shadow: 0 0 0 3px rgba(156, 113, 72, 0.12);
+  border-color: #5b6e4e;
+  box-shadow: 0 0 0 3px rgba(91, 110, 78, 0.12);
 }
 
 .catalog-search-icon {
@@ -196,10 +196,10 @@
 }
 
 .catalog-tab-btn.active {
-  background: #9c7148;
+  background: #5b6e4e;
   color: #ffffff;
-  border-color: #9c7148;
-  box-shadow: 0 2px 8px rgba(156, 113, 72, 0.25);
+  border-color: #5b6e4e;
+  box-shadow: 0 2px 8px rgba(91, 110, 78, 0.25);
 }
 
 /* Active Filter Chips */
@@ -244,7 +244,7 @@
 .catalog-chip-clear-all {
   background: none;
   border: none;
-  color: #9c7148;
+  color: #5b6e4e;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -302,7 +302,7 @@
 }
 
 .catalog-sidebar-icon {
-  color: #9c7148;
+  color: #5b6e4e;
   font-size: 13px;
 }
 
@@ -333,7 +333,7 @@
 }
 
 .catalog-ai-title i {
-  color: #6e3eb3;
+  color: #435339;
 }
 
 .catalog-ai-desc {
@@ -382,7 +382,7 @@
 }
 
 input:checked + .catalog-slider {
-  background-color: #6e3eb3;
+  background-color: #435339;
 }
 
 input:checked + .catalog-slider:before {
@@ -406,7 +406,7 @@ input:checked + .catalog-slider:before {
 }
 
 .catalog-filter-heading i {
-  color: #9c7148;
+  color: #5b6e4e;
   font-size: 12px;
 }
 
@@ -436,7 +436,7 @@ input:checked + .catalog-slider:before {
 .catalog-checkbox-input {
   width: 15px;
   height: 15px;
-  accent-color: #9c7148;
+  accent-color: #5b6e4e;
   cursor: pointer;
 }
 
@@ -468,7 +468,7 @@ input:checked + .catalog-slider:before {
 
 .catalog-range-slider {
   width: 100%;
-  accent-color: #9c7148;
+  accent-color: #5b6e4e;
   cursor: pointer;
   margin: 6px 0;
 }
@@ -500,7 +500,7 @@ input:checked + .catalog-slider:before {
 }
 
 .catalog-color-dot.active {
-  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px #9c7148;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px #5b6e4e;
 }
 
 .catalog-color-dot.border-gray {
@@ -526,7 +526,7 @@ input:checked + .catalog-slider:before {
   gap: 6px;
   font-size: 12px;
   font-weight: 700;
-  color: #6e3eb3;
+  color: #435339;
 }
 
 .catalog-promo-text {
@@ -538,7 +538,7 @@ input:checked + .catalog-slider:before {
 }
 
 .catalog-promo-btn {
-  background: #6e3eb3;
+  background: #435339;
   color: #ffffff;
   border: none;
   border-radius: 999px;
@@ -592,8 +592,8 @@ input:checked + .catalog-slider:before {
 
 .catalog-clear-btn:hover {
   background: #fbf5ed;
-  border-color: #9c7148;
-  color: #9c7148;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 /* Products Column & Grid */
@@ -671,8 +671,8 @@ input:checked + .catalog-slider:before {
 }
 
 .badge-rental {
-  background: #eee8f8;
-  color: #6e3eb3;
+  background: #eff2eb;
+  color: #435339;
 }
 
 .badge-resale {
@@ -726,6 +726,27 @@ input:checked + .catalog-slider:before {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.35;
+}
+
+.card-quantity-row {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  color: #374151;
+}
+
+.card-branch-row {
+  display: flex;
+  align-items: center;
+  color: #4b5563;
+}
+
+.card-branch-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+/* end product name */
 }
 
 .card-meta-line {
@@ -805,6 +826,27 @@ input:checked + .catalog-slider:before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.35;
+}
+
+.card-quantity-row {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  color: #374151;
+}
+
+.card-branch-row {
+  display: flex;
+  align-items: center;
+  color: #4b5563;
+}
+
+.card-branch-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
 }
 
 .card-action-btn {
@@ -826,8 +868,8 @@ input:checked + .catalog-slider:before {
 }
 
 .card-action-btn:hover {
-  border-color: #9c7148;
-  background: #9c7148;
+  border-color: #5b6e4e;
+  background: #5b6e4e;
   color: #ffffff;
 }
 
@@ -879,7 +921,7 @@ input:checked + .catalog-slider:before {
 
 .catalog-empty-icon {
   font-size: 38px;
-  color: #9c7148;
+  color: #5b6e4e;
   margin-bottom: 14px;
 }
 
@@ -926,14 +968,14 @@ input:checked + .catalog-slider:before {
 }
 
 .catalog-page-btn:hover:not(:disabled) {
-  border-color: #9c7148;
-  color: #9c7148;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 .catalog-page-btn.active {
-  background: #9c7148;
+  background: #5b6e4e;
   color: #ffffff;
-  border-color: #9c7148;
+  border-color: #5b6e4e;
 }
 
 .catalog-page-btn:disabled {
@@ -973,7 +1015,7 @@ input:checked + .catalog-slider:before {
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  color: #9c7148;
+  color: #5b6e4e;
   flex-shrink: 0;
 }
 

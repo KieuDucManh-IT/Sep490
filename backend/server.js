@@ -12,6 +12,7 @@ import shopRoutes from "./src/routes/shopRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
 import productRoutes from "./src/routes/productRoutes.js";
+import chatRoutes from "./src/routes/chatRoutes.js";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
 import walletRoutes, {
@@ -88,6 +89,7 @@ app.use("/api/shops", shopRoutes);
 app.use("/api/admin/shops", shopRoutes);
 app.use("/api/ops/shops", shopRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api", apiRoutes);
 

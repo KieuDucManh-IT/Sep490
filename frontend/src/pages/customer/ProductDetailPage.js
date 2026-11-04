@@ -3,6 +3,9 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
+import { getUserLocation } from '../../utils/userLocation';
+import { calculateHaversineDistanceKm, formatDistanceLabel } from '../../utils/geoUtils';
+import { PROVINCE_DEFAULT_COORDS } from '../owner/branches/utils/branchConstants';
 import '../../styles/ProductDetail.css';
 
 export default function ProductDetailPage() {
@@ -18,7 +21,7 @@ export default function ProductDetailPage() {
   // User Interactive Choices
   const [selectedImgIndex, setSelectedImgIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState('M');
-  const [rentalDuration, setRentalDuration] = useState(3); // 3, 5, 7 days
+  const [rentalDuration, setRentalDuration] = useState(1); // 3, 5, 7 days
   const [quantity, setQuantity] = useState(1);
   const [startDate, setStartDate] = useState(() => {
     const tomorrow = new Date();
@@ -29,6 +32,14 @@ export default function ProductDetailPage() {
   const [activeTab, setActiveTab] = useState('desc'); // 'desc' | 'size' | 'policy' | 'reviews'
   const [showAiModal, setShowAiModal] = useState(false);
   const [toast, setToast] = useState(null);
+  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [userLoc, setUserLoc] = useState(() => getUserLocation());
+
+  useEffect(() => {
+    const onLocChange = () => setUserLoc(getUserLocation());
+    window.addEventListener('userLocationChanged', onLocChange);
+    return () => window.removeEventListener('userLocationChanged', onLocChange);
+  }, []);
 
   // AI Measurements Form
   const [aiChest, setAiChest] = useState('');
@@ -173,38 +184,27 @@ export default function ProductDetailPage() {
     );
   }, [product]);
 
-  // Dynamic Prices for 3, 5, 7 days
-  const baseRental3Days = useMemo(() => {
-    if (!product) return 2500000;
-    if (product.rentalPricePer3Days && product.rentalPricePer3Days > 0) {
-      return product.rentalPricePer3Days;
-    }
+  // Giá thuê mặc định 1 ngày
+  const rentalPricePerDay = useMemo(() => {
+    if (!product) return 0;
     if (product.rentalPricePerDay && product.rentalPricePerDay > 0) {
-      return product.rentalPricePerDay * 3;
+      return product.rentalPricePerDay;
     }
-    return 2500000;
+    if (product.rentalPricePer3Days && product.rentalPricePer3Days > 0) {
+      return Math.round(product.rentalPricePer3Days / 3);
+    }
+    return 0;
   }, [product]);
 
-  const priceByDuration = useMemo(() => {
-    const p3 = baseRental3Days;
-    const p5 = Math.round((p3 * (5 / 3) * 0.9) / 10000) * 10000; // Chiết khấu ngày 5
-    const p7 = Math.round((p3 * (7 / 3) * 0.85) / 10000) * 10000; // Chiết khấu ngày 7
-    return {
-      3: p3,
-      5: p5,
-      7: p7,
-    };
-  }, [baseRental3Days]);
-
   const currentPrice = isRental
-    ? priceByDuration[rentalDuration] || baseRental3Days
+    ? rentalPricePerDay
     : product?.salePrice || 0;
 
   // Hàng mua bán thì không có tiền cọc
   const depositAmount = useMemo(() => {
     if (!isRental) return 0;
-    return Number(product?.deposit || product?.depositPrice || Math.round(baseRental3Days * 3.2));
-  }, [isRental, product, baseRental3Days]);
+    return Number(product?.deposit || product?.depositAmount || 0);
+  }, [isRental, product]);
 
   // Available Sizes
   const sizeOptions = useMemo(() => {
@@ -258,6 +258,121 @@ export default function ProductDetailPage() {
     setStartDate(d.toISOString().split('T')[0]);
   };
 
+  // Sắp xếp chi nhánh ưu tiên theo khoảng cách gần vị trí người dùng nhất (bỏ kho tổng)
+  const sortedBranches = useMemo(() => {
+    let rawBranches = Array.isArray(product?.branches) ? product.branches : [];
+
+    // Bỏ kho tổng, chỉ lấy ở các chi nhánh (store / showroom)
+    rawBranches = rawBranches.filter((b) => {
+      const name = String(b.name || '').toLowerCase();
+      const type = String(b.type || '').toLowerCase();
+      return (
+        type !== 'warehouse' &&
+        !name.includes('kho tổng') &&
+        !name.includes('kho tong') &&
+        !name.includes('kho trung tâm')
+      );
+    });
+
+    if (rawBranches.length === 0) {
+      if (
+        product?.branchAddress &&
+        product.branchAddress !== 'Chưa có hàng tại chi nhánh' &&
+        !product.branchName?.toLowerCase().includes('kho tổng') &&
+        !product.branchName?.toLowerCase().includes('kho tong')
+      ) {
+        return [{
+          locationId: 'single-branch',
+          name: product.branchName || 'Chi nhánh',
+          address: product.branchAddress,
+          quantity: product.quantity || 1,
+          distanceKm: null,
+        }];
+      }
+      return [];
+    }
+
+    const resolveCoords = (address = '', city = '') => {
+      const text = `${city} ${address}`.toLowerCase();
+      if (
+        text.includes('hồ chí minh') ||
+        text.includes('ho chi minh') ||
+        text.includes('tphcm') ||
+        text.includes('tp.hcm') ||
+        text.includes('sài gòn') ||
+        text.includes('quận 1') ||
+        text.includes('quan 1')
+      ) {
+        return { lat: 10.776889, lng: 106.700806 };
+      }
+      if (text.includes('hà nội') || text.includes('ha noi')) {
+        return { lat: 21.028511, lng: 105.854167 };
+      }
+      if (text.includes('đà nẵng') || text.includes('da nang')) {
+        return { lat: 16.054407, lng: 108.202167 };
+      }
+      if (text.includes('hải phòng') || text.includes('hai phong')) {
+        return { lat: 20.844912, lng: 106.688084 };
+      }
+      if (text.includes('cần thơ') || text.includes('can tho')) {
+        return { lat: 10.045162, lng: 105.746857 };
+      }
+      if (PROVINCE_DEFAULT_COORDS) {
+        for (const [prov, coords] of Object.entries(PROVINCE_DEFAULT_COORDS)) {
+          if (text.includes(prov.toLowerCase())) {
+            return { lat: coords.lat, lng: coords.lng };
+          }
+        }
+      }
+      return null;
+    };
+
+    const withDistance = rawBranches.map((b) => {
+      let lat = b.latitude;
+      let lng = b.longitude;
+      if (lat == null || lng == null) {
+        const resolved = resolveCoords(b.address, b.city);
+        if (resolved) {
+          lat = resolved.lat;
+          lng = resolved.lng;
+        }
+      }
+
+      let distanceKm = null;
+      if (userLoc?.latitude != null && userLoc?.longitude != null && lat != null && lng != null) {
+        distanceKm = calculateHaversineDistanceKm(userLoc.latitude, userLoc.longitude, lat, lng);
+      }
+
+      return {
+        ...b,
+        distanceKm,
+      };
+    });
+
+    // Ưu tiên chi nhánh gần với vị trí của người dùng nhất
+    return withDistance.sort((a, b) => {
+      if (a.distanceKm == null && b.distanceKm == null) return 0;
+      if (a.distanceKm == null) return 1;
+      if (b.distanceKm == null) return -1;
+      return a.distanceKm - b.distanceKm;
+    });
+  }, [product?.branches, product?.branchAddress, product?.branchName, product?.quantity, userLoc]);
+
+  // Tự động chọn chi nhánh gần nhất khi danh sách chi nhánh sẵn sàng
+  useEffect(() => {
+    if (sortedBranches.length > 0 && !selectedBranchId) {
+      setSelectedBranchId(String(sortedBranches[0].locationId || sortedBranches[0].name));
+    }
+  }, [sortedBranches, selectedBranchId]);
+
+  const currentSelectedBranch = useMemo(() => {
+    if (!sortedBranches.length) return null;
+    return (
+      sortedBranches.find((b) => String(b.locationId || b.name) === String(selectedBranchId)) ||
+      sortedBranches[0]
+    );
+  }, [sortedBranches, selectedBranchId]);
+
   // Handle Add to Cart
   const handleAddToCart = () => {
     if (!product) return;
@@ -280,6 +395,13 @@ export default function ProductDetailPage() {
         isRental,
         condition: product.condition || 'Rất tốt',
         inStock: product.inStock !== false,
+        selectedBranch: currentSelectedBranch
+          ? {
+              locationId: currentSelectedBranch.locationId,
+              name: currentSelectedBranch.name,
+              address: currentSelectedBranch.address,
+            }
+          : null,
         aiTryOn: product.aiTryOn !== false,
       };
 
@@ -308,6 +430,12 @@ export default function ProductDetailPage() {
   const handleRentNow = () => {
     handleAddToCart();
     navigate('/cart');
+  };
+
+  // Handle Chat with Shop (Brand Manager - dự kiến phát triển sau)
+  const handleChatWithShop = () => {
+    const shopName = product?.shopId?.name || product?.brand || 'Shop';
+    showToast(`Tính năng nhắn tin trực tiếp với ${shopName} đang được phát triển!`);
   };
 
   // AI Size Calculation
@@ -478,38 +606,6 @@ export default function ProductDetailPage() {
 
         {/* RIGHT COLUMN: Info & Booking Modules */}
         <div className="pdetail-info-column">
-          {/* Atelier / Shop Header Box */}
-          <div className="pdetail-atelier-card">
-            <div className="pdetail-atelier-left">
-              <div className="pdetail-atelier-avatar">
-                {(product.shopId?.name || 'Vestora Master Atelier').charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div className="pdetail-atelier-name-row">
-                  <span>{product.shopId?.name || 'Vestora Master Atelier'}</span>
-                  <i className="fa-solid fa-circle-check pdetail-verified-badge" title="Đã xác minh uy tín"></i>
-                </div>
-                <div className="pdetail-atelier-meta">
-                  <i className="fa-solid fa-star rating-star"></i>
-                  <span>{product.rating || '4.9'} ({product.reviewsCount || 128} đánh giá)</span>
-                  <span>•</span>
-                  <span>Đã tham gia 2 năm</span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              className="pdetail-btn-follow"
-              onClick={() => {
-                setIsFollowing(!isFollowing);
-                showToast(isFollowing ? 'Đã hủy theo dõi gian hàng' : 'Đã theo dõi gian hàng thành công!');
-              }}
-            >
-              <i className={isFollowing ? 'fa-solid fa-check' : 'fa-solid fa-user-plus'}></i>
-              {isFollowing ? 'Đang theo dõi' : 'Theo dõi'}
-            </button>
-          </div>
-
           {/* Product Title */}
           <h1 className="pdetail-title">{product.name}</h1>
 
@@ -537,7 +633,7 @@ export default function ProductDetailPage() {
               <div className="pdetail-price-left">
                 <span className="pdetail-price-main">{formatVND(currentPrice)}</span>
                 {isRental ? (
-                  <span className="pdetail-price-unit">/ {rentalDuration} ngày</span>
+                  <span className="pdetail-price-unit">/ ngày</span>
                 ) : (
                   <span className="pdetail-price-unit" style={{ color: '#059669', fontWeight: 600 }}>
                     (Giá sở hữu)
@@ -574,7 +670,7 @@ export default function ProductDetailPage() {
                 <i className="fa-solid fa-shirt"></i> Chọn kích thước (Size)
               </span>
               <button className="pdetail-ai-size-btn" onClick={() => setShowAiModal(true)}>
-                <i className="fa-solid fa-wand-magic-sparkles"></i> Tư vấn size bằng AI &gt;
+                <i className="fa-solid fa-ruler-combined"></i> Gợi ý chọn size theo số đo &gt;
               </button>
             </div>
 
@@ -592,32 +688,6 @@ export default function ProductDetailPage() {
               ))}
             </div>
           </div>
-
-          {/* Rental Duration Selection (Chỉ hiển thị khi là đồ thuê) */}
-          {isRental ? (
-            <div className="pdetail-section-group">
-              <div className="pdetail-section-header">
-                <span className="pdetail-section-title">
-                  <i className="fa-regular fa-calendar"></i> Chọn thời gian thuê
-                </span>
-              </div>
-
-              <div className="pdetail-durations-grid">
-                {[3, 5, 7].map((days) => (
-                  <div
-                    key={days}
-                    className={`pdetail-duration-card ${rentalDuration === days ? 'active' : ''}`}
-                    onClick={() => setRentalDuration(days)}
-                  >
-                    <span className="pdetail-duration-days">{days} ngày</span>
-                    <span className="pdetail-duration-price">
-                      {formatVND(priceByDuration[days])}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
 
           {/* Quantity & Delivery */}
           <div className="pdetail-qty-date-container">
@@ -664,12 +734,191 @@ export default function ProductDetailPage() {
 
               {/* Stock Indicator */}
               <div className="pdetail-stock-indicator">
-                <span className="pdetail-stock-dot"></span>
-                <span>Còn hàng</span>
+                <span className={`pdetail-stock-dot ${product.inStock === false || (typeof product.quantity === 'number' && product.quantity <= 0) ? 'out-of-stock' : ''}`}></span>
+                <span>
+                  {product.inStock !== false && (product.quantity == null || product.quantity > 0)
+                    ? `Còn hàng (${product.quantity ?? 1} sản phẩm)`
+                    : 'Hết hàng'}
+                </span>
               </div>
             </div>
 
             {/* Quick date select chips (Chỉ cho thuê) */}
+            {/* Chi nhánh có sẵn hàng (Dạng Select dropdown, ưu tiên gần nhất) */}
+            {sortedBranches.length > 0 && (
+              <div
+                className="pdetail-branch-select-box"
+                style={{
+                  marginTop: '14px',
+                  marginBottom: '16px',
+                  padding: '14px 16px',
+                  background: '#f8fafc',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '8px',
+                    gap: '8px',
+                  }}
+                >
+                  <label
+                    htmlFor="pdetail-branch-select"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: '600',
+                      color: '#1e293b',
+                      fontSize: '13.5px',
+                    }}
+                  >
+                    <i className="fa-solid fa-location-dot" style={{ color: '#e11d48' }}></i>
+                    <span>Chi nhánh có sẵn hàng ({sortedBranches.length}):</span>
+                  </label>
+                  {userLoc?.shortCity && sortedBranches.length > 1 && (
+                    <span
+                      style={{
+                        fontSize: '11.5px',
+                        color: '#0284c7',
+                        background: '#e0f2fe',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        fontWeight: '500',
+                      }}
+                    >
+                      <i className="fa-solid fa-location-crosshairs" style={{ marginRight: '4px' }}></i>
+                      Ưu tiên theo khoảng cách ({userLoc.shortCity})
+                    </span>
+                  )}
+                </div>
+
+                {/* Dropdown Select */}
+                <div style={{ position: 'relative', marginBottom: '10px' }}>
+                  <select
+                    id="pdetail-branch-select"
+                    value={selectedBranchId || ''}
+                    onChange={(e) => setSelectedBranchId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 36px 10px 12px',
+                      borderRadius: '8px',
+                      border: '1.5px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: '13.5px',
+                      fontWeight: '500',
+                      color: '#0f172a',
+                      appearance: 'none',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    }}
+                  >
+                    {sortedBranches.map((b) => {
+                      const distText =
+                        b.distanceKm != null
+                          ? ` (~${formatDistanceLabel(b.distanceKm)})`
+                          : '';
+                      return (
+                        <option
+                          key={b.locationId || b.name}
+                          value={String(b.locationId || b.name)}
+                        >
+                          {b.name} — Còn {b.quantity} cái{distText}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <i
+                    className="fa-solid fa-chevron-down"
+                    style={{
+                      position: 'absolute',
+                      right: '14px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      pointerEvents: 'none',
+                      color: '#64748b',
+                      fontSize: '12px',
+                    }}
+                  ></i>
+                </div>
+
+                {/* Chi tiết chi nhánh đang chọn */}
+                {currentSelectedBranch && (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      border: '1px solid #e2e8f0',
+                      fontSize: '12.5px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '4px',
+                      }}
+                    >
+                      <strong style={{ color: '#0f172a', fontSize: '13px' }}>
+                        {currentSelectedBranch.name}
+                      </strong>
+                      <span
+                        style={{
+                          color: '#059669',
+                          fontWeight: '700',
+                          background: '#ecfdf5',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          fontSize: '11.5px',
+                        }}
+                      >
+                        Sẵn có {currentSelectedBranch.quantity} cái
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        color: '#64748b',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '6px',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      <i
+                        className="fa-solid fa-map-pin"
+                        style={{ color: '#94a3b8', marginTop: '2px', fontSize: '11px' }}
+                      ></i>
+                      <span>{currentSelectedBranch.address || 'Địa chỉ đang cập nhật'}</span>
+                    </div>
+                    {currentSelectedBranch.distanceKm != null && (
+                      <div
+                        style={{
+                          marginTop: '6px',
+                          color: '#0369a1',
+                          fontSize: '11.5px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                        }}
+                      >
+                        <i className="fa-solid fa-route"></i>
+                        <span>
+                          Khoảng cách: <strong>{formatDistanceLabel(currentSelectedBranch.distanceKm)}</strong>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {isRental ? (
               <div className="pdetail-quick-dates-row">
                 <span className="pdetail-quick-date-label">Gợi ý ngày:</span>
@@ -716,7 +965,7 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
                 <div className="pdetail-timeline-divider">
-                  <span>{rentalDuration} ngày</span>
+                  <span>1 ngày</span>
                   <i className="fa-solid fa-arrow-right-long"></i>
                 </div>
                 <div className="pdetail-timeline-item">
@@ -755,6 +1004,16 @@ export default function ProductDetailPage() {
               <span>Thử đồ AI</span>
             </button>
           </div>
+
+          {/* Full-width Chat with Shop Button */}
+          <button
+            type="button"
+            className="pdetail-btn-chat-shop"
+            onClick={handleChatWithShop}
+          >
+            <i className="fa-regular fa-comment-dots"></i>
+            <span>Nhắn tin tư vấn với Shop</span>
+          </button>
         </div>
       </div>
 
@@ -1106,8 +1365,7 @@ export default function ProductDetailPage() {
           <div className="pdetail-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="pdetail-modal-header">
               <h3 className="pdetail-modal-title">
-                <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#6e3eb3' }}></i>
-                Tư vấn size thông minh bằng AI
+                <i className="fa-solid fa-ruler-combined" style={{ color: '#6e3eb3' }}></i> Gợi ý kích cỡ chuẩn theo số đo
               </h3>
               <button className="pdetail-modal-close-btn" onClick={() => setShowAiModal(false)}>
                 <i className="fa-solid fa-xmark"></i>
@@ -1115,7 +1373,7 @@ export default function ProductDetailPage() {
             </div>
 
             <p style={{ fontSize: '13.5px', color: '#71717a', margin: 0, lineHeight: 1.5 }}>
-              Nhập 3 chỉ số cơ thể của bạn (cm) để thuật toán VESTORA AI tính toán độ co giãn của vải và gợi ý kích thước vừa vặn nhất:
+              Nhập 3 chỉ số cơ thể của bạn (cm) để hệ thống tự động đối chiếu bảng size chuẩn và gợi ý kích cỡ vừa vặn nhất:
             </p>
 
             <form onSubmit={handleCalculateAiSize} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1178,7 +1436,7 @@ export default function ProductDetailPage() {
                 className="pdetail-btn-rent-now"
                 style={{ width: '100%', marginTop: '6px' }}
               >
-                <i className="fa-solid fa-calculator"></i> Phân tích vóc dáng
+                <i className="fa-solid fa-calculator"></i> Tính kích cỡ phù hợp
               </button>
             </form>
           </div>

@@ -3,7 +3,7 @@
    ============================================ */
 
 .vestora-footer {
-  background: #171b24;
+  background: #1e251c;
   color: #c5cad3;
   padding: 60px 0 28px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
@@ -66,7 +66,7 @@
 }
 
 .social-icon-btn:hover {
-  background: #9c7349;
+  background: #5b6e4e;
   color: #ffffff;
   transform: translateY(-2px);
 }

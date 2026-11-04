@@ -1,3 +1,4 @@
+
 import mongoose from 'mongoose';
 import { Product } from '../../models/masterdata/Product.js';
 import { Category } from '../../models/masterdata/Category.js';
@@ -5,6 +6,7 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { ProductImage } from '../../models/masterdata/ProductImages.js';
 import { productService } from '../../services/masterdata/productService.js';
 import { createCrudController } from '../../generic/crudController.js';
+import { enrichProductsWithInventory } from '../../services/warehouse/productInventoryHelper.js';
 
 /**
  * Lấy danh sách sản phẩm theo bộ lọc, tìm kiếm, phân trang và sắp xếp
@@ -230,6 +232,16 @@ export const getProducts = async (req, res, next) => {
       variantsByProduct[pid].push(v);
     });
 
+    // Làm giàu dữ liệu tồn kho và địa chỉ chi nhánh từ InventoryBalance & InventoryItem
+    let inventoryEnriched = [];
+    try {
+      inventoryEnriched = await enrichProductsWithInventory(products, variants);
+    } catch (invErr) {
+      console.warn('Lỗi enrichProductsWithInventory:', invErr.message);
+      inventoryEnriched = products;
+    }
+    const invMap = new Map(inventoryEnriched.map((item) => [String(item._id), item]));
+
     // Chuẩn hóa dữ liệu 100% dựa trên database thật, tuyệt đối không dùng mock data
     const enrichedProducts = products.map((p) => {
       const pVariants = variantsByProduct[String(p._id)] || [];
@@ -274,6 +286,14 @@ export const getProducts = async (req, res, next) => {
         (Array.isArray(p.category) && p.category.length > 0 ? p.category.join(', ') : null) ||
         '';
 
+      const inv = invMap.get(String(p._id)) || {};
+      const quantity = inv.quantity != null ? inv.quantity : 0;
+      const quantityOnHand = inv.quantityOnHand != null ? inv.quantityOnHand : 0;
+      const quantityAvailable = inv.quantityAvailable != null ? inv.quantityAvailable : 0;
+      const branchAddress = inv.branchAddress || '';
+      const branchName = inv.branchName || '';
+      const branches = inv.branches || [];
+
       return {
         ...p,
         variants: pVariants,
@@ -283,14 +303,22 @@ export const getProducts = async (req, res, next) => {
         rentalPricePer3Days,
         salePrice,
         deposit,
+        image: images[0] || p.image || '',
         images,
         imageRecords,
+        shopId: p.shopId || { name: p.brand || 'Vestora Fashion Store' },
         categoryName,
+        quantity,
+        quantityOnHand,
+        quantityAvailable,
+        branchAddress,
+        branchName,
+        branches,
         rating: typeof p.rating === 'number' ? p.rating : null,
         reviewsCount: typeof p.reviewsCount === 'number' ? p.reviewsCount : 0,
-        inStock:
-          p.inStock !== false &&
-          (pVariants.length === 0 || pVariants.some((v) => v.status !== 'inactive')),
+        inStock: inv.inStock != null ? inv.inStock : (quantity > 0),
+          // inStock
+          // pVariants
       };
     });
 
@@ -373,15 +401,113 @@ export const getProductById = async (req, res, next) => {
       console.warn('Lỗi lấy variants:', e.message);
     }
 
-    const imageRecords = await ProductImage.find({ productId: product._id }).sort({ displayOrder: 1 }).lean();
+    let inventoryEnriched = [];
+    try {
+      inventoryEnriched = await enrichProductsWithInventory([product], variants);
+    } catch (invErr) {
+      console.warn('Lỗi enrichProductsWithInventory in getProductById:', invErr.message);
+      inventoryEnriched = [product];
+    }
+    const invData = inventoryEnriched[0] || {};
+    const quantity = invData.quantity != null ? invData.quantity : 0;
+    const quantityOnHand = invData.quantityOnHand != null ? invData.quantityOnHand : 0;
+    const quantityAvailable = invData.quantityAvailable != null ? invData.quantityAvailable : 0;
+    const branchAddress = invData.branchAddress || '';
+    const branchName = invData.branchName || '';
+    const branches = invData.branches || [];
+    const inv = invData;
+
+    let imageRecords = [];
+    try {
+      imageRecords = await ProductImage.find({ productId: product._id }).sort({ displayOrder: 1 }).lean();
+    } catch (e) {
+      console.warn('Lỗi lấy imageRecords:', e.message);
+    }
+
+    const images = imageRecords.length
+      ? imageRecords.map((img) => img.imageUrl)
+      : Array.isArray(product.images) && product.images.length
+      ? product.images.filter(Boolean)
+      : product.image
+      ? [product.image]
+      : [];
+
+    // Kích cỡ từ variants hoặc product
+    const sizesSet = new Set(Array.isArray(product.sizes) ? product.sizes : []);
+    variants.forEach((v) => {
+      if (v.size) sizesSet.add(String(v.size));
+    });
+    const sizes = Array.from(sizesSet);
+
+    // Màu sắc từ variants hoặc product
+    const colorsSet = new Set(Array.isArray(product.colors) ? product.colors : []);
+    variants.forEach((v) => {
+      if (v.color) colorsSet.add(String(v.color));
+    });
+    const colors = Array.from(colorsSet);
+
+    // Giá thuê thực tế
+    let rentalPricePerDay = product.rentalPricePerDay || 0;
+    if (!rentalPricePerDay && variants.length > 0) {
+      const variantPrices = variants.map((v) => v.rentalPricePerDay).filter(Boolean);
+      if (variantPrices.length > 0) rentalPricePerDay = Math.min(...variantPrices);
+    }
+    const rentalPricePer3Days =
+      product.rentalPricePer3Days || (rentalPricePerDay ? rentalPricePerDay * 3 : 0);
+
+    // Giá bán thực tế
+    let salePrice = product.salePrice || 0;
+    if (!salePrice && variants.length > 0) {
+      const variantSales = variants.map((v) => v.salePrice).filter(Boolean);
+      if (variantSales.length > 0) salePrice = Math.min(...variantSales);
+    }
+
+    // Tiền cọc thực tế
+    let deposit = product.deposit || 0;
+    if (!deposit && variants.length > 0) {
+      const variantDeposits = variants.map((v) => v.depositAmount).filter(Boolean);
+      if (variantDeposits.length > 0) deposit = Math.min(...variantDeposits);
+    }
+
+    // Tên danh mục thực tế
+    const categoryName =
+      (Array.isArray(product.categoryId)
+        ? product.categoryId.map((item) => item?.name).filter(Boolean).join(', ')
+        : product.categoryId?.name) ||
+      (Array.isArray(product.category) && product.category.length > 0
+        ? product.category.join(', ')
+        : null) ||
+      '';
+
+    const shopId = product.shopId || { name: product.brand || 'Vestora Fashion Store' };
 
     res.json({
       success: true,
       data: {
         ...product,
+        shopId,
         variants,
+        sizes,
+        colors,
+        rentalPricePerDay,
+        rentalPricePer3Days,
+        salePrice,
+        deposit,
+        image: images[0] || product.image || '',
+        images,
         imageRecords,
-        images: imageRecords.length ? imageRecords.map((image) => image.imageUrl) : (Array.isArray(product.images) ? product.images : product.image ? [product.image] : []),
+        categoryName,
+        quantity,
+        quantityOnHand,
+        quantityAvailable,
+        branchAddress,
+        branchName,
+        branches,
+        rating: typeof product.rating === 'number' ? product.rating : 5,
+        reviewsCount: typeof product.reviewsCount === 'number' ? product.reviewsCount : 0,
+        inStock: inv.inStock != null ? inv.inStock : (quantity > 0),
+          // inStock
+          // variants
       },
     });
   } catch (error) {

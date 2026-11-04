@@ -67,16 +67,18 @@ export default function FavoritesPage() {
     try {
       localStorage.setItem('vestora_favorites', JSON.stringify(updated));
       window.dispatchEvent(new Event('favoritesUpdated'));
-    } catch {}
+    } catch { }
   };
 
   // Clear all favorites
   const handleClearAll = () => {
-    setFavoriteIds([]);
-    try {
-      localStorage.removeItem('vestora_favorites');
-      window.dispatchEvent(new Event('favoritesUpdated'));
-    } catch {}
+    if (window.confirm('Bạn có chắc muốn xóa tất cả sản phẩm khỏi danh sách yêu thích?')) {
+      setFavoriteIds([]);
+      try {
+        localStorage.removeItem('vestora_favorites');
+        window.dispatchEvent(new Event('favoritesUpdated'));
+      } catch { }
+    }
   };
 
   // Move all to cart
@@ -87,12 +89,11 @@ export default function FavoritesPage() {
       products.forEach((p) => {
         const isRental =
           p.tag === 'rental' ||
-          p.tag === 'rental' ||
           (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
           (p.rentalPricePerDay && p.rentalPricePerDay > 0);
 
         const price = isRental
-          ? p.rentalPricePer3Days || (p.rentalPricePerDay ? p.rentalPricePerDay * 3 : 0)
+          ? p.rentalPricePerDay || (p.rentalPricePer3Days ? Math.round(p.rentalPricePer3Days / 3) : 0)
           : p.salePrice || 0;
 
         const exists = existingCart.find((ci) => ci.productId === (p._id || p.productCode));
@@ -103,12 +104,11 @@ export default function FavoritesPage() {
             id: `cart-${Date.now()}-${p._id || p.productCode}`,
             productId: p._id || p.productCode,
             name: p.name,
-            shopName: p.shopId?.name || p.brand || 'Vestora Atelier',
-            image: (p.images && p.images[0]) || p.image || '',
+            shopName: p.shopId?.name || p.brand || 'VESTORA ATELIER',
+            image: (p.images && p.images[0]?.imageUrl) || p.image || p.imageUrl || '',
             size: (p.sizes && p.sizes[0]) || 'M',
             color: (p.colors && p.colors[0]) || 'Mặc định',
-            colorCode: '#6e3eb3',
-            duration: 3,
+            duration: 1,
             startDate: new Date().toISOString().split('T')[0],
             endDate: '',
             price,
@@ -133,7 +133,6 @@ export default function FavoritesPage() {
   const filteredProducts = products.filter((p) => {
     const isRental =
       p.tag === 'rental' ||
-      p.tag === 'rental' ||
       (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
       (p.rentalPricePerDay && p.rentalPricePerDay > 0);
 
@@ -148,46 +147,39 @@ export default function FavoritesPage() {
 
       {/* Header Banner */}
       <div className="fav-header-hero">
-        <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '1px', color: '#666', marginBottom: '8px' }}>
-          <Link to="/" style={{ color: 'inherit', textDecoration: 'none' }}>TRANG CHỦ</Link> &gt; DANH SÁCH YÊU THÍCH
-        </div>
-        <div style={{ fontSize: '10px', color: 'var(--color-gold-deep)', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '4px' }}>
-          VESTORA SALON PRIVÉ ARCHIVE
+        <div className="fav-breadcrumb">
+          <Link to="/">TRANG CHỦ</Link> <span>&gt;</span> DANH SÁCH YÊU THÍCH
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '16px' }}>
+        <div className="fav-header-main-row">
           <div>
-            <h1 style={{ fontFamily: 'var(--font-title)', fontSize: '38px', margin: '0 0 6px 0', color: '#1a1a1a' }}>
-              Sản Phẩm Yêu Thích
-            </h1>
-            <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
+            <h1 className="fav-title">Sản Phẩm Yêu Thích</h1>
+            <p className="fav-subtitle">
               Bạn có <strong>{products.length} sản phẩm</strong> đã lưu trong bộ sưu tập yêu thích
             </p>
           </div>
 
           {products.length > 0 && (
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div className="fav-header-actions">
               <button
-                className="btn-primary"
-                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                className="btn-fav-move-all"
                 onClick={handleMoveAllToCart}
               >
                 <i className="fa-solid fa-cart-shopping"></i> CHUYỂN TẤT CẢ VÀO GIỎ
               </button>
               <button
-                className="btn-secondary"
-                style={{ fontSize: '12px', cursor: 'pointer' }}
+                className="btn-fav-clear-all"
                 onClick={handleClearAll}
               >
-                XÓA TẤT CẢ
+                <i className="fa-regular fa-trash-can"></i> XÓA TẤT CẢ
               </button>
             </div>
           )}
         </div>
 
         {/* Filter Tabs Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '28px', borderTop: '1px solid #E5E7EB', paddingTop: '20px', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="fav-filter-toolbar">
+          <div className="fav-tabs-group">
             <button
               className={`category-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
               onClick={() => setActiveTab('all')}
@@ -208,30 +200,30 @@ export default function FavoritesPage() {
             </button>
           </div>
 
-          <span style={{ fontSize: '11px', color: '#059669', fontWeight: 600 }}>
-            <i className="fa-solid fa-shield-halved" style={{ marginRight: '4px' }}></i> BẢO CHỨNG ESCROW 100% KIỂM ĐỊNH
-          </span>
+          <div className="fav-escrow-badge">
+            <i className="fa-solid fa-shield-halved"></i> BẢO CHỨNG ESCROW 100% KIỂM ĐỊNH
+          </div>
         </div>
       </div>
 
       {/* Favorites Content */}
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 40px 60px' }}>
+      <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '0 32px' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '80px 0', color: '#71717a' }}>
-            <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '32px', color: '#9c7148', marginBottom: '12px' }}></i>
-            <p>Đang tải danh sách trang phục yêu thích của bạn...</p>
+          <div style={{ textAlign: 'center', padding: '90px 0', color: '#687261' }}>
+            <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '32px', color: '#5b6e4e', marginBottom: '14px' }}></i>
+            <p style={{ fontSize: '14px' }}>Đang tải danh sách trang phục yêu thích của bạn...</p>
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 0', background: '#faf8f5', borderRadius: '20px', margin: '20px 0' }}>
-            <i className="fa-regular fa-heart" style={{ fontSize: '48px', color: '#d1c7bd', marginBottom: '16px' }}></i>
-            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#2b2b2b', marginBottom: '8px' }}>
-              Danh sách yêu thích đang trống
-            </h3>
-            <p style={{ fontSize: '13px', color: '#71717a', marginBottom: '24px' }}>
-              Hãy nhấn vào biểu tượng trái tim ở bất kỳ trang phục nào trong bộ sưu tập để lưu vào đây.
+          <div className="fav-empty-state">
+            <div className="fav-empty-icon">
+              <i className="fa-regular fa-heart"></i>
+            </div>
+            <h3 className="fav-empty-title">Danh sách yêu thích đang trống</h3>
+            <p className="fav-empty-desc">
+              Hãy nhấn vào biểu tượng trái tim ở bất kỳ trang phục nào trong bộ sưu tập để lưu vào đây và theo dõi tiện lợi.
             </p>
-            <Link to="/catalog" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-flex', padding: '10px 24px' }}>
-              Khám phá bộ sưu tập ngay
+            <Link to="/catalog" className="fav-btn-explore">
+              <i className="fa-solid fa-shirt"></i> Khám phá bộ sưu tập ngay
             </Link>
           </div>
         ) : (
@@ -239,28 +231,32 @@ export default function FavoritesPage() {
             {filteredProducts.map((item) => {
               const isRental =
                 item.tag === 'rental' ||
-                item.tag === 'rental' ||
                 (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) ||
                 (item.rentalPricePerDay && item.rentalPricePerDay > 0);
 
               const price = isRental
-                ? item.rentalPricePer3Days || (item.rentalPricePerDay ? item.rentalPricePerDay * 3 : 0)
+                ? item.rentalPricePerDay || (item.rentalPricePer3Days ? Math.round(item.rentalPricePer3Days / 3) : 0)
                 : item.salePrice || 0;
 
               const deposit = item.deposit || Math.round(price * 2.5);
-              const imgUrl = (item.images && item.images[0]) || item.image || '';
+              const imgUrl = (item.images && item.images[0]?.imageUrl) || item.image || item.imageUrl || '';
               const targetId = item._id || item.productCode;
 
               return (
-                <div key={targetId} className="product-card">
-                  <div className="card-image-box">
-                    <img src={imgUrl} alt={item.name} />
-                    <span className="card-tag-badge">
-                      {isRental ? 'THUÊ ĐỒ' : 'MUA BÁN'} {item.aiTryOn && '• ✨ AI'}
+                <div key={targetId} className="fav-card">
+                  <div className="fav-card-image-box">
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={item.name} loading="lazy" />
+                    ) : (
+                      <span style={{ fontSize: 36, color: '#9da396' }}>👗</span>
+                    )}
+
+                    <span className="fav-card-tag-badge">
+                      {isRental ? 'THUÊ ĐỒ' : 'MUA BÁN'} {item.aiTryOn && ' '}
                     </span>
+
                     <button
-                      className="card-fav-btn"
-                      style={{ color: '#DC2626' }}
+                      className="fav-card-heart-btn"
                       onClick={() => handleRemoveFavorite(targetId)}
                       title="Xóa khỏi yêu thích"
                     >
@@ -268,43 +264,41 @@ export default function FavoritesPage() {
                     </button>
                   </div>
 
-                  <div className="card-content-body">
-                    <div className="card-shop-name">
+                  <div className="fav-card-content">
+                    <div className="fav-card-shop">
                       {item.shopId?.name || item.brand || 'VESTORA ATELIER'}
                     </div>
-                    <Link to={`/product/${targetId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                      <h3 className="card-product-title" style={{ fontSize: '15px' }}>
-                        {item.name}
-                      </h3>
+
+                    <Link to={`/product/${targetId}`} className="fav-card-title">
+                      {item.name}
                     </Link>
-                    <div className="card-price-row">
-                      <span className="card-price-main">
+
+                    <div className="fav-card-price-row">
+                      <span className="fav-card-price-main">
                         {formatVND(price)}{' '}
-                        {isRental && (
-                          <small style={{ fontSize: '10px', color: '#666', fontWeight: 400 }}>
-                            / 3 ngày
-                          </small>
-                        )}
+                        {isRental && <small>/ ngày</small>}
                       </span>
+
                       {isRental && deposit > 0 && (
-                        <span className="card-deposit-sub">Cọc: {formatVND(deposit)}</span>
+                        <span className="fav-card-deposit">Cọc: {formatVND(deposit)}</span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+
+                    <div className="fav-card-actions">
                       <Link
                         to={`/product/${targetId}`}
-                        className="btn-primary"
-                        style={{ flex: 1, textDecoration: 'none', textAlign: 'center', fontSize: '12px', padding: '8px 12px' }}
+                        className="fav-btn-view"
                       >
                         Xem chi tiết
                       </Link>
+
                       {item.aiTryOn && (
                         <button
-                          className="card-btn-tryon"
+                          className="fav-btn-tryon"
                           onClick={() => navigate('/try-on/photo')}
-                          title="Thử đồ AI"
+                          title="Thử đồ AI trực tuyến"
                         >
-                          ✨
+                          <i className="fa-solid fa-wand-magic-sparkles"></i>
                         </button>
                       )}
                     </div>
@@ -317,22 +311,22 @@ export default function FavoritesPage() {
       </div>
 
       {/* Privé Member Sync Banner */}
-      <div style={{ maxWidth: '1280px', margin: '0 auto 60px', padding: '0 40px' }}>
-        <div style={{ background: '#F5F3EF', borderRadius: '24px', padding: '32px 48px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+      <div className="fav-prive-banner">
+        <div className="fav-prive-card">
           <div>
-            <div style={{ fontSize: '11px', color: 'var(--color-gold-deep)', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '6px' }}>
-              ĐẶC QUYỀN HỘI VIÊN VESTORA
+            <div className="fav-prive-eyebrow">
+              <i className="fa-solid fa-crown"></i> ĐẶC QUYỀN HỘI VIÊN VESTORA
             </div>
-            <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '24px', margin: '0 0 6px 0' }}>
+            <h2 className="fav-prive-title">
               Đồng Bộ Tủ Đồ Ảo Với Chuyên Gia Phong Cách
             </h2>
-            <p style={{ fontSize: '13px', color: '#666', margin: 0, maxWidth: '640px' }}>
-              Các sản phẩm lưu trong Danh Sách Yêu Thích sẽ được đồng bộ trực tiếp khi bạn đặt lịch thử đồ riêng tư tại Salon Privé hoặc tham vấn trực tuyến với Stylist.
+            <p className="fav-prive-desc">
+              Các sản phẩm lưu trong Danh Sách Yêu Thích sẽ được đồng bộ trực tiếp khi bạn đặt lịch thử đồ riêng tư hoặc tham vấn cùng trợ lý AI Stylist.
             </p>
           </div>
 
-          <button className="btn-primary" onClick={() => navigate('/try-on/photo')}>
-            THỬ ĐỒ AI NGAY
+          <button className="btn-prive-tryon" onClick={() => navigate('/try-on/photo')}>
+            <i className="fa-solid fa-wand-magic-sparkles"></i> THỬ ĐỒ AI NGAY
           </button>
         </div>
       </div>

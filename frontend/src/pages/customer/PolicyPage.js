@@ -6,14 +6,11 @@ import {
   Sparkles,
   Phone,
   Mail,
-  Clock,
-  CheckCircle2,
+  FileText,
+  ChevronRight,
 } from "lucide-react";
 import "../../styles/PolicyPage.css";
 
-/**
- * Phân tích nội dung điều khoản văn bản thành tiêu đề con, danh sách và đoạn văn
- */
 function renderFormattedContent(text) {
   if (!text) return null;
 
@@ -24,9 +21,11 @@ function renderFormattedContent(text) {
   const flushList = () => {
     if (currentList.length > 0) {
       elements.push(
-        <ul key={`ul-${elements.length}`}>
+        <ul key={`ul-${elements.length}`} className="policy-article-list">
           {currentList.map((item, idx) => (
-            <li key={idx}>{item}</li>
+            <li key={idx} className="policy-article-list-item">
+              <span>{item}</span>
+            </li>
           ))}
         </ul>
       );
@@ -41,17 +40,28 @@ function renderFormattedContent(text) {
       return;
     }
 
-    // Tiêu đề mục số: vd "1. Thời Hạn Thuê"
-    if (/^\d+\./.test(trimmed)) {
+    // Tiêu đề mục số: vd "1. Thời Hạn Thuê" hoặc "I. Điều Kiện Chung"
+    if (/^\d+\./.test(trimmed) || /^[IVXLCDM]+\./.test(trimmed)) {
       flushList();
-      elements.push(<h3 key={`h3-${idx}`}>{trimmed}</h3>);
+      elements.push(
+        <h3 key={`h3-${idx}`} className="policy-section-heading">
+          <span className="policy-heading-marker" aria-hidden="true">
+            <ChevronRight size={16} />
+          </span>
+          <span>{trimmed}</span>
+        </h3>
+      );
     }
     // Gạch đầu dòng: vd "- Nội dung" hoặc "* Nội dung"
     else if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
       currentList.push(trimmed.substring(1).trim());
     } else {
       flushList();
-      elements.push(<p key={`p-${idx}`}>{trimmed}</p>);
+      elements.push(
+        <p key={`p-${idx}`} className="policy-article-paragraph">
+          {trimmed}
+        </p>
+      );
     }
   });
 
@@ -64,6 +74,7 @@ export default function PolicyPage() {
   const [activeTab, setActiveTab] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Tải danh sách chính sách công khai đang bật từ Backend
   useEffect(() => {
     let isMounted = true;
     const fetchPolicies = async () => {
@@ -73,6 +84,7 @@ export default function PolicyPage() {
           setPolicies(data);
         }
       } catch (_) {
+        // Dự phòng khi mất kết nối mạng
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -99,7 +111,7 @@ export default function PolicyPage() {
           isActive: p.isActive,
         }));
     }
-    // Tương thích ngược nếu dữ liệu dạng object
+    // Tương thích ngược nếu dữ liệu trả về dạng object
     return Object.entries(policies)
       .filter(([_, p]) => p?.isActive !== false)
       .map(([k, p]) => ({
@@ -112,21 +124,65 @@ export default function PolicyPage() {
       }));
   }, [policies]);
 
-  // Đặt tab đầu tiên làm mặc định khi tải xong danh sách chính sách
+  // Tự động kích hoạt tab đầu tiên khi tải xong dữ liệu
   useEffect(() => {
     if (availableTabs.length > 0 && (!activeTab || !availableTabs.some((t) => t.key === activeTab))) {
       setActiveTab(availableTabs[0].key);
     }
   }, [availableTabs, activeTab]);
 
+  // Chuyển đổi tab có cuộn mềm vào tầm nhìn trên thiết bị di động
   const handleTabChange = useCallback((key) => {
     setActiveTab(key);
+    const tabEl = document.getElementById(`customer-policy-tab-${key}`);
+    if (tabEl && typeof tabEl.scrollIntoView === "function") {
+      tabEl.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
   }, []);
 
+  // Xử lý điều hướng bằng bàn phím theo chuẩn WAI-ARIA cho Tabs
+  const handleTabKeyDown = useCallback(
+    (e, currentIndex) => {
+      const total = availableTabs.length;
+      if (total === 0) return;
+
+      let nextIndex = null;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        nextIndex = (currentIndex + 1) % total;
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        nextIndex = (currentIndex - 1 + total) % total;
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        e.preventDefault();
+        nextIndex = total - 1;
+      }
+
+      if (nextIndex !== null) {
+        const nextKey = availableTabs[nextIndex].key;
+        handleTabChange(nextKey);
+        const nextButton = document.getElementById(`customer-policy-tab-${nextKey}`);
+        if (nextButton) {
+          nextButton.focus();
+        }
+      }
+    },
+    [availableTabs, handleTabChange]
+  );
+
+  // Đối tượng chính sách đang được kích hoạt
   const activePolicyData = useMemo(() => {
     if (!availableTabs.length) return null;
     return availableTabs.find((t) => t.key === activeTab) || availableTabs[0];
   }, [availableTabs, activeTab]);
+
+  // Memoize nội dung phân tích định dạng để tránh re-parse khi state khác thay đổi
+  const formattedContent = useMemo(() => {
+    return renderFormattedContent(activePolicyData?.content);
+  }, [activePolicyData?.content]);
 
   return (
     <div className="vestora-page-wrapper">
@@ -137,62 +193,50 @@ export default function PolicyPage() {
         <header className="policy-header-section">
           <h1 className="policy-title">Chính Sách Hoạt Động & Cho Thuê</h1>
           <p className="policy-lead">
-            Cam kết minh bạch và bảo vệ tối đa quyền lợi khách hàng trong suốt quá trình thuê, đổi size, hoàn trả và bảo hiểm trang phục tại toàn bộ chuỗi cửa hàng VESTORA.
+            Cam kết minh bạch và bảo vệ tối đa quyền lợi khách hàng trong suốt quá trình thuê, đổi size, hoàn trả và bảo hiểm trang phục tại toàn bộ chuỗi showroom VESTORA.
           </p>
         </header>
 
         {/* Tab Switcher - Các Danh Mục Chính Sách Động từ Database */}
-        <div
-          className="policy-tab-bar"
-          role="tablist"
-          aria-label="Danh mục các chính sách hoạt động"
-        >
-          {availableTabs.map((t, idx) => {
-            const isCurrent = activeTab === t.key;
+        {availableTabs.length > 0 && (
+          <div
+            className="policy-tab-bar"
+            role="tablist"
+            aria-label="Danh mục các chính sách hoạt động của chuỗi"
+          >
+            {availableTabs.map((t, idx) => {
+              const isCurrent = activeTab === t.key;
 
-            return (
-              <button
-                key={t.key}
-                id={`customer-policy-tab-${t.key}`}
-                role="tab"
-                type="button"
-                tabIndex={isCurrent ? 0 : -1}
-                aria-selected={isCurrent}
-                aria-controls={`customer-policy-panel-${t.key}`}
-                className={`policy-tab-btn ${isCurrent ? "active" : ""}`}
-                onClick={() => handleTabChange(t.key)}
-                onKeyDown={(e) => {
-                  let nextIdx = null;
-                  if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-                    e.preventDefault();
-                    nextIdx = (idx + 1) % availableTabs.length;
-                  } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-                    e.preventDefault();
-                    nextIdx = (idx - 1 + availableTabs.length) % availableTabs.length;
-                  }
-                  if (nextIdx !== null) {
-                    const nextKey = availableTabs[nextIdx].key;
-                    handleTabChange(nextKey);
-                    const el = document.getElementById(`customer-policy-tab-${nextKey}`);
-                    if (el) el.focus();
-                  }
-                }}
-              >
-                <span>{t.label}</span>
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  key={t.key}
+                  id={`customer-policy-tab-${t.key}`}
+                  role="tab"
+                  type="button"
+                  tabIndex={isCurrent ? 0 : -1}
+                  aria-selected={isCurrent}
+                  aria-controls={`customer-policy-panel-${t.key}`}
+                  className={`policy-tab-btn ${isCurrent ? "active" : ""}`}
+                  onClick={() => handleTabChange(t.key)}
+                  onKeyDown={(e) => handleTabKeyDown(e, idx)}
+                >
+                  <span className="policy-tab-btn-text">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Khung Nội Dung Chính Sách Chi Tiết */}
         <div
           className="policy-content-card"
           role="tabpanel"
-          id={`customer-policy-panel-${activeTab}`}
-          aria-labelledby={`customer-policy-tab-${activeTab}`}
+          id={activeTab ? `customer-policy-panel-${activeTab}` : "customer-policy-panel-empty"}
+          aria-labelledby={activeTab ? `customer-policy-tab-${activeTab}` : undefined}
         >
           <div className="policy-article">
             {loading ? (
+              /* Trạng thái tải nội dung Shimmer Skeleton */
               <div className="policy-skeleton-loader" aria-live="polite">
                 <div className="policy-skeleton-line title" />
                 <div className="policy-skeleton-callout" />
@@ -200,21 +244,26 @@ export default function PolicyPage() {
                 <div className="policy-skeleton-line" />
                 <div className="policy-skeleton-line short" />
               </div>
+            ) : availableTabs.length === 0 ? (
+              /* Trạng thái chưa có chính sách nào được kích hoạt */
+              <div className="policy-empty-container">
+                <div className="policy-empty-icon" aria-hidden="true">
+                  <FileText size={36} />
+                </div>
+                <h2 className="policy-empty-title">Chính Sách Đang Được Cập Nhật</h2>
+                <p className="policy-empty-desc">
+                  Hiện các chính sách kinh doanh đang được chuỗi cập nhật để phục vụ quý khách tốt nhất. Quý khách vui lòng liên hệ hotline để được tư vấn trực tiếp.
+                </p>
+                <a href="tel:1900123456" className="policy-concierge-btn primary">
+                  <Phone size={15} />
+                  <span>Tư Vấn Hotline 1900 1234</span>
+                </a>
+              </div>
             ) : activePolicyData ? (
               <>
-                {/* Thanh thông tin quy chuẩn đọc cho khách hàng */}
-                <div className="policy-meta-strip">
-                  <div className="policy-meta-pill">
-                    <CheckCircle2 size={13} className="text-emerald" />
-                    <span>Hiệu lực: Toàn bộ chuỗi cửa hàng VESTORA</span>
-                  </div>
-                  <div className="policy-meta-pill">
-                    <Clock size={13} />
-                    <span>Thời gian đọc: ~2 phút</span>
-                  </div>
-                </div>
-
-                <h2 className="policy-article-title">{activePolicyData.title || "Chính Sách Hoạt Động"}</h2>
+                <h2 className="policy-article-title">
+                  {activePolicyData.title || "Chính Sách Hoạt Động"}
+                </h2>
 
                 {/* Hộp Callout Tóm Tắt Nổi Bật Dành Cho Khách Hàng */}
                 {activePolicyData.summary ? (
@@ -227,20 +276,24 @@ export default function PolicyPage() {
                 ) : null}
 
                 {/* Nội Dung Điều Khoản Chi Tiết */}
-                {renderFormattedContent(activePolicyData.content)}
+                {activePolicyData.content ? (
+                  <div className="policy-article-body">
+                    {formattedContent}
+                  </div>
+                ) : (
+                  <div className="policy-empty-content-box">
+                    <p>Nội dung chi tiết của điều khoản này đang được hoàn thiện.</p>
+                  </div>
+                )}
               </>
-            ) : (
-              <div style={{ textAlign: "center", padding: "40px 0", color: "#888888" }}>
-                <p>Chính sách này hiện đang được cập nhật.</p>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
 
         {/* Khối Hỗ Trợ Khách Hàng & Concierge (Customer Care & Concierge) */}
         <section className="policy-concierge-card" aria-label="Hỗ trợ và tư vấn chính sách">
           <div className="policy-concierge-content">
-            <div className="policy-concierge-icon-wrapper">
+            <div className="policy-concierge-icon-wrapper" aria-hidden="true">
               <Phone size={24} />
             </div>
             <div className="policy-concierge-body">

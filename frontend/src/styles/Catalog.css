@@ -728,6 +728,27 @@ input:checked + .catalog-slider:before {
   line-height: 1.35;
 }
 
+.card-quantity-row {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  color: #374151;
+}
+
+.card-branch-row {
+  display: flex;
+  align-items: center;
+  color: #4b5563;
+}
+
+.card-branch-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+/* end product name */
+}
+
 .card-meta-line {
   display: flex;
   align-items: center;
@@ -805,6 +826,27 @@ input:checked + .catalog-slider:before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.35;
+}
+
+.card-quantity-row {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  color: #374151;
+}
+
+.card-branch-row {
+  display: flex;
+  align-items: center;
+  color: #4b5563;
+}
+
+.card-branch-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
 }
 
 .card-action-btn {

@@ -83,8 +83,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: var(--vp-transition);
-  min-height: 44px;
-  /* WCAG 2.1 touch target */
+  min-height: 44px; /* WCAG 2.1 2.1 touch target */
   user-select: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
@@ -486,34 +485,9 @@
   transform: translateY(0);
 }
 
-/* Print Media */
-@media print {
-
-  .policy-header-section,
-  .policy-tab-bar,
-  .policy-concierge-card,
-  nav,
-  footer {
-    display: none !important;
-  }
-
-  .policy-main-container {
-    padding: 0 !important;
-    max-width: 100% !important;
-  }
-
-  .policy-content-card {
-    border: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-  }
-
-  .policy-content-card::before {
-    display: none !important;
-  }
-}
-
-/* Responsive Design (Tablets & Mobile) */
+/* ==========================================================================
+   RESPONSIVE DESIGN (Tablets & Mobile)
+   ========================================================================== */
 @media (max-width: 992px) {
   .policy-main-container {
     padding: 40px 20px 72px 20px;

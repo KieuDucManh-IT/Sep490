@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
+import { Layers, Map } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import '../styles/LeafletMapPicker.css';
 
@@ -41,7 +42,11 @@ export default function LeafletMapPicker({
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
+  const roadLayerRef = useRef(null);
+  const satelliteLayerRef = useRef(null);
   const isInternalMoveRef = useRef(false);
+
+  const [mapLayerType, setMapLayerType] = useState('roadmap'); // 'roadmap' | 'satellite'
 
   const [currentCoords, setCurrentCoords] = useState(() => {
     const lat = parseFloat(latitude);
@@ -75,7 +80,7 @@ export default function LeafletMapPicker({
         attributionControl: false,
       });
 
-      // Google Maps Road Tiles (100% Free, 0 VNĐ, CDN cực nhanh tại VN, đầy đủ tên đường tiếng Việt có dấu)
+      // Google Maps Road Tiles (Bản đồ đường đi)
       const googleRoad = L.tileLayer(
         'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
         {
@@ -95,31 +100,11 @@ export default function LeafletMapPicker({
         }
       );
 
-      // OpenStreetMap FR (Dự phòng quốc tế - không bị lỗi DNS getaddrinfo tại VN)
-      const osmFr = L.tileLayer(
-        'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
-        {
-          maxZoom: 20,
-          subdomains: ['a', 'b', 'c'],
-          attribution: '© OpenStreetMap contributors',
-        }
-      );
+      roadLayerRef.current = googleRoad;
+      satelliteLayerRef.current = googleHybrid;
 
-      // Thêm Google Maps đường phố làm lớp mặc định
+      // Mặc định nạp lớp bản đồ đường đi
       googleRoad.addTo(map);
-
-      // Thêm nút chuyển đổi lớp bản đồ (Góc dưới phải)
-      L.control
-        .layers(
-          {
-            'Bản đồ đường đi': googleRoad,
-            'Ảnh vệ tinh': googleHybrid,
-            'OpenStreetMap FR': osmFr,
-          },
-          null,
-          { position: 'bottomright' }
-        )
-        .addTo(map);
 
       // Create Custom Pin Marker
       const icon = createVestoraMarkerIcon();
@@ -242,6 +227,22 @@ export default function LeafletMapPicker({
   }, [latitude, longitude]);
 
   // Recenter button click
+  // Toggle Map Layer: Roadmap vs Satellite Hybrid
+  const handleToggleMapLayer = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const nextType = mapLayerType === 'roadmap' ? 'satellite' : 'roadmap';
+    if (mapLayerType === 'roadmap') {
+      if (roadLayerRef.current) map.removeLayer(roadLayerRef.current);
+      if (satelliteLayerRef.current) satelliteLayerRef.current.addTo(map);
+    } else {
+      if (satelliteLayerRef.current) map.removeLayer(satelliteLayerRef.current);
+      if (roadLayerRef.current) roadLayerRef.current.addTo(map);
+    }
+    setMapLayerType(nextType);
+  }, [mapLayerType]);
+
   const handleRecenter = useCallback(() => {
     if (mapInstanceRef.current && markerRef.current) {
       const pos = markerRef.current.getLatLng();
@@ -294,6 +295,23 @@ export default function LeafletMapPicker({
 
       {/* Map DOM Element */}
       <div ref={mapContainerRef} className="leaflet-map-container" />
+
+      {/* Floating Action: Toggle Satellite / Roadmap */}
+      <div className="leaflet-map-floating-actions" role="toolbar" aria-label="Chuyển đổi kiểu bản đồ">
+        <button
+          type="button"
+          className="leaflet-map-fab-btn"
+          onClick={handleToggleMapLayer}
+          title={mapLayerType === 'roadmap' ? 'Xem ảnh vệ tinh' : 'Xem bản đồ đường phố'}
+          aria-label={mapLayerType === 'roadmap' ? 'Xem ảnh vệ tinh' : 'Xem bản đồ đường phố'}
+        >
+          {mapLayerType === 'roadmap' ? (
+            <Layers size={19} strokeWidth={2.2} />
+          ) : (
+            <Map size={19} strokeWidth={2.2} />
+          )}
+        </button>
+      </div>
 
       {/* Bottom Hint */}
       {!readOnly && (

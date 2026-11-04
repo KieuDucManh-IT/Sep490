@@ -220,7 +220,11 @@ export default function HomePage() {
               title: p.name,
               rating: typeof p.rating === 'number' ? Number(p.rating).toFixed(1) : '4.9',
               reviews: typeof p.reviewsCount === 'number' ? p.reviewsCount : 95,
-              inStock: p.inStock !== false,
+              inStock: p.inStock !== false && (p.quantity == null || p.quantity > 0),
+              quantity: p.quantity,
+              quantityOnHand: p.quantityOnHand,
+              branchAddress: p.branchAddress,
+              branchName: p.branchName,
               price: price,
               priceUnit: isRental && price > 0 ? '/ 3 ngày' : '',
               image: mainImage,
@@ -584,7 +588,7 @@ export default function HomePage() {
                       <span className="rating-count">({product.reviews})</span>
                       <span className="meta-separator">•</span>
                       <span className="stock-indicator">
-                        <span className="stock-dot"></span> Còn hàng
+                        <span className={`stock-dot ${product.inStock === false ? 'out-of-stock' : ''}`}></span> {product.inStock !== false ? `Còn hàng${product.quantity != null ? ` (${product.quantity})` : ''}` : 'Hết hàng'}
                       </span>
                     </div>
 
@@ -594,6 +598,23 @@ export default function HomePage() {
                         <span className="price-unit">{product.priceUnit}</span>
                       )}
                     </div>
+
+                    {(product.quantity != null || product.branchAddress) && (
+                      <div className="card-attributes-list" style={{ marginBottom: '8px', gap: '3px' }}>
+                        {product.quantity != null && (
+                          <div className="card-attr-row card-quantity-row">
+                            <i className="fa-solid fa-boxes-stacked card-attr-icon" style={{ color: '#4f46e5', marginRight: '5px' }}></i>
+                            <span>Số lượng: <strong>{product.quantity}</strong></span>
+                          </div>
+                        )}
+                        {product.branchAddress && (
+                          <div className="card-attr-row card-branch-row" title={product.branchAddress}>
+                            <i className="fa-solid fa-location-dot card-attr-icon" style={{ color: '#e11d48', marginRight: '5px' }}></i>
+                            <span className="card-branch-text">{product.branchAddress}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <Link to={`/product/${product.id}`} className="card-action-btn">
                       Xem chi tiết

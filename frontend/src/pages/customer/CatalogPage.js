@@ -805,7 +805,7 @@ export default function CatalogPage() {
                           <span
                             className={`stock-dot ${item.inStock === false ? 'out-of-stock' : ''}`}
                           ></span>
-                          <span>{item.inStock !== false ? 'Còn hàng' : 'Hết hàng'}</span>
+                          <span>{item.inStock !== false && (item.quantity == null || item.quantity > 0) ? `Còn hàng (${item.quantity ?? 1})` : 'Hết hàng'}</span>
                         </span>
                       </div>
 
@@ -817,6 +817,15 @@ export default function CatalogPage() {
 
                       {/* Attributes */}
                       <div className="card-attributes-list">
+                        <div className="card-attr-row card-quantity-row">
+                          <i className="fa-solid fa-boxes-stacked card-attr-icon" style={{ color: '#4f46e5', marginRight: '5px' }}></i>
+                          <span>Số lượng: <strong>{typeof item.quantity === 'number' ? item.quantity : (item.quantityOnHand ?? 0)}</strong></span>
+                        </div>
+
+                        <div className="card-attr-row card-branch-row" title={item.branchAddress || item.branchName || 'Chi nhánh toàn hệ thống'}>
+                          <i className="fa-solid fa-location-dot card-attr-icon" style={{ color: '#e11d48', marginRight: '5px' }}></i>
+                          <span className="card-branch-text">{item.branchAddress || item.branchName || 'Chi nhánh toàn hệ thống'}</span>
+                        </div>
                         {item.sizes && item.sizes.length > 0 ? (
                           <div className="card-attr-row">Size: {item.sizes.join(', ')}</div>
                         ) : item.colors && item.colors.length > 0 ? (

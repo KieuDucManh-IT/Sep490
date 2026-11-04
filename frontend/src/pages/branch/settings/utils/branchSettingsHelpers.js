@@ -3,6 +3,21 @@ import { INITIAL_SETTINGS_FORM_DATA } from '../../../owner/settings/utils/settin
 
 export { INITIAL_SETTINGS_FORM_DATA };
 
+export const shopToFormData = (s) => ({
+  name: s?.name || '',
+  description: s?.description || '',
+  phone: s?.phone || '',
+  address: s?.address || '',
+  city: s?.city || '',
+  ward: s?.ward || '',
+  latitude: s?.latitude != null ? String(s.latitude) : '',
+  longitude: s?.longitude != null ? String(s.longitude) : '',
+  imageUrl: s?.imageUrl || '',
+  bannerUrl: s?.bannerUrl || '',
+  openingHours: s?.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
+  isOpen: s?.status === 'ACTIVE',
+});
+
 /**
  * Kiểm tra tính hợp lệ của dữ liệu form cài đặt chi nhánh showroom
  */

@@ -162,6 +162,7 @@ export function useBranchesData() {
     managers,
     loading,
     toast,
+    setToast,
     showToast,
     searchTerm,
     setSearchTerm,

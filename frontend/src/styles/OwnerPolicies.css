@@ -719,6 +719,11 @@
 .store-floating-toast {
   position: fixed;
   bottom: 24px;
+  top: auto;
+  left: auto;
+  height: auto;
+  max-height: max-content;
+  max-width: 480px;
   right: 24px;
   padding: 12px 20px;
   border-radius: 12px;
@@ -731,6 +736,7 @@
   z-index: 9999;
   backdrop-filter: blur(12px);
   animation: toastSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
 }
 
 @keyframes toastSlideUp {

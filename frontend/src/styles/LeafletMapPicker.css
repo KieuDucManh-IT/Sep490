@@ -251,26 +251,43 @@
   border-bottom: none !important;
 }
 
-/* Layer Switcher Styling (Bottom-Right) */
-.leaflet-control-layers {
-  border: 1px solid #E5E7EB !important;
-  border-radius: 10px !important;
-  background: rgba(255, 255, 255, 0.96) !important;
-  backdrop-filter: blur(10px) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
-  padding: 6px 12px !important;
-  font-family: inherit !important;
-  font-size: 11.5px !important;
-  font-weight: 500 !important;
-  color: #18181B !important;
+/* Floating Map Action Buttons (Bottom-Right) */
+.leaflet-map-floating-actions {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.leaflet-control-layers-expanded {
-  padding: 10px 14px !important;
+.leaflet-map-fab-btn {
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #18181B;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+  padding: 0;
 }
 
-.leaflet-control-layers-toggle {
-  width: 32px !important;
-  height: 32px !important;
+.leaflet-map-fab-btn:hover {
+  background: #F4F4F5;
+  color: #000000;
+  border-color: rgba(0, 0, 0, 0.22);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.leaflet-map-fab-btn:active {
+  transform: scale(0.95);
 }
 

@@ -93,7 +93,7 @@ export const getAdminShopsListApi = async (params = {}) => {
 };
 
 export const toggleSuspendShopApi = async (shopId, payload) => {
-  return fetchJson(`/api/admin/shops/${shopId}/toggle-suspend`, {
+  return fetchJson(`/api/shops/${shopId}/toggle-suspend`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });

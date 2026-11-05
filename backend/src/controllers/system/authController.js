@@ -1,0 +1,189 @@
+import {
+  register as registerAccount,
+  verifyRegisterOtp as verifyRegistration,
+  login as loginAccount,
+  loginGoogle as loginGoogleAccount,
+  toPublicUser,
+  forgotPassword as requestPasswordReset,
+  verifyForgotPasswordOtp as verifyPasswordResetOtp,
+  resetPassword as resetAccountPassword,
+  changePassword as changeAccountPassword,
+  updateAvatar as updateAccountAvatar,
+  updateProfile as updateAccountProfile,
+} from "../../services/authService.js";
+
+const COOKIE_NAME = "vestora_token";
+const COOKIE_MAX_AGE = 400 * 24 * 60 * 60 * 1000;
+
+function cookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  };
+}
+
+export async function register(req, res, next) {
+  try {
+    const result = await registerAccount(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function verifyRegisterOtp(req, res, next) {
+  try {
+    const result = await verifyRegistration(req.body);
+    return res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function login(req, res, next) {
+  try {
+    const result = await loginAccount(req.body);
+
+    res.cookie(COOKIE_NAME, result.token, {
+      ...cookieOptions(),
+      maxAge: COOKIE_MAX_AGE,
+    });
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json({
+      message: "Đăng nhập thành công",
+      user: result.user,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function loginGoogle(req, res, next) {
+  try {
+    const result = await loginGoogleAccount(req.body);
+
+    res.cookie(COOKIE_NAME, result.token, {
+      ...cookieOptions(),
+      maxAge: COOKIE_MAX_AGE,
+    });
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json({
+      message: "Đăng nhập Google thành công",
+      user: result.user,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export function getMe(req, res) {
+  res.cookie(COOKIE_NAME, req.cookies[COOKIE_NAME], {
+    ...cookieOptions(),
+    maxAge: COOKIE_MAX_AGE,
+  });
+
+  res.set("Cache-Control", "no-store");
+
+  return res.status(200).json({
+    user: toPublicUser(req.user),
+  });
+}
+
+export function logout(req, res) {
+  res.clearCookie(COOKIE_NAME, cookieOptions());
+
+  res.set("Cache-Control", "no-store");
+
+  return res.status(200).json({
+    message: "Đăng xuất thành công",
+  });
+}
+
+export async function forgotPassword(req, res, next) {
+  try {
+    const result = await requestPasswordReset(req.body);
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function verifyForgotPasswordOtp(req, res, next) {
+  try {
+    const result = await verifyPasswordResetOtp(req.body);
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetPassword(req, res, next) {
+  try {
+    const result = await resetAccountPassword(req.body);
+
+    // Xóa cookie đăng nhập của trình duyệt đang đặt lại mật khẩu.
+    res.clearCookie(COOKIE_NAME, cookieOptions());
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changePassword(req, res, next) {
+  try {
+    const result = await changeAccountPassword(
+      req.user._id,
+      req.body
+    );
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateAvatar(req, res, next) {
+  try {
+    const result = await updateAccountAvatar(
+      req.user._id,
+      req.file
+    );
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateProfile(req, res, next) {
+  try {
+    const result = await updateAccountProfile(
+      req.user._id,
+      req.body
+    );
+
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return next(error);
+  }
+}

@@ -1,0 +1,10 @@
+﻿import express from 'express';
+import { authMiddleware, requireRoles } from '../middlewares/errorMiddleware.js';
+import { applyAdjustmentRow, decideAdjustmentRow, getAdjustmentRow, listAdjustmentsRow } from '../controllers/warehouse/stockAdjustmentController.js';
+const router = express.Router();
+router.use(authMiddleware);
+router.get('/', requireRoles('warehouse_manager'), listAdjustmentsRow);
+router.get('/:id', requireRoles('warehouse_manager'), getAdjustmentRow);
+router.post('/:id/decision', requireRoles('warehouse_manager'), decideAdjustmentRow);
+router.post('/:id/apply', requireRoles('warehouse_manager'), applyAdjustmentRow);
+export default router;

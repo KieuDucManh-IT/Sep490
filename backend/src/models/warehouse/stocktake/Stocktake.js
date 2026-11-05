@@ -7,6 +7,7 @@ const stocktakeSchema = new mongoose.Schema({
   variantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' }],
   storageIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation' }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  assignedStaffId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   status: { type: String, default: 'draft', enum: ['draft', 'in_progress', 'counted', 'approved', 'cancelled'] },
   startedAt: { type: Date, default: null },

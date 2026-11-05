@@ -1,0 +1,39 @@
+# AI Agent & Skill Generated Files (Plans, Journals, Reports)
+plans/
+*.plan.md
+plan.md
+docs/journals/
+docs/reports/
+docs/retros/
+docs/scenarios/
+docs/research/
+docs/summaries/
+docs/codebase-summary.md
+codebase-summary.md
+repomix-output.*
+.agents/
+
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build outputs
+build/
+dist/
+coverage/
+

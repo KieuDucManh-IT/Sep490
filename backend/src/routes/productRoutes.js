@@ -1,32 +1,19 @@
 import express from 'express';
 import {
-  createShopProduct,
-  deleteShopProduct,
-  getShopProduct,
-  listShopProducts,
-  updateShopProduct
-} from '../controllers/productController.js';
-import {
-  createProductVariantForProduct,
-  deleteProductVariantForProduct,
-  getProductVariant,
-  listProductVariants,
-  updateProductVariantForProduct
-} from '../controllers/productVariantController.js';
+  getProducts,
+  getProductById,
+  getFilterMeta,
+} from '../controllers/masterdata/productController.js';
+import { updateProductPricing } from '../controllers/masterdata/pricingController.js';
+import { authMiddleware, requireShopOwnerOnly } from '../middlewares/errorMiddleware.js';
 
 const router = express.Router();
 
-//duc 2026-10-15: Expose product CRUD endpoints for the shop product management screen.
-router.get('/', listShopProducts);
-router.post('/', createShopProduct);
-//duc 2026-10-15: Đặt variant dưới product để mọi thao tác đều gắn với product cha.
-router.get('/:productId/variants', listProductVariants);
-router.post('/:productId/variants', createProductVariantForProduct);
-router.get('/:productId/variants/:variantId', getProductVariant);
-router.patch('/:productId/variants/:variantId', updateProductVariantForProduct);
-router.delete('/:productId/variants/:variantId', deleteProductVariantForProduct);
-router.get('/:id', getShopProduct);
-router.patch('/:id', updateShopProduct);
-router.delete('/:id', deleteShopProduct);
+router.get('/meta/filters', getFilterMeta);
+router.get('/', getProducts);
+router.get('/:id', getProductById);
+
+router.patch('/:id/pricing', authMiddleware, requireShopOwnerOnly, updateProductPricing);
 
 export default router;
+

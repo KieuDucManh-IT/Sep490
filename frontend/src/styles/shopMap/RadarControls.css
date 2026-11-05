@@ -1,0 +1,224 @@
+/* ==========================================================================
+   VESTORA — Radar Controls Bar Stylesheet
+   Location Badge, Relocate Action, Radius Pills & Search Box
+   Aligned with Catalog & Global Design System
+   ========================================================================== */
+
+.radar-controls-container {
+  max-width: 1680px;
+  margin: 12px auto 0 auto;
+  width: 100%;
+  padding: 0 24px;
+}
+
+.radar-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  background: var(--vestora-surface-alt);
+  border: 1px solid var(--vestora-border-subtle);
+  border-radius: 16px;
+}
+
+/* User Location Badge */
+.radar-user-location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--vestora-surface);
+  border: 1px solid var(--vestora-border-subtle);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--vestora-text-main);
+  min-height: 42px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.radar-user-location-badge strong {
+  color: var(--vestora-charcoal);
+  font-weight: 700;
+}
+
+.radar-relocate-btn {
+  background: var(--vestora-orange-light);
+  border: 1px solid var(--vestora-orange-border);
+  color: var(--vestora-orange);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+
+.radar-relocate-btn:hover:not(:disabled) {
+  background: var(--vestora-orange);
+  color: #ffffff;
+  border-color: var(--vestora-orange);
+  box-shadow: 0 2px 8px rgba(234, 88, 12, 0.25);
+}
+
+.radar-relocate-btn:focus-visible {
+  outline: 2px solid var(--vestora-orange);
+  outline-offset: 2px;
+}
+
+.radar-relocate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Filter Cluster: Radius Pills + Search Input */
+.radar-filter-cluster {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Radius Pills */
+.radar-radius-pills {
+  display: flex;
+  align-items: center;
+  background: var(--vestora-surface);
+  border: 1px solid var(--vestora-border-subtle);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.radius-pill-btn {
+  border: none;
+  background: transparent;
+  color: var(--vestora-text-muted);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+  user-select: none;
+}
+
+.radius-pill-btn:hover:not(.active) {
+  color: var(--vestora-charcoal);
+  background: #f4f4f5;
+}
+
+.radius-pill-btn.active {
+  background: var(--vestora-charcoal);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.radius-pill-btn:focus-visible {
+  outline: 2px solid var(--vestora-orange);
+  outline-offset: 1px;
+}
+
+/* Search Input */
+.radar-search-input-wrap {
+  position: relative;
+  min-width: 290px;
+}
+
+.radar-search-input-wrap i {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--vestora-text-subtle);
+  font-size: 13.5px;
+  pointer-events: none;
+}
+
+.radar-search-input {
+  width: 100%;
+  background: var(--vestora-surface);
+  border: 1px solid var(--vestora-border-subtle);
+  border-radius: 999px;
+  padding: 8px 36px 8px 38px;
+  color: var(--vestora-charcoal);
+  font-size: 13px;
+  outline: none;
+  min-height: 42px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  font-family: inherit;
+}
+
+.radar-search-input:focus {
+  border-color: var(--vestora-orange);
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.12);
+}
+
+.radar-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.radar-search-clear-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  transition: color 0.15s ease;
+}
+
+.radar-search-clear-btn:hover {
+  color: var(--vestora-charcoal);
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+  .radar-controls-container {
+    padding: 0 16px;
+  }
+  .radar-controls-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    gap: 12px;
+  }
+  .radar-filter-cluster {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .radar-search-input-wrap {
+    min-width: 100%;
+  }
+  .radar-radius-pills {
+    overflow-x: auto;
+    padding: 3px;
+  }
+  .radius-pill-btn {
+    white-space: nowrap;
+    flex: 1;
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+}

@@ -5,6 +5,7 @@ const stockTransferSchema = new mongoose.Schema({
   fromLocationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', required: true },
   toLocationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', required: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  assignedStaffId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   shippedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

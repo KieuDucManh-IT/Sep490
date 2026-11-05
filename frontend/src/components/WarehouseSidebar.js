@@ -1,11 +1,17 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, ClipboardList, FileBarChart2, Layers3, LogOut, MapPin, Package, Tags } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import '../styles/WarehouseManager.css';
 
 export default function WarehouseSidebar({ mode = 'manager' }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const nav = (to, icon, label) => <Link key={to} className={`wm-nav-item ${pathname === to ? 'active' : ''}`} to={to}>{icon}{label}</Link>;
+  const handleLogout = async () => {
+    try { await logout(); } finally { navigate('/login', { replace: true }); }
+  };
   return <aside className="wm-sidebar">
     <div className="wm-brand"><Boxes size={25} /><div><strong>WAREHOUSE</strong><small>{mode === 'manager' ? 'MANAGER' : 'STAFF'}</small></div></div>
     <nav>
@@ -23,8 +29,8 @@ export default function WarehouseSidebar({ mode = 'manager' }) {
       <p>Báo cáo</p>
       {nav('/warehousemanager/reports/inventory', <FileBarChart2 size={17} />, 'Tồn kho')}
       {nav(`/warehousemanager/reports/${encodeURIComponent('Lịch sử giao dịch')}`, <FileBarChart2 size={17} />, 'Lịch sử giao dịch')}
-      </> : <><p>Nghiệp vụ kho</p>{nav('/warehousestaff/inbound-receipts', <ClipboardList size={17} />, 'Công việc được giao')}{nav('/warehousestaff/stocktakes', <ClipboardList size={17} />, '\u004b\u0069\u1ec3\u006d \u006b\u00ea \u0111\u01b0\u1ee3\u0063 \u0067\u0069\u0061\u006f')}</>}
+      </> : <><p>Nghiệp vụ kho</p>{nav('/warehousestaff/inbound-receipts', <ClipboardList size={17} />, 'Công việc được giao')}{nav('/warehousestaff/outbound', <ClipboardList size={17} />, 'Soạn hàng xuất kho')}{nav('/warehousestaff/stocktakes', <ClipboardList size={17} />, '\u004b\u0069\u1ec3\u006d \u006b\u00ea \u0111\u01b0\u1ee3\u0063 \u0067\u0069\u0061\u006f')}</>}
     </nav>
-    <Link className="wm-exit" to={mode === 'manager' ? '/shop/dashboard' : '/'}><LogOut size={16} /> {mode === 'manager' ? 'Thoát Warehouse Manager' : 'Về trang chính'}</Link>
+    <button className="wm-exit wm-logout-button" type="button" onClick={handleLogout}><LogOut size={16} /> Đăng xuất</button>
   </aside>;
 }

@@ -229,7 +229,11 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     }).map((storage) => storage._id);
     query.storageId = { $in: descendantIds };
   }
-  const rows = await InventoryItem.find(query).select('itemCode serialNumber condition status inboundReceiptDetail').populate('variantId', 'sku size color').populate({ path: 'inboundReceiptDetail', select: 'receiptDetailCode receiptId', populate: { path: 'receiptId', select: 'receiptCode' } }).sort({ itemCode: 1 }).lean();
+  const rows = await InventoryItem.find(query).select('itemCode serialNumber condition status inboundReceiptDetail storageId').populate('variantId', 'sku size color').populate({
+    path: 'inboundReceiptDetail',
+    select: 'receiptDetailCode receiptId unitCost createdAt',
+    populate: { path: 'receiptId', select: 'receiptCode supplierId receivedAt createdAt', populate: { path: 'supplierId', select: 'supplierCode name' } },
+  }).populate('storageId', 'code name type').sort({ itemCode: 1 }).lean();
   const missingReceiptCodes = rows.filter((row) => row.inboundReceiptDetail && !row.inboundReceiptDetail.receiptDetailCode);
   const receiptIds = [...new Set(missingReceiptCodes.map((row) => String(row.inboundReceiptDetail.receiptId?._id || row.inboundReceiptDetail.receiptId)).filter(Boolean))];
   for (const receiptId of receiptIds) {

@@ -11,7 +11,7 @@ import LockReasonModal from '../../components/admin/accounts/LockReasonModal';
 import AccountToastContainer from '../../components/admin/accounts/AccountToastContainer';
 import '../../styles/AdminDashboard.css';
 import '../../styles/AdminAccounts.css';
-import { validateEditForm } from '../../utils/userValidation';
+import { validateEditForm, validateFullName, validateEmail, validatePhone } from '../../utils/userValidation';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -79,8 +79,6 @@ export default function AdminAccountsPage() {
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [verifyFilter, setVerifyFilter] = useState('ALL');
-
-  // Checkbox multi-selection
   const [selectedIds, setSelectedIds] = useState([]);
 
   // Active Dropdown Menu on Row (⋮)
@@ -139,7 +137,7 @@ export default function AdminAccountsPage() {
     type: 'SYSTEM'
   });
 
-  // Pagination (mặc định hiển thị 5 tài khoản / trang)
+  // Pagination 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
@@ -154,7 +152,7 @@ export default function AdminAccountsPage() {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // Fetch real users and stats from MongoDB Atlas via Backend API
+  // Fetch data
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
@@ -171,8 +169,6 @@ export default function AdminAccountsPage() {
       }
 
       if (usersJson.success && Array.isArray(usersJson.data)) {
-        // Chuẩn hóa role từ DB sang đúng danh sách 6 vai trò người dùng yêu cầu:
-        // shopOwner, brandmanager, admin, customer, warehousestaff, warehouseManager
         const normalizeRole = (raw) => {
           const r = (raw || 'customer').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
           if (r === 'admin') return 'admin';
@@ -221,12 +217,14 @@ export default function AdminAccountsPage() {
             letterColor: roleColor(role),
             phone: phone || 'Chưa cập nhật',
             address: address || 'Chưa cập nhật',
-            dob: '15/08/2000',
-            gender: 'Nữ',
-            totalOrders: Math.floor(Math.random() * 8) + 1,
-            totalDeposit: `${(Math.floor(Math.random() * 10) + 1) * 2}.000.000 đ`,
-            rating: u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)',
-            violations: u.WarningsCount || 0,
+            dob: u.DateOfBirth || u.Information?.[0]?.DateOfBirth || u.Infomation?.[0]?.DateOfBirth || 'Chưa cập nhật',
+            gender: u.Gender || u.Information?.[0]?.Gender || u.Infomation?.[0]?.Gender || 'Chưa cập nhật',
+            totalOrders: u.totalOrders != null ? u.totalOrders : (u.stats?.totalOrders ?? 0),
+            totalDeposit: u.totalDepositFormatted || (u.totalDeposit != null ? (u.totalDeposit > 0 ? `${Number(u.totalDeposit).toLocaleString('vi-VN')} đ` : '0 đ') : '0 đ'),
+            totalShops: u.totalShops || u.stats?.totalShops || 0,
+            totalWarehouses: u.totalWarehouses || u.stats?.totalWarehouses || 0,
+            rating: u.rating || (u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)'),
+            violations: u.violations != null ? u.violations : (u.WarningsCount || 0),
             authProvider: (u.AuthProvider || (u.GoogleId ? 'google' : 'local')).toLowerCase(),
             googleId: u.GoogleId || ''
           };
@@ -245,7 +243,7 @@ export default function AdminAccountsPage() {
     fetchUsers();
   }, []);
 
-  // Compute stats dynamically from real users data
+  // Compute stats dynamically 
   const stats = useMemo(() => {
     const total = backendStats?.total ?? users.length;
     const active = backendStats?.active ?? users.filter(u => u.status === 'ACTIVE').length;
@@ -604,29 +602,19 @@ export default function AdminAccountsPage() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
 
-    // Xác thực toàn diện theo form thiết kế
+    // Xác thực toàn diện theo chuẩn hệ thống
     const errors = {};
-    if (!addForm.name || !addForm.name.trim()) {
-      errors.name = 'Họ và tên không được để trống';
-    } else if (addForm.name.trim().length < 2) {
-      errors.name = 'Họ và tên phải có ít nhất 2 ký tự';
-    } else if (addForm.name.trim().length > 25) {
-      errors.name = 'Họ và tên không được vượt quá 25 ký tự';
-    }
+    const nameRes = validateFullName(addForm.name);
+    if (!nameRes.isValid) errors.name = nameRes.message;
 
-    if (!addForm.email || !addForm.email.trim()) {
-      errors.email = 'Email tài khoản không được để trống';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addForm.email.trim())) {
-      errors.email = 'Email không đúng định dạng';
-    }
+    const emailRes = validateEmail(addForm.email);
+    if (!emailRes.isValid) errors.email = emailRes.message;
 
     if (!addForm.phone || !addForm.phone.trim()) {
       errors.phone = 'Vui lòng nhập số điện thoại';
     } else {
-      const cleanPhone = addForm.phone.replace(/[\s.-]/g, '');
-      if (!/^(0|\+84)[0-9]{9}$/.test(cleanPhone)) {
-        errors.phone = 'Số điện thoại không hợp lệ (cần 10 chữ số)';
-      }
+      const phoneRes = validatePhone(addForm.phone);
+      if (!phoneRes.isValid) errors.phone = phoneRes.message;
     }
 
     if (!addForm.role) {

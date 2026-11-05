@@ -48,18 +48,6 @@ const informationSchema = new mongoose.Schema(
       default: "",
       maxlength: 200,
     },
-
-    DateOfBirth: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-
-    Gender: {
-      type: String,
-      trim: true,
-      default: "",
-    },
   },
   { _id: false }
 );

@@ -1,8 +1,8 @@
 import express from 'express';
-import { 
-  getUsers, 
-  getUserById, 
-  toggleLockUser, 
+import {
+  getUsers,
+  getUserById,
+  toggleLockUser,
   getUserStats,
   createUser,
   updateUser,
@@ -18,6 +18,6 @@ router.get('/:id', getUserById);
 router.put('/:id', updateUser);
 router.patch('/:id/toggle-lock', toggleLockUser);
 router.patch('/:id/reset-password', resetUserPassword);
-router.post('/:id/reset-password', resetUserPassword);
+
 
 export default router;

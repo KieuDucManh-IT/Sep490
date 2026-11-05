@@ -3,6 +3,8 @@ import OwnerSidebar from '../../components/OwnerSidebar';
 import OwnerTopHeader from '../../components/OwnerTopHeader';
 import '../../styles/AdminDashboard.css';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
 export default function OwnerAnalyticsPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [metrics, setMetrics] = useState({
@@ -13,14 +15,18 @@ export default function OwnerAnalyticsPage() {
   });
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/admin/metrics')
+    fetch(`${API_BASE_URL}/users/stats`)
       .then(res => res.json())
       .then(data => {
         if (data.success && data.data) {
-          setMetrics(data.data);
+          setMetrics(prev => ({
+            ...prev,
+            ...data.data,
+            users: data.data.users || prev.users
+          }));
         }
       })
-      .catch(err => console.warn('Metrics API fallback:', err.message));
+      .catch(err => console.warn('User Stats API fallback:', err.message));
   }, []);
 
   return (

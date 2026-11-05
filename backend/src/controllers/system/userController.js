@@ -1,228 +1,147 @@
 import { User } from '../../models/system/User.js';
+import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
+import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
+import { Shop } from '../../models/shop/Shop.js';
+import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import bcrypt from 'bcryptjs';
 import { sendEmail } from '../../utils/sendEmail.js';
 import { validateUserUpdate, validateUserCreate } from '../../utils/userValidation.js';
+import {
+  buildLockEmailHtml,
+  buildLockEmailText,
+  buildNewStaffEmailText,
+  buildResetPasswordEmailHtml,
+  buildResetPasswordEmailText
+} from '../../utils/userEmailTemplates.js';
 
-// Mẫu email thông báo khóa tài khoản dạng văn bản thuần (plain text)
 
-function buildLockEmailHtml(user, reason, lockTime) {
-  const name = user.FullName || user.Email;
-  return `
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <title>Thông báo khóa tài khoản - VESTORA</title>
-</head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;padding:32px 12px;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-          <tr>
-            <td align="center" style="padding:28px 20px;background:#171717;">
-              <div style="font-size:26px;letter-spacing:6px;font-weight:bold;color:#ffffff;">VESTORA</div>
-              <p style="margin:8px 0 0;font-size:10px;letter-spacing:2px;color:#d8be90;">FASHION RENTAL &amp; RESALE</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px 28px;">
-              <h2 style="margin:0 0 16px;color:#dc2626;font-size:20px;">Tài khoản của bạn đã bị tạm khóa</h2>
-              <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#334155;">
-                Xin chào <strong>${name}</strong>,
-              </p>
-              <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#334155;">
-                Tài khoản VESTORA của bạn (<strong>${user.Email}</strong>) vừa bị tạm khóa bởi Ban Quản trị vào lúc <strong>${lockTime}</strong>.
-              </p>
-              <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:16px;border-radius:8px;margin-bottom:24px;">
-                <div style="font-size:12px;font-weight:bold;color:#991b1b;margin-bottom:6px;text-transform:uppercase;">Lý do tạm khóa:</div>
-                <div style="font-size:14px;color:#7f1d1d;line-height:1.6;">${reason}</div>
-              </div>
-              <p style="margin:0 0 16px;font-size:13.5px;line-height:1.6;color:#475569;">
-                Trong thời gian này, bạn sẽ tạm thời không thể đăng nhập hoặc thực hiện các giao dịch trên hệ thống VESTORA.
-              </p>
-              <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">
-                Nếu bạn cho rằng đây là sự nhầm lẫn hoặc cần hỗ trợ, vui lòng liên hệ CSKH qua email <a href="mailto:support@vestora.vn" style="color:#2563eb;">support@vestora.vn</a> hoặc hotline <strong>1800-VESTORA</strong>.
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="background:#f1f5f9;padding:16px 28px;text-align:center;font-size:11.5px;color:#64748b;border-top:1px solid #e2e8f0;">
-              © VESTORA. Đây là email tự động, vui lòng không trả lời trực tiếp.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
+async function enrichUsersWithStats(users = []) {
+  if (!users || !users.length) return [];
 
-function buildLockEmailText(user, reason) {
-  const name = user.FullName || user.Email;
-  const lockTime = new Date().toLocaleString('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    hour12: false
+  const userIds = users.map((u) => u._id).filter(Boolean);
+
+  let rentalStats = [];
+  let salesStats = [];
+  let shopStats = [];
+  let locationStats = [];
+
+  if (userIds.length > 0) {
+    try {
+      [rentalStats, salesStats, shopStats, locationStats] = await Promise.all([
+        RentalOrder.aggregate([
+          { $match: { customerId: { $in: userIds } } },
+          {
+            $group: {
+              _id: '$customerId',
+              totalOrders: { $sum: 1 },
+              totalDeposit: { $sum: '$depositAmount' },
+              totalRentalFee: { $sum: '$rentalFee' }
+            }
+          }
+        ]).catch(() => []),
+        SalesOrder.aggregate([
+          { $match: { customerId: { $in: userIds } } },
+          {
+            $group: {
+              _id: '$customerId',
+              totalOrders: { $sum: 1 },
+              totalAmount: { $sum: '$totalAmount' }
+            }
+          }
+        ]).catch(() => []),
+        Shop.aggregate([
+          { $match: { ownerId: { $in: userIds }, isDeleted: { $ne: true } } },
+          {
+            $group: {
+              _id: '$ownerId',
+              totalShops: { $sum: 1 }
+            }
+          }
+        ]).catch(() => []),
+        InventoryLocation.aggregate([
+          { $match: { managerId: { $in: userIds }, status: 'active' } },
+          {
+            $group: {
+              _id: '$managerId',
+              totalWarehouses: { $sum: 1 }
+            }
+          }
+        ]).catch(() => [])
+      ]);
+    } catch (err) {
+      console.warn('Lỗi khi tính toán thống kê tài khoản:', err.message);
+    }
+  }
+
+  const rentalMap = new Map((rentalStats || []).map((r) => [String(r._id), r]));
+  const salesMap = new Map((salesStats || []).map((s) => [String(s._id), s]));
+  const shopMap = new Map((shopStats || []).map((sh) => [String(sh._id), sh]));
+  const locationMap = new Map((locationStats || []).map((l) => [String(l._id), l]));
+
+  return users.map((u) => {
+    const raw = typeof u.toObject === 'function' ? u.toObject() : { ...u };
+    const uid = String(raw._id);
+    const r = rentalMap.get(uid);
+    const s = salesMap.get(uid);
+    const sh = shopMap.get(uid);
+    const loc = locationMap.get(uid);
+
+    const rentalOrdersCount = r?.totalOrders || 0;
+    const salesOrdersCount = s?.totalOrders || 0;
+    const totalOrders = rentalOrdersCount;
+    const totalDeposit = r?.totalDeposit || 0;
+    const totalRentalFee = r?.totalRentalFee || 0;
+    const totalShops = sh?.totalShops || 0;
+    const totalWarehouses = loc?.totalWarehouses || 0;
+    const violations = raw.WarningsCount || 0;
+
+    let rating = 'A+ (100 pts)';
+    if (violations > 0) {
+      rating = `C (${violations} vi phạm)`;
+    } else if (totalOrders > 0) {
+      rating = 'A+ (100 pts)';
+    } else {
+      rating = 'A (100 pts)';
+    }
+
+    const totalDepositFormatted =
+      totalDeposit > 0 ? `${totalDeposit.toLocaleString('vi-VN')} đ` : '0 đ';
+
+    const info = Array.isArray(raw.Information) && raw.Information.length > 0 ? raw.Information[0] : {};
+    const dob = raw.DateOfBirth || info.DateOfBirth || '';
+    const gender = raw.Gender || info.Gender || '';
+
+    return {
+      ...raw,
+      DateOfBirth: dob,
+      Gender: gender,
+      totalOrders,
+      rentalOrdersCount,
+      salesOrdersCount,
+      totalDeposit,
+      totalDepositFormatted,
+      totalRentalFee,
+      totalShops,
+      totalWarehouses,
+      violations,
+      rating,
+      stats: {
+        totalOrders,
+        rentalOrdersCount,
+        salesOrdersCount,
+        totalDeposit,
+        totalDepositFormatted,
+        totalRentalFee,
+        totalShops,
+        totalWarehouses,
+        violations,
+        rating
+      }
+    };
   });
-
-  return [
-    'VESTORA',
-    '--------------------------------------------------',
-    `Xin chào ${name},`,
-    '',
-    `Tài khoản VESTORA của bạn vừa bị tạm khóa bởi Ban Quản trị vào lúc ${lockTime}.`,
-    '',
-    `Lý do khóa: ${reason}`,
-    '',
-    'Trong thời gian này, bạn sẽ tạm thời không thể đăng nhập hoặc thực hiện các hoạt động trên hệ thống VESTORA.',
-    '',
-    'Nếu cần hỗ trợ, vui lòng liên hệ CSKH:',
-    '- Email: support@vestora.vn',
-    '- Hotline: 1800-VESTORA',
-    '',
-    'Đây là thư tự động, vui lòng không trả lời.',
-    '',
-    'Trân trọng,',
-    'Ban Quản trị VESTORA',
-    '',
-    '© VESTORA. All rights reserved.'
-  ].join('\n');
 }
 
-// Mẫu email gửi thông tin tài khoản và mật khẩu khởi tạo cho nhân viên mới
-function buildNewStaffEmailText(user, rawPassword) {
-  const name = user.FullName || user.Email;
-  const roleDisplayNames = {
-    shopOwner: 'Chủ gian hàng (Shop Owner)',
-    brandmanager: 'Quản lý thương hiệu (Brand Manager)',
-    warehouseManager: 'Quản lý kho (Warehouse Manager)',
-    warehousestaff: 'Nhân viên kho (Warehouse Staff)'
-  };
-  const roleName = roleDisplayNames[user.Role] || user.Role;
 
-  return [
-    'VESTORA',
-    '--------------------------------------------------',
-    `Xin chào ${name},`,
-    '',
-    'Tài khoản nhân viên của bạn đã được khởi tạo thành công trên hệ thống quản trị VESTORA.',
-    '',
-    'THÔNG TIN ĐĂNG NHẬP:',
-    `- Địa chỉ Email: ${user.Email}`,
-    `- Mật khẩu khởi tạo: ${rawPassword}`,
-    `- Vai trò hệ thống: ${roleName}`,
-    '',
-    'LƯU Ý QUAN TRỌNG VỀ BẢO MẬT:',
-    '• Vì lý do an toàn bảo mật thông tin, vui lòng đăng nhập và ĐỔI LẠI MẬT KHẨU ngay trong lần đầu tiên truy cập hệ thống.',
-    '• Tuyệt đối không chia sẻ mật khẩu khởi tạo này cho bất kỳ ai khác.',
-    '',
-    'Nếu bạn cần hỗ trợ kỹ thuật hoặc có bất kỳ thắc mắc nào, vui lòng liên hệ:',
-    '- Email hỗ trợ: support@vestora.vn',
-    '- Hotline: 1800-VESTORA',
-    '',
-    'Đây là thư tự động, vui lòng không trả lời trực tiếp email này.',
-    '',
-    'Trân trọng,',
-    'Ban Quản trị VESTORA',
-    '',
-    '© VESTORA. All rights reserved.'
-  ].join('\n');
-}
-
-// Mẫu email thông báo đặt lại mật khẩu cho người dùng và yêu cầu đổi mật khẩu
-
-function buildResetPasswordEmailHtml(user, newPassword, resetTime) {
-  const name = user.FullName || user.Email;
-  return `
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <title>Đặt lại mật khẩu - VESTORA</title>
-</head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;padding:32px 12px;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-          <tr>
-            <td align="center" style="padding:28px 20px;background:#171717;">
-              <div style="font-size:26px;letter-spacing:6px;font-weight:bold;color:#ffffff;">VESTORA</div>
-              <p style="margin:8px 0 0;font-size:10px;letter-spacing:2px;color:#d8be90;">FASHION RENTAL &amp; RESALE</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px 28px;">
-              <h2 style="margin:0 0 16px;color:#0f172a;font-size:20px;">Thông báo đặt lại mật khẩu</h2>
-              <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#334155;">
-                Xin chào <strong>${name}</strong>,
-              </p>
-              <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#334155;">
-                Mật khẩu tài khoản VESTORA của bạn vừa được Quản trị viên khởi tạo lại vào lúc <strong>${resetTime}</strong>.
-              </p>
-              <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:20px;border-radius:12px;margin-bottom:24px;text-align:center;">
-                <div style="font-size:12px;font-weight:bold;color:#166534;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;">Mật khẩu mới (tạm thời):</div>
-                <div style="font-family:'Courier New',monospace;font-size:24px;font-weight:bold;color:#15803d;letter-spacing:2px;">${newPassword}</div>
-              </div>
-              <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:14px;border-radius:6px;margin-bottom:20px;font-size:13px;color:#92400e;line-height:1.5;">
-                <strong>LƯU Ý BẢO MẬT:</strong> Bạn <u>bắt buộc</u> phải đổi lại mật khẩu mới ngay trong lần đăng nhập đầu tiên để bảo vệ an toàn cho tài khoản.
-              </div>
-              <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">
-                Nếu bạn không yêu cầu hành động này, vui lòng liên hệ ngay với chúng tôi qua <a href="mailto:support@vestora.vn" style="color:#2563eb;">support@vestora.vn</a>.
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="background:#f1f5f9;padding:16px 28px;text-align:center;font-size:11.5px;color:#64748b;border-top:1px solid #e2e8f0;">
-              © VESTORA. Đây là email tự động, vui lòng không trả lời trực tiếp.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-
-function buildResetPasswordEmailText(user, newPassword) {
-  const name = user.FullName || user.Email;
-  const resetTime = new Date().toLocaleString('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    hour12: false
-  });
-
-  return [
-    'VESTORA',
-    '--------------------------------------------------',
-    `Xin chào ${name},`,
-    '',
-    `Mật khẩu tài khoản VESTORA của bạn vừa được Quản trị viên đặt lại vào lúc ${resetTime}.`,
-    '',
-    'THÔNG TIN ĐĂNG NHẬP MỚI:',
-    `- Địa chỉ Email: ${user.Email}`,
-    `- Mật khẩu mới (tạm thời): ${newPassword}`,
-    '',
-    'LƯU Ý QUAN TRỌNG VỀ BẢO MẬT (BẮT BUỘC):',
-    '• Đây là mật khẩu tạm thời do Quản trị viên hệ thống cấp.',
-    '• Vì lý do an toàn bảo mật, bạn BẮT BUỘC phải đăng nhập và ĐỔI LẠI MẬT KHẨU ngay khi truy cập hệ thống.',
-    '• Tuyệt đối không chia sẻ mật khẩu tạm thời này cho bất kỳ ai khác.',
-    '',
-    'Nếu bạn không yêu cầu hoặc có thắc mắc, vui lòng liên hệ ngay với Ban Quản trị VESTORA:',
-    '- Email hỗ trợ: support@vestora.vn',
-    '- Hotline: 1800-VESTORA',
-    '',
-    'Đây là thư tự động, vui lòng không trả lời trực tiếp email này.',
-    '',
-    'Trân trọng,',
-    'Ban Quản trị VESTORA',
-    '',
-    '© VESTORA. All rights reserved.'
-  ].join('\n');
-}
-
-// Lấy danh sách tài khoản
 export const getUsers = async (req, res) => {
   try {
     const { role, status, search } = req.query;
@@ -244,13 +163,16 @@ export const getUsers = async (req, res) => {
     }
 
     const users = await User.find(filter)
-      .select('-PasswordHash') // Không trả về mật khẩu
-      .sort({ createdAt: -1 });
+      .select('-PasswordHash')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const enrichedUsers = await enrichUsersWithStats(users);
 
     res.json({
       success: true,
-      count: users.length,
-      data: users
+      count: enrichedUsers.length,
+      data: enrichedUsers
     });
   } catch (error) {
     console.error('Error in getUsers:', error);
@@ -261,15 +183,17 @@ export const getUsers = async (req, res) => {
 // Chi tiết tài khoản
 export const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-PasswordHash');
+    const user = await User.findById(req.params.id).select('-PasswordHash').lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
-    res.json({ success: true, data: user });
+    const [enriched] = await enrichUsersWithStats([user]);
+    res.json({ success: true, data: enriched });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // Khóa / Mở khóa tài khoản người dùng
 export const toggleLockUser = async (req, res) => {
@@ -283,7 +207,7 @@ export const toggleLockUser = async (req, res) => {
     if (user.Role && user.Role.toLowerCase() === 'admin') {
       return res.status(400).json({
         success: false,
-        message: 'Không thể khóa tài khoản Quản trị viên (Admin) để bảo vệ quyền truy cập hệ thống!'
+        message: 'Không thể khóa tài khoản Quản trị viên để bảo vệ quyền truy cập hệ thống!'
       });
     }
 
@@ -330,7 +254,7 @@ export const toggleLockUser = async (req, res) => {
       });
     }
 
-    // Khi MỞ KHÓA: không cần lý do, không cần email
+
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
       { $set: { Status: newStatus } },
@@ -353,15 +277,37 @@ export const toggleLockUser = async (req, res) => {
 };
 
 
-// Thống kê người dùng cho Admin Dashboard
+
+// Thống kê tổng hợp số lượng tài khoản cho Admin Dashboard & Accounts Console (dùng MongoDB Aggregation $facet tối ưu)
 export const getUserStats = async (req, res) => {
   try {
-    const total = await User.countDocuments();
-    const customers = await User.countDocuments({ Role: { $regex: /^customer$/i } });
-    const shopOwners = await User.countDocuments({ Role: { $regex: /^shop_owner$/i } });
-    const admins = await User.countDocuments({ Role: { $regex: /^admin$/i } });
-    const active = await User.countDocuments({ Status: { $regex: /^active$/i } });
-    const locked = await User.countDocuments({ Status: { $regex: /^locked$/i } });
+    const userFacet = await User.aggregate([
+      {
+        $facet: {
+          total: [{ $count: 'count' }],
+          byRole: [{ $group: { _id: { $toLower: '$Role' }, count: { $sum: 1 } } }],
+          byStatus: [{ $group: { _id: { $toLower: '$Status' }, count: { $sum: 1 } } }],
+        },
+      },
+    ]);
+
+    const userRoles = {};
+    (userFacet?.[0]?.byRole || []).forEach((r) => {
+      if (r._id) userRoles[r._id] = r.count;
+    });
+
+    const userStatuses = {};
+    (userFacet?.[0]?.byStatus || []).forEach((s) => {
+      if (s._id) userStatuses[s._id] = s.count;
+    });
+
+    const total = userFacet?.[0]?.total?.[0]?.count || 0;
+    const customers = userRoles.customer || 0;
+    const admins = userRoles.admin || 0;
+    const shopOwners = (userRoles.shopowner || 0) + (userRoles.shop_owner || 0);
+    const staff = Math.max(0, total - customers - admins);
+    const active = userStatuses.active || 0;
+    const locked = userStatuses.locked || 0;
 
     res.json({
       success: true,
@@ -370,16 +316,27 @@ export const getUserStats = async (req, res) => {
         customers,
         shopOwners,
         admins,
+        staff,
         active,
-        locked
-      }
+        locked,
+        byRole: userRoles,
+        users: {
+          total,
+          customers,
+          staff,
+          admins,
+          active,
+          locked,
+        },
+      },
     });
   } catch (error) {
+    console.error('Error in getUserStats:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Tạo tài khoản mới từ Admin Console
+// Tạo tài khoản mới từ Admin 
 export const createUser = async (req, res) => {
   try {
     const { Email, FullName, Role, Password, Phone, Status, Avatar, DateOfBirth, Gender } = req.body;
@@ -398,12 +355,12 @@ export const createUser = async (req, res) => {
       });
     }
 
-    // Chức năng này chỉ tạo tài khoản cho nhân viên / quản lý, không áp dụng cho khách hàng (customer)
+    // Chức năng này chỉ tạo tài khoản cho nhân viên / quản lý
     const cleanRole = (Role || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
     if (cleanRole === 'customer') {
       return res.status(400).json({
         success: false,
-        message: 'Chức năng này chỉ áp dụng tạo tài khoản cho nhân viên/quản lý, không tạo tài khoản khách hàng (customer)!'
+        message: 'Chức năng này chỉ áp dụng tạo tài khoản cho nhân viên/quản lý'
       });
     }
 
@@ -437,9 +394,7 @@ export const createUser = async (req, res) => {
       DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
       Gender: Gender ? Gender.trim() : '',
       Information: [{
-        Phone: Phone ? Phone.trim() : '',
-        DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
-        Gender: Gender ? Gender.trim() : ''
+        Phone: Phone ? Phone.trim() : ''
       }]
     });
 
@@ -481,7 +436,7 @@ export const createUser = async (req, res) => {
   }
 };
 
-// Cập nhật tài khoản từ Admin Console
+// Cập nhật tài khoản từ Admin 
 export const updateUser = async (req, res) => {
   try {
     const { FullName, Role, Status, Phone, Address, DateOfBirth, Gender, Avatar } = req.body;
@@ -566,13 +521,11 @@ export const updateUser = async (req, res) => {
       updateData.Gender = Gender.trim();
     }
 
-    if (Phone !== undefined || Address !== undefined || DateOfBirth !== undefined || Gender !== undefined) {
+    if (Phone !== undefined || Address !== undefined) {
       const prevInfo = existingUser.Information?.[0] || {};
       updateData.Information = [{
         Phone: Phone !== undefined ? Phone.trim() : (prevInfo.Phone || ''),
-        Address: Address !== undefined ? Address.trim() : (prevInfo.Address || ''),
-        DateOfBirth: DateOfBirth !== undefined ? DateOfBirth.trim() : (prevInfo.DateOfBirth || ''),
-        Gender: Gender !== undefined ? Gender.trim() : (prevInfo.Gender || '')
+        Address: Address !== undefined ? Address.trim() : (prevInfo.Address || '')
       }];
     }
 
@@ -593,7 +546,7 @@ export const updateUser = async (req, res) => {
   }
 };
 
-// Đặt lại mật khẩu từ Admin Console, gửi email và yêu cầu đổi mật khẩu
+// Đặt lại mật khẩu từ Admin , gửi email và yêu cầu đổi mật khẩu
 export const resetUserPassword = async (req, res) => {
   try {
     const { id } = req.params;

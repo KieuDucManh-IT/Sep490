@@ -150,11 +150,11 @@ export default function AccountDetailDrawer({
                   </div>
                   <div className="admin-acc-kv-row">
                     <span className="admin-acc-kv-key">Ngày sinh</span>
-                    <span className="admin-acc-kv-val">{selectedUser.dob || '15/08/2000'}</span>
+                    <span className="admin-acc-kv-val">{selectedUser.dob && selectedUser.dob !== '15/08/2000' ? selectedUser.dob : (selectedUser.dob || 'Chưa cập nhật')}</span>
                   </div>
                   <div className="admin-acc-kv-row">
                     <span className="admin-acc-kv-key">Giới tính</span>
-                    <span className="admin-acc-kv-val">{selectedUser.gender || 'Nữ'}</span>
+                    <span className="admin-acc-kv-val">{selectedUser.gender || 'Chưa cập nhật'}</span>
                   </div>
                   <div className="admin-acc-kv-row">
                     <span className="admin-acc-kv-key">Địa chỉ</span>
@@ -219,8 +219,8 @@ export default function AccountDetailDrawer({
                 </div>
               </div>
 
-              {/* Section 3: Thống kê (Chỉ hiển thị riêng cho vai trò Customer, các role khác ẩn hoàn toàn) */}
-              {isCustomer(selectedUser) && (
+              {/* Section 3: Thống kê hệ thống */}
+              {isCustomer(selectedUser) ? (
                 <div>
                   <h4 className="admin-acc-sec-title admin-acc-sec-title-mb-12">
                     Thống kê hệ thống
@@ -237,8 +237,8 @@ export default function AccountDetailDrawer({
                         </svg>
                       </div>
                       <div className="admin-acc-stat-box-label">Giao dịch thuê</div>
-                      <div className="admin-acc-stat-box-val">{selectedUser.totalOrders} đơn</div>
-                      <div className="admin-acc-stat-box-sub">{selectedUser.totalDeposit}</div>
+                      <div className="admin-acc-stat-box-val">{selectedUser.totalOrders ?? 0} đơn</div>
+                      <div className="admin-acc-stat-box-sub">{selectedUser.totalDeposit || '0 đ'}</div>
                     </div>
 
                     {/* Box 2 */}
@@ -251,7 +251,7 @@ export default function AccountDetailDrawer({
                       </div>
                       <div className="admin-acc-stat-box-label">Điểm uy tín Escrow</div>
                       <div className="admin-acc-stat-box-val admin-acc-stat-green">
-                        {selectedUser.rating}
+                        {selectedUser.rating || 'A+ (100 pts)'}
                       </div>
                       <div className="admin-acc-stat-box-sub">PayOS Bảo đảm</div>
                     </div>
@@ -267,9 +267,155 @@ export default function AccountDetailDrawer({
                       </div>
                       <div className="admin-acc-stat-box-label">Vi phạm</div>
                       <div className={`admin-acc-stat-box-val ${selectedUser.violations > 0 ? 'is-violation' : 'is-clean'}`}>
-                        {selectedUser.violations} lần
+                        {selectedUser.violations ?? 0} lần
                       </div>
                       <div className="admin-acc-stat-box-sub">An toàn hợp đồng</div>
+                    </div>
+                  </div>
+                </div>
+              ) : selectedUser.role === 'shopOwner' ? (
+                <div>
+                  <h4 className="admin-acc-sec-title admin-acc-sec-title-mb-12">
+                    Thống kê hệ thống
+                  </h4>
+
+                  <div className="admin-acc-stats-grid">
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon blue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Gian hàng sở hữu</div>
+                      <div className="admin-acc-stat-box-val">{selectedUser.totalShops ?? 0} gian hàng</div>
+                      <div className="admin-acc-stat-box-sub">Đối tác kinh doanh</div>
+                    </div>
+
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon green">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                          <polyline points="9 12 11 14 15 10" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Uy tín đối tác</div>
+                      <div className="admin-acc-stat-box-val admin-acc-stat-green">
+                        {selectedUser.rating || 'A+ (100 pts)'}
+                      </div>
+                      <div className="admin-acc-stat-box-sub">Chuẩn mực đối tác</div>
+                    </div>
+
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon red">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                          <line x1="12" y1="9" x2="12" y2="13" />
+                          <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Vi phạm</div>
+                      <div className={`admin-acc-stat-box-val ${selectedUser.violations > 0 ? 'is-violation' : 'is-clean'}`}>
+                        {selectedUser.violations ?? 0} lần
+                      </div>
+                      <div className="admin-acc-stat-box-sub">Quy chế sàn</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (selectedUser.role === 'warehouseManager' || selectedUser.role === 'warehousestaff') ? (
+                <div>
+                  <h4 className="admin-acc-sec-title admin-acc-sec-title-mb-12">
+                    Thống kê hệ thống
+                  </h4>
+
+                  <div className="admin-acc-stats-grid">
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon blue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Kho phụ trách</div>
+                      <div className="admin-acc-stat-box-val">{selectedUser.totalWarehouses ?? 0} điểm kho</div>
+                      <div className="admin-acc-stat-box-sub">Hệ thống kho vận</div>
+                    </div>
+
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon green">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Hiệu suất kho</div>
+                      <div className="admin-acc-stat-box-val admin-acc-stat-green">
+                        Chuẩn mực
+                      </div>
+                      <div className="admin-acc-stat-box-sub">Quy trình kho</div>
+                    </div>
+
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon red">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                          <line x1="12" y1="9" x2="12" y2="13" />
+                          <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Vi phạm</div>
+                      <div className={`admin-acc-stat-box-val ${selectedUser.violations > 0 ? 'is-violation' : 'is-clean'}`}>
+                        {selectedUser.violations ?? 0} lần
+                      </div>
+                      <div className="admin-acc-stat-box-sub">Kỷ luật vận hành</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <h4 className="admin-acc-sec-title admin-acc-sec-title-mb-12">
+                    Thống kê hệ thống
+                  </h4>
+
+                  <div className="admin-acc-stats-grid">
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon blue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="16" x2="12" y2="12" />
+                          <line x1="12" y1="8" x2="12.01" y2="8" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Vai trò</div>
+                      <div className="admin-acc-stat-box-val">{ROLE_LABELS[selectedUser.role] || selectedUser.role}</div>
+                      <div className="admin-acc-stat-box-sub">Hệ thống VESTORA</div>
+                    </div>
+
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon green">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Trạng thái</div>
+                      <div className="admin-acc-stat-box-val admin-acc-stat-green">
+                        {selectedUser.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm khóa'}
+                      </div>
+                      <div className="admin-acc-stat-box-sub">Bảo mật tài khoản</div>
+                    </div>
+
+                    <div className="admin-acc-stat-box">
+                      <div className="admin-acc-stat-box-icon red">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                          <line x1="12" y1="9" x2="12" y2="13" />
+                          <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                      </div>
+                      <div className="admin-acc-stat-box-label">Cảnh báo</div>
+                      <div className={`admin-acc-stat-box-val ${selectedUser.violations > 0 ? 'is-violation' : 'is-clean'}`}>
+                        {selectedUser.violations ?? 0} lần
+                      </div>
+                      <div className="admin-acc-stat-box-sub">An toàn hệ thống</div>
                     </div>
                   </div>
                 </div>
@@ -387,18 +533,32 @@ export default function AccountDetailDrawer({
                 Lịch sử thuê đồ &amp; Cọc Escrow PayOS
               </h4>
 
-              <div className="admin-acc-trans-list">
-                <div className="admin-acc-trans-card">
-                  <div className="admin-acc-trans-row">
-                    <span className="admin-acc-trans-title">Giao dịch gần đây</span>
-                    <span className="admin-acc-trans-val">{selectedUser.totalDeposit}</span>
-                  </div>
-                  <div className="admin-acc-trans-meta">
-                    <span>Tổng số đơn thuê: {selectedUser.totalOrders} đơn</span>
-                    <span className="admin-acc-trans-tag">Hợp đồng bảo đảm PayOS</span>
+              {Number(selectedUser.totalOrders || 0) === 0 ? (
+                <div className="admin-acc-violation-clean">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="admin-acc-violation-clean-icon">
+                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <path d="M16 10a4 4 0 0 1-8 0" />
+                  </svg>
+                  <div className="admin-acc-violation-clean-title">Chưa có giao dịch</div>
+                  <div className="admin-acc-violation-clean-desc">
+                    Tài khoản này chưa phát sinh giao dịch thuê hoặc đặt cọc trên hệ thống VESTORA.
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="admin-acc-trans-list">
+                  <div className="admin-acc-trans-card">
+                    <div className="admin-acc-trans-row">
+                      <span className="admin-acc-trans-title">Tổng tiền cọc</span>
+                      <span className="admin-acc-trans-val">{selectedUser.totalDeposit || '0 đ'}</span>
+                    </div>
+                    <div className="admin-acc-trans-meta">
+                      <span>Tổng số đơn thuê: {selectedUser.totalOrders} đơn</span>
+                      <span className="admin-acc-trans-tag">Hợp đồng bảo đảm PayOS</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

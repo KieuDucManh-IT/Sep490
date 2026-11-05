@@ -3,12 +3,15 @@ import { RefreshCw } from 'lucide-react';
 import WarehouseSidebar from '../../components/WarehouseSidebar';
 import InventorySerialsModal from '../../components/InventorySerialsModal';
 import inventoryReportService from '../../services/warehouse/inventoryReportService';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/WarehouseManager.css';
 
 const pageSizes = [10, 20, 50];
 const number = (value) => Number(value || 0).toLocaleString('vi-VN');
 
-export default function InventoryReportPage() {
+export default function InventoryReportPage({ mode = 'manager' }) {
+  const { user } = useAuth();
+  const isStaff = mode === 'staff' || /warehouse_staff/i.test(user?.Role || user?.role || '');
   const [report, setReport] = useState({ items: [], locations: [], summary: {} });
   const [locationId, setLocationId] = useState('');
   const [storageLevel, setStorageLevel] = useState('shelf');
@@ -46,7 +49,7 @@ export default function InventoryReportPage() {
     ['Không khả dụng', report.summary.totalUnavailable],
   ];
 
-  return <div className="wm-layout"><WarehouseSidebar /><main className="wm-main">
+  return <div className="wm-layout"><WarehouseSidebar mode={isStaff ? 'staff' : 'manager'} /><main className="wm-main">
     <header className="wm-header"><div><span>WAREHOUSE MANAGER / BÁO CÁO</span><h1>Báo cáo tồn kho</h1><p>Tùy chọn cấp vị trí và cấp mặt hàng để gộp số tồn; serial có thể xem trong chi tiết.</p></div><button type="button" className="wm-primary-button wm-refresh-button" onClick={() => load()} disabled={loading}><RefreshCw size={15} />Làm mới</button></header>
     {error && <div className="wm-error">{error}</div>}
     <section className="wm-report-cards">{cards.map(([label, value]) => <article className="wm-report-card" key={label}><span>{label}</span><strong>{number(value)}</strong><small>cái</small></article>)}</section>

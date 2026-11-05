@@ -254,6 +254,7 @@ function App() {
           }
         />
         <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStocktakePage /></ProtectedRoute>} />
+        <Route path="/warehousestaff/reports/inventory" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><InventoryReportPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehousestaff/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />

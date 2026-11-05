@@ -45,6 +45,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
   const [assignedStaffId, setAssignedStaffId] = useState('');
   const [pickAllocations, setPickAllocations] = useState({});
   const [pickCandidates, setPickCandidates] = useState({});
+  const [pickPicker, setPickPicker] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +68,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
       } else {
         const context = results[1];
         setBranchId(context.selectedBranch?.inventoryLocation ? idOf(context.selectedBranch._id) : '');
-        const activeVariants = results[2].filter((variant) => variant.status === 'active' && variant.productId?.status === 'active');
+        const activeVariants = results[2].filter((variant) => variant.status === 'active' && variant.productId?.status === 'active' && variant.productId?.isDeleted !== true);
         setVariants(activeVariants);
         setProducts([...new Map(activeVariants.map((variant) => [idOf(variant.productId), variant.productId])).values()]);
       }
@@ -131,7 +132,11 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
   const updateAllocation = (detailId, index, changes) => setPickAllocations((old) => ({ ...old, [detailId]: (old[detailId] || []).map((row, i) => i === index ? { ...row, ...changes } : row) }));
   const addAllocation = (detailId) => setPickAllocations((old) => ({ ...old, [detailId]: [...(old[detailId] || []), { storageId: '', quantity: '1', itemIds: [] }] }));
   const loadPickCandidates = async (detail, allocation, index) => {
-    try { const result = await stockTransferService.pickCandidates(selected._id, detail._id, allocation.storageId); setPickCandidates((old) => ({ ...old, [`${detail._id}:${index}`]: result })); }
+    try {
+      const result = await stockTransferService.pickCandidates(selected._id, detail._id, allocation.storageId);
+      setPickCandidates((old) => ({ ...old, [`${detail._id}:${index}`]: result }));
+      if (detail.variantId?.productId?.trackingType === 'individual') setPickPicker({ detailId: detail._id, index });
+    }
     catch (loadError) { setError(loadError.message); }
   };
   const savePick = () => act(() => stockTransferService.savePick(selected._id, { items: (selected.items || []).filter((item) => Number(item.quantityApproved) > 0).map((item) => ({ detailId: item._id, allocations: (pickAllocations[item._id] || []).map((row) => ({ storageId: row.storageId === 'none' ? null : row.storageId, quantity: Number(row.quantity), itemIds: row.itemIds || [] })) })) }), 'Đã lưu phân bổ hàng theo vị trí.');
@@ -195,7 +200,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
         <section className="wm-crud-modal wm-transfer-modal wm-stock-detail">
         <div className="wm-stock-detail-heading"><div><small>{selected.transferCode} · {statusLabels[selected.status]}</small><h2>{branchName(selected.toLocationId)}</h2><p>Kho xuất: {branchName(selected.fromLocationId)} · Người tạo: {selected.createdBy?.FullName || '—'}</p></div><button type="button" className="secondary" onClick={() => { setItemPickerId(''); setSelected(null); }}>Đóng</button></div>
         {isWarehouse && selected.status === 'requested' && <label className="wm-staff-assign">Nhân viên kho phụ trách<select value={assignedStaffId} onChange={(event) => setAssignedStaffId(event.target.value)}><option value="">Chọn nhân viên</option>{staff.map((member) => <option key={member._id} value={member._id}>{member.FullName} · {member.Email}</option>)}</select></label>}
-        <div className="wm-table-wrap"><table><thead><tr><th>Sản phẩm / SKU</th><th>Yêu cầu</th><th>Được duyệt</th><th>Đã xuất</th><th>{!isWarehouse && !isStaff && ['shipped', 'partially_received'].includes(selected.status) ? 'Xác nhận nhận' : 'Đã nhận'}</th><th>Hỏng{selected.status === 'received' ? ' / thiếu' : ''}</th>{isStaff && selected.status === 'approved' && <th>Vị trí lấy hàng</th>}</tr></thead><tbody>
+        <div className="wm-table-wrap"><table className={isStaff && selected.status === 'approved' ? 'wm-transfer-picking-table' : ''}><thead><tr><th>Sản phẩm / SKU</th><th>Yêu cầu</th><th>Được duyệt</th><th>Đã xuất</th><th>{!isWarehouse && !isStaff && ['shipped', 'partially_received'].includes(selected.status) ? 'Xác nhận nhận' : 'Đã nhận'}</th><th>Hỏng{selected.status === 'received' ? ' / thiếu' : ''}</th>{isStaff && selected.status === 'approved' && <th>Vị trí lấy hàng</th>}</tr></thead><tbody>
           {(selected.items || []).map((item) => {
             const individual = item.variantId?.productId?.trackingType === 'individual';
             const sourceOptions = sourceStorages(selected.fromLocationId?._id || selected.fromLocationId).filter((storage) => !individual || storage.type === 'shelf');
@@ -204,7 +209,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
             return <tr key={item._id}><td>{variantLabel(item)}{item.itemIds?.length > 0 && <small className="wm-stock-subline">Mã hàng: {item.itemIds.map((it) => it.itemCode || it.serialNumber || idOf(it).slice(-6)).join(', ')}</small>}</td><td>{item.quantityRequested}</td>
               <td>{isWarehouse && selected.status === 'requested' ? <input className="wm-count-input" type="number" min="0" max={item.quantityRequested} value={approval[item._id]?.quantityApproved ?? item.quantityRequested} onChange={(event) => setApproval({ ...approval, [item._id]: { ...approval[item._id], quantityApproved: event.target.value } })} /> : item.quantityApproved ?? '—'}</td>
               <td>{item.quantityShipped || 0}</td><td>{receiving ? (individual ? <button type="button" className="secondary" onClick={() => setReceiptPickerId(item._id)}>Xem / xác nhận nhận ({(entry.receivedItemIds || []).length}/{item.quantityShipped || 0})</button> : <div className="wm-transfer-quantity-inputs"><input type="number" min={item.quantityReceived || 0} max={item.quantityShipped} value={entry.quantityReceived ?? item.quantityShipped} aria-label="Số lượng nhận" onChange={(event) => setReceipt({ ...receipt, [item._id]: { ...entry, quantityReceived: event.target.value } })} /><input type="number" min={item.quantityDamaged || 0} max={entry.quantityReceived ?? item.quantityShipped} value={entry.quantityDamaged ?? item.quantityDamaged ?? 0} aria-label="Số lượng hỏng" onChange={(event) => setReceipt({ ...receipt, [item._id]: { ...entry, quantityDamaged: event.target.value } })} /></div>) : item.quantityReceived || 0}</td><td>{item.quantityDamaged || 0}{item.quantityMissing > 0 ? ` / thiếu ${item.quantityMissing}` : ''}</td>
-              {isStaff && selected.status === 'approved' && <td><div className="wm-pick-allocation-list">{(pickAllocations[item._id] || []).map((allocation, index) => <div className="wm-pick-allocation" key={index}><select value={allocation.storageId} onChange={(event) => updateAllocation(item._id, index, { storageId: event.target.value, itemIds: [] })}><option value="">Chọn kệ</option><option value="none">Chưa gán vị trí</option>{sourceOptions.map((storage) => <option key={storage._id} value={storage._id}>{storage.code} · {storage.name}</option>)}</select><input aria-label="Số lượng tại vị trí" type="number" min="1" value={allocation.quantity} onChange={(event) => updateAllocation(item._id, index, { quantity: event.target.value })} /><button className="secondary" type="button" onClick={() => loadPickCandidates(item, allocation, index)}>{individual ? `Tải item (${allocation.itemIds.length}/${allocation.quantity})` : 'Kiểm tra tồn'}</button>{(pickAllocations[item._id] || []).length > 1 && <button className="danger" type="button" onClick={() => setPickAllocations((old) => ({ ...old, [item._id]: old[item._id].filter((_, i) => i !== index) }))}>Xóa</button>}<small>{pickCandidates[`${item._id}:${index}`]?.available != null ? `Khả dụng: ${pickCandidates[`${item._id}:${index}`].available}` : ''}</small>{individual && Array.isArray(pickCandidates[`${item._id}:${index}`]) && <div className="wm-transfer-picker-list">{pickCandidates[`${item._id}:${index}`].map((candidate) => { const candidateId = idOf(candidate); const chosen = allocation.itemIds.includes(candidateId); return <label key={candidateId}><input type="checkbox" checked={chosen} disabled={!chosen && allocation.itemIds.length >= Number(allocation.quantity)} onChange={(event) => updateAllocation(item._id, index, { itemIds: event.target.checked ? [...allocation.itemIds, candidateId] : allocation.itemIds.filter((id) => id !== candidateId) })} /><span><strong>{candidate.itemCode}</strong><small>{candidate.serialNumber || 'Chưa có serial'} · {candidate.condition}</small></span></label>; })}</div>}</div>)}<button className="secondary" type="button" onClick={() => addAllocation(item._id)}>+ Thêm vị trí</button><small>Đã phân bổ: {(pickAllocations[item._id] || []).reduce((sum, row) => sum + Number(row.quantity || 0), 0)}/{item.quantityApproved}</small></div></td>}
+              {isStaff && selected.status === 'approved' && <td><div className="wm-pick-allocation-list">{(pickAllocations[item._id] || []).map((allocation, index) => <div className="wm-pick-allocation" key={index}><select value={allocation.storageId} onChange={(event) => updateAllocation(item._id, index, { storageId: event.target.value, itemIds: [] })}><option value="">Chọn kệ</option><option value="none">Chưa gán vị trí</option>{sourceOptions.map((storage) => <option key={storage._id} value={storage._id}>{storage.code} · {storage.name}</option>)}</select><input aria-label="Số lượng tại vị trí" type="number" min="1" value={allocation.quantity} onChange={(event) => updateAllocation(item._id, index, { quantity: event.target.value })} /><button className="secondary" type="button" onClick={() => loadPickCandidates(item, allocation, index)}>{individual ? `Chọn item (${allocation.itemIds.length}/${allocation.quantity})` : 'Kiểm tra tồn'}</button>{(pickAllocations[item._id] || []).length > 1 && <button className="danger" type="button" onClick={() => setPickAllocations((old) => ({ ...old, [item._id]: old[item._id].filter((_, i) => i !== index) }))}>Xóa</button>}<small>{pickCandidates[`${item._id}:${index}`]?.available != null ? `Khả dụng: ${pickCandidates[`${item._id}:${index}`].available}` : ''}</small></div>)}<button className="secondary" type="button" onClick={() => addAllocation(item._id)}>+ Thêm vị trí</button><small>Đã phân bổ: {(pickAllocations[item._id] || []).reduce((sum, row) => sum + Number(row.quantity || 0), 0)}/{item.quantityApproved}</small></div></td>}
             </tr>;
           })}
         </tbody></table></div>
@@ -216,6 +221,23 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
         </div>
         </section>
       </div>}
+      {pickPicker && selected && (() => {
+        const item = selected.items?.find((row) => row._id === pickPicker.detailId);
+        const allocation = pickAllocations[pickPicker.detailId]?.[pickPicker.index];
+        const candidates = pickCandidates[`${pickPicker.detailId}:${pickPicker.index}`] || [];
+        if (!item || !allocation) return null;
+        return <div className="wm-modal-backdrop wm-transfer-picker-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPickPicker(null); }}>
+          <section className="wm-crud-modal wm-transfer-picker" role="dialog" aria-modal="true" aria-labelledby="pick-item-picker-title">
+            <header><div><span>CHỌN ITEM ĐỂ XUẤT</span><h2 id="pick-item-picker-title">{variantLabel(item)}</h2><p>Đã chọn {allocation.itemIds.length}/{allocation.quantity}</p></div><button type="button" className="wm-modal-close" onClick={() => setPickPicker(null)} aria-label="Đóng">×</button></header>
+            <div className="wm-transfer-picker-list">{candidates.length ? candidates.map((candidate) => {
+              const candidateId = idOf(candidate);
+              const chosen = allocation.itemIds.includes(candidateId);
+              return <label key={candidateId}><input type="checkbox" checked={chosen} disabled={!chosen && allocation.itemIds.length >= Number(allocation.quantity)} onChange={(event) => updateAllocation(pickPicker.detailId, pickPicker.index, { itemIds: event.target.checked ? [...allocation.itemIds, candidateId] : allocation.itemIds.filter((id) => id !== candidateId) })} /><span><strong>{candidate.itemCode}</strong><small>{candidate.serialNumber || 'Chưa có serial'} · {candidate.condition}</small></span></label>;
+            }) : <p>Không có item khả dụng ở vị trí đã chọn.</p>}</div>
+            <footer className="wm-modal-footer"><button type="button" className="secondary" onClick={() => setPickPicker(null)}>Xong ({allocation.itemIds.length}/{allocation.quantity})</button></footer>
+          </section>
+        </div>;
+      })()}
       {itemPickerId && selected && (() => {
         const item = selected.items?.find((row) => row._id === itemPickerId);
         if (!item) return null;

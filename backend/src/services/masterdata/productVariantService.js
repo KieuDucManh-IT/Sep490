@@ -41,7 +41,7 @@ const referenced = async (variantId) => Promise.all([
 ]);
 
 export const productVariantService = {
-  list: () => ProductVariant.find({ isDeleted: { $ne: true } }).populate('productId', 'productCode name').sort({ createdAt: -1 }),
+  list: () => ProductVariant.find({ isDeleted: { $ne: true } }).populate('productId', 'productCode name status isDeleted').sort({ createdAt: -1 }),
   create: async (payload) => {
     const product = await validateProductOwnership(payload?.productId);
     const data = validateProductVariant({ ...payload, sku: 'pending' });

@@ -21,7 +21,6 @@ export default function AdminAccountsPage() {
   const { user: currentUser } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // ── Toast system ──────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState([]);
   const showToast = (message, type = 'info') => {
     const id = Date.now();
@@ -36,7 +35,6 @@ export default function AdminAccountsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [backendStats, setBackendStats] = useState(null);
 
-  // Helper functions: Bảo vệ tài khoản Quản trị viên và tài khoản hiện tại đang đăng nhập
   const isUserAdmin = (u) => {
     if (!u) return false;
     const r = (u.role || u.Role || '').toLowerCase().replace(/[_\s-]/g, '');
@@ -67,32 +65,26 @@ export default function AdminAccountsPage() {
     return provider === 'google' || Boolean(u.googleId || u.GoogleId);
   };
 
-  // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [verifyFilter, setVerifyFilter] = useState('ALL');
 
-  // Checkbox multi-selection
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // Active Dropdown Menu on Row (⋮)
   const [openActionId, setOpenActionId] = useState(null);
   const actionMenuRef = useRef(null);
 
-  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetPwdModal, setShowResetPwdModal] = useState(false);
   const [showNotifyModal, setShowNotifyModal] = useState(false);
 
-  // Modal lý do khóa tài khoản
   const [showLockReasonModal, setShowLockReasonModal] = useState(false);
-  const [lockReasonTarget, setLockReasonTarget] = useState(null); // userId
+  const [lockReasonTarget, setLockReasonTarget] = useState(null); 
   const [lockReasonText, setLockReasonText] = useState('');
   const [isLocking, setIsLocking] = useState(false);
 
-  // Forms
   const [addForm, setAddForm] = useState({
     name: '',
     email: '',
@@ -132,11 +124,9 @@ export default function AdminAccountsPage() {
     type: 'SYSTEM'
   });
 
-  // Pagination (mặc định hiển thị 5 tài khoản / trang)
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
-  // Close row action dropdown when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (actionMenuRef.current && !actionMenuRef.current.contains(e.target)) {
@@ -147,7 +137,6 @@ export default function AdminAccountsPage() {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // Fetch real users and stats from MongoDB Atlas via Backend API
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
@@ -164,8 +153,6 @@ export default function AdminAccountsPage() {
       }
 
       if (usersJson.success && Array.isArray(usersJson.data)) {
-        // Chuẩn hóa role từ DB sang đúng danh sách 6 vai trò người dùng yêu cầu:
-        // shopOwner, brandmanager, admin, customer, warehousestaff, warehouseManager
         const normalizeRole = (raw) => {
           const r = (raw || 'customer').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
           if (r === 'admin') return 'admin';
@@ -182,7 +169,7 @@ export default function AdminAccountsPage() {
           if (role === 'brandmanager') return '#7E22CE';
           if (role === 'warehouseManager') return '#0E7490';
           if (role === 'warehousestaff') return '#047857';
-          return '#0369A1'; // customer
+          return '#0369A1'; 
         };
 
         const mapped = usersJson.data.map(u => {
@@ -238,7 +225,6 @@ export default function AdminAccountsPage() {
     fetchUsers();
   }, []);
 
-  // Compute stats dynamically from real users data
   const stats = useMemo(() => {
     const total = backendStats?.total ?? users.length;
     const active = backendStats?.active ?? users.filter(u => u.status === 'ACTIVE').length;
@@ -260,10 +246,8 @@ export default function AdminAccountsPage() {
     };
   }, [users, backendStats]);
 
-  // Filtered Users based on Search & Selects
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
-      // Search
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchesName = u.name.toLowerCase().includes(query);
@@ -272,20 +256,17 @@ export default function AdminAccountsPage() {
         if (!matchesName && !matchesEmail && !matchesPhone) return false;
       }
 
-      // Role filter
       if (roleFilter !== 'ALL') {
         const filterKey = roleFilter.toLowerCase().replace(/[_\s-]/g, '');
         const userRoleKey = (u.role || '').toLowerCase().replace(/[_\s-]/g, '');
         if (userRoleKey !== filterKey) return false;
       }
 
-      // Status filter
       if (statusFilter !== 'ALL') {
         if (statusFilter === 'ACTIVE' && u.status !== 'ACTIVE') return false;
         if (statusFilter === 'LOCKED' && u.status !== 'LOCKED') return false;
       }
 
-      // Verification filter
       if (verifyFilter !== 'ALL') {
         if (verifyFilter === 'VERIFIED' && u.verified !== 'VERIFIED') return false;
         if (verifyFilter === 'UNVERIFIED' && u.verified !== 'UNVERIFIED') return false;
@@ -296,16 +277,13 @@ export default function AdminAccountsPage() {
     });
   }, [users, searchQuery, roleFilter, statusFilter, verifyFilter]);
 
-  // Total pages
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
 
-  // Paginated Users
   const paginatedUsers = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     return filteredUsers.slice(startIndex, startIndex + pageSize);
   }, [filteredUsers, currentPage, pageSize]);
 
-  // Select all handler
   const handleSelectAll = (e) => {
     if (e.target.checked) {
       setSelectedIds(paginatedUsers.map(u => u.id));
@@ -321,7 +299,6 @@ export default function AdminAccountsPage() {
     );
   };
 
-  // Toggle Lock/Unlock User with Backend API
   const handleToggleLock = async (userId) => {
     const target = users.find(u => u.id === userId);
     if (cannotLock(target)) {
@@ -336,7 +313,6 @@ export default function AdminAccountsPage() {
 
     const isCurrentlyLocked = target?.status === 'LOCKED';
 
-    // Nếu đang MỞ KHÓA — không cần lý do, thực hiện ngay
     if (isCurrentlyLocked) {
       try {
         const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, { method: 'PATCH' });
@@ -357,13 +333,11 @@ export default function AdminAccountsPage() {
       return;
     }
 
-    // Nếu đang KHÓA — mở modal nhập lý do
     setLockReasonTarget(userId);
     setLockReasonText('');
     setShowLockReasonModal(true);
   };
 
-  // Xác nhận khóa sau khi đã nhập lý do
   const confirmLockWithReason = async () => {
     const reason = lockReasonText.trim();
     if (!reason || reason.length < 5) {
@@ -398,7 +372,6 @@ export default function AdminAccountsPage() {
     }
   };
 
-  // Bulk Actions
   const handleBulkLock = async () => {
     const safeIds = selectedIds.filter(id => {
       const u = users.find(user => user.id === id);
@@ -431,7 +404,6 @@ export default function AdminAccountsPage() {
     showToast('Đã thực hiện mở khóa các tài khoản được chọn.', 'success');
   };
 
-  // Export list to CSV
   const handleExportCSV = () => {
     const listToExport = selectedIds.length > 0
       ? users.filter(u => selectedIds.includes(u.id))
@@ -460,7 +432,6 @@ export default function AdminAccountsPage() {
     showToast(`Đã xuất ${listToExport.length} tài khoản ra file CSV!`, 'success');
   };
 
-  // Open Edit Modal
   const openEditModalForUser = (user) => {
     if (!user) return;
     if (isUserAdmin(user)) {
@@ -490,7 +461,6 @@ export default function AdminAccountsPage() {
     setOpenActionId(null);
   };
 
-  // Avatar upload file handler
   const handleAvatarFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -517,13 +487,11 @@ export default function AdminAccountsPage() {
     reader.readAsDataURL(file);
   };
 
-  // Gỡ avatar quay về chữ cái đại diện
   const handleRemoveAvatar = () => {
     setEditForm(prev => ({ ...prev, avatar: '' }));
     showToast('Đã gỡ ảnh đại diện (sử dụng chữ cái mặc định)', 'info');
   };
 
-  // Save Edit User with Backend API & Validation
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!selectedUser) return;
@@ -543,7 +511,6 @@ export default function AdminAccountsPage() {
       return;
     }
 
-    // Validate using reusable frontend validation module
     const validation = validateEditForm(editForm);
     if (!validation.isValid) {
       setEditFormErrors(validation.errors);
@@ -593,11 +560,9 @@ export default function AdminAccountsPage() {
     }
   };
 
-  // Create New User with Backend API
   const handleCreateUser = async (e) => {
     e.preventDefault();
 
-    // Xác thực toàn diện theo form thiết kế
     const errors = {};
     if (!addForm.name || !addForm.name.trim()) {
       errors.name = 'Họ và tên không được để trống';
@@ -690,7 +655,6 @@ export default function AdminAccountsPage() {
     }
   };
 
-  // Open Reset Password Modal
   const openResetPasswordModal = (user) => {
     if (!user) return;
     if (isUserAdmin(user)) {
@@ -711,7 +675,6 @@ export default function AdminAccountsPage() {
     setOpenActionId(null);
   };
 
-  // Handle Confirm Reset Password via Backend API (saves DB, sends email & requires change)
   const handleConfirmResetPassword = async () => {
     if (!selectedUser) return;
     if (isCustomer(selectedUser)) {
@@ -751,7 +714,6 @@ export default function AdminAccountsPage() {
     }
   };
 
-  // Reset Filters
   const handleResetFilters = () => {
     setSearchQuery('');
     setRoleFilter('ALL');
@@ -761,23 +723,18 @@ export default function AdminAccountsPage() {
 
   return (
     <div className="admin-layout" style={{ backgroundColor: '#FBF9F5' }}>
-      {/* 1. TailAdmin Left Sidebar */}
       <AdminSidebar
         isCollapsed={isSidebarCollapsed}
         onToggle={() => setIsSidebarCollapsed(prev => !prev)}
       />
 
-      {/* 2. Main Viewport */}
       <div className="admin-main-viewport" style={{ backgroundColor: '#FBF9F5' }}>
-        {/* Top Navbar */}
         <AdminTopHeader
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
           breadcrumb="Quản lý người dùng"
         />
 
-        {/* 3. Accounts Management Body */}
         <div className="admin-acc-page" style={{ backgroundColor: '#FBF9F5' }}>
-          {/* Breadcrumb & Hero */}
           <div className="admin-acc-header">
 
             <div className="admin-acc-hero">
@@ -819,9 +776,7 @@ export default function AdminAccountsPage() {
             </div>
           </div>
 
-          {/* 4 Core Stat Cards (Calculated from Real MongoDB Data) */}
           <div className="admin-acc-kpis">
-            {/* Card 1: Tổng tài khoản */}
             <div className="admin-acc-kpi-card">
               <div className="admin-acc-kpi-icon blue">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -847,7 +802,6 @@ export default function AdminAccountsPage() {
               </div>
             </div>
 
-            {/* Card 2: Đang hoạt động */}
             <div className="admin-acc-kpi-card">
               <div className="admin-acc-kpi-icon green">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -871,7 +825,6 @@ export default function AdminAccountsPage() {
               </div>
             </div>
 
-            {/* Card 3: Chờ xác minh */}
             <div className="admin-acc-kpi-card">
               <div className="admin-acc-kpi-icon orange">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -891,7 +844,6 @@ export default function AdminAccountsPage() {
               </div>
             </div>
 
-            {/* Card 4: Tạm khóa */}
             <div className="admin-acc-kpi-card">
               <div className="admin-acc-kpi-icon red">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -912,9 +864,7 @@ export default function AdminAccountsPage() {
             </div>
           </div>
 
-          {/* Search & Filter Row */}
           <div className="admin-acc-filter-card">
-            {/* Search Input */}
             <div className="admin-acc-search-box">
               <span className="admin-acc-search-icon">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -947,7 +897,6 @@ export default function AdminAccountsPage() {
               )}
             </div>
 
-            {/* Role Select */}
             <select
               className="admin-acc-select"
               value={roleFilter}
@@ -965,7 +914,6 @@ export default function AdminAccountsPage() {
               <option value="admin">admin</option>
             </select>
 
-            {/* Status Select */}
             <select
               className="admin-acc-select"
               value={statusFilter}
@@ -979,7 +927,6 @@ export default function AdminAccountsPage() {
               <option value="LOCKED">Tạm khóa</option>
             </select>
 
-            {/* Verify Select */}
             <select
               className="admin-acc-select"
               value={verifyFilter}
@@ -993,8 +940,6 @@ export default function AdminAccountsPage() {
               <option value="UNVERIFIED">Chưa xác minh</option>
               <option value="PENDING">Chờ duyệt</option>
             </select>
-
-
 
             <button
               type="button"
@@ -1010,7 +955,6 @@ export default function AdminAccountsPage() {
             </button>
           </div>
 
-          {/* Bulk Action Sticky Bar */}
           {selectedIds.length > 0 && (
             <div className="admin-acc-bulk-bar">
               <div className="admin-acc-bulk-left">
@@ -1051,7 +995,6 @@ export default function AdminAccountsPage() {
             </div>
           )}
 
-          {/* Main Users Table Card */}
           <div className="admin-acc-table-card">
             <div className="admin-acc-table-responsive">
               <table className="admin-acc-table">
@@ -1084,7 +1027,6 @@ export default function AdminAccountsPage() {
                   ) : paginatedUsers.map((u, index) => {
                     const isRowSelected = selectedUser && selectedUser.id === u.id;
                     const isChecked = selectedIds.includes(u.id);
-                    // Khi danh sách ngắn (như 5 dòng), các dòng từ giữa trở xuống sẽ bung menu lên trên (drop-up)
                     const isNearBottom = index >= Math.max(1, paginatedUsers.length - 3);
 
                     return (
@@ -1102,7 +1044,6 @@ export default function AdminAccountsPage() {
                           zIndex: openActionId === u.id ? 25 : 1
                         }}
                       >
-                        {/* Checkbox */}
                         <td onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
@@ -1112,7 +1053,6 @@ export default function AdminAccountsPage() {
                           />
                         </td>
 
-                        {/* User Profile Cell */}
                         <td>
                           <div className="admin-acc-user-cell">
                             {u.avatar ? (
@@ -1132,14 +1072,12 @@ export default function AdminAccountsPage() {
                           </div>
                         </td>
 
-                        {/* Role */}
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <span className={`role-pill ${u.role}`}>
                             {u.role}
                           </span>
                         </td>
 
-                        {/* Verification */}
                         <td>
                           {u.verified === 'VERIFIED' && (
                             <span className="verify-pill verified">
@@ -1170,7 +1108,6 @@ export default function AdminAccountsPage() {
                           )}
                         </td>
 
-                        {/* Status */}
                         <td>
                           <span className={`status-dot-pill ${u.status === 'ACTIVE' ? 'active' : 'locked'}`}>
                             <span className="dot" />
@@ -1178,16 +1115,12 @@ export default function AdminAccountsPage() {
                           </span>
                         </td>
 
-                        {/* Join Date */}
                         <td style={{ color: '#475569' }}>{u.joinDate}</td>
 
-                        {/* Last Login */}
                         <td style={{ color: '#64748B' }}>{u.lastLogin}</td>
 
-                        {/* Action Buttons */}
                         <td onClick={(e) => e.stopPropagation()}>
                           <div className="admin-acc-action-cell" style={{ justifyContent: 'center', position: 'relative' }}>
-                            {/* Eye button */}
                             <button
                               type="button"
                               className="btn-acc-action"
@@ -1204,7 +1137,6 @@ export default function AdminAccountsPage() {
                               </svg>
                             </button>
 
-                            {/* Three dots button */}
                             <button
                               type="button"
                               className="btn-acc-action"
@@ -1218,7 +1150,6 @@ export default function AdminAccountsPage() {
                               </svg>
                             </button>
 
-                            {/* Dropdown Menu for Row */}
                             {openActionId === u.id && (
                               <div
                                 ref={actionMenuRef}
@@ -1339,7 +1270,6 @@ export default function AdminAccountsPage() {
               </table>
             </div>
 
-            {/* Pagination Controls */}
             <div className="admin-acc-pagination-bar">
               <div>
                 Hiển thị {filteredUsers.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} -{' '}
@@ -1406,9 +1336,6 @@ export default function AdminAccountsPage() {
         </div>
       </div>
 
-      {/* ==========================================================
-          DRAWER: CHI TIẾT TÀI KHOẢN (Right Slide-over Panel)
-          ========================================================== */}
       {drawerOpen && selectedUser && (
         <>
           <div
@@ -1417,7 +1344,6 @@ export default function AdminAccountsPage() {
           />
 
           <div className="admin-acc-drawer">
-            {/* Drawer Header */}
             <div className="admin-acc-drawer-header">
               <h3 className="admin-acc-drawer-title">Chi tiết tài khoản</h3>
               <button
@@ -1433,7 +1359,6 @@ export default function AdminAccountsPage() {
               </button>
             </div>
 
-            {/* User Identity Hero */}
             <div className="admin-acc-drawer-hero">
               {selectedUser.avatar ? (
                 <img
@@ -1457,7 +1382,6 @@ export default function AdminAccountsPage() {
               </span>
             </div>
 
-            {/* Drawer Tabs */}
             <div className="admin-acc-drawer-tabs">
               <button
                 type="button"
@@ -1493,11 +1417,9 @@ export default function AdminAccountsPage() {
               )}
             </div>
 
-            {/* Drawer Body Content */}
             <div className="admin-acc-drawer-body">
               {activeDrawerTab === 'INFO' && (
                 <>
-                  {/* Section 1: Thông tin cơ bản */}
                   <div>
                     <div className="admin-acc-sec-header">
                       <h4 className="admin-acc-sec-title">Thông tin cơ bản</h4>
@@ -1569,7 +1491,6 @@ export default function AdminAccountsPage() {
                     </div>
                   </div>
 
-                  {/* Section 2: Trạng thái & Xác minh */}
                   <div>
                     <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
                       Trạng thái &amp; Xác minh
@@ -1611,7 +1532,6 @@ export default function AdminAccountsPage() {
                     </div>
                   </div>
 
-                  {/* Section 3: Thống kê (Chỉ hiển thị riêng cho vai trò Customer, các role khác ẩn hoàn toàn) */}
                   {isCustomer(selectedUser) && (
                     <div>
                       <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
@@ -1619,7 +1539,6 @@ export default function AdminAccountsPage() {
                       </h4>
 
                       <div className="admin-acc-stats-grid">
-                        {/* Box 1 */}
                         <div className="admin-acc-stat-box">
                           <div className="admin-acc-stat-box-icon blue">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1633,7 +1552,6 @@ export default function AdminAccountsPage() {
                           <div className="admin-acc-stat-box-sub">{selectedUser.totalDeposit}</div>
                         </div>
 
-                        {/* Box 2 */}
                         <div className="admin-acc-stat-box">
                           <div className="admin-acc-stat-box-icon green">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1648,7 +1566,6 @@ export default function AdminAccountsPage() {
                           <div className="admin-acc-stat-box-sub">PayOS Bảo đảm</div>
                         </div>
 
-                        {/* Box 3 */}
                         <div className="admin-acc-stat-box">
                           <div className="admin-acc-stat-box-icon red">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1667,7 +1584,6 @@ export default function AdminAccountsPage() {
                     </div>
                   )}
 
-                  {/* Section 4: Thao tác nhanh */}
                   <div>
                     <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
                       Thao tác nhanh
@@ -1751,7 +1667,6 @@ export default function AdminAccountsPage() {
                 </>
               )}
 
-              {/* Tab 2: Hoạt động */}
               {activeDrawerTab === 'ACTIVITY' && (
                 <div>
                   <h4 className="admin-acc-sec-title" style={{ marginBottom: '14px' }}>
@@ -1772,7 +1687,6 @@ export default function AdminAccountsPage() {
                 </div>
               )}
 
-              {/* Tab 3: Giao dịch */}
               {activeDrawerTab === 'TRANSACTIONS' && (
                 <div>
                   <h4 className="admin-acc-sec-title" style={{ marginBottom: '14px' }}>
@@ -1794,7 +1708,6 @@ export default function AdminAccountsPage() {
                 </div>
               )}
 
-              {/* Tab 4: Vi phạm */}
               {activeDrawerTab === 'VIOLATIONS' && (
                 <div>
                   <h4 className="admin-acc-sec-title" style={{ marginBottom: '14px' }}>
@@ -1824,14 +1737,9 @@ export default function AdminAccountsPage() {
         </>
       )}
 
-      {/* ==========================================================
-      {/* ==========================================================
-          MODAL: THÊM NGƯỜI DÙNG MỚI (CHUẨN FORM 3 PHẦN THIẾT KẾ)
-          ========================================================== */}
       {showAddModal && (
         <div className="admin-acc-modal-overlay" onClick={() => setShowAddModal(false)}>
           <div className="admin-acc-modal-card admin-acc-add-user-modal" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
             <div className="admin-acc-modal-head-rich">
               <div className="admin-acc-modal-head-left">
                 <div className="admin-acc-modal-head-icon blue">
@@ -1864,7 +1772,6 @@ export default function AdminAccountsPage() {
 
             <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, overflow: 'hidden' }}>
               <div className="admin-acc-modal-body admin-acc-add-modal-body">
-                {/* 1. THÔNG TIN CƠ BẢN */}
                 <div>
                   <div className="admin-acc-section-head">
                     <span className="admin-acc-section-num">1</span>
@@ -1872,7 +1779,6 @@ export default function AdminAccountsPage() {
                   </div>
 
                   <div className="admin-acc-form-grid-2">
-                    {/* Họ và tên * */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Họ và tên <span style={{ color: '#EF4444' }}>*</span>
@@ -1892,7 +1798,6 @@ export default function AdminAccountsPage() {
                       )}
                     </div>
 
-                    {/* Email tài khoản * */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Email tài khoản <span style={{ color: '#EF4444' }}>*</span>
@@ -1927,7 +1832,6 @@ export default function AdminAccountsPage() {
                       )}
                     </div>
 
-                    {/* Số điện thoại * */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Số điện thoại <span style={{ color: '#EF4444' }}>*</span>
@@ -1955,7 +1859,6 @@ export default function AdminAccountsPage() {
                       )}
                     </div>
 
-                    {/* Vai trò * */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Vai trò <span style={{ color: '#EF4444' }}>*</span>
@@ -1989,7 +1892,6 @@ export default function AdminAccountsPage() {
                       )}
                     </div>
 
-                    {/* Trạng thái tài khoản * */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Trạng thái tài khoản <span style={{ color: '#EF4444' }}>*</span>
@@ -2013,7 +1915,6 @@ export default function AdminAccountsPage() {
                       </div>
                     </div>
 
-                    {/* Cửa hàng (nếu là nhân viên shop) */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Cửa hàng (nếu là nhân viên shop)
@@ -2043,7 +1944,6 @@ export default function AdminAccountsPage() {
                   </div>
                 </div>
 
-                {/* 2. THÔNG TIN ĐĂNG NHẬP */}
                 <div>
                   <div className="admin-acc-section-head">
                     <span className="admin-acc-section-num">2</span>
@@ -2051,7 +1951,6 @@ export default function AdminAccountsPage() {
                   </div>
 
                   <div className="admin-acc-form-grid-2">
-                    {/* Mật khẩu * */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Mật khẩu <span style={{ color: '#EF4444' }}>*</span>
@@ -2098,7 +1997,6 @@ export default function AdminAccountsPage() {
                         <span className="admin-acc-field-error">{addFormErrors.password}</span>
                       )}
 
-                      {/* Hộp gợi ý tiêu chuẩn mật khẩu */}
                       <div className="admin-acc-pwd-requirement-box">
                         <div className="admin-acc-pwd-requirement-title">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -2113,7 +2011,6 @@ export default function AdminAccountsPage() {
                       </div>
                     </div>
 
-                    {/* Xác nhận mật khẩu * */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">
                         Xác nhận mật khẩu <span style={{ color: '#EF4444' }}>*</span>
@@ -2163,7 +2060,6 @@ export default function AdminAccountsPage() {
                   </div>
                 </div>
 
-                {/* 3. PHÂN QUYỀN VÀ GHI CHÚ */}
                 <div>
                   <div className="admin-acc-section-head">
                     <span className="admin-acc-section-num">3</span>
@@ -2173,7 +2069,6 @@ export default function AdminAccountsPage() {
                   </div>
 
                   <div className="admin-acc-form-grid-2">
-                    {/* Nhóm quyền */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">Nhóm quyền</label>
                       <div className="admin-acc-input-wrap">
@@ -2199,7 +2094,6 @@ export default function AdminAccountsPage() {
                       </span>
                     </div>
 
-                    {/* Ghi chú */}
                     <div className="admin-acc-form-group">
                       <label className="admin-acc-form-label">Ghi chú</label>
                       <div className="admin-acc-input-wrap has-textarea" style={{ position: 'relative' }}>
@@ -2230,7 +2124,6 @@ export default function AdminAccountsPage() {
                   </div>
                 </div>
 
-                {/* Banner Thông báo */}
                 <div className="admin-acc-notify-banner">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <line x1="22" y1="2" x2="11" y2="13" />
@@ -2242,7 +2135,6 @@ export default function AdminAccountsPage() {
                 </div>
               </div>
 
-              {/* Modal Footer */}
               <div className="admin-acc-modal-foot-rich">
                 <button
                   type="button"
@@ -2270,16 +2162,9 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
-      {/* ==========================================================
-          MODAL: CHỈNH SỬA TÀI KHOẢN
-          ========================================================== */}
-      {/* ==========================================================
-          MODAL: CHỈNH SỬA HỒ SƠ TÀI KHOẢN (TailAdmin Rich Edit Modal)
-          ========================================================== */}
       {showEditModal && selectedUser && (
         <div className="admin-acc-modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="admin-acc-modal-card admin-acc-edit-card" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
             <div className="admin-acc-modal-head-rich">
               <div className="admin-acc-modal-head-left">
                 <div className="admin-acc-modal-head-icon blue">
@@ -2309,7 +2194,6 @@ export default function AdminAccountsPage() {
 
             <form onSubmit={handleSaveEdit} className="admin-acc-edit-form">
               <div className="admin-acc-modal-body admin-acc-edit-modal-body">
-                {/* 1. Phần Chỉnh Sửa Avatar */}
                 <div className="admin-acc-edit-avatar-box">
                   <div className="admin-acc-edit-avatar-preview-wrap">
                     {editForm.avatar ? (
@@ -2377,7 +2261,6 @@ export default function AdminAccountsPage() {
                   <span className="admin-acc-field-error">{editFormErrors.avatar}</span>
                 )}
 
-                {/* 2. Họ và tên * */}
                 <div className="admin-acc-form-group">
                   <label className="admin-acc-form-label">
                     Họ và tên <span style={{ color: '#EF4444' }}>*</span>
@@ -2406,7 +2289,6 @@ export default function AdminAccountsPage() {
                   )}
                 </div>
 
-                {/* 3. Row: Email * | Số điện thoại */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '14px' }}>
                   <div className="admin-acc-form-group">
                     <label className="admin-acc-form-label">
@@ -2454,7 +2336,6 @@ export default function AdminAccountsPage() {
                   </div>
                 </div>
 
-                {/* 4. Row: Vai trò nhân viên * (Chỉ cho phép các role nhân viên, trừ admin và customer) */}
                 <div className="admin-acc-form-group">
                   <label className="admin-acc-form-label">
                     Vai trò nhân viên <span style={{ color: '#EF4444' }}>*</span>
@@ -2490,7 +2371,6 @@ export default function AdminAccountsPage() {
                   </span>
                 </div>
 
-                {/* 4. Row: Ngày sinh | Giới tính */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                   <div className="admin-acc-form-group">
                     <label className="admin-acc-form-label">Ngày sinh</label>
@@ -2548,7 +2428,6 @@ export default function AdminAccountsPage() {
                   </div>
                 </div>
 
-                {/* 5. Địa chỉ */}
                 <div className="admin-acc-form-group">
                   <label className="admin-acc-form-label">Địa chỉ</label>
                   <div className="admin-acc-input-wrap has-textarea">
@@ -2574,7 +2453,6 @@ export default function AdminAccountsPage() {
                   )}
                 </div>
 
-                {/* 6. Info Banner Alert */}
                 <div className="admin-acc-edit-info-alert">
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <circle cx="12" cy="12" r="10" />
@@ -2585,7 +2463,6 @@ export default function AdminAccountsPage() {
                 </div>
               </div>
 
-              {/* Modal Footer */}
               <div className="admin-acc-modal-foot-rich">
                 <button
                   type="button"
@@ -2611,9 +2488,6 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
-      {/* ==========================================================
-          MODAL: ĐẶT LẠI MẬT KHẨU
-          ========================================================== */}
       {showResetPwdModal && selectedUser && (
         <div className="admin-acc-modal-overlay" onClick={() => setShowResetPwdModal(false)}>
           <div className="admin-acc-modal-card" onClick={(e) => e.stopPropagation()}>
@@ -2705,9 +2579,6 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
-      {/* ==========================================================
-          MODAL: GỬI THÔNG BÁO TỚI USER
-          ========================================================== */}
       {showNotifyModal && selectedUser && (
         <div className="admin-acc-modal-overlay" onClick={() => setShowNotifyModal(false)}>
           <div className="admin-acc-modal-card" onClick={(e) => e.stopPropagation()}>
@@ -2785,7 +2656,6 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
-      {/* ========== MODAL: Lý Do Khóa Tài Khoản (Theme Sáng + Font Awesome) ========== */}
       {showLockReasonModal && (
         <div
           style={{
@@ -2815,7 +2685,6 @@ export default function AdminAccountsPage() {
               overflow: 'hidden'
             }}
           >
-            {/* Header */}
             <div
               style={{
                 padding: '20px 24px',
@@ -2872,7 +2741,6 @@ export default function AdminAccountsPage() {
               </button>
             </div>
 
-            {/* Body */}
             <div style={{ padding: '24px' }}>
               <div
                 style={{
@@ -2959,7 +2827,6 @@ export default function AdminAccountsPage() {
               </div>
             </div>
 
-            {/* Footer */}
             <div
               style={{
                 padding: '16px 24px',
@@ -3029,7 +2896,6 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
-      {/* Toast Notification Container */}
       {toasts.length > 0 && (
         <div
           style={{

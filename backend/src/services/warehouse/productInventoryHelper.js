@@ -96,8 +96,16 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
     const getOrInitLocation = (loc) => {
       const locId = loc ? String(loc._id || loc) : 'unknown';
       if (!locationMap.has(locId)) {
+        const resolvedShopId =
+          loc?.shopId?._id ||
+          loc?.shopId ||
+          product?.shopId?._id ||
+          (typeof product?.shopId === 'object' ? null : product?.shopId) ||
+          null;
+
         locationMap.set(locId, {
           locationId: loc ? (loc._id || loc) : null,
+          shopId: resolvedShopId,
           name: loc?.name || 'Chi nhánh kho',
           type: loc?.type || 'store',
           address: formatLocationAddress(loc),
@@ -143,7 +151,6 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
     for (const [locId, entry] of locationMap.entries()) {
       let locOnHand = 0;
       let locAvailable = 0;
-
       if (isIndividual) {
         locOnHand = entry.itemsOnHand > 0 ? entry.itemsOnHand : entry.balanceOnHand;
         locAvailable = entry.itemsOnHand > 0 ? entry.itemsAvailable : entry.balanceAvailable;
@@ -164,6 +171,7 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
       if (!isWarehouse && (locOnHand > 0 || locAvailable > 0 || locationMap.size === 1)) {
         branches.push({
           locationId: entry.locationId,
+          shopId: entry.shopId,
           name: entry.name,
           type: entry.type,
           address: entry.address,

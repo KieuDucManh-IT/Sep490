@@ -445,7 +445,20 @@ export default function ProductDetailPage() {
 
     try {
       showToast('Đang kết nối với Shop...', 'info');
-      const targetShopId = product?.shopId?._id || product?.shopId;
+      let targetShopId = null;
+      if (currentSelectedBranch?.shopId) {
+        targetShopId =
+          typeof currentSelectedBranch.shopId === 'object'
+            ? currentSelectedBranch.shopId._id
+            : currentSelectedBranch.shopId;
+      }
+      if (!targetShopId && product?.shopId) {
+        if (typeof product.shopId === 'object' && product.shopId._id) {
+          targetShopId = product.shopId._id;
+        } else if (typeof product.shopId === 'string' && product.shopId.length === 24) {
+          targetShopId = product.shopId;
+        }
+      }
       const res = await chatApi.getOrCreateConversation({
         productId: product?._id,
         shopId: targetShopId,

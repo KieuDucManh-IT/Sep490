@@ -4,18 +4,26 @@ import Message from '../models/chat/Message.js';
 import Shop from '../models/shop/Shop.js';
 import { Product } from '../models/masterdata/Product.js';
 import { ProductImage } from '../models/masterdata/ProductImages.js';
+import { ProductVariant } from '../models/masterdata/ProductVariant.js';
+import { InventoryBalance } from '../models/warehouse/inventory/InventoryBalance.js';
+import { InventoryItem } from '../models/warehouse/inventory/InventoryItem.js';
+import { InventoryLocation } from '../models/warehouse/location/InventoryLocation.js';
 import User from '../models/system/User.js';
-import { Notification } from '../models/system/Notification.js';
 
-// Chuẩn hóa role sang chữ thường
-const normalizeRole = (role) => String(role || '').trim().toLowerCase();
+// Chuẩn hóa role sang chữ thường và loại bỏ ký tự khoảng trắng/gạch nối
+const cleanRole = (role) =>
+  String(role || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]/g, '')
+    .replace('brandmanager', 'branchmanager');
 
 /**
  * Kiểm tra xem user có phải là admin không
  * Theo yêu cầu người dùng: "bỏ role admin ko can thiệp vào" -> Admin bị từ chối truy cập chat riêng tư.
  */
 export const checkNotAdmin = (userRole) => {
-  const r = normalizeRole(userRole);
+  const r = cleanRole(userRole);
   if (r === 'admin') {
     const error = new Error('Quản trị viên (Admin) không có quyền truy cập vào cuộc trò chuyện riêng tư của Shop và Khách hàng.');
     error.status = 403;
@@ -28,34 +36,60 @@ export const checkNotAdmin = (userRole) => {
  */
 export const isUserShopManagerOrOwner = async (userId, shopId) => {
   if (!userId || !shopId) return false;
+  const sId = shopId._id || shopId;
+
+  // 1. Kiểm tra trực tiếp trên Shop
   const shop = await Shop.findOne({
-    _id: shopId,
+    _id: sId,
     isDeleted: { $ne: true },
     $or: [{ managerId: userId }, { ownerId: userId }],
   }).lean();
-  return Boolean(shop);
+  if (shop) return true;
+
+  // 2. Kiểm tra nếu user là quản lý kho/cửa hàng của Shop đó
+  const loc = await InventoryLocation.findOne({
+    shopId: sId,
+    managerId: userId,
+  }).lean();
+  return Boolean(loc);
 };
 
 /**
  * Lấy danh sách Shop ID mà User phụ trách (với vai trò Brand Manager hoặc Shop Owner)
  */
 export const getUserManagedShopIds = async (userId, userRole) => {
-  const r = normalizeRole(userRole);
+  const r = cleanRole(userRole);
   if (r === 'admin') return []; // Admin không can thiệp
 
-  if (r === 'branch_manager' || r === 'brandmanager' || r === 'brand_manager') {
-    const shops = await Shop.find({
-      managerId: userId,
-      isDeleted: { $ne: true },
-    }).select('_id').lean();
-    return shops.map((s) => s._id);
+  if (r === 'branchmanager') {
+    const [shopsAsManager, locsAsManager] = await Promise.all([
+      Shop.find({
+        $or: [{ managerId: userId }, { ownerId: userId }],
+        isDeleted: { $ne: true },
+      }).select('_id').lean(),
+      InventoryLocation.find({
+        managerId: userId,
+        shopId: { $ne: null },
+      }).select('shopId').lean(),
+    ]);
+
+    const ids = new Set([
+      ...shopsAsManager.map((s) => String(s._id)),
+      ...locsAsManager.map((l) => String(l.shopId)),
+    ]);
+    return Array.from(ids);
   }
 
-  if (r === 'owner' || r === 'shop_owner' || r === 'shopowner') {
-    const shops = await Shop.find({
+  if (r === 'owner' || r === 'shopowner') {
+    let shops = await Shop.find({
       $or: [{ ownerId: userId }, { managerId: userId }],
       isDeleted: { $ne: true },
     }).select('_id').lean();
+
+    // Nếu shop chưa gắn ownerId cụ thể, fallback toàn bộ shop đang hoạt động
+    if (shops.length === 0) {
+      shops = await Shop.find({ isDeleted: { $ne: true } }).select('_id').lean();
+    }
     return shops.map((s) => s._id);
   }
 
@@ -68,7 +102,15 @@ export const getUserManagedShopIds = async (userId, userRole) => {
 export const getOrCreateConversation = async ({ userId, userRole, productId, shopId }) => {
   checkNotAdmin(userRole);
 
-  let targetShopId = shopId;
+  let targetShopId = null;
+  if (shopId) {
+    if (typeof shopId === 'object' && shopId !== null) {
+      targetShopId = shopId._id || shopId.id || null;
+    } else if (typeof shopId === 'string' && mongoose.Types.ObjectId.isValid(shopId)) {
+      targetShopId = shopId;
+    }
+  }
+
   let productData = null;
 
   // Nếu có productId, xác thực từ database sản phẩm
@@ -89,13 +131,59 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
       throw err;
     }
 
-    if (!product.shopId) {
-      const err = new Error('Sản phẩm chưa được gán cho Shop nào');
-      err.status = 400;
-      throw err;
+    // 1. Ưu tiên shopId từ sản phẩm nếu targetShopId chưa có
+    if (!targetShopId && product.shopId) {
+      if (typeof product.shopId === 'object' && product.shopId._id) {
+        targetShopId = product.shopId._id;
+      } else if (mongoose.Types.ObjectId.isValid(product.shopId)) {
+        targetShopId = product.shopId;
+      }
     }
 
-    targetShopId = product.shopId._id || product.shopId;
+    // 2. Nếu sản phẩm chưa có shopId, tìm từ InventoryLocation của biến thể
+    if (!targetShopId) {
+      try {
+        const variants = await ProductVariant.find({ productId: product._id }).select('_id').lean();
+        const variantIds = variants.map((v) => v._id);
+        if (variantIds.length > 0) {
+          const itemWithLoc = await InventoryItem.findOne({
+            variantId: { $in: variantIds },
+            locationId: { $ne: null },
+          }).populate('locationId').lean();
+
+          if (itemWithLoc?.locationId?.shopId) {
+            targetShopId = itemWithLoc.locationId.shopId._id || itemWithLoc.locationId.shopId;
+          } else {
+            const balanceWithLoc = await InventoryBalance.findOne({
+              variantId: { $in: variantIds },
+              locationId: { $ne: null },
+            }).populate('locationId').lean();
+            if (balanceWithLoc?.locationId?.shopId) {
+              targetShopId = balanceWithLoc.locationId.shopId._id || balanceWithLoc.locationId.shopId;
+            }
+          }
+        }
+      } catch (locErr) {
+        console.warn('Lỗi tìm Shop từ InventoryLocation:', locErr.message);
+      }
+    }
+
+    // 3. Nếu vẫn chưa có targetShopId, fallback về Trụ sở chính (HQ) hoặc Shop đầu tiên
+    if (!targetShopId) {
+      const defaultShop =
+        (await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } }).lean()) ||
+        (await Shop.findOne({ isDeleted: { $ne: true } }).lean());
+      if (defaultShop) {
+        targetShopId = defaultShop._id;
+      }
+    }
+
+    // Tự động liên kết shopId cho sản phẩm nếu trước đó bị thiếu
+    if (targetShopId && (!product.shopId || !product.shopId._id)) {
+      try {
+        await Product.updateOne({ _id: product._id }, { $set: { shopId: targetShopId } });
+      } catch (_) {}
+    }
 
     // Lấy ảnh đại diện sản phẩm
     let primaryImage = '';
@@ -119,10 +207,18 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
     };
   }
 
+  // Fallback an toàn nếu chưa có targetShopId
   if (!targetShopId || !mongoose.Types.ObjectId.isValid(targetShopId)) {
-    const err = new Error('Shop ID không hợp lệ hoặc không xác định được Shop');
-    err.status = 400;
-    throw err;
+    const anyShop =
+      (await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } }).lean()) ||
+      (await Shop.findOne({ isDeleted: { $ne: true } }).lean());
+    if (anyShop) {
+      targetShopId = anyShop._id;
+    } else {
+      const err = new Error('Hệ thống chưa tìm thấy thông tin Gian hàng phù hợp.');
+      err.status = 400;
+      throw err;
+    }
   }
 
   const shop = await Shop.findOne({ _id: targetShopId, isDeleted: { $ne: true } }).lean();
@@ -130,6 +226,19 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
     const err = new Error('Gian hàng không tồn tại hoặc đã ngừng hoạt động');
     err.status = 404;
     throw err;
+  }
+
+  // Đảm bảo Shop có ownerId nếu bị thiếu trong DB
+  let resolvedOwnerId = shop.ownerId;
+  if (!resolvedOwnerId) {
+    const anyOwner = await User.findOne({
+      Role: { $in: ['owner', 'shop_owner', 'shopowner', 'OWNER', 'SHOP_OWNER', 'SHOPOWNER'] },
+      Status: 'active',
+    }).select('_id').lean();
+    if (anyOwner) {
+      resolvedOwnerId = anyOwner._id;
+      await Shop.updateOne({ _id: shop._id }, { $set: { ownerId: anyOwner._id } });
+    }
   }
 
   const customerId = userId;
@@ -157,8 +266,8 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
       conversation.participants.push(shop.managerId);
       hasChanges = true;
     }
-    if (shop.ownerId && !existingParticipants.includes(String(shop.ownerId))) {
-      conversation.participants.push(shop.ownerId);
+    if (resolvedOwnerId && !existingParticipants.includes(String(resolvedOwnerId))) {
+      conversation.participants.push(resolvedOwnerId);
       hasChanges = true;
     }
 
@@ -171,8 +280,8 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
     if (shop.managerId && String(shop.managerId) !== String(customerId)) {
       participants.push(shop.managerId);
     }
-    if (shop.ownerId && String(shop.ownerId) !== String(customerId) && !participants.includes(shop.ownerId)) {
-      participants.push(shop.ownerId);
+    if (resolvedOwnerId && String(resolvedOwnerId) !== String(customerId) && !participants.includes(resolvedOwnerId)) {
+      participants.push(resolvedOwnerId);
     }
 
     const unreadMap = new Map();
@@ -242,19 +351,15 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
 export const listConversations = async ({ userId, userRole, status, search, page = 1, limit = 30 }) => {
   checkNotAdmin(userRole);
 
-  const r = normalizeRole(userRole);
+  const r = cleanRole(userRole);
   let filter = {};
 
   if (r === 'customer') {
     filter.customerId = userId;
-  } else if (r === 'branch_manager' || r === 'brandmanager' || r === 'brand_manager') {
-    const shopIds = await getUserManagedShopIds(userId, userRole);
-    filter.shopId = { $in: shopIds };
-  } else if (r === 'owner' || r === 'shop_owner' || r === 'shopowner') {
+  } else if (r === 'branchmanager' || r === 'owner' || r === 'shopowner') {
     const shopIds = await getUserManagedShopIds(userId, userRole);
     filter.shopId = { $in: shopIds };
   } else {
-    // Các role khác không được phép truy cập
     return { conversations: [], total: 0, page, totalPages: 0 };
   }
 
@@ -336,12 +441,14 @@ export const getConversationById = async ({ conversationId, userId, userRole }) 
   }
 
   // Xác thực quyền truy cập
-  const r = normalizeRole(userRole);
+  const r = cleanRole(userRole);
   const isCustomerOwner = String(conv.customerId?._id || conv.customerId) === String(userId);
   const isShopManager = String(conv.shopId?.managerId) === String(userId);
   const isShopOwner = String(conv.shopId?.ownerId) === String(userId);
+  const isStaffAllowed = await isUserShopManagerOrOwner(userId, conv.shopId?._id || conv.shopId);
+  const isOwnerRole = ['owner', 'shopowner'].includes(r);
 
-  if (!isCustomerOwner && !isShopManager && !isShopOwner) {
+  if (!isCustomerOwner && !isShopManager && !isShopOwner && !isStaffAllowed && !isOwnerRole) {
     const err = new Error('Bạn không có quyền truy cập cuộc trò chuyện này');
     err.status = 403;
     throw err;
@@ -385,7 +492,7 @@ export const getMessages = async ({ conversationId, userId, userRole, before, li
   const hasMore = rawMessages.length > safeLimit;
   const messagesToReturn = hasMore ? rawMessages.slice(0, safeLimit) : rawMessages;
 
-  // Đảo lại thứ tự thời gian tăng dần để frontend hiển thị từ trên xuống dưới
+  // Đảo lại theo thứ tự thời gian tăng dần để client hiển thị từ cũ đến mới
   messagesToReturn.reverse();
 
   const nextCursor = hasMore && messagesToReturn.length > 0 ? messagesToReturn[0].createdAt : null;
@@ -419,11 +526,14 @@ export const sendMessage = async ({
   }
 
   // Kiểm tra quyền gửi tin
+  const r = cleanRole(senderRole);
   const isCustomer = String(conv.customerId) === String(senderId);
   const isManager = String(conv.shopId?.managerId) === String(senderId);
   const isOwner = String(conv.shopId?.ownerId) === String(senderId);
+  const isStaffAllowed = await isUserShopManagerOrOwner(senderId, conv.shopId?._id || conv.shopId);
+  const isOwnerRole = ['owner', 'shopowner'].includes(r);
 
-  if (!isCustomer && !isManager && !isOwner) {
+  if (!isCustomer && !isManager && !isOwner && !isStaffAllowed && !isOwnerRole) {
     const err = new Error('Bạn không có quyền gửi tin nhắn trong cuộc trò chuyện này');
     err.status = 403;
     throw err;
@@ -456,7 +566,7 @@ export const sendMessage = async ({
     messageType = 'PRODUCT_CARD';
   }
 
-  const normalizedRole = isCustomer ? 'customer' : isManager ? 'branch_manager' : 'owner';
+  const normalizedRole = isCustomer ? 'customer' : (isManager || r === 'branchmanager') ? 'branch_manager' : 'owner';
 
   const message = new Message({
     conversationId,
@@ -557,10 +667,13 @@ export const updateConversationStatus = async ({ conversationId, userId, userRol
     throw err;
   }
 
+  const r = cleanRole(userRole);
   const isManager = String(conv.shopId?.managerId) === String(userId);
   const isOwner = String(conv.shopId?.ownerId) === String(userId);
+  const isStaffAllowed = await isUserShopManagerOrOwner(userId, conv.shopId?._id || conv.shopId);
+  const isOwnerRole = ['owner', 'shopowner'].includes(r);
 
-  if (!isManager && !isOwner) {
+  if (!isManager && !isOwner && !isStaffAllowed && !isOwnerRole) {
     const err = new Error('Chỉ Quản lý hoặc Chủ gian hàng mới có quyền thay đổi trạng thái cuộc trò chuyện');
     err.status = 403;
     throw err;
@@ -580,4 +693,3 @@ const populateConversation = async (conversationId) => {
     .populate('assignedManagerId', 'FullName Email Avatar Phone')
     .lean();
 };
-

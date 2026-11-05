@@ -1,9 +1,6 @@
 import { Shop } from '../models/shop/Shop.js';
 import { User } from '../models/system/User.js';
 
-/**
- * View chain-wide statistics and analytical metrics
- */
 export const getAdminMetrics = async (req, res) => {
   try {
     const [userFacet, branchFacet] = await Promise.all([
@@ -67,9 +64,6 @@ export const getAdminMetrics = async (req, res) => {
   }
 };
 
-/**
- * Retrieve internal product listings pending moderation
- */
 export const getPendingModeration = async (req, res) => {
   try {
     res.json({

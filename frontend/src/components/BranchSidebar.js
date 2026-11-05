@@ -217,7 +217,7 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
             path: '/branch/chat',
             label: 'Tư Vấn Khách Hàng',
             icon: MessageSquareText,
-            desc: 'Nhắn tin tư vấn trực tiếp theo thời gian thực',
+            desc: 'Nhắn tin tư vấn trực tiếp',
           },
           {
             path: '/branch/reviews',

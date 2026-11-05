@@ -157,7 +157,7 @@ export default function BranchChatPage() {
         <OwnerTopHeader
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-          breadcrumb="Tư Vấn Khách Hàng (Chat Thời Gian Thực)"
+          breadcrumb="Tư Vấn Khách Hàng"
         />
 
         <div style={{ height: 'calc(100vh - 70px)', overflow: 'hidden' }}>

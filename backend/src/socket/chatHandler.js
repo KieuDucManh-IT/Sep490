@@ -83,10 +83,22 @@ export default function registerChatHandlers(io, socket) {
         });
 
         // 3. Cập nhật danh sách hội thoại cho tất cả các bên tham gia (kể cả khi chưa mở phòng chat)
-        const conv = await Conversation.findById(conversationId).select('participants').lean();
-        if (conv?.participants) {
-          conv.participants.forEach((pId) => {
-            io.to(`user:${String(pId)}`).emit('conversation:updated', {
+        const conv = await Conversation.findById(conversationId)
+          .select('participants shopId customerId')
+          .populate('shopId', 'ownerId managerId')
+          .lean();
+
+        if (conv) {
+          const recipientIds = new Set();
+          if (conv.customerId) recipientIds.add(String(conv.customerId));
+          if (conv.shopId?.ownerId) recipientIds.add(String(conv.shopId.ownerId));
+          if (conv.shopId?.managerId) recipientIds.add(String(conv.shopId.managerId));
+          if (Array.isArray(conv.participants)) {
+            conv.participants.forEach((p) => recipientIds.add(String(p)));
+          }
+
+          recipientIds.forEach((pId) => {
+            io.to(`user:${pId}`).emit('conversation:updated', {
               conversationId,
               lastMessage: message,
             });
@@ -156,4 +168,3 @@ export default function registerChatHandlers(io, socket) {
     });
   });
 }
-

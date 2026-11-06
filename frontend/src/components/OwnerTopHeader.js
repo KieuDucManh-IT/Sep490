@@ -22,13 +22,6 @@ import { useAuth } from '../context/AuthContext';
 import { getAssignedBranchApi } from '../services/shopApi';
 import '../styles/ShopDashboard.css';
 
-/**
- * OwnerTopHeader - Luxury Top Navigation Bar for Shop Owner
- * Compliant with:
- *  - react-best-practices: route-aware auto breadcrumb inference, derived state, stable callbacks
- *  - ui-styling & ui-ux-pro-max: >=44px touch targets, gold/obsidian atelier palette, glassmorphism blur
- *  - web-design-guidelines: semantic HTML5, accessible ARIA roles, keyboard Escape/outside click handlers
- */
 export default function OwnerTopHeader({
   onToggleSidebar,
   isSidebarCollapsed,
@@ -199,11 +192,17 @@ export default function OwnerTopHeader({
   // Synchronize branch updates across components and window storage events
   useEffect(() => {
     const handleBranchChanged = (e) => {
+      const branchId = e.detail?.branchId || e.detail?.branch?._id;
       const newBranch = e.detail?.branch;
-      if (newBranch) {
+      if (newBranch && (newBranch.name || newBranch.shopName)) {
         setAssignedBranch(newBranch);
-      } else if (e.detail?.branchId) {
-        loadBranchData(e.detail.branchId);
+      } else if (branchId) {
+        const found = managedBranches.find((b) => String(b._id) === String(branchId));
+        if (found) {
+          setAssignedBranch(found);
+        } else {
+          loadBranchData(branchId);
+        }
       }
     };
     const handleStorageChange = () => {
@@ -221,7 +220,7 @@ export default function OwnerTopHeader({
       window.removeEventListener('vestora_branch_changed', handleBranchChanged);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [loadBranchData]);
+  }, [loadBranchData, managedBranches]);
 
   const handleSelectBranch = useCallback((branch) => {
     if (!branch) return;

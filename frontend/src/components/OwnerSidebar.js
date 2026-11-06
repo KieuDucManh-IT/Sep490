@@ -8,6 +8,8 @@ import {
   BarChart3,
   Scale,
   Compass,
+  CalendarRange,
+  ShoppingBag,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -15,14 +17,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import '../styles/ShopDashboard.css';
 
-/**
- * OwnerSidebar - Luxury Navigation Taskbar for Shop Owner Role
- * Completely synchronized and compatible with BranchSidebar
- * Compliant with:
- *  - react-best-practices: derived memoized state, stable callbacks, bundle-friendly imports
- *  - ui-styling & ui-ux-pro-max: >=44px touch targets, obsidian/gold atelier palette, centered brand header
- *  - web-design-guidelines: semantic HTML, accessible ARIA, keyboard focus-visible rings
- */
 export default function OwnerSidebar({ isCollapsed: externalCollapsed, onToggle: externalOnToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -122,6 +116,18 @@ export default function OwnerSidebar({ isCollapsed: externalCollapsed, onToggle:
           desc: 'Báo cáo tổng hợp vận hành toàn chuỗi',
         },
         {
+          path: '/owner/rental-orders',
+          label: 'Theo Dõi Đơn Thuê',
+          icon: CalendarRange,
+          desc: 'Giám sát chu kỳ thuê & cọc toàn chuỗi',
+        },
+        {
+          path: '/owner/sale-orders',
+          label: 'Theo Dõi Đơn Mua',
+          icon: ShoppingBag,
+          desc: 'Giám sát các đơn bán & giao vận đa cơ sở',
+        },
+        {
           path: '/owner/branches',
           label: 'Quản Lý Chi Nhánh',
           icon: Store,
@@ -165,7 +171,7 @@ export default function OwnerSidebar({ isCollapsed: externalCollapsed, onToggle:
               path: '/owner/disputes',
               label: 'Khiếu Nại & Cọc',
               icon: Scale,
-              desc: 'Xử lý tranh chấp và tiền cọc Escrow',
+              desc: 'Xử lý tranh chấp và tiền cọc',
             },
           ],
         },

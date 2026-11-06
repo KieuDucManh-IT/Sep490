@@ -1,0 +1,427 @@
+import React, { useState, useEffect } from 'react';
+import { Modal } from 'react-bootstrap';
+import {
+  User,
+  Truck,
+  ShieldCheck,
+  Printer,
+  CheckCircle2,
+  Search,
+  CalendarRange,
+  Clock,
+  AlertCircle,
+  MapPin,
+  Phone,
+  Mail,
+} from 'lucide-react';
+import { getRentalOrderDetailApi } from '../../services/orderApi';
+import {
+  formatCurrency,
+  formatDate,
+  RENTAL_STATUS_MAP,
+  DEPOSIT_STATUS_MAP,
+} from './orderUtils';
+import '../../styles/ShopBranches.css';
+import '../../styles/OrderMonitoring.css';
+
+export default function RentalOrderDetailModal({
+  isOpen,
+  onClose,
+  orderId,
+  initialOrder = null,
+  isReadOnly = false,
+  onAction = () => {},
+}) {
+  const [loading, setLoading] = useState(false);
+  const [detailData, setDetailData] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || !orderId) {
+      setDetailData(null);
+      setError('');
+      return;
+    }
+
+    let isMounted = true;
+    setLoading(true);
+    setError('');
+
+    getRentalOrderDetailApi(orderId)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.success && res.data) {
+          setDetailData(res.data);
+        } else {
+          setError(res.message || 'Không thể tải chi tiết đơn thuê.');
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setError(err.message || 'Không thể tải chi tiết đơn thuê.');
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, orderId]);
+
+  if (!isOpen) return null;
+
+  const order = detailData?.order || detailData || initialOrder || {};
+  const customer = order.customerId || order.customerInfo || order.customer || {};
+  const customerName = customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
+  const customerPhone = customer.Information?.Phone || customer.phone || 'Chưa cập nhật';
+  const customerEmail = customer.Email || customer.email || '';
+  const customerAddress = customer.Information?.Address || customer.address || '';
+  const items = detailData?.items || order.items || initialOrder?.items || [];
+  const shipments = detailData?.shipments || order.shipments || [];
+
+  const statusDef = RENTAL_STATUS_MAP[order.rentalStatus || order.status] || {
+    text: order.rentalStatus || order.status || 'Chưa xác định',
+    chipClass: 'draft',
+  };
+
+  const depositDef = DEPOSIT_STATUS_MAP[order.depositStatus] || {
+    text: order.depositStatus || 'Chưa đặt cọc',
+    chipClass: 'pending',
+  };
+
+  const branchName =
+    order.locationId?.shopId?.name ||
+    order.locationId?.name ||
+    order.branchId?.name ||
+    order.branchId?.shopName ||
+    order.branchName ||
+    'Chi nhánh hệ thống';
+
+  const isHQ = Boolean(
+    order.locationId?.shopId?.isHQ ||
+    order.locationId?.isHQ ||
+    order.shopId?.isHQ ||
+    order.isHQ ||
+    order.branchId?.isHQ
+  );
+
+  return (
+    <Modal
+      show={isOpen}
+      onHide={onClose}
+      dialogClassName="vestora-modal-dialog"
+      centered
+      backdrop="static"
+      animation
+      size="lg"
+    >
+      {/* 1. Modal Header */}
+      <div className="vestora-modal-header">
+        <div className="modal-header-brand-wrap">
+          <div className="modal-header-icon-badge create">
+            <CalendarRange size={20} />
+          </div>
+          <div>
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <h5 className="modal-title-main">
+                Đơn Thuê #{order.orderCode || String(order._id || '').slice(-6).toUpperCase()}
+              </h5>
+              <span className={`order-badge ${statusDef.chipClass}`}>
+                <span className="order-badge-dot" />
+                {statusDef.text}
+              </span>
+              {isReadOnly ? (
+                <span className="order-readonly-badge">
+                </span>
+              ) : (
+                <span className="order-active-branch-badge">
+                  <MapPin size={12} />
+                  <span>{branchName}</span>
+                  {isHQ && <span className="branch-tag-hq ms-1">Trụ sở chính</span>}
+                </span>
+              )}
+            </div>
+            <p className="modal-subtitle-text">
+              Ngày tạo: {formatDate(order.createdAt)} • Chi nhánh phục vụ: {branchName}
+              {isHQ && <span className="branch-tag-hq ms-2">Trụ sở chính</span>}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn-close"
+          onClick={onClose}
+          aria-label="Đóng"
+        />
+      </div>
+
+      {/* 2. Modal Body */}
+      <div className="vestora-modal-body">
+        {loading ? (
+          <div className="p-4 text-center">
+            <div className="order-skeleton" style={{ height: '70px', marginBottom: '16px' }} />
+            <div className="order-skeleton" style={{ height: '140px', marginBottom: '16px' }} />
+            <div className="order-skeleton" style={{ height: '90px' }} />
+          </div>
+        ) : error ? (
+          <div className="order-error-banner m-3">
+            <AlertCircle size={18} />
+            <span>{error}</span>
+          </div>
+        ) : (
+          <>
+            {/* Section 1: Khách hàng & Lịch trình thuê */}
+            <div className="modal-section-card">
+              <div className="modal-section-header">
+                <span className="modal-section-title">
+                  <User size={16} className="text-primary me-2" />
+                  <span>1. Khách Hàng & Thời Gian Thuê</span>
+                </span>
+                <span className="modal-section-badge">
+                  {branchName}
+                </span>
+              </div>
+
+              <div className="row g-3">
+                <div className="col-12 col-md-6 border-end">
+                  <div className="small text-muted mb-1">Thông tin liên hệ</div>
+                  <div className="fw-semibold text-dark fs-6">
+                    {customerName}
+                  </div>
+                  <div className="small text-muted d-flex align-items-center gap-1 mt-1">
+                    <Phone size={13} />
+                    <span>{customerPhone}</span>
+                  </div>
+                  {customerEmail && (
+                    <div className="small text-muted d-flex align-items-center gap-1 mt-1">
+                      <Mail size={13} />
+                      <span>{customerEmail}</span>
+                    </div>
+                  )}
+                  {customerAddress && (
+                    <div className="small text-muted d-flex align-items-center gap-1 mt-1">
+                      <MapPin size={13} />
+                      <span className="text-truncate">{customerAddress}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="col-12 col-md-6 ps-md-3">
+                  <div className="small text-muted mb-1">Thời gian thuê trang phục</div>
+                  <div className="d-flex align-items-center gap-2">
+                    <Clock size={16} className="text-primary" />
+                    <div>
+                      <div className="small">
+                        Bắt đầu:{' '}
+                        <strong>
+                          {order.rentalStartDate ? formatDate(order.rentalStartDate) : 'Chưa giao đồ'}
+                        </strong>
+                      </div>
+                      <div className="small mt-1">
+                        Hạn trả:{' '}
+                        <strong className="text-danger">
+                          {order.rentalEndDate ? formatDate(order.rentalEndDate) : 'Chưa ấn định'}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {order.actualReturnDate && (
+                    <div className="small text-success mt-2 pt-2 border-top">
+                      Đã trả ngày: {formatDate(order.actualReturnDate)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Danh sách trang phục thuê */}
+            <div className="modal-section-card">
+              <div className="modal-section-header">
+                <span className="modal-section-title">
+                  <CalendarRange size={16} className="text-primary me-2" />
+                  <span>2. Danh Sách Trang Phục Thuê ({items.length})</span>
+                </span>
+              </div>
+
+              <div className="order-items-table-wrap">
+                <table className="order-items-table">
+                  <thead>
+                    <tr>
+                      <th>Sản phẩm / Mẫu đồ</th>
+                      <th style={{ width: '90px' }}>Phân loại</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>SL</th>
+                      <th style={{ width: '140px', textAlign: 'right' }}>Tiền thuê (VND)</th>
+                      <th style={{ width: '140px', textAlign: 'right' }}>Tiền cọc (VND)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-3 text-muted">
+                          Không có thông tin sản phẩm
+                        </td>
+                      </tr>
+                    ) : (
+                      items.map((it, idx) => (
+                        <tr key={it._id || idx}>
+                          <td>
+                            <div className="order-product-name">
+                              {it.variantId?.productId?.name || it.productName || it.name || 'Trang phục'}
+                            </div>
+                            <div className="order-product-variant">
+                              SKU: {it.variantId?.sku || it.sku || it.productSku || '—'}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="badge bg-light text-dark border">
+                              {it.variantId?.size || it.size || 'F'} • {it.variantId?.color || it.color || 'Mặc định'}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                            {it.quantity || 1}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                            {formatCurrency(it.rentalPrice || it.price || it.variantId?.productId?.rentalPricePerDay)}
+                          </td>
+                          <td style={{ textAlign: 'right', color: '#D97706', fontWeight: 600 }}>
+                            {formatCurrency(it.depositAmount || it.deposit || it.variantId?.productId?.deposit)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section 3: Tiền cọc & Tài chính */}
+            <div className="modal-section-card">
+              <div className="modal-section-header">
+                <span className="modal-section-title">
+                  <ShieldCheck size={16} className="text-success me-2" />
+                  <span>3. Tiền Cọc & Thanh Toán Đơn Hàng</span>
+                </span>
+                <span className={`order-badge ${depositDef.chipClass}`}>
+                  <span className="order-badge-dot" />
+                  {depositDef.text}
+                </span>
+              </div>
+
+              <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                  <div className="small text-muted">
+                    Trạng thái tiền cọc: <strong>{depositDef.text}</strong>
+                  </div>
+                  {order.note && (
+                    <div className="small text-muted mt-1">
+                      <strong>Ghi chú:</strong> {order.note}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div className="small text-muted">
+                    Tiền thuê trang phục:{' '}
+                    <strong className="text-dark" style={{ fontFeatureSettings: 'tnum' }}>
+                      {formatCurrency(order.rentalFee)}
+                    </strong>
+                  </div>
+                  <div className="small text-muted mt-1">
+                    Tiền cọc giữ đồ:{' '}
+                    <strong style={{ color: '#D97706', fontFeatureSettings: 'tnum' }}>
+                      {formatCurrency(order.depositAmount)}
+                    </strong>
+                  </div>
+                  <div className="mt-2 pt-2 border-top">
+                    <span className="small text-muted me-2">Tổng thanh toán ban đầu:</span>
+                    <strong style={{ fontSize: '18px', color: '#059669', fontFeatureSettings: 'tnum' }}>
+                      {formatCurrency((order.rentalFee || 0) + (order.depositAmount || 0))}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Giao hàng nếu có */}
+            {shipments.length > 0 && (
+              <div className="modal-section-card">
+                <div className="modal-section-header">
+                  <span className="modal-section-title">
+                    <Truck size={16} className="text-primary me-2" />
+                    <span>4. Vận Chuyển & Giao Nhận</span>
+                  </span>
+                </div>
+                <div className="small text-muted">
+                  Đơn vị vận chuyển: {shipments[0]?.carrier || 'Nội bộ'} • Mã vận đơn:{' '}
+                  {shipments[0]?.trackingCode || '—'}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 3. Modal Footer */}
+      <div className="vestora-modal-footer">
+        {isReadOnly ? (
+          <div className="d-flex justify-content-end w-100">
+            <button
+              type="button"
+              className="btn-modal-secondary px-4"
+              onClick={onClose}
+            >
+              Đóng
+            </button>
+          </div>
+        ) : (
+          <div className="d-flex justify-content-between align-items-center w-100">
+            <button
+              type="button"
+              className="btn-modal-secondary"
+              onClick={onClose}
+            >
+              Đóng
+            </button>
+
+            <div className="d-flex align-items-center gap-2">
+              <button
+                type="button"
+                className="btn-modal-secondary d-flex align-items-center gap-1"
+                onClick={() => onAction('print', order)}
+              >
+                <Printer size={15} />
+                <span>In Phiếu Bàn Giao</span>
+              </button>
+
+              {order.rentalStatus === 'draft' && (
+                <button
+                  type="button"
+                  className="btn-modal-primary d-flex align-items-center gap-1"
+                  onClick={() => onAction('confirm', order)}
+                >
+                  <CheckCircle2 size={15} />
+                  <span>Xác Nhận Đơn</span>
+                </button>
+              )}
+
+              {(order.rentalStatus === 'renting' || order.rentalStatus === 'confirmed') && (
+                <button
+                  type="button"
+                  className="btn-modal-primary d-flex align-items-center gap-1"
+                  style={{ background: '#059669', borderColor: '#059669' }}
+                  onClick={() => onAction('inspect_return', order)}
+                >
+                  <Search size={15} />
+                  <span>Nghiệm Thu Trả Đồ</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+

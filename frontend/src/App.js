@@ -61,6 +61,8 @@ import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
 import OwnerBranchesListPage from './pages/owner/OwnerBranchesListPage';
 import OwnerPoliciesPage from './pages/owner/OwnerPoliciesPage';
+import OwnerRentalOrdersPage from './pages/owner/OwnerRentalOrdersPage';
+import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
@@ -338,6 +340,22 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <OwnerPoliciesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/rental-orders"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerRentalOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/sale-orders"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerSaleOrdersPage />
             </ProtectedRoute>
           }
         />

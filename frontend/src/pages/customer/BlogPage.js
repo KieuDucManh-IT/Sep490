@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { Calendar, Clock, ArrowRight } from "lucide-react";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import "../../styles/BlogPage.css";
@@ -64,17 +65,21 @@ export default function BlogPage() {
                 <span className="blog-badge">{post.category}</span>
               </div>
               <div className="blog-card-body">
-                <div className="blog-meta">
-                  <span><i className="fa-regular fa-calendar"></i> {post.date}</span>
+                <div className="blog-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Calendar size={13} color="#C5A880" /> {post.date}
+                  </span>
                   <span>•</span>
-                  <span><i className="fa-regular fa-clock"></i> {post.readTime}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Clock size={13} color="#C5A880" /> {post.readTime}
+                  </span>
                 </div>
                 <h2 className="blog-post-title">
                   <Link to={`/blog/${post.id}`}>{post.title}</Link>
                 </h2>
                 <p className="blog-excerpt">{post.excerpt}</p>
-                <Link to={`/blog/${post.id}`} className="blog-read-more">
-                  Đọc tiếp <i className="fa-solid fa-arrow-right"></i>
+                <Link to={`/blog/${post.id}`} className="blog-read-more" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  Đọc tiếp <ArrowRight size={14} />
                 </Link>
               </div>
             </article>

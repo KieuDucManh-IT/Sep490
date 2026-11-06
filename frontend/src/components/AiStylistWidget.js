@@ -1,5 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
+import {
+  Sparkles,
+  Maximize2,
+  X,
+  Loader2,
+  RotateCw,
+  Send,
+  PartyPopper,
+  Flower2,
+  Coins,
+} from 'lucide-react';
 import apiClient from '../services/api';
 import '../styles/AiStylistWidget.css';
 
@@ -7,7 +18,7 @@ const currency = new Intl.NumberFormat('vi-VN');
 
 const INITIAL_MSG = {
   role: 'model',
-  text: 'Xin chào! Mình là AI Stylist của VESTORA . Bạn cần tư vấn chọn trang phục cho sự kiện nào không?',
+  text: 'Xin chào! Mình là AI Stylist của VESTORA. Bạn cần tư vấn chọn trang phục cho sự kiện nào không?',
 };
 
 export default function AiStylistWidget() {
@@ -99,8 +110,8 @@ export default function AiStylistWidget() {
           onClick={() => setIsOpen(true)}
           aria-label="Mở tư vấn AI Stylist"
         >
-          <span className="stylist-launcher-icon">
-            <i className="fa-solid fa-wand-magic-sparkles"></i>
+          <span className="stylist-launcher-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Sparkles size={18} color="#C5A880" />
           </span>
           <span className="stylist-launcher-text">
             <span className="stylist-launcher-title">AI Stylist</span>
@@ -127,16 +138,18 @@ export default function AiStylistWidget() {
                 className="stylist-widget-btn"
                 title="Mở toàn màn hình Studio"
                 onClick={() => setIsOpen(false)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <i className="fa-solid fa-up-right-from-square"></i>
+                <Maximize2 size={14} />
               </Link>
               <button
                 type="button"
                 className="stylist-widget-btn"
                 onClick={() => setIsOpen(false)}
                 title="Đóng chat"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <i className="fa-solid fa-xmark"></i>
+                <X size={15} />
               </button>
             </div>
           </div>
@@ -151,8 +164,8 @@ export default function AiStylistWidget() {
                   <div className="stylist-wmsg-body">
                     <div className={`stylist-wbubble ${isUser ? 'user' : 'stylist'} ${m.isError ? 'error-bubble' : ''}`}>
                       {m.pending ? (
-                        <span>
-                          <i className="fa-solid fa-circle-notch fa-spin"></i> Đang duyệt đồ...
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <Loader2 size={13} className="spin" /> Đang duyệt đồ...
                         </span>
                       ) : (
                         m.text
@@ -176,7 +189,7 @@ export default function AiStylistWidget() {
                               gap: '6px',
                             }}
                           >
-                            <i className="fa-solid fa-rotate-right"></i> Thử lại câu này
+                            <RotateCw size={12} /> Thử lại câu này
                           </button>
                         </div>
                       )}
@@ -196,7 +209,9 @@ export default function AiStylistWidget() {
                               {p.imageUrl ? (
                                 <img src={p.imageUrl} alt={p.name} loading="lazy" />
                               ) : (
-                                <span>👗</span>
+                                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                                  <Sparkles size={14} color="#C5A880" />
+                                </span>
                               )}
                             </div>
                             <div className="stylist-wrec-details">
@@ -223,22 +238,25 @@ export default function AiStylistWidget() {
               type="button"
               disabled={sending}
               onClick={() => handleSend('Gợi ý trang phục đi tiệc cưới')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
-              🎉 Tiệc cưới
+              <PartyPopper size={13} color="#C5A880" /> Tiệc cưới
             </button>
             <button
               type="button"
               disabled={sending}
               onClick={() => handleSend('Áo dài truyền thống thanh lịch')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
-              🌸 Áo dài
+              <Flower2 size={13} color="#C5A880" /> Áo dài
             </button>
             <button
               type="button"
               disabled={sending}
               onClick={() => handleSend('Trang phục giá thuê dưới 300k')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
-              💰 Dưới 300k
+              <Coins size={13} color="#C5A880" /> Dưới 300k
             </button>
           </div>
 
@@ -264,8 +282,9 @@ export default function AiStylistWidget() {
                 type="submit"
                 className="stylist-wsend-btn"
                 disabled={sending || !draft.trim()}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <i className="fa-solid fa-paper-plane"></i>
+                <Send size={14} />
               </button>
             </form>
           </div>

@@ -14,6 +14,7 @@ import HomePage from './pages/customer/HomePage';
 import CatalogPage from './pages/customer/CatalogPage';
 import ProductDetailPage from './pages/customer/ProductDetailPage';
 import CartPage from './pages/customer/CartPage';
+import CheckoutPage from './pages/customer/CheckoutPage';
 import FavoritesPage from './pages/customer/FavoritesPage';
 import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
@@ -27,6 +28,8 @@ import WardrobePage from './pages/customer/WardrobePage';
 import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
+import SharedLookbookPage from './pages/customer/SharedLookbookPage';
+import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -43,6 +46,7 @@ import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';
 import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
 import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
+import CartDrawer from './components/customer/cart/CartDrawer';
 import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 import WarehouseStocktakePage from './pages/warehouse/WarehouseStocktakePage';
@@ -70,16 +74,18 @@ function App() {
   return (
     <Router>
       <ForceChangePasswordModal />
+      <CartDrawer />
       <Routes>
         {/* ========================================================
-            CUSTOMER PORTAL (KhÃ¡ch HÃ ng)
+            CUSTOMER PORTAL (Khách Hàng)
             ======================================================== */}
         <Route path="/" element={<HomePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/product" element={<ProductDetailPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/cart" element={<CartPage />} />
-        <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+        <Route path="/favorites" element={<Navigate to="/wardrobe" replace />} />
         <Route path="/map" element={<ShopMapPage />} />
         <Route
           path="/profile"
@@ -99,14 +105,19 @@ function App() {
         <Route path="/blog/:id" element={<BlogPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
+        <Route path="/policy/:tab" element={<PolicyPage />} />
         <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
+        <Route path="/stylist" element={<StylistPage />} />
+        <Route path="/lookbook/:shareCode" element={<SharedLookbookPage />} />
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
+        <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)

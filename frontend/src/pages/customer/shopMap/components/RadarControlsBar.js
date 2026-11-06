@@ -1,4 +1,5 @@
 import React from 'react';
+import { Crosshair, RotateCw, Loader2, Search, XCircle } from 'lucide-react';
 import { RADIUS_OPTIONS } from '../hooks/useShopRadarData';
 
 export default function RadarControlsBar({
@@ -16,7 +17,7 @@ export default function RadarControlsBar({
       <div className="radar-controls-bar">
         {/* User Location Badge */}
         <div className="radar-user-location-badge">
-          <i className="fa-solid fa-location-crosshairs" style={{ color: '#ea580c' }} aria-hidden="true"></i>
+          <Crosshair size={16} color="#C5A880" aria-hidden="true" />
           <span>
             Khu vực của bạn: <strong>{userLocation?.city || 'Hà Nội'}</strong>
           </span>
@@ -26,8 +27,13 @@ export default function RadarControlsBar({
             onClick={onQuickGps}
             disabled={locating}
             aria-label="Cập nhật lại vị trí hiện tại"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            <i className={`fa-solid ${locating ? 'fa-spinner fa-spin' : 'fa-arrows-rotate'}`} aria-hidden="true"></i>
+            {locating ? (
+              <Loader2 size={13} className="spin" aria-hidden="true" />
+            ) : (
+              <RotateCw size={13} aria-hidden="true" />
+            )}
             <span>{locating ? 'Đang tìm vị trí...' : 'Lấy lại vị trí'}</span>
           </button>
         </div>
@@ -54,8 +60,8 @@ export default function RadarControlsBar({
           </div>
 
           {/* Search Box */}
-          <div className="radar-search-input-wrap">
-            <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <div className="radar-search-input-wrap" style={{ display: 'flex', alignItems: 'center' }}>
+            <Search size={15} color="#A1A1AA" style={{ marginLeft: 10, flexShrink: 0 }} aria-hidden="true" />
             <input
               id="radar-search-input"
               type="text"
@@ -71,8 +77,9 @@ export default function RadarControlsBar({
                 className="radar-search-clear-btn"
                 onClick={onClearSearch}
                 aria-label="Xóa từ khóa tìm kiếm"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <i className="fa-solid fa-circle-xmark" aria-hidden="true"></i>
+                <XCircle size={15} color="#A1A1AA" aria-hidden="true" />
               </button>
             ) : null}
           </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Mail, Check, X } from "lucide-react";
 import "../styles/RegisterOtpModal.css";
 
 export default function RegisterOtpModal({
@@ -80,13 +81,13 @@ export default function RegisterOtpModal({
           disabled={busy}
           aria-label="Đóng"
         >
-          ×
+          <X size={18} />
         </button>
       </header>
 
       <div className="otp-content">
-        <div className="otp-symbol" aria-hidden="true">
-          {registered ? "✓" : "✉"}
+        <div className="otp-symbol" aria-hidden="true" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {registered ? <Check size={36} color="#C5A880" /> : <Mail size={36} color="#C5A880" />}
         </div>
 
         <h2 id="otp-title">

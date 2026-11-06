@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Sparkles,
+  Gem,
+  History,
+  RotateCw,
+  AlertCircle,
+  Loader2,
+  ArrowUp,
+  Search,
+  Trash2,
+  CheckCircle2,
+} from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import apiClient from '../../services/api';
@@ -27,6 +39,13 @@ export default function StylistPage() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Catalog bên phải
   const [catalogProducts, setCatalogProducts] = useState([]);
@@ -158,10 +177,14 @@ export default function StylistPage() {
   };
 
   const handleClearHistory = () => {
-    if (window.confirm('Bạn có chắc muốn xóa lịch sử trò chuyện hiện tại không?')) {
-      setMessages([INITIAL_MESSAGE]);
-      setChatError('');
-    }
+    setShowClearModal(true);
+  };
+
+  const handleConfirmClear = () => {
+    setMessages([INITIAL_MESSAGE]);
+    setChatError('');
+    setShowClearModal(false);
+    showToast('Đã làm mới cuộc hội thoại với Stylist');
   };
 
   return (
@@ -172,8 +195,8 @@ export default function StylistPage() {
         {/* HERO BANNER */}
         <section className="stylist-hero">
           <div className="stylist-hero-content">
-            <span className="stylist-eyebrow">
-              <span className="sparkle">✦</span> VESTORA INTELLIGENT STYLIST
+            <span className="stylist-eyebrow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Sparkles size={13} color="#C5A880" /> VESTORA INTELLIGENT STYLIST
             </span>
             <h1 className="stylist-hero-title">
               Trợ Lý Thời Trang AI <br />
@@ -184,14 +207,14 @@ export default function StylistPage() {
               Hãy cho stylist biết dịp bạn tham gia, ngân sách, hoặc kiểu dáng mong muốn để nhận gợi ý phối đồ chuẩn xác.
             </p>
             <div className="stylist-hero-badges">
-              <span className="stylist-badge-pill">
-                <i className="fa-solid fa-wand-magic-sparkles"></i> Phân tích ngữ cảnh sự kiện
+              <span className="stylist-badge-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Sparkles size={14} color="#C5A880" /> Phân tích ngữ cảnh sự kiện
               </span>
-              <span className="stylist-badge-pill">
-                <i className="fa-solid fa-gem"></i> Sản phẩm thật từ tủ đồ
+              <span className="stylist-badge-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Gem size={14} color="#C5A880" /> Sản phẩm thật từ tủ đồ
               </span>
-              <span className="stylist-badge-pill">
-                <i className="fa-solid fa-clock-rotate-left"></i> Tư vấn tức thì 24/7
+              <span className="stylist-badge-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <History size={14} color="#C5A880" /> Tư vấn tức thì 24/7
               </span>
             </div>
           </div>
@@ -230,8 +253,9 @@ export default function StylistPage() {
                   className="stylist-btn-clear"
                   onClick={handleClearHistory}
                   title="Làm mới hội thoại"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
-                  <i className="fa-solid fa-rotate-right"></i> Làm mới
+                  <RotateCw size={13} /> Làm mới
                 </button>
               </div>
             </div>
@@ -262,8 +286,8 @@ export default function StylistPage() {
                       {/* Gợi ý sản phẩm kèm theo */}
                       {!msg.pending && msg.products && msg.products.length > 0 && (
                         <div className="stylist-recommendations-box">
-                          <span className="stylist-rec-header">
-                            <i className="fa-solid fa-sparkles"></i> Gợi ý trang phục cho bạn
+                          <span className="stylist-rec-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <Sparkles size={14} color="#C5A880" /> Gợi ý trang phục cho bạn
                           </span>
                           {msg.products.map((prod) => (
                             <Link
@@ -342,8 +366,8 @@ export default function StylistPage() {
             {/* Composer */}
             <div className="stylist-composer-wrapper">
               {chatError && (
-                <div style={{ color: '#dc2626', fontSize: 11.5, marginBottom: 8, textAlign: 'center' }}>
-                  <i className="fa-solid fa-circle-exclamation"></i> {chatError}
+                <div style={{ color: '#dc2626', fontSize: 11.5, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <AlertCircle size={14} /> {chatError}
                 </div>
               )}
               <form
@@ -367,11 +391,12 @@ export default function StylistPage() {
                   className="stylist-send-btn"
                   disabled={sending || !draft.trim()}
                   title="Gửi câu hỏi"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {sending ? (
-                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    <Loader2 size={16} className="spin" />
                   ) : (
-                    <i className="fa-solid fa-arrow-up"></i>
+                    <ArrowUp size={16} />
                   )}
                 </button>
               </form>
@@ -391,8 +416,8 @@ export default function StylistPage() {
             </div>
 
             <div className="stylist-catalog-toolbar">
-              <div className="stylist-search-box">
-                <i className="fa-solid fa-magnifying-glass"></i>
+              <div className="stylist-search-box" style={{ display: 'flex', alignItems: 'center' }}>
+                <Search size={14} color="#A1A1AA" style={{ marginLeft: 10, flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Tìm nhanh sản phẩm..."
@@ -417,7 +442,7 @@ export default function StylistPage() {
 
             {loadingCatalog ? (
               <div style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
-                <i className="fa-solid fa-spinner fa-spin fa-2x"></i>
+                <Loader2 size={28} color="#C5A880" className="spin" style={{ margin: '0 auto' }} />
                 <p style={{ marginTop: 10, fontSize: 13 }}>Đang tải catalog VESTORA...</p>
               </div>
             ) : visibleCatalog.length === 0 ? (
@@ -457,6 +482,127 @@ export default function StylistPage() {
           </aside>
         </section>
       </main>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 80,
+            right: 24,
+            zIndex: 99999,
+            background: '#171717',
+            color: '#F8F7F4',
+            border: '1px solid #C5A880',
+            borderRadius: 10,
+            padding: '12px 20px',
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          }}
+        >
+          <CheckCircle2 size={16} color="#C5A880" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {showClearModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            backgroundColor: 'rgba(23, 23, 23, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => setShowClearModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 16,
+              maxWidth: 420,
+              width: '100%',
+              padding: '28px 24px',
+              border: '1px solid #E5E0D8',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
+              textAlign: 'center',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: '50%',
+                background: '#FEF3C7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}
+            >
+              <Trash2 size={24} color="#D97706" />
+            </div>
+            <h3
+              style={{
+                fontFamily: "'Newsreader', 'Playfair Display', Georgia, serif",
+                fontSize: 20,
+                color: '#171717',
+                marginBottom: 8,
+              }}
+            >
+              Làm Mới Lịch Sử Trò Chuyện?
+            </h3>
+            <p style={{ fontSize: 13.5, color: '#71717A', lineHeight: 1.5, marginBottom: 24 }}>
+              Toàn bộ các đề xuất phối đồ và tin nhắn hiện tại sẽ được khởi tạo lại từ đầu cùng AI Stylist.
+            </p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                type="button"
+                onClick={() => setShowClearModal(false)}
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  borderRadius: 8,
+                  border: '1px solid #E5E0D8',
+                  background: '#F8F7F4',
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: '#171717',
+                  cursor: 'pointer',
+                }}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClear}
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#C5A880',
+                  color: '#FFFFFF',
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

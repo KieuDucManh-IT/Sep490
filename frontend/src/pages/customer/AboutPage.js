@@ -1,4 +1,5 @@
 import React from "react";
+import { Sparkles, Cpu, Leaf, ShieldCheck, Truck, Lock } from "lucide-react";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import "../../styles/AboutPage.css";
@@ -21,8 +22,8 @@ export default function AboutPage() {
         {/* Brand Mission & Vision Grid */}
         <section className="about-grid-section">
           <div className="about-card">
-            <div className="about-card-icon">
-              <i className="fa-solid fa-sparkles"></i>
+            <div className="about-card-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Sparkles size={24} color="#C5A880" />
             </div>
             <h3>Sứ Mệnh</h3>
             <p>
@@ -32,8 +33,8 @@ export default function AboutPage() {
           </div>
 
           <div className="about-card">
-            <div className="about-card-icon">
-              <i className="fa-solid fa-wand-magic-sparkles"></i>
+            <div className="about-card-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Cpu size={24} color="#C5A880" />
             </div>
             <h3>Công Nghệ Tiên Phong</h3>
             <p>
@@ -43,8 +44,8 @@ export default function AboutPage() {
           </div>
 
           <div className="about-card">
-            <div className="about-card-icon">
-              <i className="fa-solid fa-leaf"></i>
+            <div className="about-card-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Leaf size={24} color="#C5A880" />
             </div>
             <h3>Thời Trang Bền Vững</h3>
             <p>
@@ -59,24 +60,24 @@ export default function AboutPage() {
           <h2>Cam Kết Dịch Vụ</h2>
           <div className="commitment-list">
             <div className="commitment-item">
-              <i className="fa-solid fa-shield-check"></i>
+              <ShieldCheck size={22} color="#C5A880" style={{ flexShrink: 0, marginTop: 2 }} />
               <div>
                 <strong>Bảo chứng chất lượng</strong>
                 <p>100% trang phục được giặt hấp, khử trùng và kiểm định kỹ trước khi giao.</p>
               </div>
             </div>
             <div className="commitment-item">
-              <i className="fa-solid fa-truck-fast"></i>
+              <Truck size={22} color="#C5A880" style={{ flexShrink: 0, marginTop: 2 }} />
               <div>
                 <strong>Giao hàng hỏa tốc</strong>
                 <p>Nhận đồ nhanh chóng tận nơi, hỗ trợ đổi kích cỡ tiện lợi.</p>
               </div>
             </div>
             <div className="commitment-item">
-              <i className="fa-solid fa-lock"></i>
+              <Lock size={22} color="#C5A880" style={{ flexShrink: 0, marginTop: 2 }} />
               <div>
-                <strong>Thanh toán an toàn Escrow</strong>
-                <p>Tiền cọc và phí thuê được giữ bảo đảm minh bạch cho cả khách hàng và shop đối tác.</p>
+                <strong>Thanh toán & Đặt cọc minh bạch</strong>
+                <p>Tiền cọc và phí thuê được quản lý minh bạch, hoàn trả 100% khi trả lại trang phục nguyên vẹn.</p>
               </div>
             </div>
           </div>

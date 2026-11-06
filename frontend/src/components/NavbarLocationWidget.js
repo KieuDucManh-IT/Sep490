@@ -1,4 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  MapPin,
+  ChevronDown,
+  Crosshair,
+  Loader2,
+  Search,
+  Check,
+  AlertCircle,
+} from 'lucide-react';
 import { getUserLocation, setUserLocation } from '../utils/userLocation';
 import { PROVINCE_DEFAULT_COORDS } from '../pages/owner/branches/utils/branchConstants';
 import { reverseGeocodeApi } from '../services/shopApi';
@@ -11,6 +20,7 @@ export default function NavbarLocationWidget() {
   const [currentLocation, setCurrentLocation] = useState(getUserLocation);
   const [isOpen, setIsOpen] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const popoverRef = useRef(null);
 
@@ -38,15 +48,17 @@ export default function NavbarLocationWidget() {
     setUserLocation({ city, isExactGps: false });
     setIsOpen(false);
     setSearchTerm('');
+    setErrorMessage(null);
   };
 
   const handleQuickGps = () => {
     if (!navigator.geolocation) {
-      alert('Trình duyệt của bạn không hỗ trợ định vị Geolocation.');
+      setErrorMessage('Trình duyệt của bạn không hỗ trợ định vị Geolocation.');
       return;
     }
 
     setLocating(true);
+    setErrorMessage(null);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
@@ -75,9 +87,9 @@ export default function NavbarLocationWidget() {
       },
       (err) => {
         setLocating(false);
-        alert(
+        setErrorMessage(
           err.code === 1
-            ? 'Quyền truy cập vị trí bị từ chối. Bạn vui lòng chọn Tỉnh/Thành từ danh sách.'
+            ? 'Quyền định vị bị từ chối. Vui lòng chọn Tỉnh/Thành từ danh sách.'
             : 'Không thể nhận tín hiệu GPS lúc này.'
         );
       },
@@ -100,23 +112,23 @@ export default function NavbarLocationWidget() {
           display: 'inline-flex',
           alignItems: 'center',
           gap: '6px',
-          background: '#fff7ed',
-          border: '1px solid #fed7aa',
+          background: 'rgba(197, 168, 128, 0.1)',
+          border: '1px solid rgba(197, 168, 128, 0.4)',
           borderRadius: '999px',
           padding: '5px 12px',
           fontSize: '12.5px',
           fontWeight: '600',
-          color: '#a53a00',
+          color: '#C5A880',
           cursor: 'pointer',
           transition: 'all 0.2s ease',
           outline: 'none',
         }}
       >
-        <i className="fa-solid fa-location-dot" style={{ color: '#ea580c', fontSize: '13px' }}></i>
+        <MapPin size={13} color="#C5A880" />
         <span style={{ maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {currentLocation?.shortCity || currentLocation?.city || 'Hà Nội'}
         </span>
-        <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px', opacity: 0.7 }}></i>
+        <ChevronDown size={12} style={{ opacity: 0.7 }} />
       </button>
 
       {isOpen && (
@@ -130,7 +142,7 @@ export default function NavbarLocationWidget() {
             background: '#ffffff',
             borderRadius: '12px',
             boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-            border: '1px solid #e4e4e7',
+            border: '1px solid #E5E0D8',
             zIndex: 1050,
             overflow: 'hidden',
             animation: 'fadeIn 0.15s ease',
@@ -154,35 +166,51 @@ export default function NavbarLocationWidget() {
                 justifyContent: 'center',
                 gap: '8px',
                 padding: '8px 12px',
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
+                background: '#FAF5EE',
+                border: '1px solid #E8DECF',
                 borderRadius: '8px',
-                color: '#1d4ed8',
+                color: '#96723D',
                 fontSize: '12px',
                 fontWeight: '600',
                 cursor: locating ? 'not-allowed' : 'pointer',
                 transition: 'background 0.15s ease',
               }}
             >
-              <i className={`fa-solid ${locating ? 'fa-spinner fa-spin' : 'fa-crosshairs'}`}></i>
+              {locating ? <Loader2 size={13} className="spin" /> : <Crosshair size={13} />}
               <span>{locating ? 'Đang định vị GPS...' : 'Lấy vị trí hiện tại (GPS)'}</span>
             </button>
+
+            {errorMessage && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: '#DC2626',
+                  fontSize: '11px',
+                  marginTop: '8px',
+                  lineHeight: 1.3,
+                }}
+              >
+                <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                <span>{errorMessage}</span>
+              </div>
+            )}
           </div>
 
           {/* Search Box */}
           <div style={{ padding: '10px 14px 6px' }}>
             <div style={{ position: 'relative' }}>
-              <i
-                className="fa-solid fa-magnifying-glass"
+              <Search
+                size={13}
                 style={{
                   position: 'absolute',
                   left: '10px',
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  fontSize: '11px',
                   color: '#a1a1aa',
                 }}
-              ></i>
+              />
               <input
                 type="text"
                 placeholder="Tìm Tỉnh / Thành phố..."
@@ -192,9 +220,10 @@ export default function NavbarLocationWidget() {
                   width: '100%',
                   padding: '6px 10px 6px 28px',
                   fontSize: '12px',
-                  border: '1px solid #e4e4e7',
+                  border: '1px solid #E5E0D8',
                   borderRadius: '6px',
                   outline: 'none',
+                  boxSizing: 'border-box',
                 }}
               />
             </div>
@@ -224,8 +253,8 @@ export default function NavbarLocationWidget() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      color: isSelected ? '#ea580c' : '#18181b',
-                      background: isSelected ? '#fff7ed' : 'transparent',
+                      color: isSelected ? '#C5A880' : '#18181b',
+                      background: isSelected ? '#FAF5EE' : 'transparent',
                       fontWeight: isSelected ? '700' : '400',
                       transition: 'background 0.12s ease',
                     }}
@@ -237,7 +266,7 @@ export default function NavbarLocationWidget() {
                     }}
                   >
                     <span>{p}</span>
-                    {isSelected && <i className="fa-solid fa-check" style={{ fontSize: '11px' }}></i>}
+                    {isSelected && <Check size={13} color="#C5A880" />}
                   </div>
                 );
               })

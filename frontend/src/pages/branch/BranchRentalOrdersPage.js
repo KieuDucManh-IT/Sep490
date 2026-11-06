@@ -1,225 +1,457 @@
-import React, { useState } from 'react';
+/**
+ * Branch Rental Orders Management Page
+ * Quản lý đơn thuê tại showroom: duyệt đơn, gán mã vạch hiện vật, bàn giao cho khách
+ * Zero-Alert, Zero-Emoji, 100% Native Fetch API
+ * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-006..REQ-RENT-008
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
 import BranchSidebar from '../../components/BranchSidebar';
 import OwnerTopHeader from '../../components/OwnerTopHeader';
+import BarcodeScannerModal from '../../components/BarcodeScannerModal';
+import HauteCoutureModal from '../../components/HauteCoutureModal';
+import {
+  getRentalOrders,
+  handoverRentalOrder,
+} from '../../services/rentalOrderApi';
+import {
+  Search,
+  FileSpreadsheet,
+  PackageCheck,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ScanBarcode,
+  Loader2,
+  Calendar,
+} from 'lucide-react';
 import '../../styles/ShopDashboard.css';
 
 export default function BranchRentalOrdersPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState('Tất Cả (72)');
+  const [activeTab, setActiveTab] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [orders, setOrders] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorNotice, setErrorNotice] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
 
-  const rentalOrders = [
-    {
-      id: '#THUE-8891',
-      date: '26/03/2025 • 09:15',
-      customer: 'Nguyễn Thị Mai Phương',
-      phone: '0912***456',
-      product: 'Đầm Dạ Hội Lụa Satin Navy',
-      sizeColor: 'Size M • Xanh Navy',
-      image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=120&q=80',
-      period: '26/03 → 29/03/2025 (Thời hạn: 3 ngày)',
-      price: '840.000 đ',
-      escrow: '600.000 đ (PayOS Escrow)',
-      status: 'CHỜ DUYỆT',
-      statusType: 'pending',
-      action: 'Xác Nhận Ngay',
-    },
-    {
-      id: '#THUE-8885',
-      date: '25/03/2025 • 14:20',
-      customer: 'Trần Thu Thảo',
-      phone: '0983***112',
-      product: 'Áo Dài Tơ Tằm Thêu Sen',
-      sizeColor: 'Size S • Hồng Pastel',
-      image: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?auto=format&fit=crop&w=120&q=80',
-      period: '25/03 → 28/03/2025 (Thời hạn: 3 ngày)',
-      price: '660.000 đ',
-      escrow: '500.000 đ (Đã Giữ Khóa)',
-      status: 'ĐANG THUÊ',
-      statusType: 'completed',
-      action: 'Xem Chi Tiết',
-    },
-    {
-      id: '#THUE-8879',
-      date: '24/03/2025 • 10:45',
-      customer: 'Đặng Hoàng Yến',
-      phone: '0904***889',
-      product: 'Bộ Suit Nữ Tuxedo Slim Fit',
-      sizeColor: 'Size L • Đen Tuyền',
-      image: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=120&q=80',
-      period: '24/03 → 27/03/2025 (● Hạn trả hôm nay)',
-      price: '1.050.000 đ',
-      escrow: '800.000 đ (Chờ hoàn cọc)',
-      status: 'CHỜ TRẢ ĐỒ',
-      statusType: 'return',
-      action: 'Nghiệm Thu Đồ',
-    },
-    {
-      id: '#THUE-8870',
-      date: '22/03/2025 • 16:05',
-      customer: 'Lê Quỳnh Anh',
-      phone: '0977***334',
-      product: 'Áo Khoác Blazer Kem',
-      sizeColor: 'Freesize • Be Sữa',
-      image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=120&q=80',
-      period: '22/03 → 25/03/2025 (Đã kết thúc)',
-      price: '450.000 đ',
-      escrow: '350.000 đ (Đã trả khách)',
-      status: 'HOÀN TẤT',
-      statusType: 'completed',
-      action: 'Đã Hoàn Cọc',
-    },
-  ];
+  // Modals state
+  const [selectedOrderForScan, setSelectedOrderForScan] = useState(null);
+  const [selectedOrderForHandover, setSelectedOrderForHandover] = useState(null);
+  const [handoverNote, setHandoverNote] = useState('');
+  const [isHandoverLoading, setIsHandoverLoading] = useState(false);
+
+  const fetchOrders = useCallback(async () => {
+    setIsLoading(true);
+    setErrorNotice('');
+    try {
+      const params = {};
+      if (activeTab !== 'all') {
+        params.status = activeTab;
+      }
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+      const res = await getRentalOrders(params);
+      setOrders(res.data || []);
+    } catch (err) {
+      setErrorNotice(err.message || 'Không thể tải danh sách đơn thuê.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeTab, searchTerm]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 3500);
+  };
+
+  const handleConfirmHandover = async () => {
+    if (!selectedOrderForHandover) return;
+    setIsHandoverLoading(true);
+    try {
+      await handoverRentalOrder(selectedOrderForHandover._id, handoverNote);
+      showToast(`Đã bàn giao trang phục cho đơn #${selectedOrderForHandover.orderCode || selectedOrderForHandover._id}!`);
+      setSelectedOrderForHandover(null);
+      setHandoverNote('');
+      fetchOrders();
+    } catch (err) {
+      setErrorNotice(err.message || 'Không thể xác nhận bàn giao đồ.');
+    } finally {
+      setIsHandoverLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const map = {
+      pending_payment: { label: 'Chờ Thanh Toán', color: '#D97706', bg: '#FFFBEB' },
+      confirmed: { label: 'Đã Xác Nhận', color: '#2563EB', bg: '#EFF6FF' },
+      preparing: { label: 'Đang Chuẩn Bị', color: '#7C3AED', bg: '#F5F3FF' },
+      ready_for_pickup: { label: 'Sẵn Sàng Giao', color: '#059669', bg: '#ECFDF5' },
+      renting: { label: 'Đang Cho Thuê', color: '#0284C7', bg: '#F0F9FF' },
+      overdue: { label: 'Quá Hạn Trả', color: '#DC2626', bg: '#FEF2F2' },
+      returned: { label: 'Đã Trả Đồ', color: '#16A34A', bg: '#F0FDF4' },
+      cancelled: { label: 'Đã Hủy Đơn', color: '#6B7280', bg: '#F3F4F6' },
+    };
+    const s = map[status] || { label: status, color: '#4B5563', bg: '#F3F4F6' };
+    return (
+      <span
+        style={{
+          display: 'inline-block',
+          padding: '4px 10px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          fontWeight: 600,
+          color: s.color,
+          backgroundColor: s.bg,
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+        }}
+      >
+        {s.label}
+      </span>
+    );
+  };
+
+  const formatPrice = (amount) => {
+    return (Number(amount) || 0).toLocaleString('vi-VN') + ' đ';
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
     <div className="shop-dashboard-layout">
-      {/* Left Sidebar */}
       <BranchSidebar
         isCollapsed={isSidebarCollapsed}
         onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
       />
 
-      {/* Main Viewport */}
       <div className="admin-main-viewport">
-        {/* Top Navbar */}
         <OwnerTopHeader
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
           breadcrumb="Đơn Thuê Trang Phục"
         />
 
-        {/* Content */}
         <div className="shop-content-scroll">
+          {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
             <div>
-              <h1 className="admin-page-title" style={{ fontSize: '26px', margin: '0 0 4px 0' }}>
-                Quản Lý Đơn Thuê Trang Phục
+              <h1 className="admin-page-title" style={{ fontSize: '26px', margin: '0 0 4px 0', fontFamily: 'serif' }}>
+                Quản Lý Đơn Thuê Showroom
               </h1>
               <p className="admin-page-desc" style={{ fontSize: '13px', color: '#64748B', margin: 0 }}>
-                Theo dõi chu kỳ thuê trang phục, trạng thái cọc PayOS Escrow và lịch hoàn trả đồ của khách hàng.
+                Kiểm soát chu kỳ thuê trang phục, phân bổ hiện vật kho mã vạch và bàn giao trực tiếp tại quầy.
               </p>
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn-secondary" style={{ fontSize: '12px' }}>📥 XUẤT EXCEL</button>
-              <button className="btn-primary" style={{ fontSize: '12px' }} onClick={() => alert('Tạo đơn thuê thủ công...')}>
-                ⊕ TẠO ĐƠN THUÊ
+              <button
+                className="btn-secondary"
+                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => showToast('Tính năng xuất báo cáo Excel đang được tạo.')}
+              >
+                <FileSpreadsheet size={16} />
+                <span>XUẤT BÁO CÁO</span>
               </button>
             </div>
           </div>
 
-          {/* 4 Stat Cards */}
-          <div className="stats-grid-4">
-            <div className="stat-card-white" style={{ background: '#FFFBEB', borderColor: '#FDE68A' }}>
-              <div className="stat-card-title" style={{ color: '#D97706' }}>CHỜ XÁC NHẬN</div>
-              <div className="stat-card-value">05 <small style={{ fontSize: '13px', fontWeight: 400, color: '#6B7280' }}>đơn mới</small></div>
-              <div style={{ fontSize: '11px', color: '#D97706', marginTop: '6px' }}>Cần duyệt trong 2h để giữ slot</div>
+          {/* Toast Notification */}
+          {toastMessage && (
+            <div
+              style={{
+                padding: '12px 18px',
+                backgroundColor: '#ECFDF5',
+                border: '1px solid #A7F3D0',
+                borderRadius: '8px',
+                color: '#059669',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '16px',
+              }}
+            >
+              <CheckCircle2 size={16} />
+              <span>{toastMessage}</span>
             </div>
+          )}
 
-            <div className="stat-card-white" style={{ background: '#EFF6FF', borderColor: '#BFDBFE' }}>
-              <div className="stat-card-title" style={{ color: '#2563EB' }}>ĐANG CHO THUÊ</div>
-              <div className="stat-card-value">18 <small style={{ fontSize: '13px', fontWeight: 400, color: '#6B7280' }}>trang phục</small></div>
-              <div style={{ fontSize: '11px', color: '#2563EB', marginTop: '6px' }}>Khách đang trải nghiệm thực tế</div>
+          {errorNotice && (
+            <div
+              style={{
+                padding: '12px 18px',
+                backgroundColor: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: '8px',
+                color: '#DC2626',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '16px',
+              }}
+            >
+              <AlertCircle size={16} />
+              <span>{errorNotice}</span>
             </div>
+          )}
 
-            <div className="stat-card-white" style={{ background: '#FEF2F2', borderColor: '#FECACA' }}>
-              <div className="stat-card-title" style={{ color: '#DC2626' }}>CHỜ TRẢ ĐỒ</div>
-              <div className="stat-card-value">07 <small style={{ fontSize: '13px', fontWeight: 400, color: '#6B7280' }}>kiện hàng</small></div>
-              <div style={{ fontSize: '11px', color: '#DC2626', marginTop: '6px' }}>Hạn trả hôm nay & ngày mai</div>
-            </div>
-
-            <div className="stat-card-white" style={{ background: '#ECFDF5', borderColor: '#A7F3D0' }}>
-              <div className="stat-card-title" style={{ color: '#059669' }}>HOÀN TẤT THÁNG NÀY</div>
-              <div className="stat-card-value">42 <small style={{ fontSize: '13px', fontWeight: 400, color: '#6B7280' }}>chu kỳ</small></div>
-              <div style={{ fontSize: '11px', color: '#059669', marginTop: '6px' }}>Đã giải ngân & hoàn cọc 100%</div>
-            </div>
-          </div>
-
-          {/* Table Card */}
+          {/* Filter Tabs & Search */}
           <div className="dashboard-table-card">
-            {/* Filter Tabs */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {['Tất Cả (72)', 'Chờ Xác Nhận (5)', 'Đã Cọc (12)', 'Đang Giao (6)', 'Đang Thuê (18)', 'Chờ Trả (7)', 'Hoàn Tất (24)'].map((tab) => (
+                {[
+                  { id: 'all', label: 'Tất Cả' },
+                  { id: 'confirmed', label: 'Cần Gán Mã Vạch' },
+                  { id: 'ready_for_pickup', label: 'Chờ Bàn Giao' },
+                  { id: 'renting', label: 'Đang Cho Thuê' },
+                  { id: 'returned', label: 'Đã Trả Đồ' },
+                  { id: 'cancelled', label: 'Đã Hủy' },
+                ].map((tab) => (
                   <button
-                    key={tab}
-                    className={`category-tab-btn ${activeTab === tab ? 'active' : ''}`}
-                    onClick={() => setActiveTab(tab)}
-                    style={{ fontSize: '11px', padding: '6px 14px' }}
+                    key={tab.id}
+                    className={`category-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                    style={{ fontSize: '12px', padding: '6px 14px' }}
                   >
-                    {tab}
+                    {tab.label}
                   </button>
                 ))}
               </div>
 
               <div style={{ display: 'flex', gap: '12px' }}>
-                <div className="search-input-box" style={{ width: '240px' }}>
-                  <span>🔍</span>
-                  <input type="text" placeholder="Tìm mã đơn, tên khách..." />
+                <div className="search-input-box" style={{ width: '260px', position: 'relative' }}>
+                  <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF' }}>
+                    <Search size={16} />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Tìm mã đơn, tên khách..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    style={{ paddingLeft: '34px' }}
+                  />
                 </div>
               </div>
             </div>
 
             {/* Orders Table */}
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  <th>MÃ ĐƠN HÀNG</th>
-                  <th>KHÁCH HÀNG</th>
-                  <th>TRANG PHỤC THUÊ</th>
-                  <th>THỜI GIAN THUÊ</th>
-                  <th>TIỀN THUÊ</th>
-                  <th>CỌC ESCROW</th>
-                  <th>TRẠNG THÁI</th>
-                  <th>HÀNH ĐỘNG</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rentalOrders.map((o) => (
-                  <tr key={o.id}>
-                    <td>
-                      <div style={{ fontWeight: 700 }}>{o.id}</div>
-                      <div style={{ fontSize: '10px', color: '#9CA3AF' }}>{o.date}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{o.customer}</div>
-                      <div style={{ fontSize: '11px', color: '#6B7280' }}>{o.phone}</div>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        <img src={o.image} alt={o.product} style={{ width: '40px', height: '50px', borderRadius: '8px', objectFit: 'cover' }} />
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '13px' }}>{o.product}</div>
-                          <div style={{ fontSize: '11px', color: '#6B7280' }}>{o.sizeColor}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: '12px' }}>{o.period}</div>
-                    </td>
-                    <td>
-                      <strong style={{ fontSize: '14px', color: 'var(--color-black)' }}>{o.price}</strong>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#059669' }}>✓ {o.escrow}</div>
-                    </td>
-                    <td>
-                      <span className={`status-chip status-${o.statusType}`}>
-                        ● {o.status}
-                      </span>
-                    </td>
-                    <td>
-                      <button className="btn-primary" style={{ fontSize: '11px', padding: '6px 14px' }}>
-                        {o.action}
-                      </button>
-                    </td>
+            {isLoading ? (
+              <div style={{ padding: '48px', textAlign: 'center', color: '#78716C' }}>
+                <Loader2 size={28} className="animate-spin" style={{ margin: '0 auto 12px auto' }} />
+                <p style={{ fontSize: '14px', margin: 0 }}>Đang nạp dữ liệu đơn thuê từ kho...</p>
+              </div>
+            ) : orders.length === 0 ? (
+              <div style={{ padding: '48px', textAlign: 'center', color: '#78716C' }}>
+                <PackageCheck size={36} style={{ margin: '0 auto 12px auto', color: '#D6D3D1' }} />
+                <p style={{ fontSize: '15px', fontWeight: 500, margin: '0 0 4px 0' }}>Không có đơn thuê nào</p>
+                <p style={{ fontSize: '13px', margin: 0, color: '#A8A29E' }}>Chưa có đơn thuê trang phục theo bộ lọc hiện tại.</p>
+              </div>
+            ) : (
+              <table className="custom-table">
+                <thead>
+                  <tr>
+                    <th>MÃ ĐƠN HÀNG</th>
+                    <th>KHÁCH HÀNG</th>
+                    <th>THỜI GIAN THUÊ</th>
+                    <th>TIỀN THUÊ</th>
+                    <th>TIỀN ĐẶT CỌC</th>
+                    <th>TRẠNG THÁI</th>
+                    <th>HÀNH ĐỘNG</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {orders.map((o) => (
+                    <tr key={o._id}>
+                      <td>
+                        <div style={{ fontWeight: 700, color: '#171717' }}>#{o.orderCode || o._id.slice(-6).toUpperCase()}</div>
+                        <div style={{ fontSize: '11px', color: '#9CA3AF' }}>{formatDate(o.createdAt)}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{o.customerId?.name || o.customerId?.phone || 'Khách hàng'}</div>
+                        <div style={{ fontSize: '11px', color: '#6B7280' }}>{o.customerId?.phone || ''}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Calendar size={14} color="#78716C" />
+                          <span>{formatDate(o.startDate)} → {formatDate(o.dueDate)}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <strong style={{ fontSize: '13px', color: '#171717' }}>{formatPrice(o.rentalFee)}</strong>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#C5A880' }}>
+                          {formatPrice(o.depositAmount)}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#78716C' }}>
+                          {o.depositStatus === 'held' ? '✓ Shop đang giữ cọc' : o.depositStatus}
+                        </div>
+                      </td>
+                      <td>{getStatusBadge(o.rentalStatus)}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          {['confirmed', 'preparing'].includes(o.rentalStatus) && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrderForScan(o)}
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                border: '1px solid #171717',
+                                backgroundColor: '#171717',
+                                color: '#FFFFFF',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <ScanBarcode size={13} />
+                              <span>Gán Mã Vạch</span>
+                            </button>
+                          )}
+
+                          {['ready_for_pickup'].includes(o.rentalStatus) && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrderForHandover(o)}
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                border: '1px solid #059669',
+                                backgroundColor: '#059669',
+                                color: '#FFFFFF',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <CheckCircle2 size={13} />
+                              <span>Bàn Giao Đồ</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Modal Quét Mã Vạch */}
+      <BarcodeScannerModal
+        isOpen={Boolean(selectedOrderForScan)}
+        onClose={() => setSelectedOrderForScan(null)}
+        order={selectedOrderForScan}
+        onSuccess={() => {
+          showToast('Đã gán hiện vật kho thành công!');
+          fetchOrders();
+        }}
+      />
+
+      {/* Modal Bàn Giao Đồ */}
+      <HauteCoutureModal
+        isOpen={Boolean(selectedOrderForHandover)}
+        onClose={() => setSelectedOrderForHandover(null)}
+        title="Xác Nhận Bàn Giao Trang Phục"
+        subtitle={`Đơn thuê #${selectedOrderForHandover?.orderCode || selectedOrderForHandover?._id}`}
+        maxWidth="520px"
+      >
+        <div>
+          <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#44403C' }}>
+            Vui lòng kiểm tra trang phục nguyên vẹn và xác nhận bàn giao cho khách tại showroom hoặc đơn vị vận chuyển.
+          </p>
+
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px', color: '#171717' }}>
+            Ghi chú phụ kiện đi kèm (túi bụi, móc treo, tag):
+          </label>
+          <textarea
+            value={handoverNote}
+            onChange={(e) => setHandoverNote(e.target.value)}
+            placeholder="Ví dụ: Đầy đủ túi bụi nhung, móc áo gỗ, khách đã ký biên bản nhận..."
+            rows={3}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: '6px',
+              border: '1px solid #D6D3D1',
+              fontSize: '13px',
+              boxSizing: 'border-box',
+              marginBottom: '20px',
+              fontFamily: 'inherit',
+            }}
+          />
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setSelectedOrderForHandover(null)}
+              disabled={isHandoverLoading}
+              style={{
+                padding: '9px 16px',
+                borderRadius: '6px',
+                border: '1px solid #D6D3D1',
+                backgroundColor: '#FFFFFF',
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmHandover}
+              disabled={isHandoverLoading}
+              style={{
+                padding: '9px 20px',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: '#171717',
+                color: '#F8F7F4',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: isHandoverLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              {isHandoverLoading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Đang xử lý...</span>
+                </>
+              ) : (
+                <span>Xác Nhận Bàn Giao</span>
+              )}
+            </button>
+          </div>
+        </div>
+      </HauteCoutureModal>
     </div>
   );
 }
-

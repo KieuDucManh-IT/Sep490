@@ -32,6 +32,14 @@ export function useShopRadarData() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStore, setSelectedStore] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = useCallback((msg) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((current) => (current === msg ? null : current));
+    }, 4000);
+  }, []);
 
   // 1. Debounce search input
   useEffect(() => {
@@ -157,7 +165,7 @@ export function useShopRadarData() {
   // 5. GPS Re-locate action
   const handleQuickGps = useCallback(() => {
     if (!navigator.geolocation) {
-      alert('Trình duyệt của bạn chưa hỗ trợ tính năng định vị.');
+      showToast('Trình duyệt của bạn chưa hỗ trợ tính năng định vị.');
       return;
     }
 
@@ -181,6 +189,7 @@ export function useShopRadarData() {
             isExactGps: true,
           });
           setLocationState(updated);
+          showToast('Đã định vị thành công vị trí của quý khách.');
         } catch (err) {
           console.warn('Lỗi định vị:', err);
         } finally {
@@ -189,15 +198,15 @@ export function useShopRadarData() {
       },
       (err) => {
         setLocating(false);
-        alert(
+        showToast(
           err.code === 1
-            ? 'Bạn chưa cho phép quyền vị trí. Hãy bật định vị trên trình duyệt để tìm shop gần nhất nhé!'
-            : 'Tín hiệu GPS đang chập chờn, bạn thử lại sau ít giây nhé.'
+            ? 'Bạn chưa cho phép quyền vị trí. Hãy bật định vị trên trình duyệt để tìm showroom gần nhất.'
+            : 'Tín hiệu GPS đang chập chờn, xin vui lòng thử lại sau ít giây.'
         );
       },
       { timeout: 8000, enableHighAccuracy: false }
     );
-  }, [userLocation?.city]);
+  }, [userLocation?.city, showToast]);
 
   return {
     userLocation,
@@ -211,5 +220,7 @@ export function useShopRadarData() {
     setSearchTerm,
     selectedStore,
     setSelectedStore,
+    toastMessage,
+    clearToast: () => setToastMessage(null),
   };
 }

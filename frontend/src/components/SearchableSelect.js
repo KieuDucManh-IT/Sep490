@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Search, X, Check, ChevronDown } from 'lucide-react';
 
 export function normalizeVietnamese(str) {
   if (!str) return '';
@@ -213,23 +214,23 @@ export default function SearchableSelect({
                 color: '#9CA3AF',
                 cursor: 'pointer',
                 padding: '2px',
-                fontSize: '14px',
-                lineHeight: 1,
+                display: 'flex',
+                alignItems: 'center',
               }}
             >
-              ✕
+              <X size={14} />
             </button>
           )}
           <span
             style={{
               color: '#6B7280',
-              fontSize: '11px',
               transition: 'transform 0.2s ease',
               transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-              display: 'inline-block',
+              display: 'flex',
+              alignItems: 'center',
             }}
           >
-            ▼
+            <ChevronDown size={14} />
           </span>
         </div>
       </div>
@@ -259,11 +260,11 @@ export default function SearchableSelect({
                   left: '10px',
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  color: '#9CA3AF',
-                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
                 }}
               >
-                🔍
+                <Search size={13} color="#9CA3AF" />
               </span>
               <input
                 ref={searchInputRef}
@@ -294,10 +295,12 @@ export default function SearchableSelect({
                     background: 'none',
                     color: '#9CA3AF',
                     cursor: 'pointer',
-                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px',
                   }}
                 >
-                  ✕
+                  <X size={13} />
                 </button>
               )}
             </div>
@@ -426,7 +429,9 @@ export default function SearchableSelect({
                     </div>
 
                     {isSelected && (
-                      <span style={{ color: '#D97706', fontSize: '14px', marginLeft: '8px' }}>✓</span>
+                      <span style={{ display: 'flex', alignItems: 'center', marginLeft: '8px' }}>
+                        <Check size={14} color="#D97706" />
+                      </span>
                     )}
                   </div>
                 );

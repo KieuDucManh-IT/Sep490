@@ -13,6 +13,7 @@ import userRoutes from "./src/routes/userRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
+import { wishlistRouter, collectionRouter } from "./src/routes/customer/collectionRoutes.js";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
 import walletRoutes, {
@@ -91,6 +92,10 @@ app.use("/api/ops/shops", shopRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/v1/wishlist", wishlistRouter);
+app.use("/api/wishlist", wishlistRouter);
+app.use("/api/v1/collections", collectionRouter);
+app.use("/api/collections", collectionRouter);
 app.use("/api", apiRoutes);
 
 app.use(notFound);

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Product } from '../../models/masterdata/Product.js';
+import { Category } from '../../models/masterdata/Category.js';
 import { ProductImage } from '../../models/masterdata/ProductImages.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { validateProduct } from '../../validations/masterdata/productValidation.js';
@@ -11,6 +12,12 @@ import { enrichProductsWithInventory } from '../warehouse/productInventoryHelper
 
 const imageError = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const populateProduct = (query) => query.populate('categoryId').lean();
+const assertActiveCategories = async (categoryIds) => {
+  const ids = [...new Set((categoryIds || []).map(String))];
+  if (ids.length && await Category.countDocuments({ _id: { $in: ids }, isDeleted: { $ne: true }, status: 'active' }) !== ids.length) {
+    throw imageError('Một hoặc nhiều loại sản phẩm không tồn tại hoặc đã ngừng hoạt động.');
+  }
+};
 
 const normalizeImages = (images, productId) => {
   if (!Array.isArray(images)) throw imageError('Danh sách ảnh sản phẩm phải là một mảng.');
@@ -86,8 +93,8 @@ const withImages = async (product) => {
 const skuPart = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
 const buildVariantSku = async (productCode, variant, excludeId = null) => {
   const attributes = variant.attributes && typeof variant.attributes === 'object' ? Object.entries(variant.attributes).map(([key, value]) => `${key}-${value}`) : [];
-  const descriptor = [variant.variantName, variant.color, variant.size, ...attributes].map(skuPart).filter(Boolean).join('-');
-  if (!descriptor) throw imageError('Biến thể cần có tên, màu, kích thước hoặc thuộc tính để tạo SKU tự động.');
+const descriptor = [variant.color, variant.size, ...attributes].map(skuPart).filter(Boolean).join('-');
+if (!descriptor) throw imageError('Biến thể cần có màu sắc, kích thước hoặc thuộc tính để tạo SKU tự động.');
   const base = `${skuPart(productCode)}-${descriptor}`.slice(0, 90).replace(/-+$/g, '');
   let candidate = base;
   let suffix = 2;
@@ -100,11 +107,14 @@ const syncProductVariants = async (productId, productCode, incoming) => {
   if (!Array.isArray(incoming)) throw imageError('Danh sách biến thể phải là một mảng.');
   const ids = incoming.filter((variant) => variant?._id).map((variant) => String(variant._id));
   if (new Set(ids).size !== ids.length) throw imageError('Biến thể bị lặp trong danh sách.');
-  const existing = await ProductVariant.find({ productId });
+  const existing = await ProductVariant.find({ productId, isDeleted: { $ne: true } });
   if (ids.some((id) => !existing.some((variant) => String(variant._id) === id))) throw imageError('Có biến thể không thuộc sản phẩm này.');
   for (const input of incoming) {
     const current = input._id ? existing.find((variant) => String(variant._id) === String(input._id)) : null;
-    const variantInput = { ...input, productId };
+    const variantInput = { ...input };
+    delete variantInput._id;
+    variantInput.productId = productId;
+    delete variantInput.variantName;
     variantInput.sku = await buildVariantSku(productCode, variantInput, current?._id);
     const changes = validateProductVariant(variantInput, current?.toObject());
     if (current) { Object.assign(current, changes); await current.save(); }
@@ -118,13 +128,15 @@ const syncProductVariants = async (productId, productCode, incoming) => {
       InboundReceiptDetail.exists({ variantId: variant._id }), ProductImage.exists({ variantId: variant._id }),
     ]);
     if (referenced.some(Boolean)) throw imageError(`Không thể xóa biến thể ${variant.sku} vì đã phát sinh tồn kho hoặc phiếu nhập.`);
-    await ProductVariant.findByIdAndDelete(variant._id);
+    variant.isDeleted = true;
+    variant.status = 'inactive';
+    await variant.save();
   }
 };
 
 export const productService = {
   list: async () => {
-    const products = await populateProduct(Product.find().select('-productType').populate('shopId').sort({ createdAt: -1 }));
+    const products = await populateProduct(Product.find({ isDeleted: { $ne: true } }).select('-productType').populate('shopId').sort({ createdAt: -1 }));
     const ids = products.map((product) => product._id);
     const images = await ProductImage.find({ productId: { $in: ids } }).sort({ displayOrder: 1 }).lean();
     const byProduct = new Map();
@@ -132,7 +144,7 @@ export const productService = {
       const key = String(image.productId);
       byProduct.set(key, [...(byProduct.get(key) || []), image]);
     }
-    const variants = await ProductVariant.find({ productId: { $in: ids } }).sort({ createdAt: 1 }).lean();
+    const variants = await ProductVariant.find({ productId: { $in: ids }, isDeleted: { $ne: true } }).select('-variantName').sort({ createdAt: 1 }).lean();
     const variantsByProduct = new Map();
     for (const variant of variants) variantsByProduct.set(String(variant.productId), [...(variantsByProduct.get(String(variant.productId)) || []), variant]);
     const mapped = products.map((product) => {
@@ -146,6 +158,7 @@ export const productService = {
   create: async (payload) => {
     const { images, variants, ...productPayload } = payload || {};
     const normalized = validateProduct(productPayload);
+    await assertActiveCategories(normalized.categoryId);
     const product = await Product.create(normalized);
     try {
       await saveImages(product._id, images || []);
@@ -167,17 +180,25 @@ export const productService = {
     const current = product.toObject();
     delete current.productType;
     const changes = validateProduct(productPayload, current);
+    await assertActiveCategories(changes.categoryId || product.categoryId);
     Object.assign(product, changes);
     product.set('productType', undefined);
     await product.save();
     await saveImages(product._id, images);
     await syncProductVariants(product._id, product.productCode, variants);
+    if (current.productCode !== product.productCode) {
+      const productVariants = await ProductVariant.find({ productId: product._id, isDeleted: { $ne: true } });
+      for (const variant of productVariants) {
+        variant.sku = await buildVariantSku(product.productCode, variant.toObject(), variant._id);
+        await variant.save();
+      }
+    }
     return withImages(await populateProduct(Product.findById(product._id)));
   },
   remove: async (id) => {
-    const product = await Product.findByIdAndDelete(id);
+    const product = await Product.findOneAndUpdate({ _id: id, isDeleted: { $ne: true } }, { $set: { isDeleted: true, status: 'inactive' } }, { new: true });
     if (product) await ProductImage.deleteMany({ productId: product._id });
-    if (product) await ProductVariant.updateMany({ productId: product._id }, { $set: { status: 'inactive' } });
+    if (product) await ProductVariant.updateMany({ productId: product._id }, { $set: { status: 'inactive', isDeleted: true } });
     return product;
   },
 };

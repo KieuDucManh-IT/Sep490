@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -45,7 +45,8 @@ import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
-import WarehouseStockControlPage from './pages/warehouse/WarehouseStockControlPage';
+import WarehouseStocktakePage from './pages/warehouse/WarehouseStocktakePage';
+import WarehouseAdjustmentPage from './pages/warehouse/WarehouseAdjustmentPage';
 import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
 import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
 import ProductManagementPage from './pages/warehouse/ProductManagementPage';
@@ -73,7 +74,7 @@ function App() {
       <ForceChangePasswordModal />
       <Routes>
         {/* ========================================================
-            CUSTOMER PORTAL (Khách Hàng)
+            CUSTOMER PORTAL (KhÃ¡ch HÃ ng)
             ======================================================== */}
         <Route path="/" element={<HomePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
@@ -110,7 +111,7 @@ function App() {
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
 
         {/* ========================================================
-            ROLE: BRANCH MANAGER (Quản Lý Chi Nhánh Cửa Hàng)
+            ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)
             ======================================================== */}
         <Route
           path="/branch/dashboard"
@@ -180,7 +181,7 @@ function App() {
         />
 
         {/* ========================================================
-            ROLE: WAREHOUSE MANAGER & STAFF (Quản Lý Kho & Sản Phẩm)
+            ROLE: WAREHOUSE MANAGER & STAFF (Quáº£n LÃ½ Kho & Sáº£n Pháº©m)
             ======================================================== */}
         <Route
           path="/warehousemanager"
@@ -202,8 +203,8 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="/warehousemanager/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
-        <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="adjustments" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStocktakePage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseAdjustmentPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/transfers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />
@@ -254,14 +255,16 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStockControlPage section="stocktakes" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStocktakePage /></ProtectedRoute>} />
+        <Route path="/warehousestaff/reports/inventory" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><InventoryReportPage mode="staff" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/inventory" element={<Navigate to="/branch/inventory" replace />} />
         <Route path="/warehouse" element={<Navigate to="/warehousemanager/inventory-locations" replace />} />
 
         {/* ========================================================
-            ROLE: SHOP OWNER / CEO (Chủ Chuỗi & Quản Lý Chi Nhánh)
+            ROLE: SHOP OWNER / CEO (Chá»§ Chuá»—i & Quáº£n LÃ½ Chi NhÃ¡nh)
             ======================================================== */}
         <Route
           path="/owner/dashboard"
@@ -361,7 +364,7 @@ function App() {
         />
 
         {/* ========================================================
-            ROLE: SYSTEM ADMIN (Quản Trị Hệ Thống & Tài Khoản)
+            ROLE: SYSTEM ADMIN (Quáº£n Trá»‹ Há»‡ Thá»‘ng & TÃ i Khoáº£n)
             ======================================================== */}
         <Route
           path="/admin/accounts"
@@ -402,7 +405,7 @@ function App() {
         />
 
         {/* ========================================================
-            BACKWARD COMPATIBILITY REDIRECTS (Tương Thích Tuyệt Đối)
+            BACKWARD COMPATIBILITY REDIRECTS (TÆ°Æ¡ng ThÃ­ch Tuyá»‡t Äá»‘i)
             ======================================================== */}
         <Route path="/owner" element={<Navigate to="/owner/branches" replace />} />
         <Route path="/branch" element={<Navigate to="/branch/dashboard" replace />} />

@@ -46,7 +46,8 @@ async function loadCatalog() {
     ProductVariant.find({
       productId: { $in: productIds },
       status: { $nin: ['inactive', 'INACTIVE'] },
-    }).lean(),
+      isDeleted: { $ne: true },
+    }).select('-variantName').lean(),
   ]);
 
   const imagesByProduct = {};

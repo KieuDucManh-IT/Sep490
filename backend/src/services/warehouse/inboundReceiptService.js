@@ -30,7 +30,7 @@ const receiptPopulation = [
 ];
 
 const loadDetails = async (receiptId) => InboundReceiptDetail.find({ receiptId }).sort({ createdAt: 1 })
-  .populate({ path: 'variantId', select: 'sku variantName size color productId', populate: { path: 'productId', select: 'name productCode trackingType' } })
+  .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode trackingType' } })
   .populate('storageAllocations.storageId', 'code name type')
   .populate('storageId', 'code name type');
 

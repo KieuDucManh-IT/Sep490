@@ -13,7 +13,7 @@ const statusLabels = {
 const productName = (line) => {
   const variant = line.variantId;
   const product = variant?.productId;
-  return [product?.name, variant?.variantName, variant?.sku].filter(Boolean).join(' · ') || 'Mặt hàng';
+  return [product?.name, variant?.sku, variant?.color, variant?.size].filter(Boolean).join(' · ') || 'Mặt hàng';
 };
 
 export default function InboundReceiptModal({ mode, role, receipt, centralLocation, suppliers, products, variants, staff, shelves, onClose, onCreate, onReceive, onApprove, onPutaway }) {
@@ -109,7 +109,7 @@ export default function InboundReceiptModal({ mode, role, receipt, centralLocati
           <div className="wm-inbound-lines-heading"><strong>Mặt hàng dự kiến</strong><button type="button" className="secondary" onClick={() => setLines([...lines, { productId: '', variantId: '', quantityExpected: '', unitCost: '' }])}><Plus size={14} />Thêm dòng</button></div>
           {lines.map((line, index) => <div className="wm-inbound-line" key={index}>
             <label>Sản phẩm<select required value={line.productId} onChange={(event) => updateLine(index, 'productId', event.target.value)}><option value="">Chọn sản phẩm</option>{products.map((product) => <option key={product._id} value={product._id}>{product.productCode} — {product.name}</option>)}</select></label>
-            <label>Biến thể<select required disabled={!line.productId} value={line.variantId} onChange={(event) => updateLine(index, 'variantId', event.target.value)}><option value="">Chọn biến thể</option>{variants.filter((variant) => (variant.productId?._id || variant.productId) === line.productId).map((variant) => <option key={variant._id} value={variant._id}>{variant.sku} — {variant.variantName}</option>)}</select></label>
+            <label>Biến thể<select required disabled={!line.productId} value={line.variantId} onChange={(event) => updateLine(index, 'variantId', event.target.value)}><option value="">Chọn biến thể</option>{variants.filter((variant) => (variant.productId?._id || variant.productId) === line.productId).map((variant) => <option key={variant._id} value={variant._id}>{variant.sku} — {variant.color} — {variant.size}</option>)}</select></label>
             <label>Số lượng dự kiến<input required type="number" min="1" step="1" value={line.quantityExpected} onChange={(event) => updateLine(index, 'quantityExpected', event.target.value)} /></label>
             <label>Giá nhập / cái<input required type="number" min="0" step="1" value={line.unitCost} onChange={(event) => updateLine(index, 'unitCost', event.target.value)} /></label>
             {lines.length > 1 && <button type="button" className="wm-icon-button danger" aria-label="Xóa dòng hàng" onClick={() => setLines(lines.filter((_, i) => i !== index))}><Trash2 size={16} /></button>}

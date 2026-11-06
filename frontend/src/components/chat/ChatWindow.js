@@ -21,8 +21,14 @@ export default function ChatWindow({
   const [nextCursor, setNextCursor] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [showPinnedProduct, setShowPinnedProduct] = useState(true);
 
   const conversationId = conversation?._id;
+
+  // Reset hiển thị banner sản phẩm khi đổi hội thoại
+  useEffect(() => {
+    setShowPinnedProduct(true);
+  }, [conversationId]);
 
   // 1. Tải lịch sử tin nhắn khi mở hội thoại
   const loadMessages = useCallback(async (convId) => {
@@ -228,10 +234,14 @@ export default function ChatWindow({
         onBack={onBack}
       />
 
-      {/* Thẻ sản phẩm nổi bật đang tư vấn nếu có */}
-      {latestProduct && (
-        <div style={{ padding: '10px 24px 0' }}>
-          <ProductReferenceCard product={latestProduct} />
+      {/* Thẻ sản phẩm nổi bật đang tư vấn nếu có (dạng banner ghim tinh gọn) */}
+      {latestProduct && showPinnedProduct && (
+        <div className="chat-pinned-wrapper">
+          <ProductReferenceCard
+            product={latestProduct}
+            variant="pinned"
+            onDismiss={() => setShowPinnedProduct(false)}
+          />
         </div>
       )}
 

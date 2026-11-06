@@ -444,7 +444,10 @@ export default function ProductDetailPage() {
     }
 
     try {
-      showToast('Đang kết nối với Shop...', 'info');
+      const branchLabel = currentSelectedBranch?.name
+        ? `cơ sở ${currentSelectedBranch.name}`
+        : 'Shop';
+      showToast(`Đang kết nối với ${branchLabel}...`, 'info');
       let targetShopId = null;
       if (currentSelectedBranch?.shopId) {
         targetShopId =
@@ -462,6 +465,8 @@ export default function ProductDetailPage() {
       const res = await chatApi.getOrCreateConversation({
         productId: product?._id,
         shopId: targetShopId,
+        branchId: currentSelectedBranch?.locationId,
+        branchName: currentSelectedBranch?.name,
       });
 
       if (res?.conversation?._id) {
@@ -1052,9 +1057,18 @@ export default function ProductDetailPage() {
             type="button"
             className="pdetail-btn-chat-shop"
             onClick={handleChatWithShop}
+            title={
+              currentSelectedBranch?.name
+                ? `Nhắn tin tư vấn với cơ sở ${currentSelectedBranch.name}`
+                : 'Nhắn tin tư vấn với Shop'
+            }
           >
             <i className="fa-regular fa-comment-dots"></i>
-            <span>Nhắn tin tư vấn với Shop</span>
+            <span>
+              {currentSelectedBranch?.name
+                ? `Nhắn tin tư vấn (${currentSelectedBranch.name})`
+                : 'Nhắn tin tư vấn với Shop'}
+            </span>
           </button>
         </div>
       </div>

@@ -29,12 +29,17 @@ export default function MessageItem({
   if (isSystem) {
     return (
       <div className="chat-date-divider">
-        <span className="chat-date-text" style={{ fontStyle: 'italic' }}>
+        <span className="chat-date-text system-text">
           {message.content}
         </span>
       </div>
     );
   }
+
+  const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
+  const hasContent = Boolean(message.content && message.content.trim());
+  const hasProduct = Boolean(message.productCard);
+  const isOnlyImages = hasAttachments && !hasContent && !hasProduct;
 
   const gridClass =
     message.attachments?.length === 1
@@ -46,29 +51,29 @@ export default function MessageItem({
   return (
     <div className={`chat-msg-row ${isMine ? 'mine' : 'theirs'}`}>
       {!isMine && (
-        <div className="chat-avatar-wrapper" style={{ marginBottom: 4 }}>
+        <div className="chat-avatar-wrapper" style={{ marginBottom: 2 }}>
           {senderAvatar ? (
             <img
               src={senderAvatar}
               alt={senderName}
-              className="chat-avatar-img"
-              style={{ width: 32, height: 32 }}
+              className="chat-avatar-img chat-avatar-sm"
             />
           ) : (
-            <div
-              className="chat-avatar-fallback"
-              style={{ width: 32, height: 32, fontSize: 13 }}
-            >
+            <div className="chat-avatar-fallback chat-avatar-sm">
               {senderName.charAt(0).toUpperCase()}
             </div>
           )}
         </div>
       )}
 
-      <div className="chat-msg-bubble">
+      <div
+        className={`chat-msg-bubble ${isOnlyImages ? 'bubble-only-images' : ''}`}
+      >
         {/* Thẻ sản phẩm nếu có */}
-        {message.productCard && (
+        {hasProduct && (
           <ProductReferenceCard
+            variant="bubble"
+            isMine={isMine}
             product={{
               productId: message.productCard.productId,
               productName: message.productCard.name,
@@ -82,33 +87,36 @@ export default function MessageItem({
         )}
 
         {/* Nội dung tin nhắn văn bản */}
-        {message.content && <div className="chat-msg-text">{message.content}</div>}
+        {hasContent && (
+          <div className="chat-msg-text">{message.content}</div>
+        )}
 
         {/* Danh sách ảnh đính kèm */}
-        {Array.isArray(message.attachments) && message.attachments.length > 0 && (
-          <div className={`chat-images-grid ${gridClass}`}>
+        {hasAttachments && (
+          <div className={`chat-images-grid ${gridClass} ${isOnlyImages ? 'standalone-images' : ''}`}>
             {message.attachments.map((att, idx) => (
-              <img
-                key={att.publicId || att.url || idx}
-                src={att.url}
-                alt={att.originalName || 'Ảnh tư vấn'}
-                className="chat-image-item"
-                onClick={() => onImageClick?.(att.url)}
-                loading="lazy"
-              />
+              <div key={att.publicId || att.url || idx} className="chat-image-wrap">
+                <img
+                  src={att.url}
+                  alt={att.originalName || 'Ảnh đính kèm'}
+                  className="chat-image-item"
+                  onClick={() => onImageClick?.(att.url)}
+                  loading="lazy"
+                />
+              </div>
             ))}
           </div>
         )}
 
         {/* Thời gian và trạng thái gửi / đã xem */}
-        <div className="chat-msg-time-status">
+        <div className={`chat-msg-time-status ${isOnlyImages ? 'overlay-status' : ''}`}>
           <span>{formatTime(message.createdAt)}</span>
           {isMine && (
-            <span title={isRead ? 'Đã xem' : 'Đã gửi'}>
+            <span title={isRead ? 'Đã xem' : 'Đã gửi'} className="chat-status-icon">
               {isRead ? (
-                <CheckCheck size={14} style={{ color: '#38bdf8' }} />
+                <CheckCheck size={14} className="status-read" />
               ) : (
-                <Check size={14} />
+                <Check size={14} className="status-sent" />
               )}
             </span>
           )}
@@ -117,4 +125,3 @@ export default function MessageItem({
     </div>
   );
 }
-

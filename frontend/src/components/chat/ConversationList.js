@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, MessageSquare } from 'lucide-react';
+import { Search, MessageSquare, X } from 'lucide-react';
 import ConversationItem from './ConversationItem';
 
 export default function ConversationList({
@@ -29,13 +29,18 @@ export default function ConversationList({
       <div className="chat-sidebar-header">
         <div className="chat-sidebar-title-row">
           <h2 className="chat-sidebar-title">
-            <MessageSquare size={22} />
-            <span>{isCustomerView ? 'Tin Nhắn Tư Vấn' : 'Tư Vấn Khách Hàng'}</span>
+            <MessageSquare size={19} className="chat-title-icon" />
+            <span>{isCustomerView ? 'Tin Nhắn Tư Vấn' : 'Hộp Thư Tư Vấn'}</span>
           </h2>
+          {conversations.length > 0 && (
+            <span className="chat-sidebar-count-badge">
+              {conversations.length}
+            </span>
+          )}
         </div>
 
         <div className="chat-search-bar">
-          <Search size={16} className="chat-search-icon" />
+          <Search size={15} className="chat-search-icon" />
           <input
             type="text"
             className="chat-search-input"
@@ -47,6 +52,16 @@ export default function ConversationList({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              className="chat-search-clear-btn"
+              onClick={() => setSearchTerm('')}
+              title="Xóa tìm kiếm"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
 

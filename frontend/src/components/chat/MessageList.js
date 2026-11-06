@@ -75,7 +75,7 @@ export default function MessageList({
       onScroll={handleScroll}
     >
       {/* Nút tải thêm tin nhắn cũ */}
-      {hasMore && (
+      {hasMore ? (
         <button
           type="button"
           className="chat-load-more-btn"
@@ -84,7 +84,13 @@ export default function MessageList({
         >
           {isLoadingMore ? 'Đang tải tin cũ...' : 'Xem tin nhắn cũ hơn'}
         </button>
-      )}
+      ) : messages.length >= 25 ? (
+        <div className="chat-date-divider" style={{ margin: '4px 0 12px' }}>
+          <span className="chat-date-text system-text" style={{ fontSize: '11px', color: '#94a3b8' }}>
+            Lịch sử tin nhắn được giới hạn trong 3 tháng gần nhất
+          </span>
+        </div>
+      ) : null}
 
       {messages.map((msg) => {
         const msgDate = new Date(msg.createdAt).toDateString();

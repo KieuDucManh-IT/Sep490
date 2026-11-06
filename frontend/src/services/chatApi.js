@@ -4,8 +4,8 @@ export const chatApi = {
   /**
    * Tạo hoặc lấy cuộc trò chuyện với Shop
    */
-  getOrCreateConversation: async ({ productId, shopId } = {}) => {
-    return await apiClient.post('/conversations', { productId, shopId });
+  getOrCreateConversation: async ({ productId, shopId, branchId, branchName } = {}) => {
+    return await apiClient.post('/conversations', { productId, shopId, branchId, branchName });
   },
 
   /**

@@ -99,7 +99,14 @@ export const getUserManagedShopIds = async (userId, userRole) => {
 /**
  * 1. Bắt đầu hoặc lấy cuộc trò chuyện giữa Customer và Shop
  */
-export const getOrCreateConversation = async ({ userId, userRole, productId, shopId }) => {
+export const getOrCreateConversation = async ({
+  userId,
+  userRole,
+  productId,
+  shopId,
+  branchId,
+  branchName,
+}) => {
   checkNotAdmin(userRole);
 
   let targetShopId = null;
@@ -108,6 +115,41 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
       targetShopId = shopId._id || shopId.id || null;
     } else if (typeof shopId === 'string' && mongoose.Types.ObjectId.isValid(shopId)) {
       targetShopId = shopId;
+    }
+  }
+
+  // 1. Nếu targetShopId thực chất là một InventoryLocation, chuyển đổi sang ShopId tương ứng
+  if (targetShopId) {
+    const isRealShop = await Shop.exists({ _id: targetShopId, isDeleted: { $ne: true } });
+    if (!isRealShop) {
+      const loc = await InventoryLocation.findById(targetShopId).lean();
+      if (loc?.shopId) {
+        targetShopId = loc.shopId._id || loc.shopId;
+      }
+    }
+  }
+
+  // 2. Nếu chưa có targetShopId nhưng có branchId (locationId)
+  if (!targetShopId && branchId && mongoose.Types.ObjectId.isValid(branchId)) {
+    const loc = await InventoryLocation.findById(branchId).lean();
+    if (loc?.shopId) {
+      targetShopId = loc.shopId._id || loc.shopId;
+    }
+  }
+
+  // 3. Nếu có branchName, đối chiếu thông minh với danh sách Shop theo tên
+  if (branchName) {
+    const cleanBranchName = String(branchName)
+      .replace(/kho|chi nhánh|cơ sở|showroom/gi, '')
+      .trim();
+    if (cleanBranchName) {
+      const matchedShop = await Shop.findOne({
+        name: new RegExp(cleanBranchName, 'i'),
+        isDeleted: { $ne: true },
+      }).lean();
+      if (matchedShop) {
+        targetShopId = matchedShop._id;
+      }
     }
   }
 
@@ -182,7 +224,7 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
     if (targetShopId && (!product.shopId || !product.shopId._id)) {
       try {
         await Product.updateOne({ _id: product._id }, { $set: { shopId: targetShopId } });
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Lấy ảnh đại diện sản phẩm
@@ -256,8 +298,41 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
       );
       if (!exists) {
         conversation.productContexts.unshift(productData);
-        hasChanges = true;
       }
+
+      const inquiryContent = branchName
+        ? `Xin chào Shop! Mình muốn được tư vấn thêm về "${productData.productName}" tại cơ sở ${branchName}.`
+        : `Xin chào Shop! Mình muốn được tư vấn thêm về "${productData.productName}".`;
+
+      const inquiryMessage = new Message({
+        conversationId: conversation._id,
+        senderId: customerId,
+        senderRole: 'customer',
+        messageType: 'PRODUCT_CARD',
+        content: inquiryContent,
+        productCard: {
+          productId: productData.productId,
+          name: productData.productName,
+          image: productData.productImage,
+          rentalPrice: productData.rentalPrice,
+          salePrice: productData.salePrice,
+          productCode: productData.productCode,
+          url: productData.productUrl,
+        },
+        readBy: [{ userId: customerId, readAt: new Date() }],
+        status: 'SENT',
+      });
+      await inquiryMessage.save();
+
+      conversation.lastMessage = {
+        content: inquiryContent,
+        senderId: customerId,
+        senderRole: 'customer',
+        messageType: 'PRODUCT_CARD',
+        createdAt: new Date(),
+      };
+      conversation.lastMessageAt = new Date();
+      hasChanges = true;
     }
 
     // Đảm bảo Brand Manager và Owner có trong participants
@@ -292,6 +367,14 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
       }
     });
 
+    const initialText = productData
+      ? (branchName
+        ? `Xin chào Shop! Mình muốn được tư vấn thêm về "${productData.productName}" tại cơ sở ${branchName}.`
+        : `Xin chào Shop! Mình muốn được tư vấn thêm về "${productData.productName}".`)
+      : (branchName
+        ? `Xin chào Shop! Mình muốn được tư vấn tại cơ sở ${branchName}.`
+        : 'Xin chào Shop! Mình muốn được tư vấn.');
+
     conversation = new Conversation({
       shopId: targetShopId,
       customerId,
@@ -300,9 +383,7 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
       productContexts: productData ? [productData] : [],
       status: 'ACTIVE',
       lastMessage: {
-        content: productData
-          ? `Xin chào Shop! Mình muốn được tư vấn thêm về "${productData.productName}".`
-          : 'Xin chào Shop! Mình muốn được tư vấn.',
+        content: initialText,
         senderId: customerId,
         senderRole: 'customer',
         messageType: productData ? 'PRODUCT_CARD' : 'TEXT',
@@ -320,19 +401,17 @@ export const getOrCreateConversation = async ({ userId, userRole, productId, sho
       senderId: customerId,
       senderRole: 'customer',
       messageType: productData ? 'PRODUCT_CARD' : 'TEXT',
-      content: productData
-        ? `Xin chào Shop! Mình muốn được tư vấn thêm về "${productData.productName}".`
-        : 'Xin chào Shop! Mình muốn được tư vấn.',
+      content: initialText,
       productCard: productData
         ? {
-            productId: productData.productId,
-            name: productData.productName,
-            image: productData.productImage,
-            rentalPrice: productData.rentalPrice,
-            salePrice: productData.salePrice,
-            productCode: productData.productCode,
-            url: productData.productUrl,
-          }
+          productId: productData.productId,
+          name: productData.productName,
+          image: productData.productImage,
+          rentalPrice: productData.rentalPrice,
+          salePrice: productData.salePrice,
+          productCode: productData.productCode,
+          url: productData.productUrl,
+        }
         : null,
       readBy: [{ userId: customerId, readAt: new Date() }],
       status: 'SENT',
@@ -470,18 +549,44 @@ export const getConversationById = async ({ conversationId, userId, userRole }) 
 };
 
 /**
+ * Cấu hình thời gian lưu trữ truy vấn tin nhắn: 3 tháng (90 ngày)
+ * Các tin nhắn cũ hơn 3 tháng sẽ không được gọi lại khi truy vấn để tối ưu hóa hiệu năng và tốc độ database
+ */
+export const MESSAGE_RETENTION_DAYS = 90;
+export const MESSAGE_RETENTION_MS = MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+export const getRetentionCutoffDate = () => {
+  return new Date(Date.now() - MESSAGE_RETENTION_MS);
+};
+
+/**
  * 4. Lấy lịch sử tin nhắn của cuộc trò chuyện (Cursor-based)
+ * Giới hạn thời gian: Sau 3 tháng (90 ngày) sẽ không gọi lại tin nhắn cũ hơn nữa để bảo toàn tốc độ query.
  */
 export const getMessages = async ({ conversationId, userId, userRole, before, limit = 30 }) => {
   // Xác thực quyền trước khi xem tin nhắn
   await getConversationById({ conversationId, userId, userRole });
 
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 30));
-  const filter = { conversationId, isDeleted: { $ne: true } };
+  const retentionCutoff = getRetentionCutoffDate();
 
-  if (before) {
-    filter.createdAt = { $lt: new Date(before) };
+  // Nếu client gửi cursor 'before' nhưng cursor này đã cũ hơn mốc 3 tháng -> dừng ngay, không query
+  if (before && new Date(before) <= retentionCutoff) {
+    return {
+      messages: [],
+      hasMore: false,
+      nextCursor: null,
+    };
   }
+
+  const filter = {
+    conversationId,
+    isDeleted: { $ne: true },
+    createdAt: {
+      $gte: retentionCutoff,
+      ...(before ? { $lt: new Date(before) } : {}),
+    },
+  };
 
   const rawMessages = await Message.find(filter)
     .populate('senderId', 'FullName Email Avatar Role')
@@ -489,13 +594,19 @@ export const getMessages = async ({ conversationId, userId, userRole, before, li
     .limit(safeLimit + 1)
     .lean();
 
-  const hasMore = rawMessages.length > safeLimit;
+  let hasMore = rawMessages.length > safeLimit;
   const messagesToReturn = hasMore ? rawMessages.slice(0, safeLimit) : rawMessages;
 
   // Đảo lại theo thứ tự thời gian tăng dần để client hiển thị từ cũ đến mới
   messagesToReturn.reverse();
 
-  const nextCursor = hasMore && messagesToReturn.length > 0 ? messagesToReturn[0].createdAt : null;
+  let nextCursor = hasMore && messagesToReturn.length > 0 ? messagesToReturn[0].createdAt : null;
+
+  // Nếu con trỏ phân trang tiếp theo đã vượt quá mốc 3 tháng -> không còn tin nhắn khả dụng trong kỳ retention
+  if (nextCursor && new Date(nextCursor) <= retentionCutoff) {
+    hasMore = false;
+    nextCursor = null;
+  }
 
   return {
     messages: messagesToReturn,
@@ -624,13 +735,15 @@ export const markMessagesAsRead = async ({ conversationId, userId }) => {
     throw err;
   }
 
-  // Cập nhật các tin nhắn chưa được user này đọc
+  // Cập nhật các tin nhắn chưa được user này đọc trong phạm vi 3 tháng gần nhất để tối ưu tốc độ
   const now = new Date();
+  const retentionCutoff = getRetentionCutoffDate();
   await Message.updateMany(
     {
       conversationId,
       senderId: { $ne: userId },
       'readBy.userId': { $ne: userId },
+      createdAt: { $gte: retentionCutoff },
     },
     {
       $push: { readBy: { userId, readAt: now } },
@@ -685,7 +798,7 @@ export const updateConversationStatus = async ({ conversationId, userId, userRol
   return await populateConversation(conversationId);
 };
 
-// Helper populate
+
 const populateConversation = async (conversationId) => {
   return await Conversation.findById(conversationId)
     .populate('shopId', 'name imageUrl phone address managerId ownerId status isHQ')

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import '../../models/shop/Shop.js';
+import { Shop } from '../../models/shop/Shop.js';
 
 /**
  * Format địa chỉ chi nhánh/kho từ InventoryLocation hoặc Shop liên kết
@@ -35,6 +35,15 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
 
   let balances = [];
   let items = [];
+  let allShops = [];
+
+  try {
+    allShops = await Shop.find({ isDeleted: { $ne: true } })
+      .select('_id name address city ward latitude longitude managerId')
+      .lean();
+  } catch (shopErr) {
+    console.warn('Lỗi tải danh sách Shop trong productInventoryHelper:', shopErr.message);
+  }
 
   if (variantIds.length > 0) {
     try {
@@ -96,22 +105,51 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
     const getOrInitLocation = (loc) => {
       const locId = loc ? String(loc._id || loc) : 'unknown';
       if (!locationMap.has(locId)) {
-        const resolvedShopId =
+        let resolvedShopId =
           loc?.shopId?._id ||
-          loc?.shopId ||
-          product?.shopId?._id ||
-          (typeof product?.shopId === 'object' ? null : product?.shopId) ||
+          (typeof loc?.shopId === 'object' ? null : loc?.shopId) ||
           null;
+
+        // Đối chiếu thông minh theo từ khóa tên hoặc địa chỉ chi nhánh
+        if (loc?.name && allShops.length > 0) {
+          const locNameLower = String(loc.name).toLowerCase();
+          const matchedShop = allShops.find((s) => {
+            const sNameLower = String(s.name || '').toLowerCase();
+            return (
+              locNameLower.includes(sNameLower) ||
+              sNameLower.includes(locNameLower) ||
+              (locNameLower.includes('tân xã') && sNameLower.includes('tân xã')) ||
+              (locNameLower.includes('thạch hòa') && sNameLower.includes('thạch hòa')) ||
+              (locNameLower.includes('thạch thất') && sNameLower.includes('thạch thất')) ||
+              (locNameLower.includes('fpt') && sNameLower.includes('fpt')) ||
+              (locNameLower.includes('quận 1') && sNameLower.includes('quận 1'))
+            );
+          });
+          if (matchedShop) {
+            resolvedShopId = matchedShop._id;
+          }
+        }
+
+        if (!resolvedShopId) {
+          resolvedShopId =
+            product?.shopId?._id ||
+            (typeof product?.shopId === 'object' ? null : product?.shopId) ||
+            null;
+        }
+
+        const matchedShopObj = allShops.find((s) => String(s._id) === String(resolvedShopId));
+        const shopData =
+          loc?.shopId && typeof loc.shopId === 'object' ? loc.shopId : matchedShopObj;
 
         locationMap.set(locId, {
           locationId: loc ? (loc._id || loc) : null,
           shopId: resolvedShopId,
           name: loc?.name || 'Chi nhánh kho',
           type: loc?.type || 'store',
-          address: formatLocationAddress(loc),
-          city: loc?.shopId?.city || '',
-          latitude: loc?.shopId?.latitude ?? null,
-          longitude: loc?.shopId?.longitude ?? null,
+          address: formatLocationAddress(loc) || shopData?.address || '',
+          city: shopData?.city || loc?.city || '',
+          latitude: shopData?.latitude ?? loc?.latitude ?? null,
+          longitude: shopData?.longitude ?? loc?.longitude ?? null,
           balanceOnHand: 0,
           balanceAvailable: 0,
           itemsOnHand: 0,

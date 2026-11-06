@@ -7,7 +7,7 @@ import { uploadToCloudinary } from '../config/cloudinary.js';
  */
 export const createOrGetConversation = async (req, res, next) => {
   try {
-    const { productId, shopId } = req.body;
+    const { productId, shopId, branchId, branchName } = req.body;
     const userId = req.user._id;
     const userRole = req.user.Role || req.user.role;
 
@@ -16,6 +16,8 @@ export const createOrGetConversation = async (req, res, next) => {
       userRole,
       productId,
       shopId,
+      branchId,
+      branchName,
     });
 
     return res.status(200).json({

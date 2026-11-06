@@ -18,7 +18,7 @@ export const getSocket = () => {
     let token = null;
     try {
       token = localStorage.getItem('token');
-    } catch (_) {}
+    } catch (_) { }
 
     socket = io(SOCKET_URL, {
       withCredentials: true,
@@ -34,7 +34,7 @@ export const getSocket = () => {
     });
 
     socket.on('connect', () => {
-      console.log('✅ Socket.IO đã kết nối:', socket.id);
+      console.log(' Socket.IO đã kết nối:', socket.id);
       // Nếu trước đó đang mở cuộc trò chuyện thì tự động join lại
       if (activeConversationId) {
         socket.emit('conversation:join', { conversationId: activeConversationId });
@@ -42,11 +42,11 @@ export const getSocket = () => {
     });
 
     socket.on('connect_error', (err) => {
-      console.warn('⚠️ Lỗi kết nối Socket.IO:', err.message);
+      console.warn(' Lỗi kết nối Socket.IO:', err.message);
     });
 
     socket.on('disconnect', (reason) => {
-      console.log('🔌 Socket.IO đã ngắt kết nối:', reason);
+      console.log(' Socket.IO đã ngắt kết nối:', reason);
     });
   } else if (!socket.connected) {
     socket.connect();

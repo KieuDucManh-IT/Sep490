@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Store, Phone } from 'lucide-react';
+import { ArrowLeft, Store, Phone, ShoppingBag } from 'lucide-react';
 
 export default function ChatHeader({
   conversation,
@@ -87,11 +87,9 @@ export default function ChatHeader({
 
       <div className="chat-header-actions">
         {conversation.productContexts?.length > 0 && (
-          <span
-            className="badge rounded-pill bg-light text-dark border px-3 py-2"
-            style={{ fontSize: '12px' }}
-          >
-            Đang quan tâm {conversation.productContexts.length} sản phẩm
+          <span className="chat-header-product-badge">
+            <ShoppingBag size={13} className="chat-badge-icon" />
+            <span>Quan tâm {conversation.productContexts.length} sản phẩm</span>
           </span>
         )}
       </div>

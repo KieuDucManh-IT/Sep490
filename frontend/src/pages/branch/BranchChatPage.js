@@ -153,14 +153,14 @@ export default function BranchChatPage() {
       />
 
       {/* Main Viewport */}
-      <div className="admin-main-viewport">
+      <div className="admin-main-viewport" style={{ height: '100vh', overflow: 'hidden' }}>
         <OwnerTopHeader
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
           breadcrumb="Tư Vấn Khách Hàng"
         />
 
-        <div style={{ height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <div className="vestora-chat-page embedded">
             {/* Cột trái: Danh sách cuộc trò chuyện */}
             <div className={`chat-sidebar-wrapper ${isMobile && activeConversation ? 'd-none' : ''}`}>

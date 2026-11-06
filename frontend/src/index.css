@@ -3,9 +3,25 @@
    Extracted from Figma Design Tokens
    ============================================ */
 
-/* Google Fonts & Font Awesome */
-@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
+/* Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;1,400;1,600&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
+/* Fix & bảo vệ hiển thị Font Awesome Icons không bị đè font hệ thống */
+.fa-solid, .fas {
+  font-family: "Font Awesome 6 Free", "Font Awesome 7 Free", "Font Awesome 5 Free", "FontAwesome" !important;
+  font-weight: 900 !important;
+  font-style: normal !important;
+}
+.fa-regular, .far {
+  font-family: "Font Awesome 6 Free", "Font Awesome 7 Free", "Font Awesome 5 Free", "FontAwesome" !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
+}
+.fa-brands, .fab {
+  font-family: "Font Awesome 6 Brands", "Font Awesome 7 Brands", "Font Awesome 5 Brands", "FontAwesome" !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
+}
 
 /* CSS Custom Properties (Design Tokens) */
 :root {

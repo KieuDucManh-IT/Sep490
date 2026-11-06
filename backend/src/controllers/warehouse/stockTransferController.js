@@ -4,6 +4,9 @@ import {
   getBranchTransferContext,
   getStockTransfer,
   listStockTransfers,
+  listWarehouseTransferStaff,
+  getTransferPickCandidates,
+  saveTransferPick,
   receiveTransfer,
   shipTransfer,
 } from '../../services/warehouse/stockTransferService.js';
@@ -20,6 +23,18 @@ export const getBranchTransferContextRow = async (req, res, next) => {
 };
 export const listStockTransferRows = async (req, res, next) => {
   try { res.json({ success: true, data: await listStockTransfers(req.user, req.query) }); }
+  catch (error) { handleError(error, res, next); }
+};
+export const listTransferStaffRows = async (req, res, next) => {
+  try { res.json({ success: true, data: await listWarehouseTransferStaff() }); }
+  catch (error) { handleError(error, res, next); }
+};
+export const getTransferPickCandidatesRow = async (req, res, next) => {
+  try { res.json({ success: true, data: await getTransferPickCandidates(req.params.id, req.query.detailId, req.query.storageId, req.user) }); }
+  catch (error) { handleError(error, res, next); }
+};
+export const saveTransferPickRow = async (req, res, next) => {
+  try { res.json({ success: true, data: await saveTransferPick(req.params.id, req.body, req.user) }); }
   catch (error) { handleError(error, res, next); }
 };
 export const createTransferRequestRow = async (req, res, next) => {

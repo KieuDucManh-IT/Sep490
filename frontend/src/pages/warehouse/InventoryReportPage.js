@@ -3,12 +3,15 @@ import { RefreshCw } from 'lucide-react';
 import WarehouseSidebar from '../../components/WarehouseSidebar';
 import InventorySerialsModal from '../../components/InventorySerialsModal';
 import inventoryReportService from '../../services/warehouse/inventoryReportService';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/WarehouseManager.css';
 
 const pageSizes = [10, 20, 50];
 const number = (value) => Number(value || 0).toLocaleString('vi-VN');
 
-export default function InventoryReportPage() {
+export default function InventoryReportPage({ mode = 'manager' }) {
+  const { user } = useAuth();
+  const isStaff = mode === 'staff' || /warehouse_staff/i.test(user?.Role || user?.role || '');
   const [report, setReport] = useState({ items: [], locations: [], summary: {} });
   const [locationId, setLocationId] = useState('');
   const [storageLevel, setStorageLevel] = useState('shelf');
@@ -32,7 +35,7 @@ export default function InventoryReportPage() {
   useEffect(() => { setPage(1); }, [locationId, storageLevel, itemLevel, query, pageSize]);
 
   const filtered = useMemo(() => report.items.filter((item) => {
-    const text = [item.locationCode, item.locationName, item.managerName, item.storagePath, item.productCode, item.productName, item.categoryName, item.sku, item.variantName, item.size, item.color].join(' ').toLowerCase();
+    const text = [item.locationCode, item.locationName, item.managerName, item.storagePath, item.productCode, item.productName, item.categoryName, item.sku, item.size, item.color].join(' ').toLowerCase();
     return !query || text.includes(query.toLowerCase());
   }), [report.items, query]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -46,7 +49,7 @@ export default function InventoryReportPage() {
     ['Không khả dụng', report.summary.totalUnavailable],
   ];
 
-  return <div className="wm-layout"><WarehouseSidebar /><main className="wm-main">
+  return <div className="wm-layout"><WarehouseSidebar mode={isStaff ? 'staff' : 'manager'} /><main className="wm-main">
     <header className="wm-header"><div><span>WAREHOUSE MANAGER / BÁO CÁO</span><h1>Báo cáo tồn kho</h1><p>Tùy chọn cấp vị trí và cấp mặt hàng để gộp số tồn; serial có thể xem trong chi tiết.</p></div><button type="button" className="wm-primary-button wm-refresh-button" onClick={() => load()} disabled={loading}><RefreshCw size={15} />Làm mới</button></header>
     {error && <div className="wm-error">{error}</div>}
     <section className="wm-report-cards">{cards.map(([label, value]) => <article className="wm-report-card" key={label}><span>{label}</span><strong>{number(value)}</strong><small>cái</small></article>)}</section>
@@ -61,7 +64,7 @@ export default function InventoryReportPage() {
       <div className="wm-table-wrap"><table><thead><tr><th>Kho / cửa hàng</th><th>Quản lý</th><th>Vị trí</th><th>Sản phẩm / biến thể</th><th>Mã hàng / serial</th><th>Tồn</th><th>Khả dụng</th><th>Đang giữ</th><th>Không khả dụng</th></tr></thead>
         <tbody>{loading ? <tr><td colSpan={9}>Đang tải báo cáo...</td></tr> : visible.length ? visible.map((item) => <tr key={item.key}>
           <td><strong>{item.locationCode}</strong><br />{item.locationName}</td><td>{item.managerName || '—'}</td><td>{item.storagePath}</td>
-          <td><strong>{item.productName}</strong><br /><small>{[item.productCode, item.sku, item.variantName, item.size, item.color].filter(Boolean).join(' · ')}</small></td>
+          <td><strong>{item.productName}</strong><br /><small>{[item.productCode, item.sku, item.size, item.color].filter(Boolean).join(' · ')}</small></td>
           <td><span>{item.trackingType === 'individual' ? `${number(item.itemCount)} mã hàng` : 'Quản lý theo số lượng'}</span><br /><button type="button" className="wm-text-button" onClick={() => setSerialDetail(item)}>Xem InventoryItem tại vị trí</button></td>
           <td>{number(item.quantityOnHand)}</td><td>{number(item.quantityAvailable)}</td><td>{number(item.quantityReserved)}</td><td>{number(item.quantityUnavailable)}</td>
         </tr>) : <tr><td colSpan={9}>Không có tồn kho phù hợp.</td></tr>}</tbody>

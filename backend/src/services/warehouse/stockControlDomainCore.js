@@ -53,7 +53,7 @@ const stocktakePopulation = [
 ];
 
 const detailsForStocktake = (stocktakeId) => StocktakeDetail.find({ stocktakeId }).sort({ createdAt: 1 })
-  .populate({ path: 'variantId', select: 'sku variantName size color productId', populate: { path: 'productId', select: 'productCode name trackingType' } })
+  .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'productCode name trackingType' } })
   .populate('itemId', 'itemCode serialNumber condition status')
   .populate('storageId', 'code name type');
 
@@ -65,7 +65,7 @@ const adjustmentPopulation = [
 ];
 
 const detailsForAdjustment = (adjustmentId) => StockAdjustmentDetail.find({ adjustmentId }).sort({ createdAt: 1 })
-  .populate({ path: 'variantId', select: 'sku variantName productId', populate: { path: 'productId', select: 'productCode name' } })
+  .populate({ path: 'variantId', select: 'sku productId', populate: { path: 'productId', select: 'productCode name' } })
   .populate('itemId', 'itemCode serialNumber status')
   .populate('storageId', 'code name type');
 

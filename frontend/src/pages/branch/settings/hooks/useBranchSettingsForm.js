@@ -11,6 +11,7 @@ import { useProvincesWards } from '../../../owner/branches/hooks/useProvincesWar
 import {
   INITIAL_SETTINGS_FORM_DATA,
   validateBranchSettingsForm,
+  shopToFormData,
 } from '../utils/branchSettingsHelpers';
 
 export function useBranchSettingsForm() {
@@ -26,7 +27,6 @@ export function useBranchSettingsForm() {
 
   const [formData, setFormData] = useState(INITIAL_SETTINGS_FORM_DATA);
 
-  // Provinces & Wards cascade hook (reused)
   const {
     provinces,
     wards,
@@ -47,39 +47,41 @@ export function useBranchSettingsForm() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  /**
-   * Tải hồ sơ chi nhánh được phân công thông qua Token JWT
-   */
+  const syncBranchStorage = useCallback((updatedShop) => {
+    if (!updatedShop?._id) return;
+    try {
+      localStorage.setItem('vestora_branch_cache', JSON.stringify(updatedShop));
+      const cachedList = localStorage.getItem('vestora_managed_branches_cache');
+      if (cachedList) {
+        const list = JSON.parse(cachedList);
+        if (Array.isArray(list)) {
+          const updatedList = list.map((b) =>
+            b._id?.toString() === updatedShop._id?.toString() ? { ...b, ...updatedShop } : b
+          );
+          localStorage.setItem('vestora_managed_branches_cache', JSON.stringify(updatedList));
+        }
+      }
+    } catch {}
+    window.dispatchEvent(
+      new CustomEvent('vestora_branch_changed', {
+        detail: { branch: updatedShop, branchId: updatedShop._id },
+      })
+    );
+  }, []);
+
   const fetchAssignedBranch = useCallback(
     async (targetBranchId) => {
       try {
         setLoading(true);
         const res = await getAssignedBranchApi(targetBranchId);
-        if (res && res.success && res.data) {
-          const s = res.data;
-          setShop(s);
-          setFormData({
-            name: s.name || '',
-            description: s.description || '',
-            phone: s.phone || '',
-            address: s.address || '',
-            city: s.city || '',
-            ward: s.ward || '',
-            latitude: s.latitude != null ? String(s.latitude) : '',
-            longitude: s.longitude != null ? String(s.longitude) : '',
-            bannerUrl: s.bannerUrl || '',
-            imageUrl: s.imageUrl || '',
-            openingHours: s.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
-            isOpen: s.status === 'ACTIVE',
-          });
+        if (res?.success && res.data) {
+          setShop(res.data);
+          setFormData(shopToFormData(res.data));
         } else {
           setShop(null);
         }
       } catch (err) {
-        showToast(
-          'Không thể tải thông tin chi nhánh: ' + (err.message || 'Lỗi mạng'),
-          'warning'
-        );
+        showToast('Không thể tải thông tin chi nhánh: ' + (err.message || 'Lỗi mạng'), 'warning');
         setShop(null);
       } finally {
         setLoading(false);
@@ -92,42 +94,30 @@ export function useBranchSettingsForm() {
     fetchAssignedBranch();
   }, [fetchAssignedBranch]);
 
-  // Đồng bộ khi chi nhánh active thay đổi từ header
   useEffect(() => {
     const handleBranchChanged = (e) => {
       fetchAssignedBranch(e.detail?.branchId);
     };
     window.addEventListener('vestora_branch_changed', handleBranchChanged);
-    return () => {
-      window.removeEventListener('vestora_branch_changed', handleBranchChanged);
-    };
+    return () => window.removeEventListener('vestora_branch_changed', handleBranchChanged);
   }, [fetchAssignedBranch]);
 
-  // Đồng bộ phường/xã khi đã có sẵn Tỉnh/Thành từ shop ban đầu
   useEffect(() => {
     if (!provinces.length || !formData.city) return;
 
     const cleanCity = cleanName(formData.city);
     const matchedProv = provinces.find((p) => {
       const pClean = cleanName(p.name);
-      return (
-        pClean === cleanCity ||
-        cleanCity.includes(pClean) ||
-        pClean.includes(cleanCity)
-      );
+      return pClean === cleanCity || cleanCity.includes(pClean) || pClean.includes(cleanCity);
     });
 
     if (matchedProv) {
       fetchWardsByProvince(matchedProv.name, matchedProv).then((wardList) => {
-        if (formData.ward && wardList && wardList.length > 0) {
+        if (formData.ward && wardList?.length > 0) {
           const cleanTarget = cleanName(formData.ward);
           const matched = wardList.find((w) => {
             const wClean = cleanName(w.name);
-            return (
-              wClean === cleanTarget ||
-              cleanTarget.includes(wClean) ||
-              wClean.includes(cleanTarget)
-            );
+            return wClean === cleanTarget || cleanTarget.includes(wClean) || wClean.includes(cleanTarget);
           });
           if (matched && matched.name !== formData.ward) {
             setFormData((prev) => ({ ...prev, ward: matched.name }));
@@ -184,95 +174,77 @@ export function useBranchSettingsForm() {
     setFormErrors((prev) => (prev.coordinates ? { ...prev, coordinates: '' } : prev));
   }, []);
 
+  const applyGeoAddress = useCallback(
+    async (geoData, successMsg) => {
+      const { city, ward: geoWard, street } = geoData || {};
+      if (!city) return false;
+
+      const cleanCityTarget = cleanName(city);
+      const currentProvinces = provinces.length > 0 ? provinces : FALLBACK_PROVINCES;
+      const matchedProv = currentProvinces.find((p) => {
+        const pClean = cleanName(p.name);
+        return pClean === cleanCityTarget || cleanCityTarget.includes(pClean) || pClean.includes(cleanCityTarget);
+      });
+      if (!matchedProv) return false;
+
+      setFormData((prev) => ({
+        ...prev,
+        city: matchedProv.name,
+        ...(street ? { address: street } : {}),
+      }));
+      setFormErrors((prev) => ({
+        ...prev,
+        city: '',
+        coordinates: '',
+        ...(street ? { address: '' } : {}),
+      }));
+
+      const wardList = await fetchWardsByProvince(matchedProv.name, matchedProv);
+      if (geoWard && wardList?.length > 0) {
+        const cleanWardTarget = cleanName(geoWard);
+        const matchedWard = wardList.find((w) => {
+          const wClean = cleanName(w.name);
+          return wClean === cleanWardTarget || cleanWardTarget.includes(wClean) || wClean.includes(cleanWardTarget);
+        });
+        if (matchedWard) {
+          setFormData((prev) => ({ ...prev, ward: matchedWard.name }));
+        }
+      }
+      showToast(successMsg || `Đã đồng bộ địa chỉ: ${matchedProv.name}!`, 'success');
+      return true;
+    },
+    [provinces, fetchWardsByProvince, showToast]
+  );
+
   const handleSyncAddressFromPin = useCallback(async () => {
     const lat = parseFloat(formData.latitude);
     const lng = parseFloat(formData.longitude);
 
     if (isNaN(lat) || isNaN(lng)) {
-      showToast(
-        'Vui lòng ghim vị trí trên bản đồ trước khi đồng bộ địa chỉ.',
-        'warning'
-      );
+      showToast('Vui lòng ghim vị trí trên bản đồ trước khi đồng bộ địa chỉ.', 'warning');
       return;
     }
 
     try {
       setIsSyncingAddress(true);
       const res = await reverseGeocodeApi(lat, lng);
-      if (res && res.success && res.data) {
-        const { city, ward: geoWard, street } = res.data;
-        if (city) {
-          const cleanCityTarget = cleanName(city);
-          const currentProvinces =
-            provinces.length > 0 ? provinces : FALLBACK_PROVINCES;
-          const matchedProv = currentProvinces.find((p) => {
-            const pClean = cleanName(p.name);
-            return (
-              pClean === cleanCityTarget ||
-              cleanCityTarget.includes(pClean) ||
-              pClean.includes(cleanCityTarget)
-            );
-          });
-          if (matchedProv) {
-            setFormData((prev) => ({
-              ...prev,
-              city: matchedProv.name,
-              ...(street ? { address: street } : {}),
-            }));
-            setFormErrors((prev) => ({
-              ...prev,
-              city: '',
-              coordinates: '',
-              ...(street ? { address: '' } : {}),
-            }));
-
-            const wardList = await fetchWardsByProvince(
-              matchedProv.name,
-              matchedProv
-            );
-            if (geoWard && wardList && wardList.length > 0) {
-              const cleanWardTarget = cleanName(geoWard);
-              const matchedWard = wardList.find((w) => {
-                const wClean = cleanName(w.name);
-                return (
-                  wClean === cleanWardTarget ||
-                  cleanWardTarget.includes(wClean) ||
-                  wClean.includes(cleanWardTarget)
-                );
-              });
-              if (matchedWard) {
-                setFormData((prev) => ({ ...prev, ward: matchedWard.name }));
-              }
-            }
-            showToast(`Đã đồng bộ địa chỉ từ vị trí ghim: ${matchedProv.name}!`, 'success');
-            return;
-          }
+      if (res?.success && res.data) {
+        const matched = await applyGeoAddress(
+          res.data,
+          `Đã đồng bộ địa chỉ từ vị trí ghim: ${res.data.city || ''}!`
+        );
+        if (!matched) {
+          showToast('Đã nhận diện tọa độ ghim, nhưng chưa đối chiếu được Tỉnh/Thành tương ứng.', 'info');
         }
-        showToast(
-          'Đã nhận diện tọa độ ghim, nhưng chưa đối chiếu được Tỉnh/Thành tương ứng.',
-          'info'
-        );
       } else {
-        showToast(
-          'Không tìm thấy địa giới hành chính tương ứng với vị trí này.',
-          'warning'
-        );
+        showToast('Không tìm thấy địa giới hành chính tương ứng với vị trí này.', 'warning');
       }
     } catch {
-      showToast(
-        'Không thể kết nối dịch vụ định vị địa giới hành chính.',
-        'warning'
-      );
+      showToast('Không thể kết nối dịch vụ định vị địa giới hành chính.', 'warning');
     } finally {
       setIsSyncingAddress(false);
     }
-  }, [
-    formData.latitude,
-    formData.longitude,
-    provinces,
-    fetchWardsByProvince,
-    showToast,
-  ]);
+  }, [formData.latitude, formData.longitude, applyGeoAddress, showToast]);
 
   const handleGetDeviceLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -284,83 +256,27 @@ export function useBranchSettingsForm() {
       async (pos) => {
         const lat = pos.coords.latitude.toFixed(6);
         const lng = pos.coords.longitude.toFixed(6);
-        setFormData((prev) => ({
-          ...prev,
-          latitude: lat,
-          longitude: lng,
-        }));
-        setFormErrors((prev) =>
-          prev.coordinates ? { ...prev, coordinates: '' } : prev
-        );
+        setFormData((prev) => ({ ...prev, latitude: lat, longitude: lng }));
+        setFormErrors((prev) => (prev.coordinates ? { ...prev, coordinates: '' } : prev));
         try {
           const res = await reverseGeocodeApi(lat, lng);
-          if (res && res.success && res.data) {
-            const { city, ward: geoWard, street } = res.data;
-            if (city) {
-              const cleanCityTarget = cleanName(city);
-              const currentProvinces =
-                provinces.length > 0 ? provinces : FALLBACK_PROVINCES;
-              const matchedProv = currentProvinces.find((p) => {
-                const pClean = cleanName(p.name);
-                return (
-                  pClean === cleanCityTarget ||
-                  cleanCityTarget.includes(pClean) ||
-                  pClean.includes(cleanCityTarget)
-                );
-              });
-              if (matchedProv) {
-                setFormData((prev) => ({
-                  ...prev,
-                  city: matchedProv.name,
-                  ...(street ? { address: street } : {}),
-                }));
-                setFormErrors((prev) => ({
-                  ...prev,
-                  city: '',
-                  coordinates: '',
-                  ...(street ? { address: '' } : {}),
-                }));
-                const wardList = await fetchWardsByProvince(
-                  matchedProv.name,
-                  matchedProv
-                );
-                if (geoWard && wardList && wardList.length > 0) {
-                  const cleanWardTarget = cleanName(geoWard);
-                  const matchedWard = wardList.find((w) => {
-                    const wClean = cleanName(w.name);
-                    return (
-                      wClean === cleanWardTarget ||
-                      cleanWardTarget.includes(wClean) ||
-                      wClean.includes(cleanWardTarget)
-                    );
-                  });
-                  if (matchedWard) {
-                    setFormData((prev) => ({ ...prev, ward: matchedWard.name }));
-                  }
-                }
-                showToast(
-                  `Đã lấy vị trí GPS & nhận diện: ${matchedProv.name}!`,
-                  'success'
-                );
-                return;
-              }
-            }
+          if (res?.success && res.data) {
+            const matched = await applyGeoAddress(
+              res.data,
+              `Đã lấy vị trí GPS & nhận diện: ${res.data.city || ''}!`
+            );
+            if (matched) return;
           }
           showToast('Đã lấy tọa độ GPS từ thiết bị thành công!', 'success');
-        } catch (_) {
-          showToast(
-            'Đã lấy tọa độ thiết bị, nhưng không nhận diện được tên địa chỉ chi tiết.',
-            'info'
-          );
+        } catch {
+          showToast('Đã lấy tọa độ thiết bị, nhưng không nhận diện được tên địa chỉ chi tiết.', 'info');
         } finally {
           setIsLocating(false);
         }
       },
       (err) => {
         setIsLocating(false);
-        const fallback =
-          getProvinceCoords(formData.city) ||
-          PROVINCE_DEFAULT_COORDS['Hồ Chí Minh'];
+        const fallback = getProvinceCoords(formData.city) || PROVINCE_DEFAULT_COORDS['Hồ Chí Minh'];
         setFormData((prev) => ({
           ...prev,
           latitude: fallback.lat.toFixed(6),
@@ -375,7 +291,7 @@ export function useBranchSettingsForm() {
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
-  }, [formData.city, provinces, fetchWardsByProvince, showToast]);
+  }, [formData.city, applyGeoAddress, showToast]);
 
   const handleUploadImageFile = useCallback(
     async (e, imageType) => {
@@ -383,10 +299,7 @@ export function useBranchSettingsForm() {
       if (!file) return;
 
       if (!file.type.startsWith('image/')) {
-        showToast(
-          'Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).',
-          'warning'
-        );
+        showToast('Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).', 'warning');
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
@@ -394,64 +307,34 @@ export function useBranchSettingsForm() {
         return;
       }
 
+      const updateField = imageType === 'banner' ? 'bannerUrl' : 'imageUrl';
+      const setUploading = imageType === 'banner' ? setUploadingBanner : setUploadingAvatar;
       const localPreviewUrl = URL.createObjectURL(file);
-      if (imageType === 'banner') {
-        setFormData((prev) => ({ ...prev, bannerUrl: localPreviewUrl }));
-        setUploadingBanner(true);
-      } else {
-        setFormData((prev) => ({ ...prev, imageUrl: localPreviewUrl }));
-        setUploadingAvatar(true);
-      }
+
+      setFormData((prev) => ({ ...prev, [updateField]: localPreviewUrl }));
+      setUploading(true);
 
       try {
         const res = await uploadShopImageApi(file, imageType);
-        if (res && res.success && res.url) {
+        if (res?.success && res.url) {
           URL.revokeObjectURL(localPreviewUrl);
-          const updateField = imageType === 'banner' ? 'bannerUrl' : 'imageUrl';
           setFormData((prev) => ({ ...prev, [updateField]: res.url }));
 
-          if (shop && shop._id) {
+          if (shop?._id) {
             try {
-              const updatedShopRes = await updateShopInfoApi(shop._id, {
-                [updateField]: res.url,
-              });
-              const updatedData = updatedShopRes?.data || {
-                ...shop,
-                [updateField]: res.url,
-              };
+              const updatedRes = await updateShopInfoApi(shop._id, { [updateField]: res.url });
+              const updatedData = updatedRes?.data || { ...shop, [updateField]: res.url };
               setShop(updatedData);
-
-              try {
-                localStorage.setItem(
-                  'vestora_branch_cache',
-                  JSON.stringify(updatedData)
-                );
-                window.dispatchEvent(
-                  new CustomEvent('vestora_branch_changed', {
-                    detail: { branch: updatedData, branchId: shop._id },
-                  })
-                );
-              } catch {}
-
+              syncBranchStorage(updatedData);
               showToast(
-                `Đã tự động lưu ảnh ${
-                  imageType === 'banner' ? 'bìa' : 'logo'
-                } mới vào hệ thống thành công!`,
+                `Đã tự động lưu ảnh ${imageType === 'banner' ? 'bìa' : 'logo'} mới vào hệ thống thành công!`,
                 'success'
               );
             } catch {
-              showToast(
-                `Tải ảnh thành công. Hãy bấm "Lưu Cập Nhật Cửa Hàng" bên dưới để hoàn tất.`,
-                'info'
-              );
+              showToast('Tải ảnh thành công. Hãy bấm "Lưu Cập Nhật Cửa Hàng" bên dưới để hoàn tất.', 'info');
             }
           } else {
-            showToast(
-              `Đã tải ảnh ${
-                imageType === 'banner' ? 'bìa' : 'logo'
-              } thành công!`,
-              'success'
-            );
+            showToast(`Đã tải ảnh ${imageType === 'banner' ? 'bìa' : 'logo'} thành công!`, 'success');
           }
         } else {
           throw new Error(res?.message || 'Không thể tải ảnh lên máy chủ');
@@ -460,32 +343,29 @@ export function useBranchSettingsForm() {
         URL.revokeObjectURL(localPreviewUrl);
         showToast('Lỗi khi tải ảnh: ' + (err.message || 'Lỗi mạng'), 'warning');
       } finally {
-        if (imageType === 'banner') setUploadingBanner(false);
-        else setUploadingAvatar(false);
+        setUploading(false);
         e.target.value = '';
       }
     },
-    [shop, showToast]
+    [shop, syncBranchStorage, showToast]
   );
 
   const isDirty = useMemo(() => {
     if (!shop) return false;
+    const initial = shopToFormData(shop);
     return (
-      (formData.name || '').trim() !== (shop.name || '').trim() ||
-      (formData.description || '').trim() !== (shop.description || '').trim() ||
-      (formData.phone || '').trim() !== (shop.phone || '').trim() ||
-      (formData.address || '').trim() !== (shop.address || '').trim() ||
-      (formData.city || '').trim() !== (shop.city || '').trim() ||
-      (formData.ward || '').trim() !== (shop.ward || '').trim() ||
-      String(formData.latitude || '') !==
-        String(shop.latitude != null ? shop.latitude : '') ||
-      String(formData.longitude || '') !==
-        String(shop.longitude != null ? shop.longitude : '') ||
-      (formData.bannerUrl || '') !== (shop.bannerUrl || '') ||
-      (formData.imageUrl || '') !== (shop.imageUrl || '') ||
-      (formData.openingHours || '').trim() !==
-        (shop.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)').trim() ||
-      Boolean(formData.isOpen) !== (shop.status === 'ACTIVE')
+      (formData.name || '').trim() !== initial.name.trim() ||
+      (formData.description || '').trim() !== initial.description.trim() ||
+      (formData.phone || '').trim() !== initial.phone.trim() ||
+      (formData.address || '').trim() !== initial.address.trim() ||
+      (formData.city || '').trim() !== initial.city.trim() ||
+      (formData.ward || '').trim() !== initial.ward.trim() ||
+      String(formData.latitude || '') !== initial.latitude ||
+      String(formData.longitude || '') !== initial.longitude ||
+      (formData.bannerUrl || '') !== initial.bannerUrl ||
+      (formData.imageUrl || '') !== initial.imageUrl ||
+      (formData.openingHours || '').trim() !== initial.openingHours.trim() ||
+      Boolean(formData.isOpen) !== initial.isOpen
     );
   }, [formData, shop]);
 
@@ -506,20 +386,11 @@ export function useBranchSettingsForm() {
       if (!shop) return;
 
       if (uploadingAvatar || uploadingBanner) {
-        showToast(
-          'Đang tải ảnh lên hệ thống, vui lòng chờ trong giây lát...',
-          'warning'
-        );
+        showToast('Đang tải ảnh lên hệ thống, vui lòng chờ trong giây lát...', 'warning');
         return;
       }
-      if (
-        formData.imageUrl?.startsWith('blob:') ||
-        formData.bannerUrl?.startsWith('blob:')
-      ) {
-        showToast(
-          'Ảnh đang trong quá trình tải lên máy chủ, vui lòng đợi hoàn tất.',
-          'warning'
-        );
+      if (formData.imageUrl?.startsWith('blob:') || formData.bannerUrl?.startsWith('blob:')) {
+        showToast('Ảnh đang trong quá trình tải lên máy chủ, vui lòng đợi hoàn tất.', 'warning');
         return;
       }
 
@@ -528,20 +399,13 @@ export function useBranchSettingsForm() {
       if (Object.keys(errs).length > 0) {
         const firstKey = Object.keys(errs)[0];
         if (firstKey === 'coordinates') {
-          document
-            .getElementById('branch-map-container')
-            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          document.getElementById('branch-map-container')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else {
-          const el = document.getElementById(
-            `branch${firstKey.charAt(0).toUpperCase() + firstKey.slice(1)}`
-          );
+          const el = document.getElementById(`branch${firstKey.charAt(0).toUpperCase() + firstKey.slice(1)}`);
           el?.focus();
           el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-        showToast(
-          'Vui lòng kiểm tra lại các trường thông tin bị lỗi.',
-          'warning'
-        );
+        showToast('Vui lòng kiểm tra lại các trường thông tin bị lỗi.', 'warning');
         return;
       }
 
@@ -553,92 +417,40 @@ export function useBranchSettingsForm() {
           .replace(/^\+84/, '0');
         const payload = {
           name: (formData.name || '').trim(),
-          description:
-            (formData.description || '').trim() || 'Chưa cập nhật mô tả',
+          description: (formData.description || '').trim() || 'Chưa cập nhật mô tả',
           phone: cleanPhone,
           address: (formData.address || '').trim(),
           city: (formData.city || '').trim(),
           ward: (formData.ward || '').trim(),
           latitude: formData.latitude !== '' ? Number(formData.latitude) : null,
-          longitude:
-            formData.longitude !== '' ? Number(formData.longitude) : null,
+          longitude: formData.longitude !== '' ? Number(formData.longitude) : null,
           imageUrl: (formData.imageUrl || '').trim(),
           bannerUrl: (formData.bannerUrl || '').trim(),
-          openingHours:
-            (formData.openingHours || '').trim() ||
-            '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
+          openingHours: (formData.openingHours || '').trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
           status: formData.isOpen ? 'ACTIVE' : 'SUSPENDED',
         };
 
         const res = await updateShopInfoApi(shop._id, payload);
-        if (res && res.success) {
+        if (res?.success && res.data) {
           setShop(res.data);
           setFormErrors({});
-
-          // Cập nhật bộ nhớ đệm và phát sự kiện đồng bộ toàn hệ thống
-          try {
-            localStorage.setItem(
-              'vestora_branch_cache',
-              JSON.stringify(res.data)
-            );
-            const cachedList = localStorage.getItem(
-              'vestora_managed_branches_cache'
-            );
-            if (cachedList) {
-              const list = JSON.parse(cachedList);
-              if (Array.isArray(list)) {
-                const updatedList = list.map((b) =>
-                  b._id?.toString() === res.data._id?.toString()
-                    ? { ...b, ...res.data }
-                    : b
-                );
-                localStorage.setItem(
-                  'vestora_managed_branches_cache',
-                  JSON.stringify(updatedList)
-                );
-              }
-            }
-          } catch {}
-
-          window.dispatchEvent(
-            new CustomEvent('vestora_branch_changed', {
-              detail: { branch: res.data, branchId: res.data._id },
-            })
-          );
-
+          syncBranchStorage(res.data);
           showToast('Cập nhật thông tin chi nhánh thành công!', 'success');
         } else {
           throw new Error(res?.message || 'Không thể lưu thông tin');
         }
       } catch (err) {
-        showToast(
-          'Lỗi khi lưu thông tin: ' + (err.message || 'Lỗi mạng'),
-          'warning'
-        );
+        showToast('Lỗi khi lưu thông tin: ' + (err.message || 'Lỗi mạng'), 'warning');
       } finally {
         setSaving(false);
       }
     },
-    [formData, shop, showToast, uploadingAvatar, uploadingBanner]
+    [formData, shop, showToast, syncBranchStorage, uploadingAvatar, uploadingBanner]
   );
 
   const handleReset = useCallback(() => {
     if (shop) {
-      setFormData({
-        name: shop.name || '',
-        description: shop.description || '',
-        phone: shop.phone || '',
-        address: shop.address || '',
-        city: shop.city || '',
-        ward: shop.ward || '',
-        latitude: shop.latitude != null ? String(shop.latitude) : '',
-        longitude: shop.longitude != null ? String(shop.longitude) : '',
-        imageUrl: shop.imageUrl || '',
-        bannerUrl: shop.bannerUrl || '',
-        openingHours:
-          shop.openingHours || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
-        isOpen: shop.status === 'ACTIVE',
-      });
+      setFormData(shopToFormData(shop));
       setFormErrors({});
       showToast('Đã hoàn tác các thay đổi chưa lưu.', 'info');
     }

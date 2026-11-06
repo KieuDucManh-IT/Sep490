@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import WarehouseSidebar from '../../components/WarehouseSidebar';
 import { useAuth } from '../../context/AuthContext';
 import inventoryLocationService from '../../services/warehouse/inventoryLocationService';
 import storageLocationService from '../../services/warehouse/storageLocationService';
 import productVariantService from '../../services/masterdata/productVariantService';
-import stockControlService from '../../services/warehouse/stockControlService';
+import stocktakeService from '../../services/warehouse/stocktakeService';
 import '../../styles/WarehouseManager.css';
 
 const statusLabel = {
@@ -13,12 +13,10 @@ const statusLabel = {
   requested: 'Chờ duyệt điều chỉnh', rejected: 'Từ chối', applied: 'Đã cập nhật tồn',
 };
 const idOf = (value) => String(value?._id || value || '');
-const itemLabel = (item) => [item.variantId?.productId?.name, item.variantId?.sku, item.variantId?.variantName, item.variantId?.size, item.variantId?.color].filter(Boolean).join(' · ');
+const itemLabel = (item) => [item.variantId?.productId?.name, item.variantId?.sku, item.variantId?.size, item.variantId?.color].filter(Boolean).join(' · ');
 const detailVariance = (item) => Number(item.countedQuantity || 0) + Number(item.movementAfterCount || 0) - Number(item.systemQuantity || 0);
 
-export default function WarehouseStockControlPage({ section: sectionProp }) {
-  const { section: routeSection } = useParams();
-  const section = sectionProp || routeSection || 'stocktakes';
+export default function WarehouseStocktakePage() {
   const { user } = useAuth();
   const role = user?.Role || user?.role || user?.roleName || '';
   const isManager = /warehouse_manager|admin/i.test(role);
@@ -41,16 +39,13 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      if (section === 'adjustments') {
-        setRows(await stockControlService.listAdjustments());
-      } else {
         const requests = [
-          stockControlService.listStocktakes(),
+          stocktakeService.list(),
           inventoryLocationService.list(),
           storageLocationService.list(),
           productVariantService.list(),
         ];
-        if (isManager) requests.push(stockControlService.listStaff());
+        if (isManager) requests.push(stocktakeService.listStaff());
         const [stocktakes, locationRows, storageRows, variantRows, staffRows = []] = await Promise.all(requests);
         setRows(stocktakes);
         const centralWarehouses = locationRows.filter((item) => item.type === 'warehouse' && item.status === 'active');
@@ -59,10 +54,9 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
         setStorages(storageRows.filter((item) => item.status === 'active'));
         setVariants(variantRows.filter((item) => item.status === 'active'));
         setStaff(staffRows);
-      }
     } catch (loadError) { setError(loadError.message); }
     finally { setLoading(false); }
-  }, [section, isManager]);
+  }, [isManager]);
 
   useEffect(() => { load(); }, [load]);
   const selectedLocation = locations.find((item) => item._id === createForm.locationId);
@@ -72,12 +66,10 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
 
   const refreshSelected = async (id) => {
     if (!id) return;
-    const row = section === 'adjustments' ? await stockControlService.getAdjustment(id) : await stockControlService.getStocktake(id);
+    const row = await stocktakeService.get(id);
     setSelected(row);
-    if (section === 'stocktakes') {
       setCounts(Object.fromEntries((row.items || []).map((item) => [item._id, item.isCounted ? String(item.countedQuantity) : item.itemId ? '1' : ''])));
       setItemConditions(Object.fromEntries((row.items || []).filter((item) => item.itemId).map((item) => [item._id, item.countedCondition || item.itemId.condition || 'good'])));
-    }
   };
   const runAction = async (action, successMessage) => {
     setBusy(true); setError(''); setNotice('');
@@ -100,7 +92,7 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
       variantIds: createForm.scopeType === 'product' ? createForm.variantIds : [],
       storageIds: createForm.scopeType === 'storage_location' ? createForm.storageIds : [],
     };
-    const result = await runAction(() => stockControlService.createStocktake(payload), 'Đã tạo phiếu kiểm kê nháp.');
+    const result = await runAction(() => stocktakeService.create(payload), 'Đã tạo phiếu kiểm kê nháp.');
     if (result?.data?._id || result?._id) {
       const id = result?.data?._id || result._id;
       setShowCreate(false);
@@ -110,7 +102,7 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
   };
 
   const saveCounts = async () => {
-    const result = await runAction(() => stockControlService.saveCounts(selected._id, {
+    const result = await runAction(() => stocktakeService.saveCounts(selected._id, {
       items: (selected.items || []).filter((item) => item.itemId || (counts[item._id] !== '' && counts[item._id] != null))
         .map((item) => ({ detailId: item._id, countedQuantity: item.itemId ? (itemConditions[item._id] === 'missing' ? 0 : 1) : Number(counts[item._id]), countedCondition: item.itemId ? itemConditions[item._id] : undefined })),
       newItems: newItems.filter((item) => item.variantId && item.storageId && (variants.find((variant) => variant._id === item.variantId)?.productId?.trackingType !== 'individual' || item.itemCode.trim()))
@@ -122,10 +114,10 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
 
   const submitCounts = async () => {
     if (!await saveCounts()) return;
-    await runAction(() => stockControlService.submitStocktake(selected._id), 'Đã gửi kết quả kiểm kê.');
+    await runAction(() => stocktakeService.submit(selected._id), 'Đã gửi kết quả kiểm kê.');
   };
 
-  const heading = section === 'adjustments' ? 'Điều chỉnh kho' : 'Kiểm kê kho';
+  const heading = 'Kiểm kê kho';
   const countSummary = (selected?.items || []).reduce((summary, item) => {
     const individual = Boolean(item.itemId);
     const condition = itemConditions[item._id] || item.countedCondition || item.itemId?.condition;
@@ -140,15 +132,15 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
     <WarehouseSidebar mode={isManager ? 'manager' : 'staff'} />
     <main className="wm-main wm-stock-control-page">
       <header className="wm-header"><div><span>WAREHOUSE / KIỂM SOÁT TỒN KHO</span><h1>{heading}</h1></div>
-        {section === 'stocktakes' && isManager && <button type="button" className="wm-primary-button" onClick={() => { setShowCreate((value) => !value); setSelected(null); }}>+ Tạo phiếu kiểm kê</button>}
+        {isManager && <button type="button" className="wm-primary-button" onClick={() => { setShowCreate((value) => !value); setSelected(null); }}>+ Tạo phiếu kiểm kê</button>}
       </header>
-      <div className="wm-stock-tabs"><Link className={section === 'stocktakes' ? 'active' : ''} to={isManager ? '/warehousemanager/stocktakes' : '/warehousestaff/stocktakes'}>Kiểm kê</Link>{isManager && <Link className={section === 'adjustments' ? 'active' : ''} to="/warehousemanager/adjustments">Điều chỉnh</Link>}</div>
+      <div className="wm-stock-tabs"><Link className='active' to={isManager ? '/warehousemanager/stocktakes' : '/warehousestaff/stocktakes'}>Kiểm kê</Link>{isManager && <Link className='' to="/warehousemanager/adjustments">Điều chỉnh</Link>}</div>
       {error && <div className="wm-error">{error}</div>}{notice && <div className="wm-success">{notice}</div>}
 
-      {showCreate && section === 'stocktakes' && <form className="wm-panel wm-form wm-stock-create" onSubmit={createStocktake}>
+      {showCreate && <form className="wm-panel wm-form wm-stock-create" onSubmit={createStocktake}>
         <div className="wm-central-warehouse"><small>Kho kiểm kê (kho tổng)</small><strong>{locations.length === 1 ? `${locations[0].code} · ${locations[0].name}` : 'Chưa xác định duy nhất kho tổng'}</strong></div>
         <label>Phạm vi<select value={createForm.scopeType} onChange={(event) => setCreateForm({ ...createForm, scopeType: event.target.value, variantIds: [], storageIds: [] })}><option value="full">Toàn kho</option><option value="product">Theo biến thể</option><option value="storage_location">Theo vị trí</option></select></label>
-        {createForm.scopeType === 'product' && <label className="wm-stock-wide">Biến thể<select multiple required value={createForm.variantIds} onChange={(event) => setCreateForm({ ...createForm, variantIds: Array.from(event.target.selectedOptions, (option) => option.value) })}>{createVariants.map((variant) => <option key={variant._id} value={variant._id}>{variant.productId?.name} · {variant.sku} · {variant.variantName}</option>)}</select></label>}
+        {createForm.scopeType === 'product' && <label className="wm-stock-wide">Biến thể<select multiple required value={createForm.variantIds} onChange={(event) => setCreateForm({ ...createForm, variantIds: Array.from(event.target.selectedOptions, (option) => option.value) })}>{createVariants.map((variant) => <option key={variant._id} value={variant._id}>{variant.productId?.name} · {variant.sku} · {variant.size} · {variant.color}</option>)}</select></label>}
         {createForm.scopeType === 'storage_location' && <label className="wm-stock-wide">Vị trí lưu trữ<select multiple required value={createForm.storageIds} onChange={(event) => setCreateForm({ ...createForm, storageIds: Array.from(event.target.selectedOptions, (option) => option.value) })}>{selectableStorages.map((storage) => <option key={storage._id} value={storage._id}>{storage.code} · {storage.name} ({storage.type})</option>)}</select></label>}
         <label>Nhân viên kiểm kê<select value={createForm.assignedStaffId} onChange={(event) => setCreateForm({ ...createForm, assignedStaffId: event.target.value })}><option value="">Tự kiểm kê / chưa giao</option>{staff.map((member) => <option key={member._id} value={member._id}>{member.FullName} · {member.Email}</option>)}</select></label>
         <footer><button type="button" className="secondary" onClick={() => setShowCreate(false)}>Hủy</button><button disabled={busy || !createForm.locationId}>Tạo phiếu</button></footer>
@@ -160,7 +152,7 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
         </tr>) : <tr><td colSpan="6">Chưa có phiếu.</td></tr>}
       </tbody></table></div></section>
 
-      {selected && section === 'stocktakes' && <div className="wm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
+      {selected && <div className="wm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
       <section className="wm-crud-modal wm-stocktake-modal wm-stock-detail">
         <div className="wm-stock-detail-heading"><div><small>{selected.stocktakeCode} · {statusLabel[selected.status]}</small><h2>{selected.locationId?.code} · {selected.locationId?.name}</h2><p>Giao cho: {selected.assignedStaffId?.FullName || 'Chưa giao'}</p></div><button type="button" className="secondary" onClick={() => setSelected(null)}>Đóng</button></div>
         <div className="wm-report-cards wm-stocktake-summary"><article className="wm-report-card"><span>Tồn sổ</span><strong>{countSummary.expected}</strong></article><article className="wm-report-card"><span>Thực tế dự kiến</span><strong>{countSummary.counted}</strong></article><article className="wm-report-card"><span>Thiếu / mất</span><strong>{countSummary.missing}</strong></article><article className="wm-report-card"><span>Hỏng / không sửa được</span><strong>{countSummary.damaged}</strong></article></div>
@@ -171,27 +163,20 @@ export default function WarehouseStockControlPage({ section: sectionProp }) {
         {selected.status === 'in_progress' && <div className="wm-new-items"><strong>Ghi nhận hàng thực tế chưa có trong hệ thống</strong>{newItems.map((item, index) => {
           const individual = variants.find((variant) => variant._id === item.variantId)?.productId?.trackingType === 'individual';
           return <div className="wm-new-item-row" key={index}>
-          <select value={item.variantId} onChange={(event) => setNewItems(newItems.map((row, i) => i === index ? { ...row, variantId: event.target.value } : row))}><option value="">Biến thể</option>{discoveredVariants.map((variant) => <option key={variant._id} value={variant._id}>{variant.productId?.name} · {variant.sku} · {variant.variantName}</option>)}</select>
+          <select value={item.variantId} onChange={(event) => setNewItems(newItems.map((row, i) => i === index ? { ...row, variantId: event.target.value } : row))}><option value="">Biến thể</option>{discoveredVariants.map((variant) => <option key={variant._id} value={variant._id}>{variant.productId?.name} · {variant.sku} · {variant.size} · {variant.color}</option>)}</select>
           <select value={item.storageId} onChange={(event) => setNewItems(newItems.map((row, i) => i === index ? { ...row, storageId: event.target.value } : row))}><option value="">Vị trí</option>{storages.filter((storage) => idOf(storage.locationId) === idOf(selected.locationId)).map((storage) => <option key={storage._id} value={storage._id}>{storage.code} · {storage.name}</option>)}</select>
           {individual ? <><input value={item.itemCode || ''} onChange={(event) => setNewItems(newItems.map((row, i) => i === index ? { ...row, itemCode: event.target.value } : row))} placeholder="Mã hàng" /><input value={item.serialNumber || ''} onChange={(event) => setNewItems(newItems.map((row, i) => i === index ? { ...row, serialNumber: event.target.value } : row))} placeholder="Serial (nếu có)" /><select aria-label="Condition InventoryItem mới" value={item.countedCondition || 'good'} onChange={(event) => setNewItems(newItems.map((row, i) => i === index ? { ...row, countedCondition: event.target.value } : row))}><option value="new">Mới</option><option value="good">Tốt</option><option value="worn">Đã qua sử dụng</option><option value="damaged">Hỏng</option><option value="unrepairable">Không thể sửa</option></select></> : <input type="number" min="1" step="1" value={item.countedQuantity || 1} onChange={(event) => setNewItems(newItems.map((row, i) => i === index ? { ...row, countedQuantity: event.target.value } : row))} placeholder="Số lượng thực tế" />}
           <button type="button" className="danger" onClick={() => setNewItems(newItems.filter((_, i) => i !== index))}>Xóa</button>
         </div>})}<button type="button" className="secondary" onClick={() => setNewItems([...newItems, { variantId: '', storageId: '', itemCode: '', countedQuantity: 1 }])}>+ Thêm mặt hàng thực tế</button></div>}
         <div className="wm-stock-actions">
-          {selected.status === 'draft' && isManager && <button disabled={busy} onClick={() => runAction(() => stockControlService.startStocktake(selected._id), 'Đã bắt đầu kiểm kê và chụp tồn sổ.')}>Bắt đầu kiểm kê</button>}
+          {selected.status === 'draft' && isManager && <button disabled={busy} onClick={() => runAction(() => stocktakeService.start(selected._id), 'Đã bắt đầu kiểm kê và chụp tồn sổ.')}>Bắt đầu kiểm kê</button>}
           {selected.status === 'in_progress' && <><button className="secondary" disabled={busy} onClick={saveCounts}>Lưu số đếm</button><button disabled={busy} onClick={submitCounts}>Gửi kết quả</button></>}
-          {selected.status === 'counted' && isManager && <button disabled={busy} onClick={() => runAction(async () => { const result = await stockControlService.approveStocktake(selected._id); if (result?.adjustment?._id) setNotice(`Đã duyệt kiểm kê, tạo phiếu điều chỉnh ${result.adjustment.adjustmentCode}.`); return result.stocktake; }, 'Đã duyệt kiểm kê.')}>Duyệt và tạo điều chỉnh</button>}
+          {selected.status === 'counted' && isManager && <button disabled={busy} onClick={() => runAction(async () => { const result = await stocktakeService.approve(selected._id); if (result?.adjustment?._id) setNotice(`Đã duyệt kiểm kê, tạo phiếu điều chỉnh ${result.adjustment.adjustmentCode}.`); return result.stocktake; }, 'Đã duyệt kiểm kê.')}>Duyệt và tạo điều chỉnh</button>}
           {selected.status === 'approved' && isManager && <Link className="wm-primary-button" to="/warehousemanager/adjustments">Mở phiếu điều chỉnh</Link>}
         </div>
       </section></div>}
 
-      {selected && section === 'adjustments' && <section className="wm-panel wm-stock-detail">
-        <div className="wm-stock-detail-heading"><div><small>{selected.adjustmentCode} · {statusLabel[selected.status]}</small><h2>{selected.locationId?.code} · {selected.locationId?.name}</h2><p>{selected.reason}</p></div><button type="button" className="secondary" onClick={() => setSelected(null)}>Đóng</button></div>
-        <div className="wm-table-wrap"><table><thead><tr><th>Mặt hàng / mã cá thể</th><th>Vị trí</th><th>Tồn trước</th><th>Thay đổi</th><th>Tồn sau</th></tr></thead><tbody>{(selected.items || []).map((item) => <tr key={item._id}><td>{itemLabel(item)}{item.itemCode && <small className="wm-stock-subline">{item.itemCode}{item.serialNumber ? ` · ${item.serialNumber}` : ''}</small>}</td><td>{item.storageId?.code || 'Chưa gán'}</td><td>{item.quantityBefore}</td><td>{item.quantityChange > 0 ? '+' : ''}{item.quantityChange}</td><td>{item.quantityAfter}</td></tr>)}</tbody></table></div>
-        <div className="wm-stock-actions">
-          {selected.status === 'requested' && <><button className="danger" disabled={busy} onClick={() => runAction(() => stockControlService.decideAdjustment(selected._id, 'reject'), 'Đã từ chối phiếu điều chỉnh.')}>Từ chối</button><button disabled={busy} onClick={() => runAction(() => stockControlService.decideAdjustment(selected._id, 'approve'), 'Đã duyệt phiếu điều chỉnh.')}>Duyệt điều chỉnh</button></>}
-          {selected.status === 'approved' && <button disabled={busy} onClick={() => runAction(() => stockControlService.applyAdjustment(selected._id), 'Đã cập nhật tồn kho.')}>Áp dụng vào tồn kho</button>}
-        </div>
-      </section>}
+
     </main>
   </div>;
 }

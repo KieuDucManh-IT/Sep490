@@ -4,6 +4,11 @@ const stockTransferDetailSchema = new mongoose.Schema({
   transferId: { type: mongoose.Schema.Types.ObjectId, ref: 'StockTransfer', required: true, index: true },
   variantId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant', required: true },
   fromStorageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
+  pickAllocations: [{
+    storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
+    quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
+    itemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }],
+  }],
   itemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }],
   receivedItemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }],
   damagedItemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }],

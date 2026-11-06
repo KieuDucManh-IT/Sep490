@@ -8,10 +8,12 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Shop } from '../../models/shop/Shop.js';
 import { StockTransfer } from '../../models/warehouse/transfer/StockTransfer.js';
 import { StockTransferDetail } from '../../models/warehouse/transfer/StockTransferDetail.js';
+import User from '../../models/system/User.js';
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import {
   validateCreateTransferRequest,
   validateTransferDecision,
+  validateTransferPick,
   validateTransferReceipt,
 } from '../../validations/warehouse/stockTransferValidation.js';
 
@@ -26,13 +28,14 @@ const transferPopulation = [
   { path: 'fromLocationId', select: 'code name type' },
   { path: 'toLocationId', select: 'code name type shopId', populate: { path: 'shopId', select: 'name managerId' } },
   { path: 'createdBy', select: 'FullName Email' },
+  { path: 'assignedStaffId', select: 'FullName Email' },
   { path: 'approvedBy', select: 'FullName Email' },
   { path: 'shippedBy', select: 'FullName Email' },
   { path: 'receivedBy', select: 'FullName Email' },
 ];
 
 const loadDetails = (transferId) => StockTransferDetail.find({ transferId }).sort({ createdAt: 1 })
-  .populate({ path: 'variantId', select: 'sku variantName size color productId', populate: { path: 'productId', select: 'productCode name trackingType' } })
+  .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'productCode name trackingType' } })
   .populate('fromStorageId', 'code name type')
   .populate('itemIds', 'itemCode serialNumber condition status');
 
@@ -78,6 +81,7 @@ const assertBranchOwnsLocation = async (locationId, user) => {
 
 const canAccessTransfer = async (transfer, user) => {
   if (isManager(user)) return;
+  if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId?._id || transfer.assignedStaffId) === String(user._id)) return;
   await assertBranchOwnsLocation(transfer.toLocationId, user);
 };
 
@@ -92,7 +96,9 @@ const getTransfer = async (transferId, user = null) => {
 export const listStockTransfers = async (user, { status = '' } = {}) => {
   const filter = {};
   if (status && ['requested', 'approved', 'rejected', 'preparing', 'shipped', 'partially_received', 'received', 'cancelled'].includes(status)) filter.status = status;
-  if (!isManager(user)) {
+  if (roleOf(user) === 'warehouse_staff') {
+    filter.assignedStaffId = user._id;
+  } else if (!isManager(user)) {
     if (!isBranchManager(user)) throw fail('Bạn không có quyền xem phiếu điều chuyển.', 403);
     const shopIds = await Shop.find({ managerId: user._id, status: 'ACTIVE', isDeleted: { $ne: true } }).distinct('_id');
     const locationIds = await InventoryLocation.find({ shopId: { $in: shopIds }, type: 'store' }).distinct('_id');
@@ -101,6 +107,8 @@ export const listStockTransfers = async (user, { status = '' } = {}) => {
   const transfers = await StockTransfer.find(filter).sort({ createdAt: -1 }).populate(transferPopulation);
   return Promise.all(transfers.map(async (transfer) => ({ ...transfer.toObject(), items: await loadDetails(transfer._id) })));
 };
+
+export const listWarehouseTransferStaff = () => User.find({ Role: /^warehouse_staff$/i, Status: /^active$/i }).select('FullName Email').sort({ FullName: 1 }).lean();
 
 export const createTransferRequest = async (payload, user) => {
   if (!isBranchManager(user)) throw fail('Chỉ quản lý chi nhánh mới có thể tạo yêu cầu bổ sung hàng.', 403);
@@ -150,11 +158,10 @@ export const decideTransferRequest = async (transferId, payload, user) => {
         return;
       }
       const details = await StockTransferDetail.find({ transferId }).session(session);
+      const staff = await User.findOne({ _id: decision.assignedStaffId, Role: /^warehouse_staff$/i, Status: /^active$/i }).session(session);
+      if (!staff) throw fail('Nhân viên kho được giao không tồn tại hoặc đã ngừng hoạt động.', 400);
       const byId = new Map(details.map((detail) => [String(detail._id), detail]));
       if (decision.items.length !== details.length || decision.items.some((item) => !byId.has(item.detailId))) throw fail('Cần duyệt đầy đủ các dòng trong yêu cầu.');
-      const storageIds = decision.items.map((item) => item.fromStorageId).filter(Boolean);
-      const validStorages = storageIds.length ? await StorageLocation.find({ _id: { $in: storageIds }, locationId: transfer.fromLocationId, status: 'active' }).session(session).distinct('_id') : [];
-      if (validStorages.length !== new Set(storageIds).size) throw fail('Vị trí xuất phải thuộc kho tổng và đang hoạt động.');
       let anyApproved = false;
       for (const line of decision.items) {
         const detail = byId.get(line.detailId);
@@ -162,30 +169,22 @@ export const decideTransferRequest = async (transferId, payload, user) => {
         if (line.quantityApproved > 0) {
           const variant = await ProductVariant.findById(detail.variantId).select('productId').populate('productId', 'trackingType').session(session).lean();
           if (variant?.productId?.trackingType === 'individual') {
-            if (line.itemIds.length !== line.quantityApproved) throw fail('Cần chọn đúng số InventoryItem tương ứng số lượng duyệt.', 400);
-            const selectedItems = await InventoryItem.find({
-              _id: { $in: line.itemIds }, locationId: transfer.fromLocationId,
-              storageId: line.fromStorageId || null, variantId: detail.variantId, status: 'available',
-            }).session(session).distinct('_id');
-            if (selectedItems.length !== line.quantityApproved) throw fail('Một hoặc nhiều InventoryItem đã đổi vị trí/trạng thái hoặc không thuộc biến thể này.', 409);
+            const available = await InventoryItem.countDocuments({ locationId: transfer.fromLocationId, variantId: detail.variantId, status: 'available' }).session(session);
+            if (available < line.quantityApproved) throw fail(`Kho tổng chỉ còn ${available} cá thể khả dụng cho biến thể này.`, 409);
           } else {
-            if (line.itemIds.length) throw fail('Không chọn InventoryItem cho mặt hàng quản lý theo số lượng.');
-            const balance = await InventoryBalance.findOne({
-              locationId: transfer.fromLocationId, storageId: line.fromStorageId || null,
-              variantId: detail.variantId,
-            }).session(session);
-            const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
-            if (available < line.quantityApproved) throw fail(`Kho tổng chỉ còn ${Math.max(0, available)} cái khả dụng cho biến thể ${detail.variantId}.`, 409);
+            const balances = await InventoryBalance.find({ locationId: transfer.fromLocationId, variantId: detail.variantId }).session(session);
+            const available = balances.reduce((sum, row) => sum + row.quantityOnHand - row.quantityReserved - row.quantityUnavailable, 0);
+            if (available < line.quantityApproved) throw fail(`Kho tổng chỉ còn ${Math.max(0, available)} cái khả dụng cho biến thể này.`, 409);
           }
         }
         detail.quantityApproved = line.quantityApproved;
-        detail.fromStorageId = line.fromStorageId;
-        detail.itemIds = line.itemIds;
+        detail.pickAllocations = [];
         if (line.quantityApproved > 0) anyApproved = true;
         await detail.save({ session });
       }
       if (!anyApproved) throw fail('Cần duyệt số lượng lớn hơn 0 cho ít nhất một mặt hàng.');
       transfer.status = 'approved';
+      transfer.assignedStaffId = decision.assignedStaffId;
       transfer.approvedBy = user._id;
       transfer.approvedAt = new Date();
       if (decision.note) transfer.note = `${transfer.note || ''}\nDuyệt: ${decision.note}`.trim();
@@ -195,47 +194,99 @@ export const decideTransferRequest = async (transferId, payload, user) => {
   return getTransfer(transferId, user);
 };
 
+export const getTransferPickCandidates = async (transferId, detailId, storageId, user) => {
+  if (!['warehouse_staff', 'warehouse_manager', 'admin'].includes(roleOf(user))) throw fail('Bạn không có quyền soạn hàng.', 403);
+  const transfer = await StockTransfer.findById(transferId);
+  if (!transfer) throw fail('Không tìm thấy phiếu điều chuyển.', 404);
+  if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+  if (transfer.status !== 'approved') throw fail('Phiếu chưa ở trạng thái chờ soạn hàng.', 409);
+  const detail = await StockTransferDetail.findOne({ _id: detailId, transferId });
+  if (!detail) throw fail('Không tìm thấy dòng hàng.', 404);
+  const storage = storageId && storageId !== 'none' ? storageId : null;
+  if (storage && !await StorageLocation.exists({ _id: storage, locationId: transfer.fromLocationId, status: 'active' })) throw fail('Vị trí không thuộc kho tổng hoặc đã ngừng hoạt động.');
+  const variant = await ProductVariant.findById(detail.variantId).select('productId').populate('productId', 'trackingType').lean();
+  if (variant?.productId?.trackingType === 'individual') return InventoryItem.find({ locationId: transfer.fromLocationId, storageId: storage, variantId: detail.variantId, status: 'available' }).select('_id itemCode serialNumber condition status').sort({ createdAt: 1 }).lean();
+  const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: storage, variantId: detail.variantId }).select('quantityOnHand quantityReserved quantityUnavailable').lean();
+  return { available: Math.max(0, (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0)) };
+};
+
+export const saveTransferPick = async (transferId, payload, user) => {
+  if (!['warehouse_staff', 'warehouse_manager', 'admin'].includes(roleOf(user))) throw fail('Bạn không có quyền soạn hàng.', 403);
+  const data = validateTransferPick(payload);
+  const session = await mongoose.startSession();
+  try { await session.withTransaction(async () => {
+    const transfer = await StockTransfer.findOne({ _id: transferId, status: 'approved' }).session(session);
+    if (!transfer) throw fail('Phiếu chưa ở trạng thái chờ soạn hàng.', 409);
+    if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+    const details = await StockTransferDetail.find({ transferId }).session(session);
+    const byId = new Map(details.map((line) => [String(line._id), line]));
+    if (data.items.length !== details.filter((line) => line.quantityApproved > 0).length || data.items.some((line) => !byId.has(line.detailId))) throw fail('Phân bổ đầy đủ các dòng hàng đã duyệt.');
+    for (const line of data.items) {
+      const detail = byId.get(line.detailId);
+      if (line.allocations.reduce((sum, row) => sum + row.quantity, 0) !== detail.quantityApproved) throw fail('Tổng số lượng các vị trí phải bằng số lượng được duyệt.');
+      const variant = await ProductVariant.findById(detail.variantId).select('productId').populate('productId', 'trackingType').session(session).lean();
+      const individual = variant?.productId?.trackingType === 'individual';
+      for (const allocation of line.allocations) {
+        if (allocation.storageId && !await StorageLocation.exists({ _id: allocation.storageId, locationId: transfer.fromLocationId, status: 'active' }).session(session)) throw fail('Vị trí xuất không thuộc kho tổng hoặc đã ngừng hoạt động.');
+        if (individual) {
+          if (allocation.itemIds.length !== allocation.quantity) throw fail('Chọn đúng số InventoryItem cho từng vị trí.');
+          const count = await InventoryItem.countDocuments({ _id: { $in: allocation.itemIds }, locationId: transfer.fromLocationId, storageId: allocation.storageId, variantId: detail.variantId, status: 'available' }).session(session);
+          if (count !== allocation.quantity) throw fail('Một số InventoryItem đã thay đổi vị trí hoặc trạng thái.', 409);
+        } else {
+          if (allocation.itemIds.length) throw fail('Mặt hàng quản lý theo số lượng không cần chọn InventoryItem.');
+          const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: allocation.storageId, variantId: detail.variantId }).session(session);
+          const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
+          if (available < allocation.quantity) throw fail(`Vị trí chỉ còn ${Math.max(0, available)} cái khả dụng.`, 409);
+        }
+      }
+      detail.pickAllocations = line.allocations;
+      await detail.save({ session });
+    }
+    transfer.status = 'preparing';
+    await transfer.save({ session });
+  }); } finally { await session.endSession(); }
+  return getTransfer(transferId, user);
+};
+
 export const shipTransfer = async (transferId, user) => {
-  if (!isManager(user)) throw fail('Chỉ quản lý kho tổng mới được xác nhận xuất hàng.', 403);
+  if (!['warehouse_staff', 'warehouse_manager', 'admin'].includes(roleOf(user))) throw fail('Bạn không có quyền xác nhận xuất hàng.', 403);
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await StockTransfer.findOne({ _id: transferId, status: 'approved' }).session(session);
-      if (!transfer) throw fail('Phiếu chưa được duyệt hoặc đã xuất hàng.', 409);
+      const transfer = await StockTransfer.findOne({ _id: transferId, status: 'preparing' }).session(session);
+      if (!transfer) throw fail('Phiếu chưa được phân bổ vị trí hoặc đã xuất hàng.', 409);
+      if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
       const details = await StockTransferDetail.find({ transferId }).session(session);
       const variantRows = await ProductVariant.find({ _id: { $in: details.map((detail) => detail.variantId) } }).select('productId').populate('productId', 'trackingType').session(session).lean();
       const tracking = new Map(variantRows.map((row) => [String(row._id), row.productId?.trackingType || 'quantity']));
       for (const detail of details) {
         const quantity = detail.quantityApproved || 0;
         if (!quantity) continue;
+        const allocations = detail.pickAllocations || [];
+        if (allocations.reduce((sum, allocation) => sum + allocation.quantity, 0) !== quantity) throw fail('Phân bổ vị trí không khớp số lượng được duyệt.', 409);
         const individual = tracking.get(String(detail.variantId)) === 'individual';
-        if (individual) {
-          const items = detail.itemIds?.length
-            ? await InventoryItem.find({ _id: { $in: detail.itemIds }, locationId: transfer.fromLocationId, storageId: detail.fromStorageId || null, variantId: detail.variantId, status: 'available' }).session(session)
-            : await InventoryItem.find({ locationId: transfer.fromLocationId, storageId: detail.fromStorageId || null, variantId: detail.variantId, status: 'available' }).sort({ createdAt: 1 }).limit(quantity).session(session);
-          if (items.length !== quantity) throw fail(`Kho tổng không đủ ${quantity} cá thể khả dụng cho biến thể ${detail.variantId}.`, 409);
-          detail.itemIds = items.map((item) => item._id);
-          for (const item of items) {
-            item.status = 'in_transit';
-            await item.save({ session });
-            await recordStockMovement({
-              variantId: detail.variantId, itemId: item._id, locationId: transfer.fromLocationId,
-              storageId: detail.fromStorageId || null, movementType: 'transfer_out', quantityChange: -1,
-              referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id,
-            }, session);
+        const itemIds = [];
+        for (const allocation of allocations) {
+          const storageId = allocation.storageId || null;
+          if (individual) {
+            const items = await InventoryItem.find({ _id: { $in: allocation.itemIds }, locationId: transfer.fromLocationId, storageId, variantId: detail.variantId, status: 'available' }).session(session);
+            if (items.length !== allocation.quantity) throw fail('Một số InventoryItem đã thay đổi vị trí hoặc trạng thái.', 409);
+            for (const item of items) {
+              itemIds.push(item._id);
+              item.status = 'in_transit';
+              await item.save({ session });
+              await recordStockMovement({ variantId: detail.variantId, itemId: item._id, locationId: transfer.fromLocationId, storageId, movementType: 'transfer_out', quantityChange: -1, referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id }, session);
+            }
+          } else {
+            const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId, variantId: detail.variantId }).session(session);
+            const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
+            if (!balance || available < allocation.quantity) throw fail('Tồn khả dụng tại một vị trí đã thay đổi.', 409);
+            balance.quantityOnHand -= allocation.quantity;
+            await balance.save({ session });
+            await recordStockMovement({ variantId: detail.variantId, locationId: transfer.fromLocationId, storageId, movementType: 'transfer_out', quantityChange: -allocation.quantity, referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id }, session);
           }
-        } else {
-          const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: detail.fromStorageId || null, variantId: detail.variantId }).session(session);
-          const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
-          if (available < quantity) throw fail(`Kho tổng không đủ tồn khả dụng cho biến thể ${detail.variantId}.`, 409);
-          balance.quantityOnHand -= quantity;
-          await balance.save({ session });
-          await recordStockMovement({
-            variantId: detail.variantId, locationId: transfer.fromLocationId,
-            storageId: detail.fromStorageId || null, movementType: 'transfer_out', quantityChange: -quantity,
-            referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id,
-          }, session);
         }
+        detail.itemIds = itemIds;
         detail.quantityShipped = quantity;
         await detail.save({ session });
       }
@@ -247,7 +298,6 @@ export const shipTransfer = async (transferId, user) => {
   } finally { await session.endSession(); }
   return getTransfer(transferId, user);
 };
-
 const assertBranchCapacity = async (location, incoming, session) => {
   if (location.maxCapacity == null) return;
   const [balances, individualItems] = await Promise.all([

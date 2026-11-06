@@ -95,12 +95,14 @@ export default function Navbar() {
               <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
               <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
               <div className="nav-dropdown-divider"></div>
-              <Link to="/policy" className="nav-sublink">Chính sách thuê đồ</Link>
-              <Link to="/policy" className="nav-sublink">Thanh toán Escrow</Link>
-              <Link to="/policy" className="nav-sublink">Đổi trả & Hoàn cọc</Link>
-              <Link to="/policy" className="nav-sublink">Bảo mật thông tin</Link>
+              <Link to="/policy" className="nav-sublink">Chính sách VESTORA</Link>
             </div>
           </div>
+
+          {/* Radar Cửa Hàng */}
+          <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
+            Bản đồ chi nhánh
+          </Link>
 
           {/* Quick Access for Management Roles */}
           {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (

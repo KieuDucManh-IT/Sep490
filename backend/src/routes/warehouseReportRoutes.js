@@ -5,8 +5,8 @@ import { authMiddleware, requireRoles } from '../middlewares/errorMiddleware.js'
 
 const router = express.Router();
 router.use(authMiddleware);
-router.get('/inventory/details', requireRoles('warehouse_manager'), inventoryReportDetails);
-router.get('/inventory', requireRoles('warehouse_manager'), inventoryReport);
+router.get('/inventory/details', requireRoles('warehouse_manager', 'warehouse_staff'), inventoryReportDetails);
+router.get('/inventory', requireRoles('warehouse_manager', 'warehouse_staff'), inventoryReport);
 router.get('/branch/inventory/details', requireRoles('branch_manager'), branchInventoryReportDetails);
 router.get('/branch/inventory', requireRoles('branch_manager'), branchInventoryReport);
 

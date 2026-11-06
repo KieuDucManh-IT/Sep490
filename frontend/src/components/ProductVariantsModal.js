@@ -13,6 +13,7 @@ export default function ProductVariantsModal({ product, onClose, onChanged }) {
   const [error, setError] = useState('');
   const [editor, setEditor] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -50,10 +51,17 @@ export default function ProductVariantsModal({ product, onClose, onChanged }) {
     } catch (saveError) { setError(saveError.message); }
     finally { setSaving(false); }
   };
-  const remove = async (variant) => {
-    if (!window.confirm(`Xóa biến thể ${variant.sku}?`)) return;
-    try { setError(''); await productVariantService.remove(variant._id); await load(); await onChanged?.(); }
-    catch (removeError) { setError(removeError.message); }
+  const confirmRemove = async () => {
+    if (!confirmDelete) return;
+    try {
+      setError('');
+      await productVariantService.remove(confirmDelete._id);
+      setConfirmDelete(null);
+      await load();
+      await onChanged?.();
+    } catch (removeError) {
+      setError(removeError.message);
+    }
   };
 
   return <div className="wm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -62,10 +70,26 @@ export default function ProductVariantsModal({ product, onClose, onChanged }) {
       {error && <div className="wm-error">{error}</div>}
       <div className="wm-variant-toolbar"><p>{variants.length} biến thể</p><button type="button" className="wm-primary-button" onClick={() => openEditor('create')}>+ Thêm biến thể</button></div>
       <div className="wm-table-wrap"><table><thead><tr><th>SKU</th><th>Màu</th><th>Kích thước</th><th>Thuộc tính</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-        {loading ? <tr><td colSpan="6">Đang tải...</td></tr> : variants.length ? variants.map((variant) => <tr key={variant._id}><td><strong>{variant.sku}</strong></td><td>{variant.color || '—'}</td><td>{variant.size || '—'}</td><td>{Object.entries(variant.attributes || {}).map(([key, value]) => `${key}: ${value}`).join(', ') || '—'}</td><td>{variant.status === 'active' ? 'Hoạt động' : 'Ngừng hoạt động'}</td><td className="wm-actions"><button type="button" className="secondary" onClick={() => openEditor('view', variant)}>Xem</button><button type="button" className="secondary" onClick={() => openEditor('edit', variant)}>Sửa</button><button type="button" className="danger" onClick={() => remove(variant)}>Xóa</button></td></tr>) : <tr><td colSpan="6">Sản phẩm chưa có biến thể.</td></tr>}
+        {loading ? <tr><td colSpan="6">Đang tải...</td></tr> : variants.length ? variants.map((variant) => <tr key={variant._id}><td><strong>{variant.sku}</strong></td><td>{variant.color || '—'}</td><td>{variant.size || '—'}</td><td>{Object.entries(variant.attributes || {}).map(([key, value]) => `${key}: ${value}`).join(', ') || '—'}</td><td>{variant.status === 'active' ? 'Hoạt động' : 'Ngừng hoạt động'}</td><td className="wm-actions"><button type="button" className="secondary" onClick={() => openEditor('view', variant)}>Xem</button><button type="button" className="secondary" onClick={() => openEditor('edit', variant)}>Sửa</button><button type="button" className="danger" onClick={() => setConfirmDelete(variant)}>Xóa</button></td></tr>) : <tr><td colSpan="6">Sản phẩm chưa có biến thể.</td></tr>}
       </tbody></table></div>
       <footer className="wm-modal-footer"><button type="button" className="secondary" onClick={onClose}>Đóng</button></footer>
     </section>
+    {confirmDelete && (
+      <div className="wm-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirmDelete(null); }}>
+        <section className="wm-crud-modal" style={{ maxWidth: '420px', padding: '24px' }} role="dialog" aria-modal="true">
+          <header style={{ marginBottom: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#171717' }}>Xác nhận xóa biến thể</h3>
+          </header>
+          <p style={{ color: '#555', fontSize: '14px', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+            Bạn có chắc chắn muốn xóa biến thể <strong>{confirmDelete.sku}</strong>? Thao tác này không thể hoàn tác.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button type="button" className="secondary" onClick={() => setConfirmDelete(null)}>Hủy bỏ</button>
+            <button type="button" className="danger" onClick={confirmRemove}>Xóa vĩnh viễn</button>
+          </div>
+        </section>
+      </div>
+    )}
     {editor && <div className="wm-modal-backdrop wm-variant-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditor(null); }}>
       <section className="wm-crud-modal wm-variant-editor" role="dialog" aria-modal="true" aria-labelledby="variant-editor-title">
         <header><div><span>{editor.mode === 'create' ? 'THÊM BIẾN THỂ' : editor.mode === 'edit' ? 'SỬA BIẾN THỂ' : 'CHI TIẾT BIẾN THỂ'}</span><h2 id="variant-editor-title">{editor.variant?.sku || 'Biến thể mới'}</h2></div><button type="button" className="wm-modal-close" onClick={() => setEditor(null)} aria-label="Đóng"><X size={20} /></button></header>

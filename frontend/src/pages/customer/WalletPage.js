@@ -4,17 +4,71 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Modal, Button } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
-
 import {
   walletRequest,
   walletPost,
 } from "../../services/walletApi";
-
 import "../../styles/Wallet.css";
+
+// Custom Wallet Notification Modal (thay thế react-bootstrap Modal)
+function WalletNotificationModal({ show, isError, message, onClose }) {
+  if (!show) return null;
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: '#FFFFFF', borderRadius: '16px',
+          padding: '28px 32px', maxWidth: '440px', width: '100%',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+          border: '1px solid #E5E0D8',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 style={{
+          fontFamily: "'Newsreader', serif", fontSize: '18px',
+          fontWeight: 600, margin: '0 0 12px 0',
+          color: isError ? '#DC2626' : '#171717',
+        }}>
+          {isError ? 'Không thực hiện được thao tác' : 'Thông báo'}
+        </h3>
+        <p style={{
+          fontSize: '14px', color: '#44403C', lineHeight: 1.6,
+          whiteSpace: 'pre-line', margin: '0 0 24px 0',
+        }}>
+          {message}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: '#171717', color: '#F8F7F4',
+              border: 'none', borderRadius: '8px',
+              padding: '10px 24px', fontSize: '14px',
+              fontWeight: 600, cursor: 'pointer',
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#C5A880'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#171717'; }}
+          >
+            Đã hiểu
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Component hiển thị QR code an toàn, không phụ thuộc thư viện ngoài chưa install
 function QRCodeSVG({ value, size = 190, marginSize = 4, title = "Mã QR nạp tiền Ví" }) {
@@ -474,31 +528,12 @@ export default function WalletPage() {
           </Link>
         </header>
 
-        <Modal
+        <WalletNotificationModal
           show={Boolean(error || notice)}
-          onHide={closeNotification}
-          centered
-          aria-labelledby="wallet-notification-title"
-        >
-          <Modal.Header closeButton>
-            <Modal.Title
-              id="wallet-notification-title"
-              className={error ? "text-danger" : ""}
-            >
-              {error ? "Không thực hiện được thao tác" : "Thông báo"}
-            </Modal.Title>
-          </Modal.Header>
-
-          <Modal.Body style={{ whiteSpace: "pre-line" }}>
-            {error || notice}
-          </Modal.Body>
-
-          <Modal.Footer>
-            <Button variant="dark" onClick={closeNotification}>
-              Đã hiểu
-            </Button>
-          </Modal.Footer>
-        </Modal>
+          isError={Boolean(error)}
+          message={error || notice}
+          onClose={closeNotification}
+        />
 
         {!data ? (
           <section className="vw-card">

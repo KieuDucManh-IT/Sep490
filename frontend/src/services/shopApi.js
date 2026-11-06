@@ -8,9 +8,10 @@ const API_ROOT = rawApiUrl
 
 async function fetchJson(endpoint, options = {}) {
   const token = localStorage.getItem('token');
+  const isJwt = typeof token === 'string' && token.split('.').length === 3;
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(isJwt ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
 
@@ -49,6 +50,17 @@ export const getAssignedBranchApi = async (branchId) => {
   const activeId = branchId || localStorage.getItem('vestora_active_branch_id') || '';
   const query = activeId ? `?branchId=${encodeURIComponent(activeId)}` : '';
   return fetchJson(`/api/shops/assigned-branch${query}`);
+};
+
+export const getBranchPerformanceReportApi = async ({ branchId, timeRange = 'MONTH', startDate, endDate } = {}) => {
+  const activeId = branchId || localStorage.getItem('vestora_active_branch_id') || '';
+  const params = new URLSearchParams();
+  if (activeId) params.append('branchId', activeId);
+  if (timeRange) params.append('timeRange', timeRange);
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return fetchJson(`/api/shops/reports/branch-performance${qs}`);
 };
 
 export const updateShopAddressApi = async (shopId, addressData) => {

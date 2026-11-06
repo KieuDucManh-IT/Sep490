@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Layers, Map, Maximize2 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isValidCoordinate } from '../../../../utils/geoUtils';
@@ -35,7 +36,10 @@ const createCustomerMarkerIcon = () => {
     <div class="customer-radar-pin">
       <div class="customer-radar-pulse"></div>
       <div class="customer-radar-core">
-        <i class="fa-solid fa-user" aria-hidden="true"></i>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
       </div>
     </div>
   `;
@@ -139,8 +143,8 @@ export default function RadarMapCanvas({
         zIndexOffset: 1000,
       }).addTo(map);
       marker.bindPopup(
-        `<div style="font-size: 12.5px; font-weight: 700; color: #1d4ed8; padding: 2px;">
-          📍 Vị trí hiện tại của bạn
+        `<div style="font-size: 12.5px; font-weight: 700; color: #C5A880; padding: 2px;">
+          Vị trí hiện tại của bạn
         </div>`
       );
       userMarkerRef.current = marker;
@@ -181,11 +185,11 @@ export default function RadarMapCanvas({
       const popupContent = `
         <div class="popup-inner-card">
           <div class="popup-store-name">${store.name}</div>
-          <div class="popup-store-dist">⚡ Cách bạn ${store.distanceLabel} (${store.travelTimeLabel})</div>
+          <div class="popup-store-dist">Cách bạn ${store.distanceLabel} (${store.travelTimeLabel})</div>
           <div class="popup-store-addr">${store.address}</div>
           <div class="popup-btn-row">
             <a href="${gmapsLink}" target="_blank" rel="noopener noreferrer" class="radar-btn-outline" style="text-align:center; text-decoration:none;">
-              <i class="fa-solid fa-arrow-up-right-from-square" style="color:#ea580c; margin-right:4px;"></i> Mở Google Maps
+              Mở Google Maps
             </a>
             <a href="/catalog?shop=${store.id}" class="radar-btn-gold" style="text-align:center; text-decoration:none;">
               Xem sản phẩm
@@ -280,8 +284,13 @@ export default function RadarMapCanvas({
           onClick={handleToggleMapLayer}
           title={mapLayerType === 'roadmap' ? 'Xem ảnh vệ tinh' : 'Xem bản đồ đường phố'}
           aria-label={mapLayerType === 'roadmap' ? 'Xem ảnh vệ tinh' : 'Xem bản đồ đường phố'}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
-          <i className={`fa-solid ${mapLayerType === 'roadmap' ? 'fa-layer-group' : 'fa-map'}`} aria-hidden="true"></i>
+          {mapLayerType === 'roadmap' ? (
+            <Layers size={18} color="#C5A880" aria-hidden="true" />
+          ) : (
+            <Map size={18} color="#C5A880" aria-hidden="true" />
+          )}
         </button>
 
         {/* Fit all stores */}
@@ -291,8 +300,9 @@ export default function RadarMapCanvas({
           onClick={handleFitAllBounds}
           title="Xem toàn bộ cửa hàng"
           aria-label="Xem toàn bộ cửa hàng"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
-          <i className="fa-solid fa-expand" aria-hidden="true"></i>
+          <Maximize2 size={18} color="#C5A880" aria-hidden="true" />
         </button>
       </div>
     </section>

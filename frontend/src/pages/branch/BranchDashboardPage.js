@@ -71,7 +71,7 @@ export default function BranchDashboardPage() {
       customer: 'Nguyễn Lan Hương (0908***412 - VIP 2)',
       duration: '3 ngày (24/10 - 27/10)',
       amount: '700.000 đ',
-      escrow: 'Cọc PayOS Escrow',
+      depositNote: 'Đã nhận cọc',
       status: 'CHỜ XÁC NHẬN',
       statusType: 'pending',
       action: 'DUYỆT ĐƠN',
@@ -84,7 +84,7 @@ export default function BranchDashboardPage() {
       customer: 'Trần Mai Chi (0971***890)',
       duration: '2 ngày (25/10 - 27/10)',
       amount: '500.000 đ',
-      escrow: 'Cọc PayOS Escrow',
+      depositNote: 'Đã nhận cọc',
       status: 'ĐANG ĐÓNG GÓI',
       statusType: 'shipping',
       action: 'IN PHIẾU GỬI',
@@ -97,7 +97,7 @@ export default function BranchDashboardPage() {
       customer: 'Đặng Hoàng Yến (0934***221)',
       duration: 'Đã nhận hoàn trả (Chờ đối soát)',
       amount: '700.000 đ',
-      escrow: 'Đang giữ tiền cọc',
+      depositNote: 'Đang giữ tiền cọc',
       status: 'CHỜ KIỂM ĐỊNH CỌC',
       statusType: 'return',
       action: 'XỬ LÝ CỌC',
@@ -110,7 +110,7 @@ export default function BranchDashboardPage() {
       customer: 'Phạm Thu Trang (0912***556)',
       duration: 'Đơn Mua Sở Hữu (Đã nhận thanh toán)',
       amount: '4.200.000 đ',
-      escrow: 'Đã nhận thanh toán',
+      depositNote: 'Đã nhận thanh toán',
       status: 'CHỜ GIAO SHIPPER',
       statusType: 'completed',
       action: 'GIAO SHIPPER',
@@ -406,13 +406,13 @@ export default function BranchDashboardPage() {
                 <div className="stat-card-white" style={{ cursor: 'pointer' }} onClick={() => navigate('/branch/returns')}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span className="stat-card-title">TIỀN CỌC PAYOS ESCROW</span>
+                      <span className="stat-card-title">TIỀN CỌC ĐANG TẠM GIỮ</span>
                       <span style={{ fontSize: '10px', background: '#FEF3C7', color: '#D97706', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>AN TOÀN</span>
                     </div>
                     <div className="stat-card-value" style={{ color: 'var(--color-gold-deep)' }}>142.500.000 đ</div>
                   </div>
                   <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '12px' }}>
-                    Đang giữ escrow cho 34 đơn thuê
+                    Shop đang giữ cọc cho 34 đơn thuê
                   </div>
                 </div>
 
@@ -491,7 +491,7 @@ export default function BranchDashboardPage() {
                         </td>
                         <td>
                           <div style={{ fontSize: '13px', fontWeight: 700 }}>{ord.amount}</div>
-                          <div style={{ fontSize: '10px', color: '#059669', fontWeight: 600 }}>✔ {ord.escrow}</div>
+                          <div style={{ fontSize: '10px', color: '#059669', fontWeight: 600 }}>✔ {ord.depositNote}</div>
                         </td>
                         <td>
                           <span className={`status-tag status-${ord.statusType}`}>

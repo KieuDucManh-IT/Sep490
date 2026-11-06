@@ -19,12 +19,13 @@
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
     "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "zustand": "^5.0.16"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test",
+    "test": "jest --watchAll=false",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

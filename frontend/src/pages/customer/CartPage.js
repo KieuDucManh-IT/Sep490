@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/Cart.css';
 
 export default function CartPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,10 +25,6 @@ export default function CartPage() {
     }
   });
 
-  // Promo code state
-  const [couponCode, setCouponCode] = useState('');
-  const [discountAmount, setDiscountAmount] = useState(0);
-  const [appliedCode, setAppliedCode] = useState('');
   const [toastMsg, setToastMsg] = useState(null);
 
   // Edit Date Modal state
@@ -75,73 +73,10 @@ export default function CartPage() {
           }
         } catch (_) { }
 
-        // Nếu giỏ hàng của người dùng đã có sản phẩm thật đã lưu
-        if (validSavedItems.length > 0) {
-          if (isMounted) {
-            setCartItems(validSavedItems);
-            setSelectedIds(validSavedItems.map((item) => item.id));
-          }
-        } else {
-          // Nếu giỏ hàng đang trống, lấy trực tiếp danh sách sản phẩm THẬT từ Database MongoDB Atlas
-          const res = await productService.getProducts({ limit: 3 });
-          if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-            const today = new Date();
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const returnDate = new Date(tomorrow);
-            returnDate.setDate(returnDate.getDate() + 3);
-
-            const startStr = tomorrow.toISOString().split('T')[0];
-            const endStr = returnDate.toISOString().split('T')[0];
-
-            const realItemsFromDb = res.data.map((p, idx) => {
-              const isRental =
-                p.tag === 'rental' ||
-                p.tag === 'rental' ||
-                (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
-                (p.rentalPricePerDay && p.rentalPricePerDay > 0);
-
-              const price = isRental
-                ? p.rentalPricePer3Days || (p.rentalPricePerDay ? p.rentalPricePerDay * 3 : 0)
-                : p.salePrice || 0;
-
-              return {
-                id: `cart-real-${p._id || idx}`,
-                productId: p._id || p.productCode,
-                name: p.name,
-                shopName: p.shopId?.name || p.brand || 'Vestora Fashion Store',
-                isRental,
-                size: (Array.isArray(p.sizes) && p.sizes[0]) || 'M',
-                color: (Array.isArray(p.colors) && p.colors[0]) || 'Mặc định',
-                colorCode: '#6e3eb3',
-                startDate: startStr,
-                endDate: endStr,
-                duration: 3,
-                price: price || 1200000,
-                oldPrice: !isRental && price ? Math.round(price * 1.35) : null,
-                discountPercent: !isRental ? 25 : null,
-                deposit: isRental ? p.deposit || Math.round(price * 0.6) : 0,
-                quantity: 1,
-                image: (Array.isArray(p.images) && p.images[0]) || p.image || '',
-                inStock: p.inStock !== false,
-                condition: p.condition || 'Rất tốt',
-                verified: true,
-                aiTryOn: p.aiTryOn !== false,
-              };
-            });
-
-            if (isMounted) {
-              setCartItems(realItemsFromDb);
-              // Mặc định chọn 2 sản phẩm đầu như mockup
-              setSelectedIds(realItemsFromDb.slice(0, 2).map((item) => item.id));
-              localStorage.setItem('vestora_cart', JSON.stringify(realItemsFromDb));
-            }
-          } else {
-            if (isMounted) {
-              setCartItems([]);
-              setSelectedIds([]);
-            }
-          }
+        // Nạp các sản phẩm thực tế người dùng đã thêm vào giỏ hàng
+        if (isMounted) {
+          setCartItems(validSavedItems);
+          setSelectedIds(validSavedItems.map((item) => item.id));
         }
 
         // Tải thêm sản phẩm gợi ý từ database thật
@@ -270,21 +205,25 @@ export default function CartPage() {
     showToast('Đã cập nhật lịch thuê mới thành công!');
   };
 
-  // Apply Coupon
-  const handleApplyCoupon = (e) => {
-    e.preventDefault();
-    if (!couponCode.trim()) {
-      showToast('Vui lòng nhập mã giảm giá.');
+  // Tiến hành thanh toán: Chuyển qua màn hình nhập thông tin nhận hàng & thanh toán
+  const handleProceedCheckout = () => {
+    if (selectedIds.length === 0) {
+      showToast('Vui lòng chọn ít nhất một sản phẩm để thanh toán!');
       return;
     }
-    const code = couponCode.trim().toUpperCase();
-    if (code === 'VESTORA50' || code === 'VIP2026' || code === 'WELCOME') {
-      setDiscountAmount(50000);
-      setAppliedCode(code);
-      showToast(`Áp dụng mã ${code} thành công! Giảm 50.000đ.`);
-    } else {
-      showToast('Mã giảm giá không hợp lệ hoặc đã hết hạn.');
+    if (!user) {
+      showToast('Vui lòng đăng nhập để tiến hành thanh toán.');
+      navigate('/login', { state: { from: '/cart' } });
+      return;
     }
+
+    const selectedItems = cartItems.filter((item) => selectedIds.includes(item.id));
+    try {
+      sessionStorage.setItem('vestora_checkout_items', JSON.stringify(selectedItems));
+    } catch (_) {}
+
+    // Bắn sang màn hình nhập thông tin nhận hàng & thanh toán
+    navigate('/checkout', { state: { items: selectedItems } });
   };
 
   // Thêm nhanh sản phẩm gợi ý từ database vào giỏ hàng
@@ -367,7 +306,7 @@ export default function CartPage() {
 
     const ship = selectedItems.length > 0 ? 0 : 0; // Miễn phí giao hàng
     const srv = selectedItems.length > 0 ? 30000 : 0; // Phí dịch vụ 30.000đ
-    const totalWithoutDeposit = Math.max(0, rTotal + sTotal + ship + srv - discountAmount);
+    const totalWithoutDeposit = Math.max(0, rTotal + sTotal + ship + srv);
 
     return {
       rentalItemsCount: rCount,
@@ -379,7 +318,7 @@ export default function CartPage() {
       serviceFee: srv,
       finalTotal: totalWithoutDeposit,
     };
-  }, [cartItems, selectedIds, discountAmount]);
+  }, [cartItems, selectedIds]);
 
   return (
     <div className="cart-page-container">
@@ -823,33 +762,6 @@ export default function CartPage() {
               </div>
             </div>
 
-            {/* Promo Code Input Form */}
-            <form onSubmit={handleApplyCoupon} className="cart-coupon-box">
-              <div className="cart-coupon-input-wrapper">
-                <i className="fa-solid fa-ticket"></i>
-                <input
-                  type="text"
-                  className="cart-coupon-input"
-                  placeholder="Nhập mã giảm giá (nếu có)"
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value)}
-                />
-              </div>
-              <button type="submit" className="cart-coupon-btn">
-                Áp dụng
-              </button>
-            </form>
-
-            {/* Discount row if applied */}
-            <div className="cart-summary-row" style={{ color: discountAmount > 0 ? '#15803d' : '#71717a' }}>
-              <span>
-                <i className="fa-solid fa-tag" style={{ marginRight: '6px' }}></i> Giảm giá
-              </span>
-              <span className="cart-summary-row-val" style={{ color: discountAmount > 0 ? '#15803d' : '#71717a' }}>
-                - {formatVND(discountAmount)}
-              </span>
-            </div>
-
             {/* Total Row */}
             <div className="cart-total-section">
               <div className="cart-total-label-row">
@@ -872,16 +784,10 @@ export default function CartPage() {
               type="button"
               className="cart-btn-checkout"
               disabled={selectedIds.length === 0}
-              onClick={() => {
-                if (selectedIds.length === 0) {
-                  showToast('Vui lòng chọn ít nhất một sản phẩm để thanh toán!');
-                  return;
-                }
-                alert(`Chuyển đến cổng thanh toán an toàn PayOS Escrow — Tổng: ${formatVND(finalTotal)}!`);
-              }}
+              onClick={handleProceedCheckout}
             >
-              <i className="fa-solid fa-lock"></i>
-              <span>Tiến hành thanh toán</span>
+              <i className="fa-solid fa-truck-fast"></i>
+              <span>Nhập thông tin nhận hàng & Thanh toán</span>
               <i className="fa-solid fa-arrow-right"></i>
             </button>
 
@@ -890,7 +796,7 @@ export default function CartPage() {
               <div className="cart-trust-title">Thanh toán an toàn & bảo mật</div>
               <div className="cart-payment-badges-row">
                 <span className="cart-pay-badge escrow">
-                  <i className="fa-solid fa-shield-check"></i> PayOS Escrow
+                  <i className="fa-solid fa-shield-check"></i> Cổng thanh toán PayOS
                 </span>
                 <span className="cart-pay-badge">VietQR</span>
                 <span className="cart-pay-badge">VISA</span>

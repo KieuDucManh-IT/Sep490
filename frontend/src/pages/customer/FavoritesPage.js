@@ -201,7 +201,7 @@ export default function FavoritesPage() {
           </div>
 
           <div className="fav-escrow-badge">
-            <i className="fa-solid fa-shield-halved"></i> BẢO CHỨNG ESCROW 100% KIỂM ĐỊNH
+            <i className="fa-solid fa-shield-halved"></i> BẢO CHỨNG 100% KIỂM ĐỊNH CHÍNH HÃNG
           </div>
         </div>
       </div>

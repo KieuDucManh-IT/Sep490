@@ -382,7 +382,7 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
 
                               {/* 7. Tiền cọc */}
                               <td style={{ textAlign: 'right' }}>
-                                <div className="order-escrow-amount">
+                                <div className="order-deposit-amount">
                                   {formatCurrency(o.depositAmount)}
                                 </div>
                                 <span className={`order-badge ${depositDef.chipClass}`} style={{ fontSize: '11px', padding: '2px 6px' }}>

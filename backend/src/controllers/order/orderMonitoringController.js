@@ -4,6 +4,9 @@ import {
   getSalesOrders,
   getSalesOrderById,
   getOrderMetrics,
+  getCustomerRentalOrders,
+  getCustomerSalesOrders,
+  createCustomerRentalOrder,
 } from '../../services/order/orderMonitoringService.js';
 
 const handleError = (error, res, next) => {
@@ -74,6 +77,43 @@ export const getOrderMetricsHandler = async (req, res, next) => {
     return res.json({
       success: true,
       data: result,
+    });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
+export const getCustomerRentalOrdersHandler = async (req, res, next) => {
+  try {
+    const orders = await getCustomerRentalOrders(req.user, req.query);
+    return res.json({
+      success: true,
+      data: orders,
+    });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
+export const getCustomerSalesOrdersHandler = async (req, res, next) => {
+  try {
+    const orders = await getCustomerSalesOrders(req.user, req.query);
+    return res.json({
+      success: true,
+      data: orders,
+    });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
+export const createCustomerRentalOrderHandler = async (req, res, next) => {
+  try {
+    const order = await createCustomerRentalOrder(req.user, req.body);
+    return res.status(201).json({
+      success: true,
+      message: 'Đặt đơn thuê thành công!',
+      data: order,
     });
   } catch (error) {
     handleError(error, res, next);

@@ -658,7 +658,7 @@ export default function ProductDetailPage() {
               <span>
                 {isRental
                   ? 'Tiền cọc được hoàn trả 100% sau khi bạn trả đồ và hệ thống kiểm tra tình trạng sản phẩm.'
-                  : 'Sản phẩm mua bán chính hãng, kiểm định IFAB, bảo vệ người mua 100% qua PayOS Escrow.'}
+                  : 'Sản phẩm mua bán chính hãng, kiểm định IFAB, bảo vệ người mua 100% qua cổng thanh toán an toàn PayOS.'}
               </span>
             </div>
           </div>
@@ -1112,7 +1112,7 @@ export default function ProductDetailPage() {
                     </li>
                     <li className="pdetail-policy-item">
                       <i className="fa-solid fa-check pdetail-policy-check"></i>
-                      <span>Bảo vệ quyền lợi người mua qua PayOS Escrow, hoàn tiền nếu lỗi mô tả.</span>
+                      <span>Bảo vệ quyền lợi người mua qua cổng thanh toán PayOS, hoàn tiền nếu lỗi mô tả.</span>
                     </li>
                   </>
                 )}
@@ -1238,7 +1238,7 @@ export default function ProductDetailPage() {
                   1. <strong>Kiểm định chính hãng 100%:</strong> Sản phẩm được thẩm định nguồn gốc xuất xứ, độ bền vải và đường may bởi chuyên viên thời trang VESTORA.
                 </p>
                 <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
-                  2. <strong>Thanh toán đảm bảo PayOS Escrow:</strong> Tiền mua hàng được giữ an toàn trên hệ thống ký quỹ trung gian, chỉ chuyển cho shop sau khi bạn nhận và xác nhận hài lòng.
+                  2. <strong>Thanh toán đảm bảo PayOS:</strong> Tiền mua hàng được thanh toán bảo đảm an toàn, chỉ chuyển cho shop sau khi bạn nhận và xác nhận hài lòng.
                 </p>
                 <p style={{ fontSize: '14px', color: '#52525b', lineHeight: 1.6, margin: 0 }}>
                   3. <strong>Đồng kiểm & Đổi trả trong 48h:</strong> Quý khách được quyền kiểm tra hàng trước khi nhận, đổi trả hoặc hoàn tiền 100% nếu sản phẩm có lỗi sai khác so với hình ảnh mô tả.

@@ -134,11 +134,6 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Radar Cửa Hàng / Bản đồ chi nhánh */}
-          <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
-            Bản đồ chi nhánh
-          </Link>
-
           {/* Tra Cứu Đơn Hàng */}
           <Link to="/tracking" className={`navbar-link ${isActive("/tracking")}`}>
             Tra Cứu Đơn

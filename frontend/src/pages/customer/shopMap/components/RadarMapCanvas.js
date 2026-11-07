@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Layers, Map, Maximize2 } from 'lucide-react';
+import { Layers, Map as MapIcon, Maximize2 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isValidCoordinate } from '../../../../utils/geoUtils';
@@ -289,7 +289,7 @@ export default function RadarMapCanvas({
           {mapLayerType === 'roadmap' ? (
             <Layers size={18} color="#C5A880" aria-hidden="true" />
           ) : (
-            <Map size={18} color="#C5A880" aria-hidden="true" />
+            <MapIcon size={18} color="#C5A880" aria-hidden="true" />
           )}
         </button>
 

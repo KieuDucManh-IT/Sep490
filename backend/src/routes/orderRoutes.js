@@ -6,12 +6,21 @@ import {
   getSalesOrdersHandler,
   getSalesOrderByIdHandler,
   getOrderMetricsHandler,
+  getCustomerRentalOrdersHandler,
+  getCustomerSalesOrdersHandler,
+  createCustomerRentalOrderHandler,
 } from '../controllers/order/orderMonitoringController.js';
 
 const router = express.Router();
 
-// Tất cả endpoints đều yêu cầu đăng nhập và thuộc các role được phép giám sát
 router.use(authMiddleware);
+
+// Endpoints dành cho Khách hàng
+router.get('/my-rentals', getCustomerRentalOrdersHandler);
+router.get('/my-sales', getCustomerSalesOrdersHandler);
+router.post('/checkout', createCustomerRentalOrderHandler);
+
+// Tất cả endpoints dưới đây yêu cầu role giám sát
 router.use(requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'));
 
 // Giám sát Đơn Thuê

@@ -14,6 +14,7 @@ import HomePage from './pages/customer/HomePage';
 import CatalogPage from './pages/customer/CatalogPage';
 import ProductDetailPage from './pages/customer/ProductDetailPage';
 import CartPage from './pages/customer/CartPage';
+import CheckoutPage from './pages/customer/CheckoutPage';
 import FavoritesPage from './pages/customer/FavoritesPage';
 import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
@@ -28,6 +29,7 @@ import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
 import CustomerOrderTrackingPage from './pages/customer/CustomerOrderTrackingPage';
+import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -82,7 +84,7 @@ function App() {
         <Route path="/product" element={<ProductDetailPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/cart" element={<CartPage />} />
-        <Route path="/checkout" element={<Navigate to="/cart" replace />} />
+        <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
         <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/map" element={<ShopMapPage />} />
         <Route
@@ -116,8 +118,8 @@ function App() {
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
         <Route path="/tracking" element={<CustomerOrderTrackingPage />} />
         <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
-        <Route path="/rental-orders" element={<ProtectedRoute><CustomerOrderTrackingPage /></ProtectedRoute>} />
-        <Route path="/customer/rental-orders" element={<ProtectedRoute><CustomerOrderTrackingPage /></ProtectedRoute>} />
+        <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
+        <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)

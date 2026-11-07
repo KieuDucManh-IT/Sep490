@@ -7,10 +7,93 @@ import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { Shop } from '../../models/shop/Shop.js';
 import User from '../../models/system/User.js';
-import '../../models/masterdata/ProductVariant.js';
-import '../../models/masterdata/Product.js';
+import { ProductImage } from '../../models/masterdata/ProductImages.js';
+import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
+import { Product } from '../../models/masterdata/Product.js';
+import { Wallet } from '../../models/finance/Wallet.js';
+import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
+import { readBalances } from '../walletService.js';
+import { encryptValue } from '../../utils/walletSecurity.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+
+const attachProductImages = async (details = []) => {
+  if (!details || !details.length) return details;
+  const productIds = [];
+  const variantIds = [];
+  for (const d of details) {
+    if (d.variantId?._id) variantIds.push(d.variantId._id);
+    const pId = d.variantId?.productId?._id || d.variantId?.productId;
+    if (pId) productIds.push(pId);
+  }
+
+  if (!productIds.length && !variantIds.length) return details;
+
+  const images = await ProductImage.find({
+    $or: [
+      { productId: { $in: productIds } },
+      { variantId: { $in: variantIds } },
+    ],
+  })
+    .sort({ isPrimary: -1, displayOrder: 1, createdAt: 1 })
+    .lean();
+
+  const imageByProduct = new Map();
+  const imageByVariant = new Map();
+  const allImagesByProduct = new Map();
+
+  for (const img of images) {
+    const url = img.imageUrl || img.image_url || '';
+    if (!url) continue;
+    const vId = img.variantId || img.variant_id;
+    const pId = img.productId || img.product_id;
+
+    if (vId && !imageByVariant.has(String(vId))) {
+      imageByVariant.set(String(vId), url);
+    }
+    if (pId) {
+      const pIdStr = String(pId);
+      if (!imageByProduct.has(pIdStr)) {
+        imageByProduct.set(pIdStr, url);
+      }
+      if (!allImagesByProduct.has(pIdStr)) {
+        allImagesByProduct.set(pIdStr, []);
+      }
+      allImagesByProduct.get(pIdStr).push(url);
+    }
+  }
+
+  for (const d of details) {
+    const vId = d.variantId?._id ? String(d.variantId._id) : (d.variantId ? String(d.variantId) : '');
+    const pId = d.variantId?.productId?._id
+      ? String(d.variantId.productId._id)
+      : (d.variantId?.productId ? String(d.variantId.productId) : (d.productId?._id ? String(d.productId._id) : (d.productId ? String(d.productId) : '')));
+
+    const productImagesList = (pId && allImagesByProduct.get(pId)) || [];
+    const itemImage =
+      (vId && imageByVariant.get(vId)) ||
+      (pId && imageByProduct.get(pId)) ||
+      (Array.isArray(d.variantId?.productId?.images) && d.variantId.productId.images[0]) ||
+      d.variantId?.productId?.image ||
+      d.variantId?.image ||
+      d.image ||
+      '';
+
+    d.image = itemImage;
+    d.imageUrl = itemImage;
+    if (d.variantId && typeof d.variantId === 'object') {
+      d.variantId.image = itemImage;
+      d.variantId.imageUrl = itemImage;
+      if (d.variantId.productId && typeof d.variantId.productId === 'object') {
+        d.variantId.productId.image = itemImage;
+        d.variantId.productId.imageUrl = itemImage;
+        d.variantId.productId.images = productImagesList.length > 0 ? productImagesList : (itemImage ? [itemImage] : []);
+      }
+    }
+  }
+
+  return details;
+};
 
 const normalizeRole = (r) =>
   String(r || '')
@@ -263,6 +346,8 @@ export const getRentalOrders = async (user, query = {}) => {
         .lean()
     : [];
 
+  await attachProductImages(details);
+
   const detailsByOrderId = new Map();
   details.forEach((item) => {
     const key = String(item.rentalOrderId);
@@ -350,6 +435,8 @@ export const getRentalOrderById = async (user, id) => {
       .populate({ path: 'createdBy', select: 'FullName Email' })
       .lean(),
   ]);
+
+  await attachProductImages(items);
 
   return { order, items, shipments };
 };
@@ -442,6 +529,8 @@ export const getSalesOrders = async (user, query = {}) => {
         })
         .lean()
     : [];
+
+  await attachProductImages(details);
 
   const detailsByOrderId = new Map();
   details.forEach((item) => {
@@ -607,6 +696,7 @@ export const getOrderMetrics = async (user, { branchId = '' } = {}) => {
       total: rentalAgg[0]?.totals[0]?.totalRentals || 0,
       totalRentalFee: rentalAgg[0]?.totals[0]?.totalRentalFee || 0,
       totalDepositAmount: rentalAgg[0]?.totals[0]?.totalDepositAmount || 0,
+      totalDepositHeld: rentalAgg[0]?.escrowHeld[0]?.totalEscrowHeld || 0,
       totalEscrowHeld: rentalAgg[0]?.escrowHeld[0]?.totalEscrowHeld || 0,
       draft: rentalStatusMap.draft || 0,
       confirmed: rentalStatusMap.confirmed || 0,
@@ -632,5 +722,530 @@ export const getOrderMetrics = async (user, { branchId = '' } = {}) => {
       location: scope.storeLocation,
     },
   };
+};
+
+export const getCustomerRentalOrders = async (user, query = {}) => {
+  if (!user?._id) throw fail('Vui lòng đăng nhập để xem đơn thuê.', 401);
+
+  const filter = { customerId: user._id };
+  if (query.status && query.status !== 'all') {
+    filter.rentalStatus = query.status;
+  }
+  if (query.search && String(query.search).trim()) {
+    filter.orderCode = { $regex: String(query.search).trim(), $options: 'i' };
+  }
+
+  const orders = await RentalOrder.find(filter)
+    .sort({ createdAt: -1 })
+    .populate('locationId', 'name address phone')
+    .lean();
+
+  const orderIds = orders.map((o) => o._id);
+  const details = await RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } })
+    .populate({
+      path: 'variantId',
+      populate: { path: 'productId' },
+    })
+    .lean();
+
+  await attachProductImages(details);
+
+  const shipments = await OrderShipment.find({ orderId: { $in: orderIds } }).lean();
+
+  const detailsByOrder = {};
+  for (const d of details) {
+    const oid = String(d.rentalOrderId);
+    if (!detailsByOrder[oid]) detailsByOrder[oid] = [];
+    detailsByOrder[oid].push(d);
+  }
+
+  const shipmentsByOrder = {};
+  for (const s of shipments) {
+    shipmentsByOrder[String(s.orderId)] = s;
+  }
+
+  return orders.map((o) => ({
+    ...o,
+    items: detailsByOrder[String(o._id)] || [],
+    shipment: shipmentsByOrder[String(o._id)] || null,
+  }));
+};
+
+export const createCustomerCheckoutOrder = async (user, data = {}) => {
+  if (!user?._id) throw fail('Vui lòng đăng nhập để tiến hành đặt hàng.', 401);
+  const {
+    items = [],
+    recipientName,
+    phone,
+    address,
+    province,
+    district,
+    ward,
+    deliveryMethod = 'delivery',
+    paymentMethod = 'payos',
+    note,
+  } = data;
+  if (!items || !items.length) throw fail('Không có sản phẩm nào được chọn để thanh toán.', 400);
+
+  // 1. Xác định địa điểm chi nhánh thực tế từ MongoDB Atlas
+  let locationId = items[0]?.selectedBranch?.locationId;
+  if (!locationId || !mongoose.Types.ObjectId.isValid(locationId)) {
+    const loc = await InventoryLocation.findOne({ isDeleted: { $ne: true } }).lean();
+    locationId = loc?._id;
+  }
+  if (!locationId) {
+    const activeShop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } }).lean();
+    if (activeShop) {
+      const loc = await InventoryLocation.findOne({ shopId: activeShop._id }).lean();
+      locationId = loc?._id;
+    }
+  }
+
+  const customerName = recipientName || user.FullName || user.name || 'Khách hàng';
+  const customerPhone = phone || user.Phone || user.phone || '0901234567';
+  const fullAddress = [address, ward, district, province].filter(Boolean).join(', ') || address || 'Nhận tại Showroom';
+
+  const deliveryNote = deliveryMethod === 'pickup'
+    ? '[Nhận tại Showroom Vestora]'
+    : `[Giao tận nơi: ${customerName} - ${customerPhone} - ${fullAddress}]`;
+  const combinedNote = [deliveryNote, note].filter(Boolean).join(' | ');
+
+  // Tách các món Thuê và Mua
+  const rentalItems = items.filter((it) => it.isRental !== false);
+  const saleItems = items.filter((it) => it.isRental === false);
+
+  // Ràng buộc quy định thanh toán:
+  // - Đơn thuê: Chỉ có duy nhất 1 hình thức thanh toán qua ví (wallet)
+  // - Đơn mua: Có 2 hình thức thanh toán là COD hoặc qua ví (wallet)
+  let appliedPaymentMethod = paymentMethod;
+  if (rentalItems.length > 0) {
+    appliedPaymentMethod = 'wallet';
+  } else if (!['wallet', 'cod'].includes(appliedPaymentMethod)) {
+    appliedPaymentMethod = 'cod';
+  }
+
+  // Tính trước tổng tiền đơn thuê và đơn mua
+  let totalRentalFee = 0;
+  let totalDeposit = 0;
+  let rentalStartDate = new Date();
+  let rentalDueDate = new Date();
+  rentalDueDate.setDate(rentalDueDate.getDate() + 3);
+
+  if (rentalItems.length > 0) {
+    for (const it of rentalItems) {
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const price = Number(it.price) || 0;
+      const dep = Number(it.deposit) || 0;
+      totalRentalFee += price * qty;
+      totalDeposit += dep * qty;
+
+      if (it.startDate) {
+        const s = new Date(it.startDate);
+        if (!isNaN(s.getTime())) rentalStartDate = s;
+      }
+      if (it.endDate) {
+        const e = new Date(it.endDate);
+        if (!isNaN(e.getTime())) rentalDueDate = e;
+      } else if (it.duration) {
+        const d = new Date(rentalStartDate);
+        d.setDate(d.getDate() + Number(it.duration));
+        rentalDueDate = d;
+      }
+    }
+  }
+
+  let totalSaleAmount = 0;
+  if (saleItems.length > 0) {
+    for (const it of saleItems) {
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const price = Number(it.price) || 0;
+      totalSaleAmount += price * qty;
+    }
+  }
+
+  // Kiểm tra số dư ví nếu có phần thanh toán qua ví
+  const needsWalletForRental = rentalItems.length > 0;
+  const needsWalletForSale = saleItems.length > 0 && appliedPaymentMethod === 'wallet';
+  const totalWalletNeeded =
+    (needsWalletForRental ? totalRentalFee + totalDeposit : 0) +
+    (needsWalletForSale ? totalSaleAmount : 0);
+
+  let walletDoc = null;
+  let currentBalances = null;
+
+  if (totalWalletNeeded > 0) {
+    walletDoc = await Wallet.findOne({ userId: user._id }).select('+balanceEncrypted +lockedBalanceEncrypted');
+    if (!walletDoc) {
+      throw fail('Không tìm thấy Ví điện tử Vestora của bạn. Vui lòng vào mục Ví để kích hoạt.', 400);
+    }
+    if (walletDoc.status !== 'active') {
+      throw fail('Ví điện tử Vestora của bạn đang bị khóa hoặc chưa hoạt động.', 400);
+    }
+
+    currentBalances = readBalances(walletDoc);
+    if (currentBalances.availableBalance < totalWalletNeeded) {
+      throw fail(
+        `Số dư khả dụng trong ví (${Number(currentBalances.availableBalance).toLocaleString('vi-VN')} ₫) không đủ để thanh toán (${Number(totalWalletNeeded).toLocaleString('vi-VN')} ₫). Vui lòng nạp thêm tiền vào ví để hoàn tất đặt hàng.`,
+        400
+      );
+    }
+  }
+
+  let createdRentalOrder = null;
+  let createdSalesOrder = null;
+
+  // Xử lý đơn THUÊ (Rental) nếu có sản phẩm thuê
+  if (rentalItems.length > 0) {
+    const orderCode = `RNT-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+
+    createdRentalOrder = await RentalOrder.create({
+      orderCode,
+      locationId,
+      customerId: user._id,
+      createdBy: user._id,
+      rentalStatus: 'confirmed',
+      paymentStatus: 'paid', // Đơn thuê thanh toán qua ví luôn paid
+      startDate: rentalStartDate,
+      dueDate: rentalDueDate,
+      rentalFee: totalRentalFee,
+      depositAmount: totalDeposit,
+      depositStatus: totalDeposit > 0 ? 'held' : 'pending',
+      note: combinedNote,
+    });
+
+    for (const it of rentalItems) {
+      let variantId = it.variantId;
+      if (!variantId || !mongoose.Types.ObjectId.isValid(variantId)) {
+        const pId = it.productId;
+        if (pId && mongoose.Types.ObjectId.isValid(pId)) {
+          const foundVariant = await ProductVariant.findOne({ productId: pId, isDeleted: { $ne: true } }).lean();
+          if (foundVariant) variantId = foundVariant._id;
+        }
+      }
+      if (!variantId || !mongoose.Types.ObjectId.isValid(variantId)) {
+        let pId = it.productId;
+        if (!pId || !mongoose.Types.ObjectId.isValid(pId)) {
+          const anyProd = await Product.findOne().lean();
+          pId = anyProd?._id;
+        }
+        if (pId) {
+          const foundVariant = await ProductVariant.findOne({ productId: pId }).lean();
+          if (foundVariant) {
+            variantId = foundVariant._id;
+          } else {
+            const newVar = await ProductVariant.create({
+              productId: pId,
+              sku: `SKU-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`,
+              size: it.size || 'M',
+              color: it.color || 'Mặc định',
+            });
+            variantId = newVar._id;
+          }
+        }
+      }
+
+      if (!variantId) {
+        const anyVar = await ProductVariant.findOne().lean();
+        variantId = anyVar?._id || new mongoose.Types.ObjectId();
+      }
+
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const unitPrice = Number(it.price) || 0;
+      await RentalOrderDetail.create({
+        rentalOrderId: createdRentalOrder._id,
+        variantId,
+        quantity: qty,
+        unitRentalFee: unitPrice,
+        lineTotal: unitPrice * qty,
+        depositPerUnit: Number(it.deposit) || 0,
+        startDate: rentalStartDate,
+        dueDate: rentalDueDate,
+        note: it.size ? `Kích thước: ${it.size}` : '',
+      });
+    }
+
+    // Tạo vận đơn OrderShipment cho đơn thuê nếu giao tận nơi
+    if (deliveryMethod === 'delivery') {
+      try {
+        let fromShopId;
+        const loc = await InventoryLocation.findById(locationId).lean();
+        if (loc?.shopId) {
+          fromShopId = loc.shopId;
+        } else {
+          const shop = await Shop.findOne().lean();
+          fromShopId = shop?._id || locationId;
+        }
+
+        const trackingCode = `GHN${Date.now().toString().slice(-7)}${Math.floor(100 + Math.random() * 900)}`;
+        await OrderShipment.create({
+          trackingCode,
+          orderType: 'rental',
+          orderId: createdRentalOrder._id,
+          fromShopId,
+          carrierName: 'Giao Hàng Nhanh',
+          shipmentType: 'outbound',
+          shipmentStatus: 'preparing',
+          shippingFee: 0,
+          codAmount: 0,
+          receiverInfo: {
+            name: customerName,
+            phone: customerPhone,
+            address: fullAddress,
+          },
+          statusHistory: [
+            {
+              status: 'preparing',
+              description: 'Đơn thuê mới tạo, đang chuẩn bị trang phục tại showroom',
+              timestamp: new Date(),
+            },
+          ],
+          note: combinedNote,
+          createdBy: user._id,
+        });
+      } catch (shipmentErr) {
+        console.warn('[Checkout] Lỗi tự động tạo OrderShipment đơn thuê:', shipmentErr);
+      }
+    }
+  }
+
+  // Xử lý đơn MUA (Sale) nếu có sản phẩm mua
+  if (saleItems.length > 0) {
+    const orderCode = `SAL-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+
+    createdSalesOrder = await SalesOrder.create({
+      orderCode,
+      locationId,
+      customerId: user._id,
+      createdBy: user._id,
+      orderStatus: 'confirmed',
+      paymentStatus: appliedPaymentMethod === 'cod' ? 'unpaid' : 'paid',
+      subtotal: totalSaleAmount,
+      discountAmount: 0,
+      totalAmount: totalSaleAmount,
+      confirmedAt: new Date(),
+      note: combinedNote,
+    });
+
+    for (const it of saleItems) {
+      let variantId = it.variantId;
+      if (!variantId || !mongoose.Types.ObjectId.isValid(variantId)) {
+        const pId = it.productId;
+        if (pId && mongoose.Types.ObjectId.isValid(pId)) {
+          const foundVariant = await ProductVariant.findOne({ productId: pId, isDeleted: { $ne: true } }).lean();
+          if (foundVariant) variantId = foundVariant._id;
+        }
+      }
+      if (!variantId || !mongoose.Types.ObjectId.isValid(variantId)) {
+        let pId = it.productId;
+        if (!pId || !mongoose.Types.ObjectId.isValid(pId)) {
+          const anyProd = await Product.findOne().lean();
+          pId = anyProd?._id;
+        }
+        if (pId) {
+          const foundVariant = await ProductVariant.findOne({ productId: pId }).lean();
+          if (foundVariant) {
+            variantId = foundVariant._id;
+          } else {
+            const newVar = await ProductVariant.create({
+              productId: pId,
+              sku: `SKU-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`,
+              size: it.size || 'M',
+              color: it.color || 'Mặc định',
+            });
+            variantId = newVar._id;
+          }
+        }
+      }
+
+      if (!variantId) {
+        const anyVar = await ProductVariant.findOne().lean();
+        variantId = anyVar?._id || new mongoose.Types.ObjectId();
+      }
+
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const unitPrice = Number(it.price) || 0;
+      await SalesOrderDetail.create({
+        salesOrderId: createdSalesOrder._id,
+        variantId,
+        quantity: qty,
+        unitPrice,
+        discountAmount: 0,
+        lineTotal: unitPrice * qty,
+      });
+    }
+
+    // Tạo vận đơn OrderShipment cho đơn mua nếu giao tận nơi
+    if (deliveryMethod === 'delivery') {
+      try {
+        let fromShopId;
+        const loc = await InventoryLocation.findById(locationId).lean();
+        if (loc?.shopId) {
+          fromShopId = loc.shopId;
+        } else {
+          const shop = await Shop.findOne().lean();
+          fromShopId = shop?._id || locationId;
+        }
+
+        const trackingCode = `GHN${Date.now().toString().slice(-7)}${Math.floor(100 + Math.random() * 900)}`;
+        await OrderShipment.create({
+          trackingCode,
+          orderType: 'sale',
+          orderId: createdSalesOrder._id,
+          fromShopId,
+          carrierName: 'Giao Hàng Nhanh',
+          shipmentType: 'outbound',
+          shipmentStatus: 'preparing',
+          shippingFee: 0,
+          codAmount: appliedPaymentMethod === 'cod' ? totalSaleAmount : 0,
+          receiverInfo: {
+            name: customerName,
+            phone: customerPhone,
+            address: fullAddress,
+          },
+          statusHistory: [
+            {
+              status: 'preparing',
+              description: 'Đơn mua mới tạo, đang chuẩn bị đóng gói tại kho showroom',
+              timestamp: new Date(),
+            },
+          ],
+          note: combinedNote,
+          createdBy: user._id,
+        });
+      } catch (shipmentErr) {
+        console.warn('[Checkout] Lỗi tự động tạo OrderShipment đơn mua:', shipmentErr);
+      }
+    }
+  }
+
+  // Thực hiện trừ tiền ví và tạo WalletTransaction
+  if (walletDoc && totalWalletNeeded > 0) {
+    try {
+      let nextBalance = currentBalances.balance;
+      let nextLocked = currentBalances.lockedBalance;
+
+      if (needsWalletForRental) {
+        nextBalance -= totalRentalFee;
+        nextLocked += totalDeposit;
+      }
+
+      if (needsWalletForSale) {
+        nextBalance -= totalSaleAmount;
+      }
+
+      walletDoc.balanceEncrypted = encryptValue(nextBalance, `${walletDoc._id}:balance`);
+      walletDoc.lockedBalanceEncrypted = encryptValue(nextLocked, `${walletDoc._id}:locked`);
+      await walletDoc.save();
+
+      // Tạo giao dịch WalletTransaction cho đơn thuê
+      if (createdRentalOrder) {
+        if (totalRentalFee > 0) {
+          const payCode = `PAY-RNT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+          await WalletTransaction.create({
+            walletId: walletDoc._id,
+            userId: user._id,
+            code: payCode,
+            transactionType: 'rental_payment',
+            direction: 'debit',
+            amount: Math.round(totalRentalFee),
+            status: 'success',
+            referenceType: 'RentalOrder',
+            referenceId: createdRentalOrder._id,
+            completedAt: new Date(),
+          });
+        }
+
+        if (totalDeposit > 0) {
+          const depCode = `DEP-RNT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+          await WalletTransaction.create({
+            walletId: walletDoc._id,
+            userId: user._id,
+            code: depCode,
+            transactionType: 'rental_deposit',
+            direction: 'debit',
+            amount: Math.round(totalDeposit),
+            status: 'success',
+            referenceType: 'RentalOrder',
+            referenceId: createdRentalOrder._id,
+            completedAt: new Date(),
+          });
+        }
+      }
+
+      // Tạo giao dịch WalletTransaction cho đơn mua
+      if (createdSalesOrder && needsWalletForSale && totalSaleAmount > 0) {
+        const saleCode = `PAY-SAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        await WalletTransaction.create({
+          walletId: walletDoc._id,
+          userId: user._id,
+          code: saleCode,
+          transactionType: 'payment',
+          direction: 'debit',
+          amount: Math.round(totalSaleAmount),
+          status: 'success',
+          referenceType: 'SalesOrder',
+          referenceId: createdSalesOrder._id,
+          completedAt: new Date(),
+        });
+      }
+    } catch (walletErr) {
+      console.error('[Checkout] Lỗi trừ tiền ví hoặc tạo WalletTransaction:', walletErr);
+    }
+  }
+
+  return {
+    rentalOrder: createdRentalOrder,
+    salesOrder: createdSalesOrder,
+    order: createdRentalOrder || createdSalesOrder,
+  };
+};
+
+export const createCustomerRentalOrder = createCustomerCheckoutOrder;
+
+export const getCustomerSalesOrders = async (user, query = {}) => {
+  if (!user?._id) throw fail('Vui lòng đăng nhập để xem đơn mua.', 401);
+
+  const filter = { customerId: user._id };
+  if (query.status && query.status !== 'all') {
+    filter.orderStatus = query.status;
+  }
+  if (query.search && String(query.search).trim()) {
+    filter.orderCode = { $regex: String(query.search).trim(), $options: 'i' };
+  }
+
+  const orders = await SalesOrder.find(filter)
+    .sort({ createdAt: -1 })
+    .populate('locationId', 'name address phone')
+    .lean();
+
+  const orderIds = orders.map((o) => o._id);
+  const details = await SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
+    .populate({
+      path: 'variantId',
+      populate: { path: 'productId' },
+    })
+    .lean();
+
+  await attachProductImages(details);
+
+  const shipments = await OrderShipment.find({ orderId: { $in: orderIds } }).lean();
+
+  const detailsByOrder = {};
+  for (const d of details) {
+    const oid = String(d.salesOrderId);
+    if (!detailsByOrder[oid]) detailsByOrder[oid] = [];
+    detailsByOrder[oid].push(d);
+  }
+
+  const shipmentsByOrder = {};
+  for (const s of shipments) {
+    shipmentsByOrder[String(s.orderId)] = s;
+  }
+
+  return orders.map((o) => ({
+    ...o,
+    items: detailsByOrder[String(o._id)] || [],
+    shipment: shipmentsByOrder[String(o._id)] || null,
+  }));
 };
 

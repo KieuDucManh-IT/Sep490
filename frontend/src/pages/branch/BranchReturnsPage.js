@@ -12,7 +12,7 @@ export default function BranchReturnsPage() {
       customer: 'Trần Thị Thu Thảo',
       product: 'Đầm Dạ Hội Haute Couture Rose Gold',
       returnDate: '09/10/2026 10:00',
-      escrowDeposit: '2.000.000 đ',
+      depositAmount: '2.000.000 đ',
       conditionStatus: 'INTACT',
       conditionText: 'Hoàn Hảo (Không Trầy Xước / Ố Vàng)',
       deductionAmount: 0,
@@ -25,11 +25,11 @@ export default function BranchReturnsPage() {
       customer: 'Phạm Minh Tuyết',
       product: 'Áo Khoác Dạ Dáng Dài Privé Wool',
       returnDate: '09/10/2026 11:30',
-      escrowDeposit: '1.500.000 đ',
+      depositAmount: '1.500.000 đ',
       conditionStatus: 'MINOR_DAMAGED',
       conditionText: 'Hư Hỏng Nhẹ (Vết Ố Nước Trái Cây Đuôi Váy)',
       deductionAmount: 300000,
-      notes: 'Phí giặt tẩy vết bẩn cao cấp: 300.000 đ. Trừ từ khoản cọc PayOS Escrow',
+      notes: 'Phí giặt tẩy vết bẩn cao cấp: 300.000 đ. Trừ từ khoản tiền cọc của khách',
       refundStatus: 'PARTIAL_REFUND_APPROVED'
     }
   ]);
@@ -39,12 +39,12 @@ export default function BranchReturnsPage() {
       if (ret.id === id) {
         return {
           ...ret,
-          refundStatus: 'ESCROW_RELEASED'
+          refundStatus: 'DEPOSIT_REFUNDED'
         };
       }
       return ret;
     }));
-    alert(`Đã xác nhận trả hàng và giải ngân cọc PayOS Escrow cho đơn ${id}!`);
+    alert(`Đã xác nhận trả hàng và hoàn tiền cọc cho đơn ${id}!`);
   };
 
   return (
@@ -69,10 +69,10 @@ export default function BranchReturnsPage() {
           <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4 border-bottom">
             <div>
               <h1 className="admin-page-title" style={{ fontSize: '26px', margin: 0 }}>
-                Xác Nhận Trả Hàng & Hoàn Cọc PayOS Escrow
+                Xác Nhận Trả Hàng & Hoàn Tiền Cọc
               </h1>
               <p className="admin-page-desc" style={{ color: '#64748B', fontSize: '13px', marginTop: '4px', margin: 0 }}>
-                Kiểm định tình trạng trang phục sau thuê và quyết định giải ngân/khấu trừ tiền cọc an toàn
+                Kiểm định tình trạng trang phục sau thuê và quyết định hoàn trả/khấu trừ tiền cọc an toàn
               </p>
             </div>
           </div>
@@ -85,10 +85,10 @@ export default function BranchReturnsPage() {
                 <th>Mã Yêu Cầu</th>
                 <th>Mã Đơn / Khách Hàng</th>
                 <th>Sản Phẩm Trả Về</th>
-                <th>Tiền Cọc Giữ PayOS</th>
+                <th>Tiền Cọc Đã Giữ</th>
                 <th>Tình Trạng Thực Tế</th>
                 <th>Phí Phạt / Khấu Trừ</th>
-                <th>Trạng Thái Giải Ngân</th>
+                <th>Trạng Thái Hoàn Cọc</th>
                 <th>Hành Động</th>
               </tr>
             </thead>
@@ -101,7 +101,7 @@ export default function BranchReturnsPage() {
                     <div style={{ fontSize: '0.78rem', color: '#725b38' }}>{ret.orderId}</div>
                   </td>
                   <td>{ret.product}</td>
-                  <td style={{ fontWeight: '700', color: '#d4af37' }}>{ret.escrowDeposit}</td>
+                  <td style={{ fontWeight: '700', color: '#d4af37' }}>{ret.depositAmount}</td>
                   <td>
                     <span 
                       style={{ 
@@ -121,20 +121,20 @@ export default function BranchReturnsPage() {
                     {ret.deductionAmount > 0 ? `-${ret.deductionAmount.toLocaleString('vi-VN')} đ` : '0 đ'}
                   </td>
                   <td>
-                    {ret.refundStatus === 'ESCROW_RELEASED' ? (
-                      <span className="status-badge completed">Đã Giải Ngân</span>
+                    {ret.refundStatus === 'DEPOSIT_REFUNDED' ? (
+                      <span className="status-badge completed">Đã Hoàn Cọc</span>
                     ) : (
-                      <span className="status-badge deposited">Đang Giữ Escrow</span>
+                      <span className="status-badge deposited">Đang Giữ Cọc</span>
                     )}
                   </td>
                   <td>
-                    {ret.refundStatus !== 'ESCROW_RELEASED' ? (
+                    {ret.refundStatus !== 'DEPOSIT_REFUNDED' ? (
                       <button 
                         className="btn-vestora btn-vestora-primary"
                         style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                         onClick={() => handleApproveReturn(ret.id)}
                       >
-                        ✅ Duyệt Giải Ngân Cọc
+                        ✅ Duyệt Hoàn Tiền Cọc
                       </button>
                     ) : (
                       <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: '600' }}>Hoàn Tất</span>

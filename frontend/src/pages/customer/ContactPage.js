@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { MapPin, Phone, Mail, Clock, CheckCircle2, Send } from "lucide-react";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import "../../styles/ContactPage.css";
@@ -39,7 +40,9 @@ export default function ContactPage() {
 
               <div className="contact-point-list">
                 <div className="contact-point-item">
-                  <div className="point-icon"><i className="fa-solid fa-location-dot"></i></div>
+                  <div className="point-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <MapPin size={18} color="#C5A880" />
+                  </div>
                   <div>
                     <strong>Địa chỉ Showroom</strong>
                     <p>Tầng 5, 123 Nguyễn Văn Cừ, Long Biên, Hà Nội</p>
@@ -47,7 +50,9 @@ export default function ContactPage() {
                 </div>
 
                 <div className="contact-point-item">
-                  <div className="point-icon"><i className="fa-solid fa-phone"></i></div>
+                  <div className="point-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Phone size={18} color="#C5A880" />
+                  </div>
                   <div>
                     <strong>Hotline chăm sóc khách hàng</strong>
                     <p>1900 1234 (8:00 - 21:00 hàng ngày)</p>
@@ -55,7 +60,9 @@ export default function ContactPage() {
                 </div>
 
                 <div className="contact-point-item">
-                  <div className="point-icon"><i className="fa-solid fa-envelope"></i></div>
+                  <div className="point-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Mail size={18} color="#C5A880" />
+                  </div>
                   <div>
                     <strong>Email hỗ trợ</strong>
                     <p>support@vestora.vn</p>
@@ -63,7 +70,9 @@ export default function ContactPage() {
                 </div>
 
                 <div className="contact-point-item">
-                  <div className="point-icon"><i className="fa-solid fa-clock"></i></div>
+                  <div className="point-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Clock size={18} color="#C5A880" />
+                  </div>
                   <div>
                     <strong>Thời gian làm việc</strong>
                     <p>Thứ Hai - Chủ Nhật: 08:30 - 21:30</p>
@@ -79,7 +88,7 @@ export default function ContactPage() {
               <h3>Gửi Lời Nhắn</h3>
               {submitted ? (
                 <div className="contact-success-alert">
-                  <i className="fa-solid fa-circle-check"></i>
+                  <CheckCircle2 size={32} color="#16A34A" style={{ margin: '0 auto 12px' }} />
                   <h4>Cảm ơn bạn đã liên hệ!</h4>
                   <p>Chúng tôi đã nhận được thông tin và sẽ phản hồi sớm nhất qua email của bạn.</p>
                   <button type="button" onClick={() => setSubmitted(false)} className="btn-send-again">
@@ -143,8 +152,8 @@ export default function ContactPage() {
                     ></textarea>
                   </div>
 
-                  <button type="submit" className="btn-contact-submit">
-                    Gửi yêu cầu hỗ trợ <i className="fa-solid fa-paper-plane"></i>
+                  <button type="submit" className="btn-contact-submit" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    Gửi yêu cầu hỗ trợ <Send size={15} />
                   </button>
                 </form>
               )}

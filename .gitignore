@@ -1,18 +1,38 @@
-# AI Agent & Skill Generated Files (Plans, Journals, Reports)
+# ==============================================================================
+# VESTORA .gitignore
+# Chỉ theo dõi và đẩy code backend/ và frontend/
+# Bỏ qua toàn bộ file/thư mục cấu hình, tài liệu, agent và SDD/ADD
+# ==============================================================================
+
+# AI Agent, SDD Framework & Governance
+.claude/
+.agentkit/
+.agentignore
+.sdd/
+.agents/
+/src/
+/slides/
+/tests/
 plans/
 *.plan.md
 plan.md
 docs/
-codebase-summary.md
+/scripts/
+AGENTS.md
+CONSTITUTION.md
 repomix-output.*
-.agents/
+codebase-summary.md
 
 # Dependencies
 node_modules/
+backend/node_modules/
+frontend/node_modules/
 
 # Environment files
 .env
-.env.*.local
+.env.*
+!.env.example
+*.env.local
 
 # Logs
 *.log
@@ -25,9 +45,12 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # Build outputs
 build/
 dist/
 coverage/
-
+frontend/build/
+frontend/dist/

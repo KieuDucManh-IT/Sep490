@@ -75,13 +75,14 @@ function App() {
       <ForceChangePasswordModal />
       <Routes>
         {/* ========================================================
-            CUSTOMER PORTAL (KhÃ¡ch HÃ ng)
+            CUSTOMER PORTAL (Khách Hàng)
             ======================================================== */}
         <Route path="/" element={<HomePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/product" element={<ProductDetailPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/cart" element={<CartPage />} />
+        <Route path="/checkout" element={<Navigate to="/cart" replace />} />
         <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/map" element={<ShopMapPage />} />
         <Route
@@ -102,8 +103,11 @@ function App() {
         <Route path="/blog/:id" element={<BlogPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
+        <Route path="/policy/:tab" element={<PolicyPage />} />
         <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
+        <Route path="/stylist" element={<StylistPage />} />
+        <Route path="/lookbook/:shareCode" element={<Navigate to="/wardrobe" replace />} />
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -112,6 +116,8 @@ function App() {
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
         <Route path="/tracking" element={<CustomerOrderTrackingPage />} />
         <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
+        <Route path="/rental-orders" element={<ProtectedRoute><CustomerOrderTrackingPage /></ProtectedRoute>} />
+        <Route path="/customer/rental-orders" element={<ProtectedRoute><CustomerOrderTrackingPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)

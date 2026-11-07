@@ -11,7 +11,7 @@ export default function OwnerDisputesPage() {
       orderId: '#VES-8891',
       reporter: 'Nguyễn Văn Minh (Khách thuê)',
       respondent: 'Atelier Privé Le Thanh Ton (Showroom)',
-      escrowAmount: '3.500.000 đ',
+      depositAmount: '3.500.000 đ',
       reason: 'Showroom trừ cọc do rách gấu váy lụa, khách khiếu nại lỗi có từ trước',
       submittedDate: '07/10/2026',
       status: 'INVESTIGATING',
@@ -22,11 +22,11 @@ export default function OwnerDisputesPage() {
       orderId: '#VES-8842',
       reporter: 'Mây Fashion Atelier (Showroom)',
       respondent: 'Trần Thuỳ Dung (Khách thuê)',
-      escrowAmount: '12.000.000 đ',
+      depositAmount: '12.000.000 đ',
       reason: 'Khách hàng làm mất áo khoác lông đính kèm đầm Haute Couture',
       submittedDate: '05/10/2026',
       status: 'RESOLVED',
-      resolutionText: 'Đã xử phạt trừ 100% tiền cọc 12.000.000 đ chuyển cho Showroom theo điều khoản bồi thường hợp đồng PayOS Escrow.',
+      resolutionText: 'Đã xử phạt trừ 100% tiền cọc 12.000.000 đ theo điều khoản bồi thường hợp đồng thuê đồ.',
     }
   ]);
 
@@ -36,12 +36,12 @@ export default function OwnerDisputesPage() {
         return {
           ...d,
           status: 'RESOLVED',
-          resolutionText: `Hội đồng Admin VESTORA đã phán quyết thắng cho ${winnerText}. Lệnh chuyển tiền PayOS Escrow đã thực thi tự động.`
+          resolutionText: `Hội đồng Quản lý VESTORA đã phán quyết thắng cho ${winnerText}. Lệnh quyết toán tiền cọc đã được cập nhật.`
         };
       }
       return d;
     }));
-    alert(`Đã đưa ra phán quyết trọng tài VESTORA cho hồ sơ ${id}!`);
+    alert(`Đã đưa ra phán quyết giải quyết khiếu nại cho hồ sơ ${id}!`);
   };
 
   return (
@@ -57,7 +57,7 @@ export default function OwnerDisputesPage() {
         <OwnerTopHeader
           onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
           isSidebarCollapsed={isSidebarCollapsed}
-          breadcrumb="Khiếu Nại & Cọc Escrow"
+          breadcrumb="Khiếu Nại & Tiền Đặt Cọc"
         />
 
         {/* 3. Content Body */}
@@ -65,9 +65,9 @@ export default function OwnerDisputesPage() {
           {/* Page Hero */}
           <div className="admin-page-hero">
             <div>
-              <h1 className="admin-page-title">Hội Đồng Trọng Tài Phán Quyết Khiếu Nại & Tiền Cọc Escrow</h1>
+              <h1 className="admin-page-title">Giải Quyết Khiếu Nại & Tiền Đặt Cọc</h1>
               <p className="admin-page-desc">
-                Giải quyết độc lập và công bằng các tranh chấp liên quan đến hư hỏng trang phục hoặc hoàn cọc
+                Giải quyết minh bạch và công bằng các khiếu nại liên quan đến hư hỏng trang phục hoặc hoàn cọc
               </p>
             </div>
           </div>
@@ -90,7 +90,7 @@ export default function OwnerDisputesPage() {
                   <div>
                     <p style={{ margin: '0 0 6px 0' }}><strong>Nguồn Báo Cáo:</strong> {d.reporter}</p>
                     <p style={{ margin: '0 0 6px 0' }}><strong>Bên Liên Quan:</strong> {d.respondent}</p>
-                    <p style={{ margin: '0' }}><strong>Giá Trị Tiền Cọc Giữ Escrow:</strong> <span style={{ color: '#C5A880', fontWeight: 700 }}>{d.escrowAmount}</span></p>
+                    <p style={{ margin: '0' }}><strong>Giá Trị Tiền Cọc Đang Giữ:</strong> <span style={{ color: '#C5A880', fontWeight: 700 }}>{d.depositAmount}</span></p>
                   </div>
                   <div>
                     <p style={{ margin: '0 0 6px 0' }}><strong>Lý Do Khiếu Nại:</strong> {d.reason}</p>

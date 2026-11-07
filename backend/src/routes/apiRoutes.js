@@ -35,7 +35,7 @@ router.get('/health', (req, res) => {
     system: 'VESTORA Haute Couture & Rental Luxury Backend Service',
     timestamp: new Date().toISOString(),
     database: 'MongoDB Atlas Connected',
-    escrowProvider: 'PayOS Escrow API Active',
+    paymentProvider: 'PayOS Payment Gateway Active',
   });
 });
 

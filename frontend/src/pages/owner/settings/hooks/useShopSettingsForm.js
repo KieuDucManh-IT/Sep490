@@ -29,7 +29,6 @@ export function useShopSettingsForm() {
   const {
     provinces,
     wards,
-    setWards,
     loadingProvinces,
     loadingWards,
     fetchWardsByProvince,
@@ -107,7 +106,7 @@ export function useShopSettingsForm() {
         }
       });
     }
-  }, [provinces, shop, formData.city, fetchWardsByProvince]);
+  }, [provinces, shop, formData.city, formData.ward, fetchWardsByProvince]);
 
   // 3. Thay đổi giá trị trường dữ liệu thông thường
   const handleFieldChange = useCallback((field, value) => {

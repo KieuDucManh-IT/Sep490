@@ -167,7 +167,7 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
             path: '/branch/returns',
             label: 'Kiểm Định Nhận Trả',
             icon: RotateCcw,
-            desc: 'Kiểm định đồ hoàn trả & xử lý cọc',
+            desc: 'Kiểm định đồ hoàn trả & xử lý tiền cọc',
           },
           {
             path: '/branch/analytics',

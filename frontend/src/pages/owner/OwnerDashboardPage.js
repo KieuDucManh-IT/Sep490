@@ -22,7 +22,7 @@ export default function OwnerDashboardPage() {
       customer: 'Lê Hoàng Quân',
       sales: 500,
       price: '2.100.000 đ',
-      escrow: '5.000.000 đ',
+      deposit: '5.000.000 đ',
       status: 'Đang thuê',
       statusType: 'renting',
       image: 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=160&q=80'
@@ -35,7 +35,7 @@ export default function OwnerDashboardPage() {
       customer: 'Trần Minh Anh',
       sales: 500,
       price: '1.450.000 đ',
-      escrow: '3.500.000 đ',
+      deposit: '3.500.000 đ',
       status: 'Hoàn tất',
       statusType: 'instock',
       image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=160&q=80'
@@ -48,7 +48,7 @@ export default function OwnerDashboardPage() {
       customer: 'Nguyễn Thu Thảo',
       sales: 220,
       price: '850.000 đ',
-      escrow: '2.000.000 đ',
+      deposit: '2.000.000 đ',
       status: 'Đang thuê',
       statusType: 'renting',
       image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=160&q=80'
@@ -61,7 +61,7 @@ export default function OwnerDashboardPage() {
       customer: 'Phạm Thị Mai',
       sales: 875,
       price: '4.500.000 đ',
-      escrow: '12.000.000 đ',
+      deposit: '12.000.000 đ',
       status: 'Chờ duyệt',
       statusType: 'lowstock',
       image: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=160&q=80'
@@ -74,7 +74,7 @@ export default function OwnerDashboardPage() {
       customer: 'Vũ Hải Yến',
       sales: 500,
       price: '620.000 đ',
-      escrow: '1.500.000 đ',
+      deposit: '1.500.000 đ',
       status: 'Hoàn tất',
       statusType: 'instock',
       image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=160&q=80'
@@ -175,7 +175,7 @@ export default function OwnerDashboardPage() {
 
             <div className="admin-kpi-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/owner/disputes')}>
               <div className="admin-kpi-header">
-                <span className="admin-kpi-title">TIỀN CỌC ESCROW ĐANG GIỮ</span>
+                <span className="admin-kpi-title">TIỀN CỌC ĐANG TẠM GIỮ</span>
                 <span className="admin-kpi-icon-pill gold">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -187,7 +187,7 @@ export default function OwnerDashboardPage() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                100% An toàn theo PayOS
+                100% Minh bạch tài chính
               </div>
             </div>
 
@@ -344,7 +344,7 @@ export default function OwnerDashboardPage() {
               <div>
                 <h2 className="admin-card-table-title">Top Products & Giao Dịch Thuê Mới Nhất</h2>
                 <span style={{ fontSize: '12px', color: '#64748B' }}>
-                  Hiển thị {filteredOrders.length} sản phẩm và giao dịch gần đây trên toàn sàn
+                  Hiển thị {filteredOrders.length} sản phẩm và giao dịch gần đây trên toàn chuỗi
                 </span>
               </div>
 
@@ -467,7 +467,7 @@ export default function OwnerDashboardPage() {
                     <th>Category</th>
                     <th>Sales</th>
                     <th>Earnings</th>
-                    <th>Stocks / Escrow</th>
+                    <th>Stocks / Tiền Cọc</th>
                     <th>Status</th>
                     <th>Thao Tác</th>
                   </tr>
@@ -513,10 +513,10 @@ export default function OwnerDashboardPage() {
                         </span>
                       </td>
 
-                      {/* Stocks / Escrow */}
+                      {/* Stocks / Tiền Cọc */}
                       <td>
                         <span style={{ fontWeight: 600, color: '#64748B' }}>
-                          {ord.escrow}
+                          {ord.deposit}
                         </span>
                       </td>
 

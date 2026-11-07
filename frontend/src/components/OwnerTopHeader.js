@@ -268,9 +268,9 @@ export default function OwnerTopHeader({
     ) {
       return 'Quản Lý Chi Nhánh & Trụ Sở';
     }
-    if (path === '/owner/pricing') return 'Bảng Giá & Tiền Cọc Escrow';
+    if (path === '/owner/pricing') return 'Bảng Giá & Tiền Đặt Cọc';
     if (path === '/owner/analytics') return 'Báo Cáo Tài Chính Chuỗi';
-    if (path === '/owner/disputes') return 'Khiếu Nại & Cọc Escrow';
+    if (path === '/owner/disputes') return 'Khiếu Nại & Tiền Đặt Cọc';
     if (path === '/owner/settings') return 'Hồ Sơ Cửa Hàng & Ghim Map';
 
     return isBranchManager ? 'Bảng Điều Khiển Chi Nhánh' : 'Bảng Điều Khiển Chuỗi';

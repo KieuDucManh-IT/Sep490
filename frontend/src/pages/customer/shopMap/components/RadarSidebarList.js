@@ -1,4 +1,5 @@
 import React from 'react';
+import { MapPin, ArrowDownNarrowWide, Store, Globe } from 'lucide-react';
 import RadarShopCard from './RadarShopCard';
 
 function RadarCardSkeleton() {
@@ -32,11 +33,11 @@ export default function RadarSidebarList({
   return (
     <section className="radar-sidebar" aria-label="Danh sách cửa hàng gần nhất">
       <div className="radar-sidebar-header">
-        <span className="radar-sidebar-count" aria-live="polite">
-          📍 Có {stores.length} cửa hàng
+        <span className="radar-sidebar-count" aria-live="polite" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <MapPin size={14} color="#C5A880" /> Có {stores.length} cửa hàng
         </span>
-        <span className="radar-sidebar-sort-tag">
-          <i className="fa-solid fa-arrow-down-short-wide" aria-hidden="true"></i>
+        <span className="radar-sidebar-sort-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <ArrowDownNarrowWide size={13} aria-hidden="true" />
           Ưu tiên nơi gần bạn nhất
         </span>
       </div>
@@ -50,15 +51,20 @@ export default function RadarSidebarList({
           </>
         ) : stores.length === 0 ? (
           <div className="radar-empty-state">
-            <div className="radar-empty-icon">
-              <i className="fa-solid fa-store-slash" aria-hidden="true"></i>
+            <div className="radar-empty-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Store size={36} color="#A1A1AA" aria-hidden="true" />
             </div>
             <h3 className="radar-empty-title">Không tìm thấy cửa hàng phù hợp</h3>
             <p className="radar-empty-desc">
               Hiện chưa có cơ sở nào trong phạm vi này hoặc từ khóa chưa khớp. Bạn thử mở rộng khoảng cách xem nhé!
             </p>
-            <button type="button" className="radar-empty-btn" onClick={onResetFilters}>
-              <i className="fa-solid fa-globe" style={{ marginRight: '6px' }} aria-hidden="true"></i>
+            <button
+              type="button"
+              className="radar-empty-btn"
+              onClick={onResetFilters}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Globe size={14} aria-hidden="true" />
               Xem tất cả cửa hàng
             </button>
           </div>

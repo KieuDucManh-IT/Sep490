@@ -1,4 +1,14 @@
 import React, { useState } from 'react';
+import {
+  AlertTriangle,
+  ShieldCheck,
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Loader2,
+  Key,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { changePasswordApi } from '../services/authApi';
 import '../styles/ForceChangePasswordModal.css';
@@ -75,8 +85,8 @@ export default function ForceChangePasswordModal() {
   if (isDismissed) {
     return (
       <div className="force-pwd-banner">
-        <div className="force-pwd-banner-content">
-          <i className="fa-solid fa-triangle-exclamation force-pwd-banner-icon" />
+        <div className="force-pwd-banner-content" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={16} color="#D97706" className="force-pwd-banner-icon" />
           <span>
             <strong>Lưu ý bảo mật:</strong> Tài khoản của bạn đang dùng mật khẩu tạm thời. Vui lòng đổi mật khẩu mới để tiếp tục sử dụng an toàn.
           </span>
@@ -99,8 +109,8 @@ export default function ForceChangePasswordModal() {
       <div className="force-pwd-card">
         {/* Header */}
         <div className="force-pwd-header">
-          <div className="force-pwd-icon-box">
-            <i className="fa-solid fa-shield-halved" />
+          <div className="force-pwd-icon-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldCheck size={24} color="#C5A880" />
           </div>
           <div className="force-pwd-header-text">
             <h3 className="force-pwd-title">Yêu cầu đổi mật khẩu mới</h3>
@@ -112,15 +122,15 @@ export default function ForceChangePasswordModal() {
 
         {/* Thông báo lỗi / thành công */}
         {error && (
-          <div className="force-pwd-alert error">
-            <i className="fa-solid fa-circle-exclamation" />
+          <div className="force-pwd-alert error" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertCircle size={15} color="#DC2626" />
             <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="force-pwd-alert success">
-            <i className="fa-solid fa-circle-check" />
+          <div className="force-pwd-alert success" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CheckCircle2 size={15} color="#16A34A" />
             <span>{success}</span>
           </div>
         )}
@@ -144,8 +154,9 @@ export default function ForceChangePasswordModal() {
                 className="force-pwd-eye-btn"
                 tabIndex="-1"
                 onClick={() => setShowCurrent(!showCurrent)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <i className={showCurrent ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'} />
+                {showCurrent ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
             <small className="force-pwd-hint">
@@ -170,8 +181,9 @@ export default function ForceChangePasswordModal() {
                 className="force-pwd-eye-btn"
                 tabIndex="-1"
                 onClick={() => setShowNew(!showNew)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <i className={showNew ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'} />
+                {showNew ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </div>
@@ -193,8 +205,9 @@ export default function ForceChangePasswordModal() {
                 className="force-pwd-eye-btn"
                 tabIndex="-1"
                 onClick={() => setShowConfirm(!showConfirm)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <i className={showConfirm ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'} />
+                {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </div>
@@ -214,15 +227,16 @@ export default function ForceChangePasswordModal() {
               type="submit"
               className="force-pwd-btn-primary"
               disabled={isSubmitting || !!success}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
             >
               {isSubmitting ? (
                 <>
-                  <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: '6px' }} />
+                  <Loader2 size={15} className="spin" />
                   Đang cập nhật...
                 </>
               ) : (
                 <>
-                  <i className="fa-solid fa-key" style={{ marginRight: '6px' }} />
+                  <Key size={15} />
                   Cập nhật mật khẩu mới
                 </>
               )}

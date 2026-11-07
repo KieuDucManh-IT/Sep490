@@ -1,5 +1,19 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  X,
+  ShieldCheck,
+  Upload,
+  RefreshCw,
+  Ruler,
+  ShoppingBag,
+  Sparkles,
+  Bookmark,
+  Check,
+  CheckCircle2,
+  HelpCircle,
+} from 'lucide-react';
 import '../../styles/PhotoTryOn.css';
 
 export default function PhotoTryOnPage() {
@@ -10,6 +24,12 @@ export default function PhotoTryOnPage() {
   const [selectedSize, setSelectedSize] = useState('S');
   const [selectedColor, setSelectedColor] = useState('#0B1C3E');
   const [showBeforeAfter, setShowBeforeAfter] = useState(false);
+  const [toastMsg, setToastMsg] = useState(null);
+
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
   const colors = [
     { name: 'Midnight Navy', hex: '#0B1C3E' },
@@ -20,24 +40,53 @@ export default function PhotoTryOnPage() {
 
   return (
     <div className="tryon-room-container">
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 24,
+            right: 24,
+            zIndex: 99999,
+            background: '#171717',
+            color: '#F8F7F4',
+            border: '1px solid #C5A880',
+            borderRadius: 10,
+            padding: '12px 20px',
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <CheckCircle2 size={16} color="#C5A880" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
       {/* Top Header Bar */}
       <header className="tryon-header-bar">
         <Link
           to="/"
           style={{ color: '#A3A3A3', textDecoration: 'none', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
         >
-          ← RỜI PHÒNG THỬ AI (1)
+          <ArrowLeft size={14} /> RỜI PHÒNG THỬ AI (1)
         </Link>
-        <Link to="/" style={{ fontFamily: 'var(--font-title)', fontSize: '24px', letterSpacing: '4px', color: '#FFF', textDecoration: 'none', fontWeight: 700 }}>
+        <Link to="/" style={{ fontFamily: 'var(--font-title, serif)', fontSize: '24px', letterSpacing: '4px', color: '#FFF', textDecoration: 'none', fontWeight: 700 }}>
           VESTORA
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12px', color: '#34C759' }}>
-          <span>🔒 BẢO MẬT SINH TRẮC ÁO</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <ShieldCheck size={14} /> BẢO MẬT SINH TRẮC ÁO
+          </span>
           <button
             onClick={() => navigate('/')}
-            style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', fontSize: '18px' }}
+            style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            aria-label="Đóng phòng thử"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
       </header>
@@ -46,12 +95,12 @@ export default function PhotoTryOnPage() {
       <div className="tryon-top-status">
         <button
           onClick={() => navigate('/product/VESTORA-DR-089')}
-          style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#FFF', padding: '6px 14px', borderRadius: '99px', fontSize: '11px', cursor: 'pointer' }}
+          style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#FFF', padding: '6px 14px', borderRadius: '99px', fontSize: '11px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
         >
-          ← QUAY LẠI SẢN PHẨM
+          <ArrowLeft size={12} /> QUAY LẠI SẢN PHẨM
         </button>
 
-        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-gold)', letterSpacing: '1px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-gold, #C5A880)', letterSpacing: '1px' }}>
           PHÒNG THỬ ĐỒ ẢO AI — CÔNG NGHỆ SINH TRẮC HỌC 3D
         </div>
 
@@ -59,7 +108,12 @@ export default function PhotoTryOnPage() {
           <span style={{ background: 'rgba(52, 199, 89, 0.15)', color: '#34C759', padding: '4px 10px', borderRadius: '99px', fontWeight: 600 }}>
             ● ĐỘ CHUẨN XÁC 99.4%
           </span>
-          <span style={{ color: '#A3A3A3', cursor: 'pointer' }}>? HƯỚNG DẪN TẢI ẢNH</span>
+          <span
+            style={{ color: '#A3A3A3', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            onClick={() => showToast('Đứng thẳng trước ống kính, ánh sáng đều, nền trơn')}
+          >
+            <HelpCircle size={14} /> HƯỚNG DẪN TẢI ẢNH
+          </span>
         </div>
       </div>
 
@@ -68,7 +122,7 @@ export default function PhotoTryOnPage() {
         {/* LEFT PANEL: Step 1 Upload Model */}
         <div className="panel-dark-box">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold)' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold, #C5A880)' }}>
               BƯỚC 1
             </span>
             <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '4px' }}>
@@ -76,12 +130,14 @@ export default function PhotoTryOnPage() {
             </span>
           </div>
 
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '20px', margin: 0 }}>
+          <h2 style={{ fontFamily: 'var(--font-title, serif)', fontSize: '20px', margin: 0 }}>
             1. Ảnh Người Mẫu / Cá Nhân
           </h2>
 
-          <div className="dropzone-box" onClick={() => alert('Chọn ảnh toàn thân từ máy tính...')}>
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>☁️</div>
+          <div className="dropzone-box" onClick={() => showToast('Vui lòng chọn ảnh toàn thân từ máy tính...')}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+              <Upload size={32} color="#C5A880" />
+            </div>
             <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>
               Kéo và thả ảnh toàn thân vào đây
             </div>
@@ -100,13 +156,21 @@ export default function PhotoTryOnPage() {
               <div style={{ fontSize: '12px', fontWeight: 600 }}>Lê Hoàng Linh Nga</div>
               <div style={{ fontSize: '10px', color: '#A3A3A3' }}>Dáng người: Đồng hồ cát (1m68 • 51kg)</div>
             </div>
-            <button style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer' }}>🔄</button>
+            <button
+              style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              onClick={() => showToast('Đang làm mới thông số người mẫu...')}
+              aria-label="Làm mới người mẫu"
+            >
+              <RefreshCw size={14} />
+            </button>
           </div>
 
           {/* Quy chuẩn */}
           <div style={{ fontSize: '11px', color: '#A3A3A3', lineHeight: 1.6 }}>
-            <strong style={{ color: '#FFF', display: 'block', marginBottom: '4px' }}>🛡️ Quy chuẩn ảnh chuẩn xác:</strong>
-            • Đứng thẳng người tự nhiên, hai tay thả lòng nhẹ bên hông.<br />
+            <strong style={{ color: '#FFF', display: 'flex', alignItems: 'center', gap: 6, marginBottom: '4px' }}>
+              <ShieldCheck size={14} color="#34C759" /> Quy chuẩn ảnh chuẩn xác:
+            </strong>
+            • Đứng thẳng người tự nhiên, hai tay thả lỏng nhẹ bên hông.<br />
             • Nền trơn, sáng màu, không có vật cản phía sau.<br />
             • Ánh sáng tự nhiên đồng đều.
           </div>
@@ -122,7 +186,7 @@ export default function PhotoTryOnPage() {
                   key={size}
                   className="btn-secondary"
                   style={{ fontSize: '11px', padding: '8px' }}
-                  onClick={() => alert(`Đã tải mannequin chuẩn ${size}`)}
+                  onClick={() => showToast(`Đã tải mannequin chuẩn ${size}`)}
                 >
                   {size}
                 </button>
@@ -161,17 +225,21 @@ export default function PhotoTryOnPage() {
               fontSize: '12px',
             }}
           >
-            <div>
-              <span>📏 Vòng ngực: <strong>84cm</strong></span> •{' '}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Ruler size={14} color="#C5A880" />
+              <span>Vòng ngực: <strong>84cm</strong></span> •{' '}
               <span>Eo: <strong>64cm</strong></span> •{' '}
               <span>Hông: <strong>92cm</strong></span>
             </div>
             <button
               className="btn-secondary"
-              style={{ fontSize: '11px', padding: '4px 12px' }}
-              onClick={() => setShowBeforeAfter(!showBeforeAfter)}
+              style={{ fontSize: '11px', padding: '4px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              onClick={() => {
+                setShowBeforeAfter(!showBeforeAfter);
+                showToast(showBeforeAfter ? 'Chế độ: Đã thử trang phục' : 'Chế độ: So sánh trước/sau');
+              }}
             >
-              🔄 SO SÁNH TRƯỚC / SAU
+              <RefreshCw size={12} /> SO SÁNH TRƯỚC / SAU
             </button>
           </div>
         </div>
@@ -179,15 +247,15 @@ export default function PhotoTryOnPage() {
         {/* RIGHT PANEL: Step 2 Item Selection & Adjustments */}
         <div className="panel-dark-box">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold)' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold, #C5A880)' }}>
               BƯỚC 2
             </span>
-            <span style={{ fontSize: '10px', background: '#ECFDF5', color: '#059669', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-              ✓ VAULT VERIFIED
+            <span style={{ fontSize: '10px', background: '#ECFDF5', color: '#059669', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Check size={12} /> VAULT VERIFIED
             </span>
           </div>
 
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '20px', margin: 0 }}>
+          <h2 style={{ fontFamily: 'var(--font-title, serif)', fontSize: '20px', margin: 0 }}>
             2. Trang Phục Đang Thử
           </h2>
 
@@ -195,8 +263,10 @@ export default function PhotoTryOnPage() {
           <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '16px', padding: '14px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '12px' }}>
             <img src="https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=200&q=80" alt="Dress" style={{ width: '60px', height: '80px', borderRadius: '10px', objectFit: 'cover' }} />
             <div>
-              <div style={{ fontSize: '10px', color: 'var(--color-gold)', fontWeight: 600 }}>Thanh Lịch Boutique ✓</div>
-              <div style={{ fontSize: '13px', fontWeight: 600, margin: '2px 0 4px 0' }}>Đầm Dạ Hội Lụa Satin Midnight...</div>
+              <div style={{ fontSize: '10px', color: 'var(--color-gold, #C5A880)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                Thanh Lịch Boutique <Check size={10} />
+              </div>
+              <div style={{ fontSize: '13px', fontWeight: 600, margin: '2px 0 4px 0' }}>Đầm Dạ Hội Lụa Satin Midnight</div>
               <div style={{ fontSize: '14px', fontWeight: 700, color: '#FFF' }}>350.000 đ <small style={{ fontWeight: 400, fontSize: '10px', color: '#A3A3A3' }}>/ ngày</small></div>
             </div>
           </div>
@@ -205,14 +275,16 @@ export default function PhotoTryOnPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '8px' }}>
               <span>CHỌN KÍCH CỠ CHUẨN</span>
-              <span style={{ color: '#34C759', fontWeight: 600 }}>✓ Độ vừa vặn: Hoàn hảo (98%)</span>
+              <span style={{ color: '#34C759', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Check size={12} /> Độ vừa vặn: Hoàn hảo (98%)
+              </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
               {['XS', 'S', 'M', 'L', 'XL'].map((s) => (
                 <button
                   key={s}
                   className={`size-btn ${selectedSize === s ? 'active' : ''}`}
-                  style={{ height: '36px', fontSize: '11px', background: selectedSize === s ? 'var(--color-gold)' : 'rgba(255,255,255,0.05)', color: selectedSize === s ? '#000' : '#FFF', border: 'none' }}
+                  style={{ height: '36px', fontSize: '11px', background: selectedSize === s ? 'var(--color-gold, #C5A880)' : 'rgba(255,255,255,0.05)', color: selectedSize === s ? '#000' : '#FFF', border: 'none' }}
                   onClick={() => setSelectedSize(s)}
                 >
                   {s}
@@ -224,7 +296,7 @@ export default function PhotoTryOnPage() {
           {/* Color picker */}
           <div>
             <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.8px', marginBottom: '8px' }}>
-              MÀU SẮC DẠ TIỆC: <span style={{ color: 'var(--color-gold)' }}>Midnight Navy</span>
+              MÀU SẮC DẠ TIỆC: <span style={{ color: 'var(--color-gold, #C5A880)' }}>Midnight Navy</span>
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
               {colors.map((c) => (
@@ -245,18 +317,24 @@ export default function PhotoTryOnPage() {
               PHỤ KIỆN GỢI Ý ĐI KÈM
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '10px', fontSize: '10px', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>
-                👜 Túi Mini Kelly (+120k/ngày)
+              <div
+                style={{ flex: 1, background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '10px', fontSize: '10px', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={() => showToast('Đã thêm Túi Mini Kelly vào phụ kiện gợi ý')}
+              >
+                <ShoppingBag size={13} color="#C5A880" /> Túi Mini Kelly (+120k/ngày)
               </div>
-              <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '10px', fontSize: '10px', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>
-                👠 Giày Gót Nhọn (+90k/ngày)
+              <div
+                style={{ flex: 1, background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '10px', fontSize: '10px', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={() => showToast('Đã thêm Giày Gót Nhọn vào phụ kiện gợi ý')}
+              >
+                <Sparkles size={13} color="#C5A880" /> Giày Gót Nhọn (+90k/ngày)
               </div>
             </div>
           </div>
 
           {/* Security note */}
-          <div style={{ fontSize: '10px', color: '#A3A3A3', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            🔒 Bảo mật sinh trắc học cá nhân theo chuẩn mã hoá 256-bit atelier.
+          <div style={{ fontSize: '10px', color: '#A3A3A3', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ShieldCheck size={14} color="#C5A880" /> Bảo mật sinh trắc học cá nhân theo chuẩn mã hoá 256-bit atelier.
           </div>
         </div>
       </div>
@@ -270,27 +348,30 @@ export default function PhotoTryOnPage() {
           </div>
           <div style={{ borderLeft: '1px solid rgba(255,255,255,0.2)', paddingLeft: '24px' }}>
             <span style={{ fontSize: '11px', color: '#34C759' }}>Tổng cọc & thuê: </span>
-            <strong style={{ fontSize: '18px', color: 'var(--color-gold)' }}>1.750.000 đ</strong>
+            <strong style={{ fontSize: '18px', color: 'var(--color-gold, #C5A880)' }}>1.750.000 đ</strong>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button className="btn-secondary" onClick={() => alert('Đã lưu outfit vào Tủ Đồ Ảo!')}>
-            🔖 LƯU VÀO TỦ ĐỒ
+          <button
+            className="btn-secondary"
+            onClick={() => showToast('Đã lưu trang phục vào Tủ Đồ Ảo!')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Bookmark size={14} /> LƯU VÀO TỦ ĐỒ
           </button>
           <button
             className="btn-primary"
-            style={{ padding: '12px 28px' }}
+            style={{ padding: '12px 28px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
             onClick={() => {
-              alert('Đã thêm sản phẩm đã thử vào giỏ hàng!');
-              navigate('/cart');
+              showToast('Đã thêm sản phẩm đã thử vào giỏ hàng!');
+              setTimeout(() => navigate('/cart'), 500);
             }}
           >
-            🛒 THÊM VÀO GIỎ & ĐẶT THUÊ
+            <ShoppingBag size={14} /> THÊM VÀO GIỎ & ĐẶT THUÊ
           </button>
         </div>
       </footer>
     </div>
   );
 }
-

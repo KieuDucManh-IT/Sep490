@@ -192,7 +192,7 @@ export default function AdminTopHeader({ onToggleSidebar, breadcrumb }) {
                     </svg>
                   </span>
                   <div className="admin-dropdown-content">
-                    <div className="admin-dropdown-item-title">Yêu cầu hoàn cọc Escrow PayOS</div>
+                    <div className="admin-dropdown-item-title">Yêu cầu hoàn trả tiền cọc</div>
                     <div className="admin-dropdown-item-desc">Đơn hàng đã hoàn tất trả đồ an toàn tại cửa hàng</div>
                     <span className="admin-dropdown-time">1 giờ trước • Trọng tài</span>
                   </div>

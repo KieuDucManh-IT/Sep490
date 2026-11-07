@@ -722,13 +722,13 @@
   gap: 4px;
 }
 
-.cart-pay-badge.escrow {
+.cart-pay-badge.deposit {
   background: #f0fdf4;
   border-color: #bbf7d0;
   color: #15803d;
 }
 
-.cart-escrow-alert-box {
+.cart-deposit-alert-box {
   background: #faf5ff;
   border: 1px solid #e9d5ff;
   border-radius: 10px;
@@ -741,7 +741,7 @@
   gap: 6px;
 }
 
-.cart-escrow-alert-box i {
+.cart-deposit-alert-box i {
   color: #9333ea;
   margin-top: 1px;
 }

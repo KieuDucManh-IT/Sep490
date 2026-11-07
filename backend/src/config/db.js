@@ -1,4 +1,12 @@
+import dns from "node:dns";
 import mongoose from "mongoose";
+
+// Thiết lập DNS dự phòng (Google/Cloudflare) khắc phục lỗi querySrv ECONNREFUSED trên Windows với MongoDB Atlas
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+} catch {
+  // Bỏ qua nếu runtime không cho phép cấu hình DNS
+}
 
 export const connectDB = async () => {
   const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
@@ -11,4 +19,5 @@ export const connectDB = async () => {
   return connection;
 };
 
+export { mongoose };
 export default connectDB;

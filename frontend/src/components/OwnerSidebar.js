@@ -171,7 +171,7 @@ export default function OwnerSidebar({ isCollapsed: externalCollapsed, onToggle:
               path: '/owner/disputes',
               label: 'Khiếu Nại & Cọc',
               icon: Scale,
-              desc: 'Xử lý tranh chấp và tiền cọc',
+              desc: 'Xử lý tranh chấp và hoàn tiền cọc',
             },
           ],
         },

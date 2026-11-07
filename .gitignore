@@ -2,13 +2,7 @@
 plans/
 *.plan.md
 plan.md
-docs/journals/
-docs/reports/
-docs/retros/
-docs/scenarios/
-docs/research/
-docs/summaries/
-docs/codebase-summary.md
+docs/
 codebase-summary.md
 repomix-output.*
 .agents/

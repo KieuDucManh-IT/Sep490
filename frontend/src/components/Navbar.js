@@ -11,7 +11,10 @@ export default function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  const isActive = (path) => (location.pathname === path ? "active" : "");
+  const isActive = (path) => {
+    if (path === '/') return location.pathname === '/' ? 'active' : '';
+    return location.pathname.startsWith(path) ? 'active' : '';
+  };
   const avatarUrl = user?.avatar || "";
   const displayName = user?.fullName || "";
   const avatarInitial = displayName ? displayName.trim().charAt(0).toUpperCase() : "N";
@@ -102,6 +105,11 @@ export default function Navbar() {
           {/* Radar Cửa Hàng */}
           <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
             Bản đồ chi nhánh
+          </Link>
+
+          {/* Tra Cứu Đơn Hàng */}
+          <Link to="/tracking" className={`navbar-link ${isActive("/tracking")}`}>
+            Tra Cứu Đơn
           </Link>
 
           {/* Quick Access for Management Roles */}
@@ -199,6 +207,13 @@ export default function Navbar() {
                     onClick={() => setDropdownOpen(false)}
                   >
                     <i className="fa-solid fa-bag-shopping menu-icon"></i> Giỏ hàng & Đơn thuê
+                  </Link>
+                  <Link
+                    to="/tracking"
+                    className="menu-item"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <i className="fa-solid fa-truck-fast menu-icon"></i> Tra cứu đơn hàng
                   </Link>
                   <Link
                     to="/favorites"

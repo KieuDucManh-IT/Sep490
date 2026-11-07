@@ -22,6 +22,11 @@ import {
   SALES_STATUS_MAP,
   PAYMENT_STATUS_MAP,
 } from './orderUtils';
+import {
+  ShipmentTrackingTimeline,
+  ShipmentCreateModal,
+} from '../shipping';
+import { cancelShipmentApi } from '../../services/shippingApi';
 import '../../styles/ShopBranches.css';
 import '../../styles/OrderMonitoring.css';
 
@@ -36,6 +41,32 @@ export default function SaleOrderDetailModal({
   const [loading, setLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
   const [error, setError] = useState('');
+  const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
+
+  const refetchOrder = () => {
+    if (orderId) {
+      getSaleOrderDetailApi(orderId)
+        .then((res) => {
+          if (res.success && res.data) {
+            setDetailData(res.data);
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  const handleCancelShipment = async (shipmentId, reason) => {
+    try {
+      const res = await cancelShipmentApi(shipmentId, reason);
+      if (res?.success) {
+        refetchOrder();
+      } else {
+        alert(res?.message || 'Không thể hủy vận đơn.');
+      }
+    } catch (err) {
+      alert(err.message || 'Lỗi khi hủy vận đơn');
+    }
+  };
 
   useEffect(() => {
     if (!isOpen || !orderId) {
@@ -74,8 +105,9 @@ export default function SaleOrderDetailModal({
 
   const order = detailData?.order || detailData || initialOrder || {};
   const customer = order.customerId || order.customerInfo || order.customer || {};
-  const customerName = customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
-  const customerPhone = customer.Information?.Phone || customer.phone || 'Chưa cập nhật';
+  const customerInfo = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
+  const customerName = order.shippingAddress?.receiverName || customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
+  const customerPhone = order.shippingAddress?.phone || customerInfo?.Phone || customer.phone || 'Chưa cập nhật';
   const customerEmail = customer.Email || customer.email || '';
   const items = detailData?.items || order.items || initialOrder?.items || [];
   const shipments = detailData?.shipments || order.shipments || [];
@@ -215,7 +247,7 @@ export default function SaleOrderDetailModal({
                         {order.shippingAddress?.street || customer.address || 'Nhận tại cửa hàng'}
                       </div>
                       <div className="small text-muted mt-1">
-                        {[order.shippingAddress?.ward, order.shippingAddress?.district, order.shippingAddress?.city]
+                        {[order.shippingAddress?.ward, order.shippingAddress?.city]
                           .filter(Boolean)
                           .join(', ') || 'Chi nhánh xuất hàng'}
                       </div>
@@ -339,21 +371,52 @@ export default function SaleOrderDetailModal({
               </div>
             </div>
 
-            {/* Section 4: Vận đơn giao hàng */}
-            {shipments.length > 0 && (
-              <div className="modal-section-card">
-                <div className="modal-section-header">
-                  <span className="modal-section-title">
-                    <Truck size={16} className="text-primary me-2" />
-                    <span>4. Vận Chuyển & Giao Hàng</span>
-                  </span>
+            {/* Section 4: Vận đơn giao hàng GHN */}
+            {(() => {
+              const hasActiveOutbound = shipments.some(
+                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+              );
+              const canCreateOutbound = !isReadOnly && !hasActiveOutbound && ['draft', 'confirmed', 'processing'].includes(order.orderStatus || order.status);
+
+              return (
+                <div className="modal-section-card">
+                  <div className="modal-section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span className="modal-section-title">
+                      <Truck size={16} className="text-primary me-2" />
+                      <span>4. Vận Chuyển & Giao Hàng (GHN)</span>
+                    </span>
+                    {canCreateOutbound && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                        onClick={() => setIsCreateShipmentOpen(true)}
+                      >
+                        <Truck size={14} />
+                        <span>+ Tạo vận đơn GHN</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {shipments.length > 0 ? (
+                    <div className="mt-3">
+                      {shipments.map((s) => (
+                        <ShipmentTrackingTimeline
+                          key={s._id}
+                          shipment={s}
+                          onCancel={handleCancelShipment}
+                          onRetry={() => setIsCreateShipmentOpen(true)}
+                          isBranchManager={!isReadOnly}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="small text-muted py-2 fst-italic">
+                      Đơn hàng chưa tạo vận đơn chuyển phát nào qua GHN.
+                    </div>
+                  )}
                 </div>
-                <div className="small text-muted">
-                  Đơn vị vận chuyển: {shipments[0]?.carrier || 'Giao Hàng Tiết Kiệm'} • Mã vận đơn:{' '}
-                  {shipments[0]?.trackingCode || '—'}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </>
         )}
       </div>
@@ -416,6 +479,15 @@ export default function SaleOrderDetailModal({
           </div>
         )}
       </div>
+
+      {/* Shipment Create Modal */}
+      <ShipmentCreateModal
+        show={isCreateShipmentOpen}
+        onClose={() => setIsCreateShipmentOpen(false)}
+        order={order}
+        orderType="sale"
+        onSuccess={() => refetchOrder()}
+      />
     </Modal>
   );
 }

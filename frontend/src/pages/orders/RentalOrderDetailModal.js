@@ -21,6 +21,12 @@ import {
   RENTAL_STATUS_MAP,
   DEPOSIT_STATUS_MAP,
 } from './orderUtils';
+import {
+  ShipmentTrackingTimeline,
+  ShipmentCreateModal,
+  ShipmentReturnModal,
+} from '../shipping';
+import { cancelShipmentApi } from '../../services/shippingApi';
 import '../../styles/ShopBranches.css';
 import '../../styles/OrderMonitoring.css';
 
@@ -35,6 +41,33 @@ export default function RentalOrderDetailModal({
   const [loading, setLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
   const [error, setError] = useState('');
+  const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
+  const [isReturnShipmentOpen, setIsReturnShipmentOpen] = useState(false);
+
+  const refetchOrder = () => {
+    if (orderId) {
+      getRentalOrderDetailApi(orderId)
+        .then((res) => {
+          if (res.success && res.data) {
+            setDetailData(res.data);
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  const handleCancelShipment = async (shipmentId, reason) => {
+    try {
+      const res = await cancelShipmentApi(shipmentId, reason);
+      if (res?.success) {
+        refetchOrder();
+      } else {
+        alert(res?.message || 'Không thể hủy vận đơn.');
+      }
+    } catch (err) {
+      alert(err.message || 'Lỗi khi hủy vận đơn');
+    }
+  };
 
   useEffect(() => {
     if (!isOpen || !orderId) {
@@ -73,10 +106,13 @@ export default function RentalOrderDetailModal({
 
   const order = detailData?.order || detailData || initialOrder || {};
   const customer = order.customerId || order.customerInfo || order.customer || {};
-  const customerName = customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
-  const customerPhone = customer.Information?.Phone || customer.phone || 'Chưa cập nhật';
+  const customerInfo = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
+  const customerName = order.shippingAddress?.receiverName || customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
+  const customerPhone = order.shippingAddress?.phone || customerInfo?.Phone || customer.phone || 'Chưa cập nhật';
   const customerEmail = customer.Email || customer.email || '';
-  const customerAddress = customer.Information?.Address || customer.address || '';
+  const customerAddress = order.shippingAddress?.street 
+    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
+    : (customerInfo?.AddressDetail || customerInfo?.Address || customer.address || '');
   const items = detailData?.items || order.items || initialOrder?.items || [];
   const shipments = detailData?.shipments || order.shipments || [];
 
@@ -344,21 +380,65 @@ export default function RentalOrderDetailModal({
               </div>
             </div>
 
-            {/* Section 4: Giao hàng nếu có */}
-            {shipments.length > 0 && (
-              <div className="modal-section-card">
-                <div className="modal-section-header">
-                  <span className="modal-section-title">
-                    <Truck size={16} className="text-primary me-2" />
-                    <span>4. Vận Chuyển & Giao Nhận</span>
-                  </span>
+            {/* Section 4: Vận Chuyển & Giao Nhận */}
+            {(() => {
+              const hasActiveOutbound = shipments.some(
+                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+              );
+              const canCreateOutbound = !isReadOnly && !hasActiveOutbound && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
+              const canCreateReturn = !isReadOnly && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);
+
+              return (
+                <div className="modal-section-card">
+                  <div className="modal-section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span className="modal-section-title">
+                      <Truck size={16} className="text-primary me-2" />
+                      <span>4. Vận Chuyển & Giao Nhận (GHN)</span>
+                    </span>
+                    <div className="d-flex gap-2">
+                      {canCreateOutbound && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                          onClick={() => setIsCreateShipmentOpen(true)}
+                        >
+                          <Truck size={14} />
+                          <span>+ Tạo vận đơn GHN</span>
+                        </button>
+                      )}
+                      {canCreateReturn && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                          onClick={() => setIsReturnShipmentOpen(true)}
+                        >
+                          <Truck size={14} />
+                          <span>+ Thu hồi đồ thuê</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {shipments.length > 0 ? (
+                    <div className="mt-3">
+                      {shipments.map((s) => (
+                        <ShipmentTrackingTimeline
+                          key={s._id}
+                          shipment={s}
+                          onCancel={handleCancelShipment}
+                          onRetry={() => setIsCreateShipmentOpen(true)}
+                          isBranchManager={!isReadOnly}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="small text-muted py-2 fst-italic">
+                      Đơn hàng chưa tạo vận đơn chuyển phát nào qua GHN.
+                    </div>
+                  )}
                 </div>
-                <div className="small text-muted">
-                  Đơn vị vận chuyển: {shipments[0]?.carrier || 'Nội bộ'} • Mã vận đơn:{' '}
-                  {shipments[0]?.trackingCode || '—'}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </>
         )}
       </div>
@@ -421,6 +501,23 @@ export default function RentalOrderDetailModal({
           </div>
         )}
       </div>
+
+      {/* Shipment Create Modal */}
+      <ShipmentCreateModal
+        show={isCreateShipmentOpen}
+        onClose={() => setIsCreateShipmentOpen(false)}
+        order={order}
+        orderType="rental"
+        onSuccess={() => refetchOrder()}
+      />
+
+      {/* Shipment Return Modal */}
+      <ShipmentReturnModal
+        show={isReturnShipmentOpen}
+        onClose={() => setIsReturnShipmentOpen(false)}
+        order={order}
+        onSuccess={() => refetchOrder()}
+      />
     </Modal>
   );
 }

@@ -1,22 +1,236 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import '../../styles/PhotoTryOn.css';
+import tryOnApi from '../../services/tryOnApi';
+import productService from '../../services/productService';
+
+const DEFAULT_SAMPLE_MODELS = [
+  {
+    id: 'female-s',
+    label: 'Nữ - Size S (1m65, 48kg)',
+    gender: 'female',
+    size: 'S',
+    imageUrl:
+      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'female-m',
+    label: 'Nữ - Size M (1m68, 54kg)',
+    gender: 'female',
+    size: 'M',
+    imageUrl:
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'male-m',
+    label: 'Nam - Size M (1m75, 68kg)',
+    gender: 'male',
+    size: 'M',
+    imageUrl:
+      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'male-l',
+    label: 'Nam - Size L (1m80, 75kg)',
+    gender: 'male',
+    size: 'L',
+    imageUrl:
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80',
+  },
+];
+
+const DEFAULT_PRODUCT = {
+  _id: 'sample-001',
+  productCode: 'VESTORA-DR-089',
+  name: 'Đầm Dạ Hội Lụa Satin Midnight Noir',
+  brand: 'Thanh Lịch Boutique',
+  rentalPricePerDay: 350000,
+  rentalPricePer3Days: 1050000,
+  salePrice: 3200000,
+  category: ['Đầm dạ hội', 'Thời trang nữ'],
+  image:
+    'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+};
 
 export default function PhotoTryOnPage() {
   const navigate = useNavigate();
-  const [modelImage] = useState(
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80'
-  );
-  const [selectedSize, setSelectedSize] = useState('S');
-  const [selectedColor, setSelectedColor] = useState('#0B1C3E');
-  const [showBeforeAfter, setShowBeforeAfter] = useState(false);
+  const [searchParams] = useSearchParams();
+  const fileInputRef = useRef(null);
 
-  const colors = [
-    { name: 'Midnight Navy', hex: '#0B1C3E' },
-    { name: 'Crimson Red', hex: '#8B0000' },
-    { name: 'Gold Champagne', hex: '#D4AF37' },
-    { name: 'Onyx Black', hex: '#171717' },
-  ];
+  const productParam = searchParams.get('product') || searchParams.get('productId');
+
+  // Product state
+  const [product, setProduct] = useState(DEFAULT_PRODUCT);
+
+  // Model & User Photo state
+  const [sampleModels, setSampleModels] = useState(DEFAULT_SAMPLE_MODELS);
+  const [selectedSampleId, setSelectedSampleId] = useState('female-s');
+  const [userUploadedFile, setUserUploadedFile] = useState(null);
+  const [activeModelImage, setActiveModelImage] = useState(DEFAULT_SAMPLE_MODELS[0].imageUrl);
+
+  // Options & Try-On State
+  const [selectedSize, setSelectedSize] = useState('S');
+  const [category, setCategory] = useState('dresses');
+  const [autoCrop, setAutoCrop] = useState(true);
+
+  // Generation & Results
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState('');
+  const [resultImage, setResultImage] = useState(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // 1. Fetch sample models from server on mount
+  useEffect(() => {
+    tryOnApi
+      .getSampleModels()
+      .then((models) => {
+        if (Array.isArray(models) && models.length > 0) {
+          setSampleModels(models);
+          setSelectedSampleId(models[0].id);
+          setActiveModelImage(models[0].imageUrl);
+        }
+      })
+      .catch((err) => {
+        console.warn('Lấy sample models mặc định:', err.message);
+      });
+  }, []);
+
+  // 2. Fetch product info if productParam is provided
+  useEffect(() => {
+    if (!productParam) return;
+
+    productService
+      .getProductById(productParam)
+      .then((res) => {
+        const prodData = res?.data || res;
+        if (prodData && prodData.name) {
+          setProduct(prodData);
+
+          // Auto-detect category (bao gồm cả 'cả bộ', 'suit', 'set', 'đầm', 'áo dài')
+          const catStr = (
+            `${prodData.name} ` + (Array.isArray(prodData.category) ? prodData.category.join(' ') : '')
+          ).toLowerCase();
+
+          if (/đầm|dam|váy|vay|áo dài|ao dai|dress|gown|jumpsuit|set|bộ|bo|suit|outfit/.test(catStr)) {
+            setCategory('dresses');
+          } else if (/quần|quan|chân váy|skirt|pants|trouser/.test(catStr)) {
+            setCategory('lower_body');
+          } else {
+            setCategory('upper_body');
+          }
+
+          if (Array.isArray(prodData.sizes) && prodData.sizes.length > 0) {
+            setSelectedSize(prodData.sizes[0]);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Không thể tải chi tiết sản phẩm:', err.message);
+      });
+  }, [productParam]);
+
+  // Handle local user photo selection
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage('Vui lòng chọn đúng tệp hình ảnh (JPG, PNG, WEBP)');
+      return;
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+      setErrorMessage('Dung lượng ảnh vượt quá 25MB. Vui lòng chọn ảnh nhẹ hơn.');
+      return;
+    }
+
+    setErrorMessage('');
+    setUserUploadedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setActiveModelImage(objectUrl);
+    setSelectedSampleId('custom');
+    setResultImage(null); // Reset previous result
+  };
+
+  // Select sample mannequin preset
+  const handleSelectSample = (sample) => {
+    setUserUploadedFile(null);
+    setSelectedSampleId(sample.id);
+    setActiveModelImage(sample.imageUrl);
+    setSelectedSize(sample.size || 'M');
+    setResultImage(null);
+    setErrorMessage('');
+  };
+
+  // Trigger AI IDM-VTON Try-On
+  const handleGenerateTryOn = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setIsGenerating(true);
+    setGenerationStep('Đang chuẩn hoá tỷ lệ người mẫu và nhận diện trang phục...');
+
+    const stepTimer1 = setTimeout(() => {
+      setGenerationStep('AI IDM-VTON đang tính toán nếp gấp và độ rủ vải...');
+    }, 4500);
+
+    const stepTimer2 = setTimeout(() => {
+      setGenerationStep('Đang kết xuất ánh sáng và hoàn thiện phom dáng...');
+    }, 12000);
+
+    try {
+      const formData = new FormData();
+
+      if (userUploadedFile) {
+        formData.append('photo', userUploadedFile);
+      } else {
+        formData.append('humanImageUrl', activeModelImage);
+      }
+
+      if (product?._id && product._id !== 'sample-001') {
+        formData.append('productId', product._id);
+      }
+
+      const garmentImg =
+        product?.image ||
+        (Array.isArray(product?.images) && product.images[0]) ||
+        DEFAULT_PRODUCT.image;
+
+      formData.append('garmentImageUrl', garmentImg);
+      formData.append('garmentDescription', product?.name || 'luxury clothing');
+      formData.append('category', category);
+      formData.append('crop', String(autoCrop));
+
+      const response = await tryOnApi.generate(formData);
+
+      if (response?.data?.resultImageUrl || response?.resultImageUrl) {
+        const finalUrl = response.data?.resultImageUrl || response.resultImageUrl;
+        setResultImage(finalUrl);
+        setShowOriginal(false);
+        setSuccessMessage('Ghép trang phục AI thành công!');
+      } else {
+        throw new Error(response?.message || 'Mô hình không trả về ảnh kết quả');
+      }
+    } catch (err) {
+      console.error('Lỗi ghép đồ AI:', err);
+      setErrorMessage(
+        err.message || 'Có lỗi trong quá trình xử lý ghép đồ AI, vui lòng thử lại sau.'
+      );
+    } finally {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+      setIsGenerating(false);
+      setGenerationStep('');
+    }
+  };
+
+  const garmentImageUrl =
+    product?.image ||
+    (Array.isArray(product?.images) && product.images[0]) ||
+    DEFAULT_PRODUCT.image;
+
+  const currentDisplayImage = showOriginal ? activeModelImage : resultImage || activeModelImage;
 
   return (
     <div className="tryon-room-container">
@@ -24,18 +238,41 @@ export default function PhotoTryOnPage() {
       <header className="tryon-header-bar">
         <Link
           to="/"
-          style={{ color: '#A3A3A3', textDecoration: 'none', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{
+            color: '#A3A3A3',
+            textDecoration: 'none',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
         >
-          ← RỜI PHÒNG THỬ AI (1)
+          &larr; Rời phòng thử AI
         </Link>
-        <Link to="/" style={{ fontFamily: 'var(--font-title)', fontSize: '24px', letterSpacing: '4px', color: '#FFF', textDecoration: 'none', fontWeight: 700 }}>
+        <Link
+          to="/"
+          style={{
+            fontFamily: 'var(--font-title)',
+            fontSize: '24px',
+            letterSpacing: '4px',
+            color: '#FFF',
+            textDecoration: 'none',
+            fontWeight: 700,
+          }}
+        >
           VESTORA
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12px', color: '#34C759' }}>
-          <span>🔒 BẢO MẬT SINH TRẮC ÁO</span>
+          <span>BẢO MẬT SINH TRẮC HỌC</span>
           <button
             onClick={() => navigate('/')}
-            style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', fontSize: '18px' }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#FFF',
+              cursor: 'pointer',
+              fontSize: '18px',
+            }}
           >
             ✕
           </button>
@@ -45,23 +282,91 @@ export default function PhotoTryOnPage() {
       {/* Top Status Bar */}
       <div className="tryon-top-status">
         <button
-          onClick={() => navigate('/product/VESTORA-DR-089')}
-          style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#FFF', padding: '6px 14px', borderRadius: '99px', fontSize: '11px', cursor: 'pointer' }}
+          onClick={() => {
+            if (product?._id && product._id !== 'sample-001') {
+              navigate(`/product/${product._id}`);
+            } else {
+              navigate('/catalog');
+            }
+          }}
+          style={{
+            background: 'rgba(255,255,255,0.08)',
+            border: 'none',
+            color: '#FFF',
+            padding: '6px 14px',
+            borderRadius: '99px',
+            fontSize: '11px',
+            cursor: 'pointer',
+          }}
         >
-          ← QUAY LẠI SẢN PHẨM
+          &larr; Quay lại sản phẩm
         </button>
 
         <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-gold)', letterSpacing: '1px' }}>
-          PHÒNG THỬ ĐỒ ẢO AI — CÔNG NGHỆ SINH TRẮC HỌC 3D
+          PHÒNG THỬ ĐỒ ẢO AI — CÔNG NGHỆ IDM-VTON
         </div>
 
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <span style={{ background: 'rgba(52, 199, 89, 0.15)', color: '#34C759', padding: '4px 10px', borderRadius: '99px', fontWeight: 600 }}>
-            ● ĐỘ CHUẨN XÁC 99.4%
+          <span
+            style={{
+              background: 'rgba(52, 199, 89, 0.15)',
+              color: '#34C759',
+              padding: '4px 10px',
+              borderRadius: '99px',
+              fontWeight: 600,
+            }}
+          >
+            VIRTUAL TRY-ON
           </span>
-          <span style={{ color: '#A3A3A3', cursor: 'pointer' }}>? HƯỚNG DẪN TẢI ẢNH</span>
         </div>
       </div>
+
+      {/* Alerts */}
+      {errorMessage && (
+        <div
+          style={{
+            background: 'rgba(239, 68, 68, 0.15)',
+            border: '1px solid #EF4444',
+            color: '#FCA5A5',
+            padding: '10px 24px',
+            fontSize: '13px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>{errorMessage}</span>
+          <button
+            onClick={() => setErrorMessage('')}
+            style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div
+          style={{
+            background: 'rgba(52, 199, 89, 0.15)',
+            border: '1px solid #34C759',
+            color: '#86EFAC',
+            padding: '10px 24px',
+            fontSize: '13px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>{successMessage}</span>
+          <button
+            onClick={() => setSuccessMessage('')}
+            style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Main Grid: 3 Panels */}
       <div className="tryon-grid-main">
@@ -71,8 +376,16 @@ export default function PhotoTryOnPage() {
             <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold)' }}>
               BƯỚC 1
             </span>
-            <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '4px' }}>
-              Cá nhân hoá AI
+            <span
+              style={{
+                fontSize: '10px',
+                background: userUploadedFile ? '#059669' : 'rgba(255,255,255,0.08)',
+                color: userUploadedFile ? '#FFF' : '#A3A3A3',
+                padding: '2px 8px',
+                borderRadius: '4px',
+              }}
+            >
+              {userUploadedFile ? 'Ảnh của bạn' : 'Mẫu tiêu chuẩn'}
             </span>
           </div>
 
@@ -80,99 +393,217 @@ export default function PhotoTryOnPage() {
             1. Ảnh Người Mẫu / Cá Nhân
           </h2>
 
-          <div className="dropzone-box" onClick={() => alert('Chọn ảnh toàn thân từ máy tính...')}>
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>☁️</div>
-            <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>
-              Kéo và thả ảnh toàn thân vào đây
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/jpeg,image/png,image/webp"
+            style={{ display: 'none' }}
+          />
+
+          <div
+            className={`dropzone-box ${userUploadedFile ? 'has-file' : ''}`}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
+              {userUploadedFile ? 'Đã tải ảnh cá nhân thành công' : 'Bấm để tải ảnh toàn thân của bạn'}
             </div>
             <div style={{ fontSize: '11px', color: '#A3A3A3', marginBottom: '12px' }}>
-              Hỗ trợ JPG, PNG chất lượng cao tối đa 25MB
+              {userUploadedFile
+                ? `${userUploadedFile.name} (${(userUploadedFile.size / 1024 / 1024).toFixed(1)}MB)`
+                : 'Hỗ trợ ảnh JPG, PNG chụp rõ toàn thân, phông trơn'}
             </div>
-            <button className="btn-secondary" style={{ fontSize: '11px', padding: '6px 16px' }}>
-              TẢI ẢNH TOÀN THÂN
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '11px', padding: '6px 16px', pointerEvents: 'none' }}
+            >
+              {userUploadedFile ? 'Chọn ảnh khác' : 'Tải ảnh toàn thân'}
             </button>
           </div>
 
           {/* Active model card */}
-          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '14px', padding: '12px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <img src={modelImage} alt="Model" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              borderRadius: '14px',
+              padding: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <img
+              src={activeModelImage}
+              alt="Model"
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '1px solid var(--color-gold)',
+              }}
+            />
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '12px', fontWeight: 600 }}>Lê Hoàng Linh Nga</div>
-              <div style={{ fontSize: '10px', color: '#A3A3A3' }}>Dáng người: Đồng hồ cát (1m68 • 51kg)</div>
+              <div style={{ fontSize: '12px', fontWeight: 600 }}>
+                {userUploadedFile ? 'Ảnh người dùng tải lên' : 'Người mẫu mannequin chuẩn'}
+              </div>
+              <div style={{ fontSize: '10px', color: '#A3A3A3' }}>
+                {userUploadedFile ? 'Ảnh sẵn sàng thử đồ' : `Size: ${selectedSize}`}
+              </div>
             </div>
-            <button style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer' }}>🔄</button>
+            {userUploadedFile && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUserUploadedFile(null);
+                  setSelectedSampleId('female-s');
+                  setActiveModelImage(DEFAULT_SAMPLE_MODELS[0].imageUrl);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#EF4444',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+                title="Bỏ ảnh cá nhân"
+              >
+                Huỷ ảnh
+              </button>
+            )}
           </div>
 
-          {/* Quy chuẩn */}
-          <div style={{ fontSize: '11px', color: '#A3A3A3', lineHeight: 1.6 }}>
-            <strong style={{ color: '#FFF', display: 'block', marginBottom: '4px' }}>🛡️ Quy chuẩn ảnh chuẩn xác:</strong>
-            • Đứng thẳng người tự nhiên, hai tay thả lòng nhẹ bên hông.<br />
-            • Nền trơn, sáng màu, không có vật cản phía sau.<br />
-            • Ánh sáng tự nhiên đồng đều.
-          </div>
-
-          {/* Standard Mannequin presets */}
+          {/* Mannequin presets */}
           <div>
-            <div style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '1px', marginBottom: '8px', color: '#A3A3A3' }}>
+            <div
+              style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                letterSpacing: '1px',
+                marginBottom: '8px',
+                color: '#A3A3A3',
+              }}
+            >
               HOẶC CHỌN NHANH MANNEQUIN TIÊU CHUẨN
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              {['Size S', 'Size M', 'Size L'].map((size) => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+              {sampleModels.map((sample) => (
                 <button
-                  key={size}
-                  className="btn-secondary"
-                  style={{ fontSize: '11px', padding: '8px' }}
-                  onClick={() => alert(`Đã tải mannequin chuẩn ${size}`)}
+                  key={sample.id}
+                  type="button"
+                  className={`model-preset-btn ${selectedSampleId === sample.id ? 'active' : ''}`}
+                  onClick={() => handleSelectSample(sample)}
                 >
-                  {size}
+                  {sample.label}
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Quy chuẩn chụp ảnh */}
+          <div
+            style={{
+              fontSize: '11px',
+              color: '#A3A3A3',
+              lineHeight: 1.6,
+              background: 'rgba(255,255,255,0.02)',
+              padding: '10px',
+              borderRadius: '10px',
+            }}
+          >
+            <strong style={{ color: '#FFF', display: 'block', marginBottom: '4px' }}>
+              Mẹo để ghép đồ đẹp nhất:
+            </strong>
+            • Đứng thẳng người, tay không che ngực hay eo.<br />
+            • Nền tường trơn, không có vật cản phía sau.<br />
+            • Đảm bảo đủ ánh sáng tự nhiên rõ nét.
           </div>
         </div>
 
         {/* CENTER PANEL: Real-time 3D AR Stage */}
         <div className="stage-viewport-card">
+          {/* Scanning Overlay when AI is generating */}
+          {isGenerating && (
+            <div className="tryon-scan-overlay">
+              <div className="tryon-scan-line" />
+              <div className="tryon-status-overlay">
+                <div className="tryon-spinner" />
+                <span>{generationStep || 'AI IDM-VTON đang xử lý trang phục...'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Before/After Tag Badge */}
+          {resultImage && (
+            <div
+              className={`tryon-compare-badge ${showOriginal ? 'badge-before' : 'badge-after'}`}
+            >
+              {showOriginal ? 'ẢNH GỐC (TRƯỚC)' : 'AI TRY-ON (KẾT QUẢ)'}
+            </div>
+          )}
+
           <img
-            src="https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=1200&q=80"
-            alt="3D AR Virtual Try-On Stage"
+            src={currentDisplayImage}
+            alt="Virtual Try-On Stage"
             className="stage-bg-image"
           />
 
-          {/* AR Keypoint dots */}
-          <div className="ar-keypoint-dot" style={{ top: '32%', left: '48%' }} title="Bờ vai" />
-          <div className="ar-keypoint-dot" style={{ top: '48%', left: '50%' }} title="Vòng eo" />
-          <div className="ar-keypoint-dot" style={{ top: '65%', left: '51%' }} title="Vòng hông" />
-
-          {/* Bottom Measurements bar overlay */}
+          {/* Bottom Measurements & Compare Control bar */}
           <div
             style={{
               position: 'absolute',
               bottom: '16px',
               left: '16px',
               right: '16px',
-              background: 'rgba(26, 27, 30, 0.9)',
+              background: 'rgba(26, 27, 30, 0.92)',
               backdropFilter: 'blur(10px)',
               borderRadius: '9999px',
-              padding: '10px 24px',
+              padding: '10px 20px',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               fontSize: '12px',
+              zIndex: 15,
             }}
           >
             <div>
-              <span>📏 Vòng ngực: <strong>84cm</strong></span> •{' '}
-              <span>Eo: <strong>64cm</strong></span> •{' '}
-              <span>Hông: <strong>92cm</strong></span>
+              <span>Kích cỡ: <strong>Size {selectedSize}</strong></span> &bull;{' '}
+              <span>Phân loại: <strong>{category.toUpperCase()}</strong></span>
             </div>
-            <button
-              className="btn-secondary"
-              style={{ fontSize: '11px', padding: '4px 12px' }}
-              onClick={() => setShowBeforeAfter(!showBeforeAfter)}
-            >
-              🔄 SO SÁNH TRƯỚC / SAU
-            </button>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {resultImage && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '11px', padding: '6px 14px' }}
+                    onClick={() => setShowOriginal(!showOriginal)}
+                  >
+                    {showOriginal ? 'Xem kết quả AI' : 'So sánh ảnh gốc'}
+                  </button>
+                  <a
+                    href={resultImage}
+                    target="_blank"
+                    rel="noreferrer"
+                    download="vestora-ai-tryon.png"
+                    className="btn-secondary"
+                    style={{
+                      fontSize: '11px',
+                      padding: '6px 14px',
+                      textDecoration: 'none',
+                      color: '#FFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    Tải ảnh
+                  </a>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -182,8 +613,17 @@ export default function PhotoTryOnPage() {
             <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold)' }}>
               BƯỚC 2
             </span>
-            <span style={{ fontSize: '10px', background: '#ECFDF5', color: '#059669', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-              ✓ VAULT VERIFIED
+            <span
+              style={{
+                fontSize: '10px',
+                background: '#ECFDF5',
+                color: '#059669',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontWeight: 600,
+              }}
+            >
+              SẢN PHẨM HỢP LỆ
             </span>
           </div>
 
@@ -192,27 +632,109 @@ export default function PhotoTryOnPage() {
           </h2>
 
           {/* Item Card */}
-          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '16px', padding: '14px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '12px' }}>
-            <img src="https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=200&q=80" alt="Dress" style={{ width: '60px', height: '80px', borderRadius: '10px', objectFit: 'cover' }} />
-            <div>
-              <div style={{ fontSize: '10px', color: 'var(--color-gold)', fontWeight: 600 }}>Thanh Lịch Boutique ✓</div>
-              <div style={{ fontSize: '13px', fontWeight: 600, margin: '2px 0 4px 0' }}>Đầm Dạ Hội Lụa Satin Midnight...</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#FFF' }}>350.000 đ <small style={{ fontWeight: 400, fontSize: '10px', color: '#A3A3A3' }}>/ ngày</small></div>
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              borderRadius: '16px',
+              padding: '14px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              gap: '12px',
+            }}
+          >
+            <img
+              src={garmentImageUrl}
+              alt={product?.name}
+              style={{
+                width: '64px',
+                height: '84px',
+                borderRadius: '10px',
+                objectFit: 'cover',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '10px', color: 'var(--color-gold)', fontWeight: 600 }}>
+                {product?.brand || 'Vestora Atelier'}
+              </div>
+              <div
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  margin: '3px 0',
+                  lineHeight: 1.3,
+                  maxHeight: '36px',
+                  overflow: 'hidden',
+                }}
+              >
+                {product?.name || 'Trang phục cao cấp'}
+              </div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#FFF' }}>
+                {(product?.rentalPricePerDay || 350000).toLocaleString('vi-VN')} đ{' '}
+                <small style={{ fontWeight: 400, fontSize: '10px', color: '#A3A3A3' }}>/ ngày</small>
+              </div>
+            </div>
+          </div>
+
+          {/* Category Picker */}
+          <div>
+            <div
+              style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                letterSpacing: '0.8px',
+                marginBottom: '8px',
+                color: '#CCC',
+              }}
+            >
+              LOẠI TRANG PHỤC (AI CLASSIFICATION)
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {[
+                { id: 'dresses', label: 'Đầm / Cả bộ' },
+                { id: 'upper_body', label: 'Áo / Thân trên' },
+                { id: 'lower_body', label: 'Quần / Chân váy' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`category-pill-btn ${category === c.id ? 'active' : ''}`}
+                  onClick={() => setCategory(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Size picker */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '8px' }}>
-              <span>CHỌN KÍCH CỠ CHUẨN</span>
-              <span style={{ color: '#34C759', fontWeight: 600 }}>✓ Độ vừa vặn: Hoàn hảo (98%)</span>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '11px',
+                marginBottom: '8px',
+              }}
+            >
+              <span>CHỌN KÍCH CỠ</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
               {['XS', 'S', 'M', 'L', 'XL'].map((s) => (
                 <button
                   key={s}
+                  type="button"
                   className={`size-btn ${selectedSize === s ? 'active' : ''}`}
-                  style={{ height: '36px', fontSize: '11px', background: selectedSize === s ? 'var(--color-gold)' : 'rgba(255,255,255,0.05)', color: selectedSize === s ? '#000' : '#FFF', border: 'none' }}
+                  style={{
+                    height: '36px',
+                    fontSize: '11px',
+                    background: selectedSize === s ? 'var(--color-gold)' : 'rgba(255,255,255,0.05)',
+                    color: selectedSize === s ? '#000' : '#FFF',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontWeight: selectedSize === s ? 700 : 400,
+                  }}
                   onClick={() => setSelectedSize(s)}
                 >
                   {s}
@@ -221,42 +743,60 @@ export default function PhotoTryOnPage() {
             </div>
           </div>
 
-          {/* Color picker */}
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.8px', marginBottom: '8px' }}>
-              MÀU SẮC DẠ TIỆC: <span style={{ color: 'var(--color-gold)' }}>Midnight Navy</span>
-            </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {colors.map((c) => (
-                <div
-                  key={c.name}
-                  className={`color-swatch-circle ${selectedColor === c.hex ? 'active' : ''}`}
-                  style={{ background: c.hex }}
-                  onClick={() => setSelectedColor(c.hex)}
-                  title={c.name}
-                />
-              ))}
-            </div>
+          {/* Auto crop checkbox */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '11px',
+              color: '#A3A3A3',
+              background: 'rgba(255,255,255,0.03)',
+              padding: '8px 12px',
+              borderRadius: '8px',
+            }}
+          >
+            <input
+              type="checkbox"
+              id="autoCropCheck"
+              checked={autoCrop}
+              onChange={(e) => setAutoCrop(e.target.checked)}
+              style={{ accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+            />
+            <label htmlFor="autoCropCheck" style={{ cursor: 'pointer' }}>
+              Tự động cắt tỷ lệ 3:4 nếu ảnh người mẫu không chuẩn
+            </label>
           </div>
 
-          {/* Accessories Suggestion */}
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.8px', marginBottom: '8px' }}>
-              PHỤ KIỆN GỢI Ý ĐI KÈM
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '10px', fontSize: '10px', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>
-                👜 Túi Mini Kelly (+120k/ngày)
-              </div>
-              <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '10px', fontSize: '10px', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>
-                👠 Giày Gót Nhọn (+90k/ngày)
-              </div>
-            </div>
-          </div>
+          {/* AI Trigger Button */}
+          <button
+            type="button"
+            className="btn-generate-ai"
+            onClick={handleGenerateTryOn}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <div className="tryon-spinner" />
+                <span>ĐANG XỬ LÝ GHÉP ĐỒ AI...</span>
+              </>
+            ) : (
+              <span>BẮT ĐẦU GHÉP ĐỒ AI</span>
+            )}
+          </button>
 
           {/* Security note */}
-          <div style={{ fontSize: '10px', color: '#A3A3A3', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            🔒 Bảo mật sinh trắc học cá nhân theo chuẩn mã hoá 256-bit atelier.
+          <div
+            style={{
+              fontSize: '10px',
+              color: '#A3A3A3',
+              background: 'rgba(255,255,255,0.02)',
+              padding: '10px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255,255,255,0.05)',
+            }}
+          >
+            Bảo mật sinh trắc học theo chuẩn mã hoá 256-bit. Ảnh cá nhân được lưu an toàn và chỉ dùng để mô phỏng trang phục.
           </div>
         </div>
       </div>
@@ -265,32 +805,47 @@ export default function PhotoTryOnPage() {
       <footer className="bottom-action-bar">
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
           <div>
-            <span style={{ fontSize: '11px', color: '#A3A3A3' }}>Thời gian thuê: </span>
+            <span style={{ fontSize: '11px', color: '#A3A3A3' }}>Thời gian thuê gợi ý: </span>
             <strong style={{ fontSize: '14px', color: '#FFF' }}>3 Ngày</strong>
           </div>
           <div style={{ borderLeft: '1px solid rgba(255,255,255,0.2)', paddingLeft: '24px' }}>
-            <span style={{ fontSize: '11px', color: '#34C759' }}>Tổng cọc & thuê: </span>
-            <strong style={{ fontSize: '18px', color: 'var(--color-gold)' }}>1.750.000 đ</strong>
+            <span style={{ fontSize: '11px', color: '#34C759' }}>Giá thuê dự kiến: </span>
+            <strong style={{ fontSize: '18px', color: 'var(--color-gold)' }}>
+              {(product?.rentalPricePer3Days || (product?.rentalPricePerDay ? product.rentalPricePerDay * 3 : 1050000)).toLocaleString('vi-VN')} đ
+            </strong>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button className="btn-secondary" onClick={() => alert('Đã lưu outfit vào Tủ Đồ Ảo!')}>
-            🔖 LƯU VÀO TỦ ĐỒ
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              if (resultImage) {
+                alert('Đã lưu kết quả thử đồ AI vào Tủ Đồ Ảo của bạn!');
+              } else {
+                alert('Vui lòng bấm "Bắt đầu ghép đồ AI" để tạo trang phục thử trước khi lưu!');
+              }
+            }}
+          >
+            Lưu vào tủ đồ
           </button>
           <button
+            type="button"
             className="btn-primary"
             style={{ padding: '12px 28px' }}
             onClick={() => {
-              alert('Đã thêm sản phẩm đã thử vào giỏ hàng!');
-              navigate('/cart');
+              if (product?._id && product._id !== 'sample-001') {
+                navigate(`/product/${product._id}`);
+              } else {
+                navigate('/catalog');
+              }
             }}
           >
-            🛒 THÊM VÀO GIỎ & ĐẶT THUÊ
+            Đặt thuê sản phẩm này
           </button>
         </div>
       </footer>
     </div>
   );
 }
-

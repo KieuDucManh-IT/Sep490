@@ -14,6 +14,7 @@ import apiRoutes from "./src/routes/apiRoutes.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
 import conversationRoutes from "./src/routes/conversationRoutes.js";
+import tryOnRoutes from "./src/routes/tryOnRoutes.js";
 import { initSocket } from "./src/socket/index.js";
 import http from "http";
 import User from "./src/models/system/User.js";
@@ -94,6 +95,7 @@ app.use("/api/ops/shops", shopRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/conversations", conversationRoutes);
+app.use("/api/try-on", tryOnRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api", apiRoutes);
 

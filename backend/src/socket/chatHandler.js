@@ -135,6 +135,12 @@ export default function registerChatHandlers(io, socket) {
         readByUserId: userId,
         readAt: result.readAt,
       });
+
+      // Báo cho chính User này (trên các tab/navbar) cập nhật lại badge thông báo
+      io.to(`user:${userId}`).emit('unread:update', {
+        conversationId,
+        readByUserId: userId,
+      });
     } catch (err) {
       console.error('Lỗi khi cập nhật đã đọc qua Socket:', err.message);
     }

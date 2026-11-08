@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -20,7 +20,6 @@ import UserProfilePage from './pages/customer/UserProfilePage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
 import WebcamTryOnPage from './pages/customer/WebcamTryOnPage';
 import AboutPage from './pages/customer/AboutPage';
-import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
 import WardrobePage from './pages/customer/WardrobePage';
@@ -97,12 +96,11 @@ function App() {
         <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/blog" element={<BlogPage />} />
-        <Route path="/blog/:id" element={<BlogPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
         <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
+        <Route path="/stylist" element={<StylistPage />} />
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

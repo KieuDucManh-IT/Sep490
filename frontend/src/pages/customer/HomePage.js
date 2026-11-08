@@ -643,7 +643,12 @@ export default function HomePage() {
 
             <div className="showroom-content-grid">
               {/* Illustrated Map Box */}
-              <div className="interactive-map-card">
+              <div
+                className="interactive-map-card"
+                onClick={() => navigate('/map')}
+                style={{ cursor: 'pointer' }}
+                title="Nhấn để mở bản đồ chi tiết"
+              >
                 <div className="map-artistic-canvas">
                   <div className="map-river"></div>
                   <div className="map-road road-1"></div>
@@ -668,13 +673,19 @@ export default function HomePage() {
                 <div className="map-overlay-controls">
                   <button
                     className="btn-map-expand"
-                    onClick={() => navigate('/map')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate('/map');
+                    }}
                   >
                     <i className="fa-regular fa-map map-btn-icon"></i> Xem bản đồ lớn
                   </button>
                   <button
                     className="btn-map-locate"
-                    onClick={() => navigate('/map')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate('/map');
+                    }}
                     title="Vị trí hiện tại"
                   >
                     <i className="fa-solid fa-crosshairs"></i>

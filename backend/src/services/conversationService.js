@@ -433,13 +433,12 @@ export const listConversations = async ({ userId, userRole, status, search, page
   const r = cleanRole(userRole);
   let filter = {};
 
-  if (r === 'customer') {
-    filter.customerId = userId;
-  } else if (r === 'branchmanager' || r === 'owner' || r === 'shopowner') {
+  if (r === 'branchmanager' || r === 'owner' || r === 'shopowner') {
     const shopIds = await getUserManagedShopIds(userId, userRole);
     filter.shopId = { $in: shopIds };
   } else {
-    return { conversations: [], total: 0, page, totalPages: 0 };
+    // Mọi vai trò khác (customer, warehouse_staff, operation_staff, v.v...) đều lấy các cuộc hội thoại mà họ tham gia
+    filter.$or = [{ customerId: userId }, { participants: userId }];
   }
 
   if (status) {
@@ -526,8 +525,9 @@ export const getConversationById = async ({ conversationId, userId, userRole }) 
   const isShopOwner = String(conv.shopId?.ownerId) === String(userId);
   const isStaffAllowed = await isUserShopManagerOrOwner(userId, conv.shopId?._id || conv.shopId);
   const isOwnerRole = ['owner', 'shopowner'].includes(r);
+  const isParticipant = Array.isArray(conv.participants) && conv.participants.some((p) => String(p?._id || p) === String(userId));
 
-  if (!isCustomerOwner && !isShopManager && !isShopOwner && !isStaffAllowed && !isOwnerRole) {
+  if (!isCustomerOwner && !isShopManager && !isShopOwner && !isStaffAllowed && !isOwnerRole && !isParticipant) {
     const err = new Error('Bạn không có quyền truy cập cuộc trò chuyện này');
     err.status = 403;
     throw err;
@@ -643,8 +643,9 @@ export const sendMessage = async ({
   const isOwner = String(conv.shopId?.ownerId) === String(senderId);
   const isStaffAllowed = await isUserShopManagerOrOwner(senderId, conv.shopId?._id || conv.shopId);
   const isOwnerRole = ['owner', 'shopowner'].includes(r);
+  const isParticipant = Array.isArray(conv.participants) && conv.participants.some((p) => String(p?._id || p) === String(senderId));
 
-  if (!isCustomer && !isManager && !isOwner && !isStaffAllowed && !isOwnerRole) {
+  if (!isCustomer && !isManager && !isOwner && !isStaffAllowed && !isOwnerRole && !isParticipant) {
     const err = new Error('Bạn không có quyền gửi tin nhắn trong cuộc trò chuyện này');
     err.status = 403;
     throw err;
@@ -798,6 +799,49 @@ export const updateConversationStatus = async ({ conversationId, userId, userRol
   return await populateConversation(conversationId);
 };
 
+/**
+ * 8. Lấy tổng số tin nhắn chưa đọc của User (cho badge thông báo trên thanh nav)
+ */
+export const getTotalUnreadCount = async ({ userId, userRole }) => {
+  const r = cleanRole(userRole);
+  if (r === 'admin') {
+    return { unreadCount: 0, unreadConversations: 0 };
+  }
+
+  let filter = {};
+  if (r === 'branchmanager' || r === 'owner' || r === 'shopowner') {
+    const shopIds = await getUserManagedShopIds(userId, userRole);
+    filter.shopId = { $in: shopIds };
+  } else {
+    filter.$or = [{ customerId: userId }, { participants: userId }];
+  }
+
+  filter.status = { $ne: 'ARCHIVED' };
+
+  const convs = await Conversation.find(filter).select('unreadCounts').lean();
+
+  let unreadCount = 0;
+  let unreadConversations = 0;
+  const uStr = String(userId);
+
+  for (const conv of convs) {
+    if (!conv.unreadCounts) continue;
+    let count = 0;
+    if (conv.unreadCounts instanceof Map) {
+      count = conv.unreadCounts.get(uStr) || 0;
+    } else if (typeof conv.unreadCounts === 'object') {
+      count = conv.unreadCounts[uStr] || 0;
+    }
+
+    const numericCount = Number(count) || 0;
+    if (numericCount > 0) {
+      unreadCount += numericCount;
+      unreadConversations += 1;
+    }
+  }
+
+  return { unreadCount, unreadConversations };
+};
 
 const populateConversation = async (conversationId) => {
   return await Conversation.findById(conversationId)

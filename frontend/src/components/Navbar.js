@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import NavbarLocationWidget from "./NavbarLocationWidget";
+import chatApi from "../services/chatApi";
+import socketService from "../services/socket";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
@@ -9,12 +11,70 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { user, loading, authError, logout, refreshUser } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const dropdownRef = useRef(null);
 
   const isActive = (path) => (location.pathname === path ? "active" : "");
   const avatarUrl = user?.avatar || "";
   const displayName = user?.fullName || "";
   const avatarInitial = displayName ? displayName.trim().charAt(0).toUpperCase() : "N";
+
+  // Lấy tổng số tin nhắn chưa đọc từ Backend
+  const fetchUnreadChatCount = useCallback(async () => {
+    if (!user) {
+      setUnreadChatCount(0);
+      return;
+    }
+    const r = String(user.Role || user.role || '').toLowerCase();
+    if (r.includes('admin')) {
+      setUnreadChatCount(0);
+      return;
+    }
+
+    try {
+      const res = await chatApi.getUnreadCount();
+      const count = res?.data?.unreadCount ?? res?.unreadCount ?? 0;
+      setUnreadChatCount(Number(count) || 0);
+    } catch (_) {
+      // Giữ nguyên badge nếu mạng gián đoạn
+    }
+  }, [user]);
+
+  // Cập nhật khi chuyển trang hoặc khi user đăng nhập/đăng xuất
+  useEffect(() => {
+    fetchUnreadChatCount();
+  }, [fetchUnreadChatCount, location.pathname]);
+
+  // Lắng nghe realtime từ Socket.IO và sự kiện trong tab
+  useEffect(() => {
+    if (!user) return;
+    const r = String(user.Role || user.role || '').toLowerCase();
+    if (r.includes('admin')) return;
+
+    const socket = socketService.getSocket();
+
+    const handleUpdate = () => {
+      fetchUnreadChatCount();
+    };
+
+    socket.on('conversation:updated', handleUpdate);
+    socket.on('unread:update', handleUpdate);
+    socket.on('message:new', handleUpdate);
+    socket.on('connect', handleUpdate);
+    window.addEventListener('vestora:chat:unread_changed', handleUpdate);
+
+    // Kiểm tra định kỳ 30 giây
+    const interval = setInterval(fetchUnreadChatCount, 30000);
+
+    return () => {
+      socket.off('conversation:updated', handleUpdate);
+      socket.off('unread:update', handleUpdate);
+      socket.off('message:new', handleUpdate);
+      socket.off('connect', handleUpdate);
+      window.removeEventListener('vestora:chat:unread_changed', handleUpdate);
+      clearInterval(interval);
+    };
+  }, [user, fetchUnreadChatCount]);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -78,11 +138,6 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Blog VESTORA */}
-          <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
-            Blog VESTORA
-          </Link>
-
           {/* Liên Hệ (Gồm Liên hệ, Về VESTORA và Chính Sách) */}
           <div className="nav-dropdown-item">
             <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
@@ -131,11 +186,6 @@ export default function Navbar() {
           {/* Quick Location Picker */}
           <NavbarLocationWidget />
 
-          {/* Search Icon */}
-          <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
-            <i className="fa-solid fa-magnifying-glass"></i>
-          </Link>
-
           {/* Favorites Heart Icon (Sản phẩm yêu thích) */}
           <Link to="/favorites" className={`navbar-icon-btn navbar-fav-btn ${isActive('/favorites')}`} title="Sản phẩm yêu thích" aria-label="Sản phẩm yêu thích">
             <i className="fa-regular fa-heart"></i>
@@ -150,11 +200,16 @@ export default function Navbar() {
           {user && (
             <Link
               to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
-              className={`navbar-icon-btn ${isActive('/chat') || isActive('/branch/chat') ? 'active' : ''}`}
-              title="Tin nhắn tư vấn"
-              aria-label="Tin nhắn tư vấn"
+              className={`navbar-icon-btn navbar-chat-btn ${isActive('/chat') || isActive('/branch/chat') ? 'active' : ''}`}
+              title={unreadChatCount > 0 ? `Tin nhắn tư vấn (${unreadChatCount} tin chưa đọc)` : 'Tin nhắn tư vấn'}
+              aria-label={unreadChatCount > 0 ? `Tin nhắn tư vấn (${unreadChatCount} tin chưa đọc)` : 'Tin nhắn tư vấn'}
             >
               <i className="fa-regular fa-comment-dots"></i>
+              {unreadChatCount > 0 && (
+                <span className="chat-badge-count" aria-hidden="true">
+                  {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                </span>
+              )}
             </Link>
           )}
 
@@ -214,10 +269,17 @@ export default function Navbar() {
                   </Link>
                   <Link
                     to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
-                    className="menu-item"
+                    className="menu-item menu-item-chat"
                     onClick={() => setDropdownOpen(false)}
                   >
-                    <i className="fa-regular fa-comment-dots menu-icon"></i> Tin nhắn tư vấn
+                    <span className="menu-item-chat-left">
+                      <i className="fa-regular fa-comment-dots menu-icon"></i> Tin nhắn tư vấn
+                    </span>
+                    {unreadChatCount > 0 && (
+                      <span className="dropdown-chat-badge">
+                        {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                      </span>
+                    )}
                   </Link>
                   <Link
                     to="/favorites"

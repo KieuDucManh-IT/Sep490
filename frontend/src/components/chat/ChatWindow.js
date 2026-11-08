@@ -43,6 +43,7 @@ export default function ChatWindow({
       // Đánh dấu đã đọc ngay khi mở cuộc trò chuyện
       await chatApi.markAsRead(convId);
       socketService.emitMarkRead(convId);
+      window.dispatchEvent(new CustomEvent('vestora:chat:unread_changed'));
     } catch (err) {
       console.error('Lỗi tải tin nhắn:', err);
     } finally {
@@ -100,6 +101,7 @@ export default function ChatWindow({
         const senderId = message.senderId?._id || message.senderId;
         if (String(senderId) !== String(currentUserId)) {
           socketService.emitMarkRead(conversationId);
+          window.dispatchEvent(new CustomEvent('vestora:chat:unread_changed'));
         }
 
         onConversationUpdated?.(conversationId, message);

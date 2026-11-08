@@ -247,3 +247,27 @@ export const updateConversationStatusHttp = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/conversations/unread-count
+ * Lấy tổng số tin nhắn chưa đọc của người dùng hiện tại
+ */
+export const getUnreadCountHttp = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const userRole = req.user.Role || req.user.role;
+
+    const data = await conversationService.getTotalUnreadCount({
+      userId,
+      userRole,
+    });
+
+    return res.status(200).json({
+      success: true,
+      ...data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+

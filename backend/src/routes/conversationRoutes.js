@@ -30,6 +30,9 @@ router.post('/', conversationController.createOrGetConversation);
 // 2. Lấy danh sách cuộc trò chuyện theo phân quyền (Customer / Shop Manager)
 router.get('/', conversationController.getConversations);
 
+// Lấy tổng số tin nhắn chưa đọc của người dùng (Đặt trước :id)
+router.get('/unread-count', conversationController.getUnreadCountHttp);
+
 // 3. Lấy thông tin chi tiết cuộc trò chuyện
 router.get('/:id', conversationController.getConversationDetail);
 

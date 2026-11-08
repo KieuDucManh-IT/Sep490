@@ -52,6 +52,7 @@ export const getProducts = async (req, res, next) => {
       query.$and = query.$and || [];
       if (type === 'rental') {
         query.$and.push({
+          tag: { $nin: ['sale', 'SALE'] },
           $or: [
             { tag: { $in: ['rental', 'both', 'RENTAL', 'BOTH'] } },
             { rentalPricePerDay: { $gt: 0 } },
@@ -60,6 +61,7 @@ export const getProducts = async (req, res, next) => {
         });
       } else if (type === 'sale') {
         query.$and.push({
+          tag: { $nin: ['rental', 'RENTAL'] },
           $or: [
             { tag: { $in: ['sale', 'both', 'SALE', 'BOTH'] } },
             { salePrice: { $gt: 0 } },
@@ -118,9 +120,16 @@ export const getProducts = async (req, res, next) => {
         return { [field]: cond };
       };
 
-      priceConditions.push(makeRange('rentalPricePer3Days'));
-      priceConditions.push(makeRange('rentalPricePerDay'));
-      priceConditions.push(makeRange('salePrice'));
+      if (type === 'sale') {
+        priceConditions.push(makeRange('salePrice'));
+      } else if (type === 'rental') {
+        priceConditions.push(makeRange('rentalPricePer3Days'));
+        priceConditions.push(makeRange('rentalPricePerDay'));
+      } else {
+        priceConditions.push(makeRange('rentalPricePer3Days'));
+        priceConditions.push(makeRange('rentalPricePerDay'));
+        priceConditions.push(makeRange('salePrice'));
+      }
 
       query.$and = query.$and || [];
       query.$and.push({ $or: priceConditions });

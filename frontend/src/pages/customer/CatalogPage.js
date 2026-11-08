@@ -71,6 +71,15 @@ export default function CatalogPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Đồng bộ activeTab khi query param trên URL thay đổi (VD: bấm "Thuê trang phục" hoặc "Mua bán đồ cũ" từ Navbar)
+  useEffect(() => {
+    const typeFromUrl = urlParams.get('type');
+    if (typeFromUrl && ['rental', 'sale', 'all'].includes(typeFromUrl)) {
+      setActiveTab(typeFromUrl);
+      setCurrentPage(1);
+    }
+  }, [urlParams]);
+
   // Load filter metadata from GET /api/products/meta/filters
   useEffect(() => {
     let isMounted = true;
@@ -109,18 +118,29 @@ export default function CatalogPage() {
       if (maxPrice < 10000000) params.maxPrice = maxPrice;
 
       const res = await productService.getProducts(params);
+      let list = [];
       if (res && res.success && Array.isArray(res.data)) {
-        setProducts(res.data);
+        list = res.data;
         if (res.pagination) {
           setPagination(res.pagination);
         }
       } else if (Array.isArray(res)) {
-        setProducts(res);
+        list = res;
         setPagination({ total: res.length, page: 1, totalPages: 1, limit: 12 });
       } else {
         setProducts([]);
         setPagination({ total: 0, page: 1, totalPages: 1, limit: 12 });
+        return;
       }
+
+      // Safeguard: Đảm bảo khi chọn tab 'sale', tuyệt đối không hiển thị sản phẩm thuần thuê (tag === 'rental')
+      if (activeTab === 'sale') {
+        list = list.filter((item) => item.tag !== 'rental');
+      } else if (activeTab === 'rental') {
+        list = list.filter((item) => item.tag !== 'sale');
+      }
+
+      setProducts(list);
     } catch (err) {
       console.error('Lỗi khi gọi API /api/products:', err);
       setErrorMsg(err.message || 'Không thể kết nối đến máy chủ backend.');
@@ -359,6 +379,22 @@ export default function CatalogPage() {
         {/* Active Filter Chips */}
         {hasActiveFilters && (
           <div className="catalog-active-chips-row">
+            {activeTab !== 'all' && (
+              <span className="catalog-chip-pill" style={{ borderColor: '#5b6e4e', color: '#5b6e4e', background: '#f5f7f3' }}>
+                Hình thức: {activeTab === 'rental' ? 'Cho thuê' : 'Mua đồ cũ'}
+                <button
+                  className="catalog-chip-remove"
+                  onClick={() => {
+                    setActiveTab('all');
+                    setCurrentPage(1);
+                  }}
+                  aria-label="Xóa bộ lọc hình thức"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </span>
+            )}
+
             {selectedCategories.map((cat) => (
               <span key={cat} className="catalog-chip-pill">
                 {cat}
@@ -712,11 +748,23 @@ export default function CatalogPage() {
           ) : (
             <div className="catalog-grid-4cols">
               {products.map((item) => {
-                const isRental =
-                  item.tag === 'rental' ||
-                  item.tag === 'rental' ||
-                  (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) ||
-                  (item.rentalPricePerDay && item.rentalPricePerDay > 0);
+                // Xác định sản phẩm là đồ Thuê hay Bán chuẩn xác theo tab đang chọn và tag sản phẩm
+                let isRental = false;
+                if (activeTab === 'rental') {
+                  isRental = true;
+                } else if (activeTab === 'sale') {
+                  isRental = false;
+                } else {
+                  // activeTab === 'all'
+                  if (item.tag === 'sale') {
+                    isRental = false;
+                  } else if (item.tag === 'rental') {
+                    isRental = true;
+                  } else {
+                    const hasRentalPrice = (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) || (item.rentalPricePerDay && item.rentalPricePerDay > 0);
+                    isRental = hasRentalPrice;
+                  }
+                }
 
                 const priceNumber = isRental
                   ? item.rentalPricePer3Days || (item.rentalPricePerDay ? item.rentalPricePerDay * 3 : 0)

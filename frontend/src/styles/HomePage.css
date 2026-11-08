@@ -692,8 +692,9 @@
 /* Left Column: Showroom */
 .showroom-content-grid {
   display: grid;
-  grid-template-columns: 1fr 1.15fr;
+  grid-template-columns: minmax(190px, 1fr) minmax(0, 1.4fr);
   gap: 14px;
+  align-items: stretch;
 }
 
 .interactive-map-card {
@@ -702,7 +703,10 @@
   border-radius: 12px;
   overflow: hidden;
   min-height: 220px;
+  min-width: 190px;
   border: 1px solid #d9e5e7;
+  display: flex;
+  flex-direction: column;
 }
 
 .map-artistic-canvas {
@@ -774,51 +778,73 @@
 
 .map-overlay-controls {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
-  right: 10px;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+  z-index: 2;
 }
 
 .btn-map-expand {
   background: #ffffff;
   border: 1px solid #d0d7de;
   border-radius: 8px;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 5px 9px;
   color: #333333;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.btn-map-expand:hover {
+  background: #f8fafc;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 .map-btn-icon {
-  font-size: 13px;
+  font-size: 12px;
   color: #555555;
 }
 
 .btn-map-locate {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 8px;
   background: #ffffff;
   border: 1px solid #d0d7de;
   color: #333333;
-  font-size: 14px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.btn-map-locate:hover {
+  background: #f8fafc;
+  border-color: #5b6e4e;
+  color: #5b6e4e;
 }
 
 .showrooms-vertical-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .showroom-item-card {
@@ -831,6 +857,7 @@
   background: #fdfcfb;
   cursor: pointer;
   transition: all 0.2s ease;
+  min-width: 0;
 }
 
 .showroom-item-card:hover {
@@ -1276,6 +1303,13 @@
   }
   .sustain-media-col {
     display: none;
+  }
+  .showroom-content-grid {
+    grid-template-columns: 1fr;
+  }
+  .interactive-map-card {
+    min-height: 150px;
+    height: 150px;
   }
 }
 

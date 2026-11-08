@@ -18,6 +18,13 @@ export const chatApi = {
   },
 
   /**
+   * Lấy tổng số tin nhắn chưa đọc của người dùng
+   */
+  getUnreadCount: async () => {
+    return await apiClient.get('/conversations/unread-count');
+  },
+
+  /**
    * Lấy chi tiết một cuộc trò chuyện
    */
   getConversationDetail: async (conversationId) => {

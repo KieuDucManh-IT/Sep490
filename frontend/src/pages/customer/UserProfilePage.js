@@ -891,6 +891,18 @@ export default function UserProfilePage() {
             <button
               type="button"
               className="profile-nav-btn"
+              onClick={() => navigate("/rental-orders?tab=sale")}
+              disabled={accountBusy}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <ShoppingBag size={15} color="#C5A880" /> Đơn Mua Sắm Của Tôi
+              </span>
+              <ChevronRight size={14} color="#A3A3A3" />
+            </button>
+
+            <button
+              type="button"
+              className="profile-nav-btn"
               onClick={() => navigate("/wallet")}
               disabled={accountBusy}
             >

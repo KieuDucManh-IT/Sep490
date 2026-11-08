@@ -290,3 +290,62 @@ export const checkRentalAvailability = async (
   };
 };
 
+/**
+ * Kiểm tra khả dụng tồn kho bán của biến thể tại một chi nhánh
+ * @param {string|mongoose.Types.ObjectId} variantId
+ * @param {string|mongoose.Types.ObjectId} locationId
+ * @param {number} requestedQty
+ * @returns {Promise<{ available: boolean, availableQty: number, message: string }>}
+ */
+export const checkSalesAvailability = async (
+  variantId,
+  locationId,
+  requestedQty = 1
+) => {
+  if (!variantId || !locationId) {
+    return {
+      available: false,
+      availableQty: 0,
+      message: 'Thiếu thông tin biến thể hoặc chi nhánh',
+    };
+  }
+
+  // 1. Kiểm tra số dư khả dụng từ InventoryBalance
+  const balances = await InventoryBalance.find({
+    variantId,
+    locationId,
+  }).lean();
+
+  let totalAvailable = 0;
+  for (const b of balances) {
+    const avail = Math.max(
+      0,
+      (b.quantityOnHand || 0) -
+        (b.quantityReserved || 0) -
+        (b.quantityUnavailable || 0)
+    );
+    totalAvailable += avail;
+  }
+
+  // 2. Nếu balances chưa có, fallback kiểm tra số lượng hiện vật thực tế InventoryItem
+  if (totalAvailable < requestedQty) {
+    const availableItemsCount = await InventoryItem.countDocuments({
+      variantId,
+      locationId,
+      status: 'available',
+      condition: { $nin: ['damaged', 'unrepairable', 'missing'] },
+    });
+    totalAvailable = Math.max(totalAvailable, availableItemsCount);
+  }
+
+  const isAvailable = totalAvailable >= requestedQty;
+  return {
+    available: isAvailable,
+    availableQty: totalAvailable,
+    message: isAvailable
+      ? 'Còn hàng khả dụng để mua'
+      : `Số lượng khả dụng tại chi nhánh (${totalAvailable}) không đủ đáp ứng yêu cầu mua (${requestedQty})`,
+  };
+};
+
+

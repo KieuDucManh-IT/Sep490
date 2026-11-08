@@ -209,17 +209,39 @@ export default function ProductDetailPage() {
     return list;
   }, [product]);
 
-  // Ép kiểu Boolean chuẩn xác 100%, không bao giờ trả về số 0
-  const isRental = useMemo(() => {
-    if (!product) return true;
-    return Boolean(
-      product.tag === 'rental' ||
-      product.tag === 'rental' ||
-      product.tag === 'both' ||
+  // Phân loại tag sản phẩm: 'sale' | 'rental' | 'both'
+  const productTag = useMemo(() => {
+    if (!product) return 'rental';
+    if (product.tag === 'both') return 'both';
+    if (product.tag === 'sale') return 'sale';
+    if (product.tag === 'rental') return 'rental';
+    const hasRental = Boolean(
+      Number(product.rentalPricePerDay) > 0 ||
       Number(product.rentalPricePer3Days) > 0 ||
-      Number(product.rentalPricePerDay) > 0
+      Boolean(product.rentalPricing)
     );
+    const hasSale = Boolean(Number(product.salePrice) > 0);
+    if (hasRental && hasSale) return 'both';
+    if (hasSale && !hasRental) return 'sale';
+    return 'rental';
   }, [product]);
+
+  const canRent = productTag === 'rental' || productTag === 'both';
+  const canBuy = productTag === 'sale' || productTag === 'both';
+
+  // Mode giao dịch được chọn: 'rental' hoặc 'sale'
+  const [selectedMode, setSelectedMode] = useState('rental');
+
+  useEffect(() => {
+    if (!product) return;
+    if (productTag === 'sale' || (!canRent && canBuy)) {
+      setSelectedMode('sale');
+    } else {
+      setSelectedMode('rental');
+    }
+  }, [product, productTag, canRent, canBuy]);
+
+  const isRental = selectedMode === 'rental';
 
   // Giá thuê mặc định 1 ngày
   const rentalPricePerDay = useMemo(() => {
@@ -622,8 +644,8 @@ export default function ProductDetailPage() {
           <Home size={14} /> Trang chủ
         </Link>
         <span className="pdetail-breadcrumb-separator">&gt;</span>
-        <Link to="/catalog">
-          {isRental ? 'Thuê đồ' : 'Mua đồ cũ'}
+        <Link to={`/catalog?type=${productTag === 'sale' ? 'sale' : 'rental'}`}>
+          {productTag === 'sale' ? 'Mua sản phẩm' : productTag === 'both' ? 'Thuê & Mua' : 'Cho thuê'}
         </Link>
         <span className="pdetail-breadcrumb-separator">&gt;</span>
         <span className="pdetail-breadcrumb-current">
@@ -637,9 +659,19 @@ export default function ProductDetailPage() {
         <div className="pdetail-gallery-column">
           <div className="pdetail-main-stage">
             {/* Top-Left Badge */}
-            <div className="pdetail-badge-top-left">
-              <Sparkles size={12} color="#C5A880" />
-              <span>{isRental ? 'Thuê đồ' : 'Mua đồ cũ'}</span>
+            <div className={`pdetail-badge-top-left badge-${productTag === 'sale' ? 'sale' : productTag === 'both' ? 'both' : 'rental'}`}>
+              {productTag === 'sale' ? (
+                <ShoppingBag size={13} color="#b45309" />
+              ) : (
+                <Sparkles size={13} color={productTag === 'both' ? '#6d28d9' : '#C5A880'} />
+              )}
+              <span>
+                {productTag === 'sale'
+                  ? 'Mua sản phẩm'
+                  : productTag === 'both'
+                  ? 'Thuê & Mua'
+                  : 'Cho thuê'}
+              </span>
             </div>
 
             {/* Top-Right Favorite Button */}
@@ -722,6 +754,71 @@ export default function ProductDetailPage() {
               {isRental ? 'Đã cho thuê 2.5k+ lần' : 'Đã bán 860+ lượt'}
             </span>
           </div>
+
+          {/* Transaction Mode Switcher when product supports both Renting & Buying */}
+          {canRent && canBuy && (
+            <div
+              className="pdetail-mode-switch"
+              style={{
+                display: 'flex',
+                gap: '8px',
+                background: '#F4F4F5',
+                padding: '4px',
+                borderRadius: '10px',
+                marginBottom: '16px',
+                border: '1px solid #E4E4E7',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedMode('rental')}
+                style={{
+                  flex: 1,
+                  padding: '9px 12px',
+                  border: 'none',
+                  borderRadius: '7px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  background: selectedMode === 'rental' ? '#171717' : 'transparent',
+                  color: selectedMode === 'rental' ? '#FAF9F6' : '#71717A',
+                  boxShadow: selectedMode === 'rental' ? '0 2px 6px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <Sparkles size={14} color={selectedMode === 'rental' ? '#C5A880' : 'currentColor'} />
+                <span>Cho thuê</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedMode('sale')}
+                style={{
+                  flex: 1,
+                  padding: '9px 12px',
+                  border: 'none',
+                  borderRadius: '7px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  background: selectedMode === 'sale' ? '#171717' : 'transparent',
+                  color: selectedMode === 'sale' ? '#FAF9F6' : '#71717A',
+                  boxShadow: selectedMode === 'sale' ? '0 2px 6px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <ShoppingBag size={14} color={selectedMode === 'sale' ? '#C5A880' : 'currentColor'} />
+                <span>Mua sản phẩm</span>
+              </button>
+            </div>
+          )}
 
           {/* Pricing Box - Tuyệt đối không còn hiển thị số 0 dư thừa */}
           <div className="pdetail-pricing-box">
@@ -811,16 +908,9 @@ export default function ProductDetailPage() {
 
               {/* Delivery / Date Picker Input */}
               {isRental ? (
-                <div className="pdetail-date-picker-box">
+                <div className="pdetail-shipping-badge" style={{ color: '#9c7148', borderColor: '#E5E0D8' }}>
                   <Calendar size={14} color="#9c7148" />
-                  <input
-                    type="date"
-                    min={todayStr}
-                    max={maxDateStr}
-                    value={startDate}
-                    onChange={(e) => handleStartDateChange(e.target.value)}
-                    title="Chọn ngày nhận đồ (Hôm nay hoặc tương lai)"
-                  />
+                  <span>Chọn ngày thuê ở lịch bên dưới</span>
                 </div>
               ) : (
                 <div className="pdetail-shipping-badge">
@@ -1638,8 +1728,21 @@ export default function ProductDetailPage() {
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 >
                   <div className="card-media-box">
-                    <span className="product-type-badge badge-rental" style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
-                      {item.tag === 'sale' ? 'Mua đồ cũ' : 'Thuê đồ'}
+                    <span
+                      className={`product-type-badge ${
+                        item.tag === 'sale'
+                          ? 'badge-sale'
+                          : item.tag === 'both'
+                          ? 'badge-both'
+                          : 'badge-rental'
+                      }`}
+                      style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
+                    >
+                      {item.tag === 'sale'
+                        ? 'Mua sản phẩm'
+                        : item.tag === 'both'
+                        ? 'Thuê & Mua'
+                        : 'Cho thuê'}
                     </span>
 
                     {itemImg ? (
@@ -1658,7 +1761,7 @@ export default function ProductDetailPage() {
 
                     <div className="card-pricing-line">
                       <span className="price-main">{formatVND(itemPrice)}</span>
-                      <span className="price-unit">/ 3 ngày</span>
+                      {item.tag !== 'sale' && <span className="price-unit">/ 3 ngày</span>}
                     </div>
                   </div>
                 </Link>

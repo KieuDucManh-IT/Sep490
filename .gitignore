@@ -10,7 +10,7 @@
 .agentignore
 .sdd/
 .agents/
-src/
+/src/
 slides/
 tests/
 plans/

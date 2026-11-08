@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import '../../styles/PhotoTryOn.css';
 import tryOnApi from '../../services/tryOnApi';
 import productService from '../../services/productService';
+import wardrobeApi from '../../services/wardrobeApi';
 
 const DEFAULT_SAMPLE_MODELS = [
   {
@@ -80,6 +81,8 @@ export default function PhotoTryOnPage() {
   const [showOriginal, setShowOriginal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [isSavingWardrobe, setIsSavingWardrobe] = useState(false);
+  const [lastSavedImageUrl, setLastSavedImageUrl] = useState('');
 
   // 1. Fetch sample models from server on mount
   useEffect(() => {
@@ -207,6 +210,7 @@ export default function PhotoTryOnPage() {
       if (response?.data?.resultImageUrl || response?.resultImageUrl) {
         const finalUrl = response.data?.resultImageUrl || response.resultImageUrl;
         setResultImage(finalUrl);
+        setLastSavedImageUrl(''); // Reset trạng thái lưu khi có ảnh ghép mới
         setShowOriginal(false);
         setSuccessMessage('Ghép trang phục AI thành công!');
       } else {
@@ -222,6 +226,47 @@ export default function PhotoTryOnPage() {
       clearTimeout(stepTimer2);
       setIsGenerating(false);
       setGenerationStep('');
+    }
+  };
+
+  // Lưu ảnh vừa thử kèm thông tin & link sản phẩm vào Tủ Đồ cá nhân
+  const handleSaveToWardrobe = async () => {
+    if (!resultImage) {
+      alert('Vui lòng bấm "BẮT ĐẦU GHÉP ĐỒ AI" để tạo ảnh thử trước khi lưu vào tủ đồ!');
+      return;
+    }
+
+    if (lastSavedImageUrl === resultImage) {
+      setSuccessMessage('Trang phục và ảnh thử này đã được lưu trong Tủ Đồ của bạn rồi!');
+      return;
+    }
+
+    setIsSavingWardrobe(true);
+    try {
+      const payload = {
+        productId: product?._id && product._id !== 'sample-001' ? product._id : null,
+        productCode: product?.productCode || '',
+        title: product?.name || 'Trang phục thử đồ AI',
+        image: garmentImageUrl,
+        tryOnImageUrl: resultImage,
+        category:
+          (Array.isArray(product?.category) ? product.category[0] : product?.category) ||
+          'Thời trang cao cấp',
+        price: product?.rentalPricePerDay || product?.salePrice || 350000,
+        priceUnit: product?.rentalPricePerDay ? '/ ngày' : '',
+        selectedSize: selectedSize || 'S',
+        aiNote: `Đã thử bằng AI IDM-VTON cho vóc dáng Size ${selectedSize}. Trang phục vừa vặn và giữ phom dáng chuẩn.`,
+        tags: ['tryon-history', 'ai-suggested'],
+      };
+
+      const res = await wardrobeApi.addToWardrobe(payload);
+      setLastSavedImageUrl(resultImage);
+      setSuccessMessage(res?.message || 'Đã lưu ảnh vừa thử và liên kết sản phẩm vào Tủ Đồ Cá Nhân thành công!');
+    } catch (err) {
+      console.error('Lỗi lưu vào tủ đồ:', err);
+      alert('Có lỗi khi lưu vào tủ đồ: ' + (err.message || 'Vui lòng thử lại sau'));
+    } finally {
+      setIsSavingWardrobe(false);
     }
   };
 
@@ -348,20 +393,38 @@ export default function PhotoTryOnPage() {
       {successMessage && (
         <div
           style={{
-            background: 'rgba(52, 199, 89, 0.15)',
+            background: 'rgba(52, 199, 89, 0.2)',
             border: '1px solid #34C759',
             color: '#86EFAC',
-            padding: '10px 24px',
+            padding: '12px 24px',
             fontSize: '13px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            backdropFilter: 'blur(8px)',
           }}
         >
-          <span>{successMessage}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <span>✓ {successMessage}</span>
+            <Link
+              to="/wardrobe"
+              style={{
+                color: '#FFF',
+                background: 'rgba(52, 199, 89, 0.25)',
+                border: '1px solid #34C759',
+                padding: '4px 12px',
+                borderRadius: '99px',
+                fontSize: '11px',
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              Mở Tủ Đồ xem ngay &rarr;
+            </Link>
+          </div>
           <button
             onClick={() => setSuccessMessage('')}
-            style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer' }}
+            style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', fontSize: '14px' }}
           >
             ✕
           </button>
@@ -820,15 +883,35 @@ export default function PhotoTryOnPage() {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => {
-              if (resultImage) {
-                alert('Đã lưu kết quả thử đồ AI vào Tủ Đồ Ảo của bạn!');
-              } else {
-                alert('Vui lòng bấm "Bắt đầu ghép đồ AI" để tạo trang phục thử trước khi lưu!');
-              }
+            onClick={handleSaveToWardrobe}
+            disabled={isSavingWardrobe || (Boolean(resultImage) && lastSavedImageUrl === resultImage)}
+            style={{
+              background:
+                resultImage && lastSavedImageUrl === resultImage
+                  ? 'rgba(52, 199, 89, 0.15)'
+                  : undefined,
+              borderColor:
+                resultImage && lastSavedImageUrl === resultImage ? '#34C759' : undefined,
+              color:
+                resultImage && lastSavedImageUrl === resultImage ? '#86EFAC' : '#FFF',
+              cursor:
+                resultImage && lastSavedImageUrl === resultImage ? 'default' : 'pointer',
+              opacity: isSavingWardrobe ? 0.7 : 1,
             }}
           >
-            Lưu vào tủ đồ
+            {isSavingWardrobe
+              ? 'Đang lưu vào tủ đồ...'
+              : resultImage && lastSavedImageUrl === resultImage
+                ? '✓ Đã lưu vào tủ đồ'
+                : 'Lưu vào tủ đồ'}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ fontSize: '11px', padding: '10px 18px' }}
+            onClick={() => navigate('/wardrobe')}
+          >
+            Xem tủ đồ
           </button>
           <button
             type="button"

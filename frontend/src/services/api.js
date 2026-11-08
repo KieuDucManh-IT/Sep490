@@ -24,12 +24,6 @@ apiClient.interceptors.request.use(
         config.url = `/api${config.url.startsWith('/') ? '' : '/'}${config.url}`;
       }
     }
-    try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (_) {}
     return config;
   },
   (error) => Promise.reject(error)

@@ -682,15 +682,14 @@ export default function ProductDetailPage() {
                 </button>
                 <button
                   type="button"
-                  className={`pdetail-quick-date-pill ${
-                    (() => {
+                  className={`pdetail-quick-date-pill ${(() => {
                       const tm = new Date();
                       tm.setDate(tm.getDate() + 1);
                       return startDate === tm.toISOString().split('T')[0];
                     })()
                       ? 'active'
                       : ''
-                  }`}
+                    }`}
                   onClick={() => setQuickDate(1)}
                 >
                   Ngày mai
@@ -749,7 +748,13 @@ export default function ProductDetailPage() {
 
             <button
               className="pdetail-btn-ai-tryon"
-              onClick={() => navigate(`/try-on/photo?product=${product._id || product.productCode}`)}
+              onClick={() =>
+                navigate(
+                  `/try-on/webcam?product=${encodeURIComponent(
+                    product._id || product.productCode
+                  )}`
+                )
+              }
             >
               <i className="fa-solid fa-camera"></i>
               <span>Thử đồ AI</span>

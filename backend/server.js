@@ -17,7 +17,7 @@ import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
 import walletRoutes, {
   asyncRoute,
 } from "./src/routes/walletRoutes.js";
-
+import tryOnRoutes from "./src/routes/tryOnRoutes.js";
 import {
   payosWebhook,
 } from "./src/controllers/walletController.js";
@@ -89,6 +89,7 @@ app.use("/api/admin/shops", shopRoutes);
 app.use("/api/ops/shops", shopRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/try-on", tryOnRoutes);
 app.use("/api", apiRoutes);
 
 app.use(notFound);

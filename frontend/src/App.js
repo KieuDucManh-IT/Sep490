@@ -15,6 +15,7 @@ import CatalogPage from './pages/customer/CatalogPage';
 import ProductDetailPage from './pages/customer/ProductDetailPage';
 import CartPage from './pages/customer/CartPage';
 import CheckoutPage from './pages/customer/CheckoutPage';
+import SaleCheckoutPage from './pages/customer/SaleCheckoutPage';
 import FavoritesPage from './pages/customer/FavoritesPage';
 import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
@@ -85,6 +86,7 @@ function App() {
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+        <Route path="/checkout/sale" element={<ProtectedRoute><SaleCheckoutPage /></ProtectedRoute>} />
         <Route path="/favorites" element={<Navigate to="/wardrobe" replace />} />
         <Route path="/map" element={<ShopMapPage />} />
         <Route

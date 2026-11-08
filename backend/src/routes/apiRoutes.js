@@ -14,6 +14,7 @@ import warehouseTransferRoutes from './warehouseTransferRoutes.js';
 import rentalOrderRoutes from './rentalOrderRoutes.js';
 import rentalReturnRoutes from './rentalReturnRoutes.js';
 import rentalDisputeRoutes from './rentalDisputeRoutes.js';
+import salesOrderRoutes from './salesOrderRoutes.js';
 const router = express.Router();
 
 router.get('/health', (req, res) => {
@@ -41,4 +42,5 @@ router.use('/warehouse/transfers', warehouseTransferRoutes);
 router.use('/rental-orders', rentalOrderRoutes);
 router.use('/rental-returns', rentalReturnRoutes);
 router.use('/rental-disputes', rentalDisputeRoutes);
+router.use('/sales-orders', salesOrderRoutes);
 export default router;

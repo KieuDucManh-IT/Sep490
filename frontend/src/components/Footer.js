@@ -44,8 +44,8 @@ export default function Footer() {
           <div className="footer-col">
             <h4 className="footer-col-title">Khám phá</h4>
             <ul className="footer-nav-list">
-              <li><Link to="/catalog?type=rental">Thuê đồ</Link></li>
-              <li><Link to="/catalog?type=sale">Mua đồ cũ</Link></li>
+              <li><Link to="/catalog?type=rental">Cho thuê</Link></li>
+              <li><Link to="/catalog?type=sale">Mua sản phẩm</Link></li>
               <li><Link to="/catalog">Sang nhượng thời trang</Link></li>
               <li><Link to="/catalog?category=suggest">Gợi ý phong cách</Link></li>
               <li><Link to="/map">Showroom gần bạn</Link></li>

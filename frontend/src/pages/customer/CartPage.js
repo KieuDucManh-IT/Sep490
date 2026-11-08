@@ -11,10 +11,11 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, Trash2, Sparkles, ArrowLeft } from 'lucide-react';
+import { ShoppingBag, Trash2, Sparkles, ArrowLeft, Calendar, Package } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import { useCartStore } from '../../stores/useCartStore';
+import { ORDER_TYPES } from '../../services/cart/cartTypes';
 import CartItemCard from '../../components/customer/cart/CartItemCard';
 import CartSummary from '../../components/customer/cart/CartSummary';
 import ConfirmRemoveModal from '../../components/customer/cart/ConfirmRemoveModal';
@@ -25,6 +26,8 @@ export default function CartPage() {
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
 
   const hasItems = items && items.length > 0;
+  const rentalItems = (items || []).filter((it) => it.orderType === ORDER_TYPES.RENTAL);
+  const saleItems = (items || []).filter((it) => it.orderType === ORDER_TYPES.SALE);
 
   const handleConfirmClear = () => {
     clearCart();
@@ -176,11 +179,63 @@ export default function CartPage() {
                 </button>
               </div>
 
-              {/* Items List */}
-              <div className="cart-items-list">
-                {items.map((item) => (
-                  <CartItemCard key={item.cartItemId} item={item} />
-                ))}
+              {/* Items List Split */}
+              <div className="cart-items-list" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {rentalItems.length > 0 && (
+                  <div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '12px',
+                        padding: '8px 12px',
+                        background: '#FAF5EE',
+                        borderRadius: '8px',
+                        border: '1px solid #E8DECF',
+                        color: '#96723D',
+                        fontWeight: 600,
+                        fontSize: '14px',
+                      }}
+                    >
+                      <Calendar size={18} />
+                      <span>Trang phục cho thuê ({rentalItems.length} món)</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {rentalItems.map((item) => (
+                        <CartItemCard key={item.cartItemId} item={item} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {saleItems.length > 0 && (
+                  <div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '12px',
+                        padding: '8px 12px',
+                        background: '#F4F4F5',
+                        borderRadius: '8px',
+                        border: '1px solid #E4E4E7',
+                        color: '#18181B',
+                        fontWeight: 600,
+                        fontSize: '14px',
+                      }}
+                    >
+                      <ShoppingBag size={18} />
+                      <span>Sản phẩm mua đứt / thanh lý ({saleItems.length} món)</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {saleItems.map((item) => (
+                        <CartItemCard key={item.cartItemId} item={item} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}

@@ -139,8 +139,6 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
 
         if (foundDist) {
           matchedDistrictId = foundDist.DistrictID;
-        } else {
-          matchedDistrictId = matchedProvinceId === 202 ? 1442 : 1485; // Fallback Q1 (HCM) hoặc Cầu Giấy (HN)
         }
       }
     }
@@ -161,19 +159,17 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
 
         if (foundWard) {
           matchedWardCode = String(foundWard.WardCode);
-        } else {
-          matchedWardCode = String(wards[0].WardCode);
         }
       }
     }
-  } catch (err) {
-    console.warn('[storeGpsResolver] resolveGpsToGhn fallback:', err.message);
+  } catch {
+    // Không log lỗi ra console
   }
 
   return {
-    provinceId: matchedProvinceId || 201,
-    districtId: matchedDistrictId || 1485,
-    wardCode: matchedWardCode || '20107',
+    provinceId: matchedProvinceId || null,
+    districtId: matchedDistrictId || null,
+    wardCode: matchedWardCode || null,
   };
 };
 

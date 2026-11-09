@@ -36,8 +36,13 @@ export const getGHNWardsApi = async (districtId) => {
   return await api.get(`/shipping/master-data/wards/${districtId}`);
 };
 
-export const trackPublicShipmentApi = async (trackingCode) => {
-  return await api.get(`/public/shipping/track/${trackingCode}`);
+export const getGHNWardsByProvinceApi = async (provinceId) => {
+  return await api.get(`/shipping/master-data/wards-by-province/${provinceId}`);
+};
+
+export const trackPublicShipmentApi = async (trackingCode, options = {}) => {
+  const params = options?.force ? { force: 'true' } : {};
+  return await api.get(`/public/shipping/track/${encodeURIComponent(trackingCode)}`, { params });
 };
 
 const shippingApi = {
@@ -50,6 +55,7 @@ const shippingApi = {
   getGHNProvincesApi,
   getGHNDistrictsApi,
   getGHNWardsApi,
+  getGHNWardsByProvinceApi,
   trackPublicShipmentApi,
 };
 

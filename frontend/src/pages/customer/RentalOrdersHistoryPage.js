@@ -14,12 +14,13 @@ import {
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import { getMyRentalOrdersApi, getMySaleOrdersApi } from '../../services/orderApi';
+import { resolveOrderDisplayStatus } from '../orders/orderUtils';
 import '../../styles/OrderMonitoring.css';
 
 const RENTAL_STATUS_TABS = [
   { key: 'all', label: 'Tất Cả' },
+  { key: 'confirmed', label: 'Chờ Giao Đồ' },
   { key: 'renting', label: 'Đang Thuê' },
-  { key: 'confirmed', label: 'Chờ Nhận Đồ' },
   { key: 'overdue', label: 'Quá Hạn' },
   { key: 'returned', label: 'Đã Trả Đồ' },
   { key: 'cancelled', label: 'Đã Hủy' },
@@ -32,24 +33,6 @@ const SALE_STATUS_TABS = [
   { key: 'completed', label: 'Đã Hoàn Tất' },
   { key: 'cancelled', label: 'Đã Hủy' },
 ];
-
-const RENTAL_STATUS_MAP = {
-  draft: { text: 'Bản Nháp', chipClass: 'draft' },
-  confirmed: { text: 'Đã Xác Nhận', chipClass: 'confirmed' },
-  renting: { text: 'Đang Thuê', chipClass: 'renting' },
-  partially_returned: { text: 'Đã Trả Một Phần', chipClass: 'returned' },
-  returned: { text: 'Đã Hoàn Tất', chipClass: 'completed' },
-  overdue: { text: 'Quá Hạn Trả', chipClass: 'overdue' },
-  cancelled: { text: 'Đã Hủy', chipClass: 'cancelled' },
-};
-
-const SALE_STATUS_MAP = {
-  draft: { text: 'Bản Nháp', chipClass: 'draft' },
-  confirmed: { text: 'Đã Xác Nhận', chipClass: 'confirmed' },
-  processing: { text: 'Đang Chuẩn Bị', chipClass: 'renting' },
-  completed: { text: 'Đã Hoàn Tất', chipClass: 'completed' },
-  cancelled: { text: 'Đã Hủy', chipClass: 'cancelled' },
-};
 
 const DEPOSIT_STATUS_MAP = {
   pending: { text: 'Chờ Cọc', chipClass: 'pending' },
@@ -128,7 +111,6 @@ export default function RentalOrdersHistoryPage() {
     setLoading(true);
     try {
       const params = {};
-      if (activeTab !== 'all') params.status = activeTab;
       if (searchQuery.trim()) params.search = searchQuery.trim();
 
       const apiFn = orderMode === 'sale' ? getMySaleOrdersApi : getMyRentalOrdersApi;
@@ -144,7 +126,7 @@ export default function RentalOrdersHistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [orderMode, activeTab, searchQuery]);
+  }, [orderMode, searchQuery]);
 
   useEffect(() => {
     fetchOrders();
@@ -156,7 +138,9 @@ export default function RentalOrdersHistoryPage() {
     if (!orders) return [];
     return orders.filter((o) => {
       if (activeTab === 'all') return true;
+      const isCancelled = o.rentalStatus === 'cancelled' || o.orderStatus === 'cancelled';
       if (orderMode === 'sale') {
+        if (activeTab === 'cancelled') return isCancelled;
         return o.orderStatus === activeTab;
       }
       if (activeTab === 'overdue') {
@@ -164,6 +148,15 @@ export default function RentalOrdersHistoryPage() {
           o.rentalStatus === 'overdue' ||
           (o.rentalStatus === 'renting' && o.dueDate && new Date(o.dueDate) < new Date())
         );
+      }
+      if (activeTab === 'cancelled') {
+        return isCancelled;
+      }
+      if (activeTab === 'confirmed') {
+        return (o.rentalStatus === 'confirmed' || o.rentalStatus === 'draft') && !isCancelled;
+      }
+      if (activeTab === 'returned') {
+        return o.rentalStatus === 'returned' || o.rentalStatus === 'partially_returned';
       }
       return o.rentalStatus === activeTab;
     });
@@ -414,9 +407,7 @@ export default function RentalOrdersHistoryPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {filteredOrders.map((order) => {
               const isSale = orderMode === 'sale' || Boolean(order.orderStatus && !order.rentalStatus);
-              const statusDef = isSale
-                ? (SALE_STATUS_MAP[order.orderStatus] || { text: order.orderStatus || 'Đã Xác Nhận', chipClass: 'confirmed' })
-                : (RENTAL_STATUS_MAP[order.rentalStatus] || { text: order.rentalStatus || 'Chưa rõ', chipClass: 'draft' });
+              const statusDef = resolveOrderDisplayStatus(order, isSale ? 'sale' : 'rental', false);
               const depositDef = !isSale
                 ? (DEPOSIT_STATUS_MAP[order.depositStatus] || { text: order.depositStatus || 'Chưa rõ', chipClass: 'pending' })
                 : null;
@@ -539,20 +530,8 @@ export default function RentalOrdersHistoryPage() {
                         {order.shipment?.trackingCode ? (
                           <button
                             type="button"
-                            onClick={() => navigate(`/tracking/${order.shipment.trackingCode}`)}
-                            style={{
-                              padding: '7px 12px',
-                              borderRadius: '6px',
-                              backgroundColor: '#F5F5F4',
-                              color: '#1C1917',
-                              border: '1px solid #D6D3D1',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
+                            onClick={() => navigate(`/tracking/${order.orderCode || order.shipment.trackingCode}`)}
+                            className="order-tracking-btn"
                           >
                             <Truck size={13} color="#D97706" />
                             <span>Tra Cứu Giao Hàng</span>
@@ -560,20 +539,8 @@ export default function RentalOrdersHistoryPage() {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => navigate(`/tracking?code=${order.orderCode || order._id}`)}
-                            style={{
-                              padding: '7px 12px',
-                              borderRadius: '6px',
-                              backgroundColor: '#F5F5F4',
-                              color: '#1C1917',
-                              border: '1px solid #D6D3D1',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
+                            onClick={() => navigate(`/tracking/${order.orderCode || order._id}`)}
+                            className="order-tracking-btn"
                           >
                             <Truck size={13} />
                             <span>Vận Đơn</span>
@@ -665,7 +632,7 @@ export default function RentalOrdersHistoryPage() {
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#F8F7F4', borderRadius: '8px' }}>
                     <span style={{ color: '#78716C' }}>Trạng thái đơn hàng:</span>
-                    <strong>{SALE_STATUS_MAP[selectedOrder.orderStatus]?.text || selectedOrder.orderStatus}</strong>
+                    <strong>{resolveOrderDisplayStatus(selectedOrder, 'sale', false).text}</strong>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#F8F7F4', borderRadius: '8px' }}>
@@ -689,7 +656,7 @@ export default function RentalOrdersHistoryPage() {
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#F8F7F4', borderRadius: '8px' }}>
                     <span style={{ color: '#78716C' }}>Trạng thái thuê:</span>
-                    <strong>{RENTAL_STATUS_MAP[selectedOrder.rentalStatus]?.text || selectedOrder.rentalStatus}</strong>
+                    <strong>{resolveOrderDisplayStatus(selectedOrder, 'rental', false).text}</strong>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#F8F7F4', borderRadius: '8px' }}>
@@ -785,32 +752,33 @@ export default function RentalOrdersHistoryPage() {
                 </div>
               </div>
 
-              {selectedOrder.shipment?.trackingCode && (
-                <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#FEF3C7', borderRadius: '8px', border: '1px solid #FDE68A' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Truck size={16} color="#D97706" />
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#92400E' }}>
-                        Vận đơn GHN: {selectedOrder.shipment.trackingCode}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/tracking/${selectedOrder.shipment.trackingCode}`)}
-                      style={{
-                        padding: '5px 10px',
-                        backgroundColor: '#D97706',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                      }}
-                    >
-                      Theo Dõi Lộ Trình
-                    </button>
+              {selectedOrder.shipment?.trackingCode ? (
+                <div className="order-tracking-banner-active">
+                  <div className="order-tracking-banner-title active">
+                    <Truck size={16} color="#D97706" />
+                    <span>Vận đơn GHN: {selectedOrder.shipment.trackingCode} • {resolveOrderDisplayStatus(selectedOrder, 'rental', false).text}</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/tracking/${selectedOrder.orderCode || selectedOrder.shipment.trackingCode}`)}
+                    className="order-tracking-banner-action-active"
+                  >
+                    Theo Dõi Lộ Trình
+                  </button>
+                </div>
+              ) : (
+                <div className="order-tracking-banner-muted">
+                  <div className="order-tracking-banner-title muted">
+                    <Truck size={16} color="#78716C" />
+                    <span>Trạng thái: {resolveOrderDisplayStatus(selectedOrder, 'rental', false).text}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/tracking/${selectedOrder.orderCode || selectedOrder._id}`)}
+                    className="order-tracking-banner-action-dark"
+                  >
+                    Theo Dõi Vận Đơn
+                  </button>
                 </div>
               )}
             </div>

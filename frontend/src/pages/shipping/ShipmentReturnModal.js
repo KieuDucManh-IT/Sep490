@@ -8,69 +8,14 @@ import {
   Store,
   ExternalLink,
 } from 'lucide-react';
+import { createReturnShipmentApi } from '../../services/shippingApi';
 import {
-  getGHNProvincesApi,
-  getGHNDistrictsApi,
-  getGHNWardsApi,
-  createReturnShipmentApi,
-} from '../../services/shippingApi';
+  autoMatchProvince,
+  extractOrderAddressInfo,
+} from './shippingUtils';
+import { useAdministrativeDivisions } from './hooks/useAdministrativeDivisions';
 import SearchableSelect from '../../components/SearchableSelect';
-
-const cleanText = (str) =>
-  String(str || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/^(tp\.|t\.|thanh pho|tinh|phuong|xa|quan|huyen)\s+/i, '')
-    .replace(/[\s\-_,.]/g, '');
-
-const autoMatchProvince = (hint, fullAddr, provList) => {
-  if (!Array.isArray(provList) || !provList.length) return null;
-  const cHint = cleanText(hint);
-  const cFull = cleanText(fullAddr);
-
-  if (cHint) {
-    const direct = provList.find((p) => {
-      const pClean = cleanText(p.ProvinceName);
-      return pClean === cHint || cHint.includes(pClean) || pClean.includes(cHint) || String(p.ProvinceID) === String(hint);
-    });
-    if (direct) return direct;
-  }
-
-  if (cFull) {
-    const byAddr = provList.find((p) => {
-      const pClean = cleanText(p.ProvinceName);
-      return pClean.length > 2 && cFull.includes(pClean);
-    });
-    if (byAddr) return byAddr;
-  }
-
-  return null;
-};
-
-const autoMatchWard = (hint, fullAddr, wardList) => {
-  if (!Array.isArray(wardList) || !wardList.length) return null;
-  const cHint = cleanText(hint);
-  const cFull = cleanText(fullAddr);
-
-  if (cHint) {
-    const direct = wardList.find((w) => {
-      const wClean = cleanText(w.WardName);
-      return wClean === cHint || cHint.includes(wClean) || wClean.includes(cHint) || String(w.WardCode) === String(hint);
-    });
-    if (direct) return direct;
-  }
-
-  if (cFull) {
-    const byAddr = wardList.find((w) => {
-      const wClean = cleanText(w.WardName);
-      return wClean.length > 3 && cFull.includes(wClean);
-    });
-    if (byAddr) return byAddr;
-  }
-
-  return null;
-};
+import '../../styles/ShippingModal.css';
 
 export default function ShipmentReturnModal({
   show,
@@ -78,159 +23,54 @@ export default function ShipmentReturnModal({
   order,
   onSuccess,
 }) {
-  const [provinces, setProvinces] = useState([]);
-  const [wards, setWards] = useState([]);
-  const [loadingWards, setLoadingWards] = useState(false);
+  const {
+    provinces,
+    wards,
+    loadingWards,
+    provinceId: fromProvinceId,
+    districtId: fromDistrictId,
+    wardCode: fromWardCode,
+    handleProvinceChange,
+    handleWardChange,
+  } = useAdministrativeDivisions(show);
 
   // Form State
   const [fromName, setFromName] = useState('');
   const [fromPhone, setFromPhone] = useState('');
   const [fromAddress, setFromAddress] = useState('');
-  const [fromProvinceId, setFromProvinceId] = useState('');
-  const [fromDistrictId, setFromDistrictId] = useState('');
-  const [fromWardCode, setFromWardCode] = useState('');
   const [weight, setWeight] = useState(500);
   const [note, setNote] = useState('Thu hồi trang phục cho thuê hoàn trả về shop');
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => {
-    if (!show) return;
-    getGHNProvincesApi()
-      .then((res) => {
-        if (res?.success && Array.isArray(res.data)) {
-          setProvinces(res.data);
-        }
-      })
-      .catch(() => {});
-  }, [show]);
-
+  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng
   useEffect(() => {
     if (!show || !order) return;
 
-    const customer = order.customerId || order.customerInfo || order.customer || {};
-    const info = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
-    const shipAddr = order.shippingAddress || {};
+    const {
+      receiverName,
+      receiverPhone,
+      detailedAddress,
+      provHint,
+      wardHint,
+      wardCodeHint,
+      fullAddr,
+    } = extractOrderAddressInfo(order);
 
-    const initialName =
-      shipAddr.receiverName ||
-      shipAddr.toName ||
-      shipAddr.name ||
-      customer.FullName ||
-      customer.fullName ||
-      customer.name ||
-      '';
-
-    const rawPhone =
-      shipAddr.phone ||
-      shipAddr.toPhone ||
-      info?.Phone ||
-      customer.phone ||
-      customer.Phone ||
-      '';
-    const initialPhone = String(rawPhone || '').trim();
-
-    const initialAddress =
-      shipAddr.street ||
-      shipAddr.address ||
-      info?.AddressDetail ||
-      info?.Address ||
-      customer.address ||
-      '';
-
-    setFromName(initialName);
-    setFromPhone(initialPhone);
-    setFromAddress(initialAddress);
+    setFromName(receiverName);
+    setFromPhone(receiverPhone);
+    setFromAddress(detailedAddress);
     setErrorMsg('');
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã cho điểm lấy đồ
     if (provinces.length > 0) {
-      const provHint =
-        shipAddr.city ||
-        shipAddr.province ||
-        shipAddr.provinceName ||
-        info?.ProvinceName ||
-        info?.ProvinceCode ||
-        '';
-      const wardHint =
-        shipAddr.ward ||
-        shipAddr.wardName ||
-        shipAddr.wardCode ||
-        info?.WardName ||
-        info?.WardCode ||
-        '';
-      const fullAddr = [initialAddress, wardHint, provHint].filter(Boolean).join(', ');
-
       const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
       if (matchedProv) {
-        handleProvinceChange(String(matchedProv.ProvinceID), wardHint, fullAddr);
+        handleProvinceChange(String(matchedProv.ProvinceID), wardHint, wardCodeHint, fullAddr);
       }
     }
-  }, [show, order, provinces]);
-
-  // Khi đổi Tỉnh -> Tải danh sách Phường/Xã trực tiếp thuộc Tỉnh (bỏ cấp Huyện)
-  const handleProvinceChange = async (provIdVal, wardHintToMatch = '', fullAddrToMatch = '') => {
-    const provId = typeof provIdVal === 'object' && provIdVal?.target ? provIdVal.target.value : provIdVal;
-    setFromProvinceId(provId ? String(provId) : '');
-    setFromDistrictId('');
-    setFromWardCode('');
-    setWards([]);
-
-    if (provId) {
-      setLoadingWards(true);
-      try {
-        const distRes = await getGHNDistrictsApi(provId);
-        if (distRes?.success && Array.isArray(distRes.data)) {
-          const allDistrictIds = distRes.data.map((d) => d.DistrictID);
-          const wardPromises = allDistrictIds.map((dId) => getGHNWardsApi(dId).catch(() => null));
-          const wardResults = await Promise.all(wardPromises);
-          const flattenedWards = [];
-          wardResults.forEach((wRes, idx) => {
-            const districtObj = distRes.data[idx];
-            if (wRes?.success && Array.isArray(wRes.data)) {
-              wRes.data.forEach((w) => {
-                flattenedWards.push({
-                  WardCode: String(w.WardCode),
-                  WardName: w.WardName,
-                  DistrictID: districtObj?.DistrictID,
-                  label: `${w.WardName} (${districtObj?.DistrictName || ''})`,
-                });
-              });
-            }
-          });
-
-          // Sắp xếp Phường/Xã theo thứ tự A-Z
-          flattenedWards.sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
-          setWards(flattenedWards);
-
-          // Tự động khớp Phường/Xã nếu có gợi ý
-          if (wardHintToMatch || fullAddrToMatch) {
-            const matchedWard = autoMatchWard(wardHintToMatch, fullAddrToMatch, flattenedWards);
-            if (matchedWard) {
-              setFromWardCode(String(matchedWard.WardCode));
-              if (matchedWard.DistrictID) {
-                setFromDistrictId(String(matchedWard.DistrictID));
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Lỗi tải danh mục Phường/Xã:', err);
-      } finally {
-        setLoadingWards(false);
-      }
-    }
-  };
-
-  const handleWardChange = (wardCodeVal) => {
-    const wardCode = typeof wardCodeVal === 'object' && wardCodeVal?.target ? wardCodeVal.target.value : wardCodeVal;
-    setFromWardCode(wardCode ? String(wardCode) : '');
-    const selected = wards.find((w) => String(w.WardCode) === String(wardCode));
-    if (selected?.DistrictID) {
-      setFromDistrictId(String(selected.DistrictID));
-    }
-  };
+  }, [show, order, provinces, handleProvinceChange]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -247,8 +87,11 @@ export default function ShipmentReturnModal({
       return;
     }
 
-    // Kiểm tra số điện thoại di động Việt Nam 10 số (đầu số 03, 05, 07, 08, 09)
-    const cleanPhone = fromPhone.trim().replace(/[\s.-]/g, '');
+    // Kiểm tra và chuẩn hóa số điện thoại di động Việt Nam 10 số (hỗ trợ cả đầu số +84, 84)
+    let cleanPhone = fromPhone.trim().replace(/[\s.-]/g, '');
+    if (cleanPhone.startsWith('+84')) cleanPhone = '0' + cleanPhone.slice(3);
+    else if (cleanPhone.startsWith('84') && cleanPhone.length === 11) cleanPhone = '0' + cleanPhone.slice(2);
+
     const vnPhoneRegex = /^(0)(3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}$/;
     if (!vnPhoneRegex.test(cleanPhone)) {
       setErrorMsg('Số điện thoại không hợp lệ. Vui lòng nhập số di động 10 số hiện hành của Việt Nam (VD: 0912345678, 0388889999). Đầu số cũ 012x đã bị ngừng sử dụng và không được GHN chấp nhận.');
@@ -256,7 +99,7 @@ export default function ShipmentReturnModal({
     }
 
     if (!fromAddress.trim()) {
-      setErrorMsg('Vui lòng nhập địa chỉ lấy hàng cụ thể.');
+      setErrorMsg('Vui lòng nhập địa chỉ cụ thể nơi shipper tới lấy đồ.');
       return;
     }
 
@@ -300,8 +143,7 @@ export default function ShipmentReturnModal({
 
   return (
     <div
-      className="modal fade show d-block"
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}
+      className="modal fade show d-block shipping-modal-backdrop"
       tabIndex="-1"
     >
       <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -367,7 +209,7 @@ export default function ShipmentReturnModal({
                     <span className="small text-muted d-block">Địa chỉ cửa hàng nhận:</span>
                     <span className="text-dark small d-block">{storeAddress}</span>
                     {storeLat && storeLng && (
-                      <span className="small text-muted" style={{ fontSize: '0.75rem' }}>
+                      <span className="small text-muted shipping-fee-sub">
                         📍 Tọa độ GPS: {Number(storeLat).toFixed(4)}, {Number(storeLng).toFixed(4)}
                       </span>
                     )}
@@ -375,14 +217,14 @@ export default function ShipmentReturnModal({
                 </div>
               </div>
 
-              {/* Thông tin nơi lấy đồ trả (Khách hàng) */}
+              {/* Thông tin người trả hàng (Khách hàng) */}
               <div className="mb-3">
                 <div className="small fw-bold text-uppercase text-muted mb-2">
-                  2. Địa điểm bưu tá tới lấy đồ (Khách hàng)
+                  2. Địa điểm shipper tới lấy đồ từ khách
                 </div>
                 <div className="row g-2">
                   <div className="col-12 col-md-6">
-                    <label className="form-label small text-muted mb-1">Họ tên người gửi trả *</label>
+                    <label className="form-label small text-muted mb-1">Họ tên người trả đồ *</label>
                     <input
                       type="text"
                       className="form-control form-control-sm"
@@ -392,7 +234,7 @@ export default function ShipmentReturnModal({
                     />
                   </div>
                   <div className="col-12 col-md-6">
-                    <label className="form-label small text-muted mb-1">Số điện thoại liên lạc *</label>
+                    <label className="form-label small text-muted mb-1">Số điện thoại liên hệ *</label>
                     <input
                       type="text"
                       className="form-control form-control-sm"
@@ -402,7 +244,7 @@ export default function ShipmentReturnModal({
                     />
                   </div>
 
-                  {/* Địa giới hành chính: Chỉ còn 2 cấp Tỉnh/Thành và Phường/Xã (bỏ cấp Huyện) */}
+                  {/* Địa giới hành chính: Chỉ còn cấp Tỉnh/Thành và Phường/Xã (bỏ cấp Huyện) */}
                   <div className="col-12 col-md-6">
                     <label className="form-label small text-muted mb-1">Tỉnh / Thành phố *</label>
                     <SearchableSelect
@@ -504,4 +346,3 @@ export default function ShipmentReturnModal({
     </div>
   );
 }
-

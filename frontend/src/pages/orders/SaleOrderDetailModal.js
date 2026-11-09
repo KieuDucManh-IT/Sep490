@@ -14,13 +14,14 @@ import {
   MapPin,
   Phone,
   Mail,
+  Store,
 } from 'lucide-react';
 import { getSaleOrderDetailApi } from '../../services/orderApi';
 import {
   formatCurrency,
   formatDate,
-  SALES_STATUS_MAP,
   PAYMENT_STATUS_MAP,
+  resolveOrderDisplayStatus,
 } from './orderUtils';
 import {
   ShipmentTrackingTimeline,
@@ -109,13 +110,22 @@ export default function SaleOrderDetailModal({
   const customerName = order.shippingAddress?.receiverName || customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
   const customerPhone = order.shippingAddress?.phone || customerInfo?.Phone || customer.phone || 'Chưa cập nhật';
   const customerEmail = customer.Email || customer.email || '';
+  let noteDeliveryAddress = '';
+  if (order.note) {
+    const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
+    if (match) noteDeliveryAddress = match[3].trim();
+  }
+  const customerAddress = order.shippingAddress?.street 
+    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
+    : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
   const shipments = detailData?.shipments || order.shipments || [];
 
-  const statusDef = SALES_STATUS_MAP[order.orderStatus || order.salesStatus || order.status] || {
-    text: order.orderStatus || order.salesStatus || order.status || 'Chưa xác định',
-    chipClass: 'draft',
-  };
+  const statusDef = resolveOrderDisplayStatus(
+    { ...order, shipments, shipment: detailData?.shipment || order.shipment },
+    'sale',
+    !isReadOnly
+  );
 
   const paymentDef = PAYMENT_STATUS_MAP[order.paymentStatus] || {
     text: order.paymentStatus || 'Chưa thanh toán',
@@ -244,12 +254,7 @@ export default function SaleOrderDetailModal({
                     <MapPin size={16} className="text-primary mt-1 flex-shrink-0" />
                     <div>
                       <div className="text-dark fw-medium small">
-                        {order.shippingAddress?.street || customer.address || 'Nhận tại cửa hàng'}
-                      </div>
-                      <div className="small text-muted mt-1">
-                        {[order.shippingAddress?.ward, order.shippingAddress?.city]
-                          .filter(Boolean)
-                          .join(', ') || 'Chi nhánh xuất hàng'}
+                        {customerAddress}
                       </div>
                     </div>
                   </div>
@@ -373,10 +378,11 @@ export default function SaleOrderDetailModal({
 
             {/* Section 4: Vận đơn giao hàng GHN */}
             {(() => {
+              const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
               const hasActiveOutbound = shipments.some(
                 (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus)
               );
-              const canCreateOutbound = !isReadOnly && !hasActiveOutbound && ['draft', 'confirmed', 'processing'].includes(order.orderStatus || order.status);
+              const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && ['draft', 'confirmed', 'processing'].includes(order.orderStatus || order.status);
 
               return (
                 <div className="modal-section-card">
@@ -385,16 +391,24 @@ export default function SaleOrderDetailModal({
                       <Truck size={16} className="text-primary me-2" />
                       <span>4. Vận Chuyển & Giao Hàng (GHN)</span>
                     </span>
-                    {canCreateOutbound && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                        onClick={() => setIsCreateShipmentOpen(true)}
-                      >
-                        <Truck size={14} />
-                        <span>+ Tạo vận đơn GHN</span>
-                      </button>
-                    )}
+                    <div className="d-flex align-items-center gap-2">
+                      {isPickup && (
+                        <span className="badge bg-light text-secondary border px-2 py-1 d-flex align-items-center gap-1">
+                          <Store size={13} />
+                          <span>Nhận tại Showroom</span>
+                        </span>
+                      )}
+                      {canCreateOutbound && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                          onClick={() => setIsCreateShipmentOpen(true)}
+                        >
+                          <Truck size={14} />
+                          <span>+ Tạo vận đơn GHN</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {shipments.length > 0 ? (

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { SHIPMENT_STATUS_MAP, formatCurrency, formatDate } from './shippingUtils';
 import { getPrintTokenApi } from '../../services/shippingApi';
+import '../../styles/ShippingModal.css';
 
 const sanitizeTimelineText = (text) => {
   if (!text) return 'Cập nhật tiến trình';
@@ -235,17 +236,9 @@ export default function ShipmentTrackingTimeline({
                   <div key={item._id || `${item.status}-${item.timestamp || idx}`} className="mb-3 position-relative">
                     {/* Timeline bullet dot */}
                     <div
-                      className={`position-absolute rounded-circle ${
+                      className={`position-absolute rounded-circle shipping-timeline-bullet ${
                         isLatest ? 'bg-primary' : 'bg-secondary'
                       }`}
-                      style={{
-                        width: '10px',
-                        height: '10px',
-                        left: '-22px',
-                        top: '4px',
-                        border: '2px solid #fff',
-                        boxShadow: '0 0 0 2px #0d6efd20',
-                      }}
                     />
                     <div className="d-flex align-items-center gap-2">
                       <span className={`small fw-bold ${isLatest ? 'text-primary' : 'text-dark'}`}>
@@ -257,7 +250,7 @@ export default function ShipmentTrackingTimeline({
                         </span>
                       )}
                     </div>
-                    <div className="text-muted" style={{ fontSize: '0.78rem' }}>
+                    <div className="text-muted shipping-timeline-timestamp">
                       <Clock size={12} className="me-1 inline" />
                       {formatDate(item.timestamp)}
                       {item.location && <span> • {item.location}</span>}

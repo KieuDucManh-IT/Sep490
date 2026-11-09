@@ -48,6 +48,10 @@ const shopSchema = new mongoose.Schema(
     },
     city: { type: String, default: '' },
     ward: { type: String, default: '' },
+    ghnShopId: { type: Number, default: null },
+    provinceId: { type: Number, default: null },
+    districtId: { type: Number, default: null },
+    wardCode: { type: String, default: null, trim: true },
     latitude: {
       type: Number,
       default: null,

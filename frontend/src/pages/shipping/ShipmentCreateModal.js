@@ -10,70 +10,18 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import {
-  getGHNProvincesApi,
-  getGHNDistrictsApi,
-  getGHNWardsApi,
   calculateShippingFeeApi,
   createOutboundShipmentApi,
 } from '../../services/shippingApi';
-import { formatCurrency, formatDate } from './shippingUtils';
+import {
+  formatCurrency,
+  formatDate,
+  autoMatchProvince,
+  extractOrderAddressInfo,
+} from './shippingUtils';
+import { useAdministrativeDivisions } from './hooks/useAdministrativeDivisions';
 import SearchableSelect from '../../components/SearchableSelect';
-
-const cleanText = (str) =>
-  String(str || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/^(tp\.|t\.|thanh pho|tinh|phuong|xa|quan|huyen)\s+/i, '')
-    .replace(/[\s\-_,.]/g, '');
-
-const autoMatchProvince = (hint, fullAddr, provList) => {
-  if (!Array.isArray(provList) || !provList.length) return null;
-  const cHint = cleanText(hint);
-  const cFull = cleanText(fullAddr);
-
-  if (cHint) {
-    const direct = provList.find((p) => {
-      const pClean = cleanText(p.ProvinceName);
-      return pClean === cHint || cHint.includes(pClean) || pClean.includes(cHint) || String(p.ProvinceID) === String(hint);
-    });
-    if (direct) return direct;
-  }
-
-  if (cFull) {
-    const byAddr = provList.find((p) => {
-      const pClean = cleanText(p.ProvinceName);
-      return pClean.length > 2 && cFull.includes(pClean);
-    });
-    if (byAddr) return byAddr;
-  }
-
-  return null;
-};
-
-const autoMatchWard = (hint, fullAddr, wardList) => {
-  if (!Array.isArray(wardList) || !wardList.length) return null;
-  const cHint = cleanText(hint);
-  const cFull = cleanText(fullAddr);
-
-  if (cHint) {
-    const direct = wardList.find((w) => {
-      const wClean = cleanText(w.WardName);
-      return wClean === cHint || cHint.includes(wClean) || wClean.includes(cHint) || String(w.WardCode) === String(hint);
-    });
-    if (direct) return direct;
-  }
-
-  if (cFull) {
-    const byAddr = wardList.find((w) => {
-      const wClean = cleanText(w.WardName);
-      return wClean.length > 3 && cFull.includes(wClean);
-    });
-    if (byAddr) return byAddr;
-  }
-
-  return null;
-};
+import '../../styles/ShippingModal.css';
 
 export default function ShipmentCreateModal({
   show,
@@ -82,17 +30,21 @@ export default function ShipmentCreateModal({
   orderType = 'rental',
   onSuccess,
 }) {
-  const [provinces, setProvinces] = useState([]);
-  const [wards, setWards] = useState([]);
-  const [loadingWards, setLoadingWards] = useState(false);
+  const {
+    provinces,
+    wards,
+    loadingWards,
+    provinceId: toProvinceId,
+    districtId: toDistrictId,
+    wardCode: toWardCode,
+    handleProvinceChange,
+    handleWardChange,
+  } = useAdministrativeDivisions(show);
 
   // Form State
   const [toName, setToName] = useState('');
   const [toPhone, setToPhone] = useState('');
   const [toAddress, setToAddress] = useState('');
-  const [toProvinceId, setToProvinceId] = useState('');
-  const [toDistrictId, setToDistrictId] = useState('');
-  const [toWardCode, setToWardCode] = useState('');
 
   const [weight, setWeight] = useState(500);
   const [length, setLength] = useState(30);
@@ -107,55 +59,23 @@ export default function ShipmentCreateModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // 1. Tải danh mục Tỉnh/Thành
-  useEffect(() => {
-    if (!show) return;
-    getGHNProvincesApi()
-      .then((res) => {
-        if (res?.success && Array.isArray(res.data)) {
-          setProvinces(res.data);
-        }
-      })
-      .catch(() => {});
-  }, [show]);
-
-  // 2. Điền thông tin khách hàng từ order và tự động khớp Tỉnh / Xã
+  // 1. Điền thông tin khách hàng từ order và tự động khớp Tỉnh / Xã
   useEffect(() => {
     if (!show || !order) return;
 
-    const customer = order.customerId || order.customerInfo || order.customer || {};
-    const info = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
-    const shipAddr = order.shippingAddress || {};
+    const {
+      receiverName,
+      receiverPhone,
+      detailedAddress,
+      provHint,
+      wardHint,
+      wardCodeHint,
+      fullAddr,
+    } = extractOrderAddressInfo(order);
 
-    const initialName =
-      shipAddr.receiverName ||
-      shipAddr.toName ||
-      shipAddr.name ||
-      customer.FullName ||
-      customer.fullName ||
-      customer.name ||
-      '';
-
-    const rawPhone =
-      shipAddr.phone ||
-      shipAddr.toPhone ||
-      info?.Phone ||
-      customer.phone ||
-      customer.Phone ||
-      '';
-    const initialPhone = String(rawPhone || '').trim();
-
-    const initialAddress =
-      shipAddr.street ||
-      shipAddr.address ||
-      info?.AddressDetail ||
-      info?.Address ||
-      customer.address ||
-      '';
-
-    setToName(initialName);
-    setToPhone(initialPhone);
-    setToAddress(initialAddress);
+    setToName(receiverName);
+    setToPhone(receiverPhone);
+    setToAddress(detailedAddress);
 
     // Tính COD mặc định theo số dư chưa thanh toán
     let defaultCod = 0;
@@ -173,93 +93,21 @@ export default function ShipmentCreateModal({
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã
     if (provinces.length > 0) {
-      const provHint =
-        shipAddr.city ||
-        shipAddr.province ||
-        shipAddr.provinceName ||
-        info?.ProvinceName ||
-        info?.ProvinceCode ||
-        '';
-      const wardHint =
-        shipAddr.ward ||
-        shipAddr.wardName ||
-        shipAddr.wardCode ||
-        info?.WardName ||
-        info?.WardCode ||
-        '';
-      const fullAddr = [initialAddress, wardHint, provHint].filter(Boolean).join(', ');
-
       const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
       if (matchedProv) {
-        handleProvinceChange(String(matchedProv.ProvinceID), wardHint, fullAddr);
+        handleProvinceChange(String(matchedProv.ProvinceID), wardHint, wardCodeHint, fullAddr);
       }
     }
-  }, [show, order, orderType, provinces]);
+  }, [show, order, orderType, provinces, handleProvinceChange]);
 
-  // 3. Khi đổi Tỉnh -> Tải danh sách Phường/Xã trực tiếp thuộc Tỉnh (bỏ cấp Huyện)
-  const handleProvinceChange = async (provIdVal, wardHintToMatch = '', fullAddrToMatch = '') => {
-    const provId = typeof provIdVal === 'object' && provIdVal?.target ? provIdVal.target.value : provIdVal;
-    setToProvinceId(provId ? String(provId) : '');
-    setToDistrictId('');
-    setToWardCode('');
-    setWards([]);
+  const onProvinceSelect = (val) => {
     setFeeResult(null);
-
-    if (provId) {
-      setLoadingWards(true);
-      try {
-        const distRes = await getGHNDistrictsApi(provId);
-        if (distRes?.success && Array.isArray(distRes.data)) {
-          const allDistrictIds = distRes.data.map((d) => d.DistrictID);
-          const wardPromises = allDistrictIds.map((dId) => getGHNWardsApi(dId).catch(() => null));
-          const wardResults = await Promise.all(wardPromises);
-          const flattenedWards = [];
-          wardResults.forEach((wRes, idx) => {
-            const districtObj = distRes.data[idx];
-            if (wRes?.success && Array.isArray(wRes.data)) {
-              wRes.data.forEach((w) => {
-                flattenedWards.push({
-                  WardCode: String(w.WardCode),
-                  WardName: w.WardName,
-                  DistrictID: districtObj?.DistrictID,
-                  label: `${w.WardName} (${districtObj?.DistrictName || ''})`,
-                });
-              });
-            }
-          });
-
-          // Sắp xếp Phường/Xã theo thứ tự A-Z
-          flattenedWards.sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
-          setWards(flattenedWards);
-
-          // Tự động khớp Phường/Xã nếu có gợi ý
-          if (wardHintToMatch || fullAddrToMatch) {
-            const matchedWard = autoMatchWard(wardHintToMatch, fullAddrToMatch, flattenedWards);
-            if (matchedWard) {
-              setToWardCode(String(matchedWard.WardCode));
-              if (matchedWard.DistrictID) {
-                setToDistrictId(String(matchedWard.DistrictID));
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Lỗi tải danh mục Phường/Xã:', err);
-      } finally {
-        setLoadingWards(false);
-      }
-    }
+    handleProvinceChange(val);
   };
 
-  // 4. Khi chọn Phường / Xã -> Ghi nhận mã xã và tự động định tuyến
-  const handleWardChange = (wardCodeVal) => {
-    const wardCode = typeof wardCodeVal === 'object' && wardCodeVal?.target ? wardCodeVal.target.value : wardCodeVal;
-    setToWardCode(wardCode ? String(wardCode) : '');
+  const onWardSelect = (val) => {
     setFeeResult(null);
-    const selected = wards.find((w) => String(w.WardCode) === String(wardCode));
-    if (selected?.DistrictID) {
-      setToDistrictId(String(selected.DistrictID));
-    }
+    handleWardChange(val);
   };
 
   // 5. Tính trước phí ship
@@ -274,6 +122,7 @@ export default function ShipmentCreateModal({
       const res = await calculateShippingFeeApi({
         orderType,
         orderId: order?._id,
+        toProvinceId: Number(toProvinceId),
         toDistrictId: Number(toDistrictId),
         toWardCode: String(toWardCode || ''),
         weight: Number(weight) || 500,
@@ -310,8 +159,11 @@ export default function ShipmentCreateModal({
       return;
     }
 
-    // Kiểm tra số điện thoại di động Việt Nam 10 số (đầu số 03, 05, 07, 08, 09)
-    const cleanPhone = toPhone.trim().replace(/[\s.-]/g, '');
+    // Kiểm tra và chuẩn hóa số điện thoại di động Việt Nam 10 số (hỗ trợ cả đầu số +84, 84)
+    let cleanPhone = toPhone.trim().replace(/[\s.-]/g, '');
+    if (cleanPhone.startsWith('+84')) cleanPhone = '0' + cleanPhone.slice(3);
+    else if (cleanPhone.startsWith('84') && cleanPhone.length === 11) cleanPhone = '0' + cleanPhone.slice(2);
+
     const vnPhoneRegex = /^(0)(3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}$/;
     if (!vnPhoneRegex.test(cleanPhone)) {
       setErrorMsg('Số điện thoại không hợp lệ. Vui lòng nhập số di động 10 số hiện hành của Việt Nam (VD: 0912345678, 0388889999). Đầu số cũ 012x đã bị ngừng sử dụng và không được GHN chấp nhận.');
@@ -368,8 +220,7 @@ export default function ShipmentCreateModal({
 
   return (
     <div
-      className="modal fade show d-block"
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}
+      className="modal fade show d-block shipping-modal-backdrop"
       tabIndex="-1"
     >
       <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -435,7 +286,7 @@ export default function ShipmentCreateModal({
                     <span className="small text-muted d-block">Địa chỉ cửa hàng:</span>
                     <span className="text-dark small d-block">{storeAddress}</span>
                     {storeLat && storeLng && (
-                      <span className="small text-muted" style={{ fontSize: '0.75rem' }}>
+                      <span className="small text-muted shipping-fee-sub">
                         📍 Tọa độ GPS: {Number(storeLat).toFixed(4)}, {Number(storeLng).toFixed(4)}
                       </span>
                     )}
@@ -481,7 +332,7 @@ export default function ShipmentCreateModal({
                         name: p.ProvinceName,
                       }))}
                       value={String(toProvinceId || '')}
-                      onChange={(val) => handleProvinceChange(val)}
+                      onChange={(val) => onProvinceSelect(val)}
                       placeholder="-- Chọn hoặc gõ tìm Tỉnh / Thành --"
                       searchPlaceholder="Gõ tên Tỉnh / Thành..."
                     />
@@ -496,7 +347,7 @@ export default function ShipmentCreateModal({
                         name: w.WardName,
                       }))}
                       value={String(toWardCode || '')}
-                      onChange={(val) => handleWardChange(val)}
+                      onChange={(val) => onWardSelect(val)}
                       placeholder={!toProvinceId ? 'Chọn Tỉnh trước' : loadingWards ? 'Đang tải danh sách...' : '-- Chọn hoặc gõ tìm Phường / Xã --'}
                       searchPlaceholder="Gõ tên Phường / Xã..."
                       disabled={!toProvinceId || loadingWards || wards.length === 0}
@@ -579,7 +430,7 @@ export default function ShipmentCreateModal({
                       />
                       <span className="input-group-text">VND</span>
                     </div>
-                    <small className="text-muted" style={{ fontSize: '0.72rem' }}>
+                    <small className="text-muted shipping-fee-sub">
                       Cước ship do Shop thanh toán. COD chỉ thu tiền hàng/cọc còn thiếu.
                     </small>
                   </div>
@@ -620,7 +471,7 @@ export default function ShipmentCreateModal({
                       {formatCurrency(feeResult.total_fee)}
                     </strong>
                     {feeResult.expected_delivery_time && (
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                      <div className="text-muted shipping-fee-sub">
                         Giao dự kiến: {formatDate(feeResult.expected_delivery_time)}
                       </div>
                     )}

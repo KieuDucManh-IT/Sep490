@@ -14,8 +14,24 @@ import { Wallet } from '../../models/finance/Wallet.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
 import { readBalances } from '../walletService.js';
 import { encryptValue } from '../../utils/walletSecurity.js';
+import { syncSingleShipmentFromGHN } from '../shipping/shipmentSyncService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+
+/**
+ * Chọn ra vận đơn đại diện đang hoạt động cho đơn hàng
+ * Chỉ lấy vận đơn chưa hủy (preparing, shipped, delivered)
+ * Nếu tất cả vận đơn đều đã hủy -> trả về null để đơn hàng hiển thị đúng trạng thái vòng đời của đơn
+ */
+export const resolvePrimaryShipment = (list = []) => {
+  if (!Array.isArray(list) || !list.length) return null;
+  const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
+  if (active.length > 0) {
+    const withCode = active.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-')));
+    return withCode || active[0];
+  }
+  return null;
+};
 
 const attachProductImages = async (details = []) => {
   if (!details || !details.length) return details;
@@ -275,7 +291,16 @@ export const getRentalOrders = async (user, query = {}) => {
 
   const activeStatus = (status || rentalStatus || '').trim();
   if (activeStatus && activeStatus !== 'all') {
-    filter.rentalStatus = activeStatus;
+    if (activeStatus === 'overdue') {
+      filter.$or = [
+        { rentalStatus: 'overdue' },
+        { rentalStatus: 'renting', dueDate: { $lt: new Date() } },
+      ];
+    } else if (activeStatus === 'confirmed') {
+      filter.rentalStatus = { $in: ['confirmed', 'draft'] };
+    } else {
+      filter.rentalStatus = activeStatus;
+    }
   }
 
   if (fromDate || toDate) {
@@ -333,18 +358,43 @@ export const getRentalOrders = async (user, query = {}) => {
   ]);
 
   const orderIds = orders.map((o) => o._id);
-  const details = orderIds.length
-    ? await RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } })
-        .populate({
-          path: 'variantId',
-          select: 'sku variantName size color productId',
-          populate: {
-            path: 'productId',
-            select: 'name productCode brand salePrice rentalPricePerDay images',
-          },
-        })
-        .lean()
-    : [];
+  const [details, shipments] = await Promise.all([
+    orderIds.length
+      ? RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } })
+          .populate({
+            path: 'variantId',
+            select: 'sku variantName size color productId',
+            populate: {
+              path: 'productId',
+              select: 'name productCode brand salePrice rentalPricePerDay images',
+            },
+          })
+          .lean()
+      : [],
+    orderIds.length
+      ? OrderShipment.find({ orderId: { $in: orderIds } })
+          .sort({ createdAt: -1 })
+          .lean()
+      : [],
+  ]);
+
+  // Đồng bộ nhanh các vận đơn đang trong hành trình (preparing, shipped) từ GHN
+  const activeShipments = shipments.filter(
+    (s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus)
+  );
+  if (activeShipments.length > 0) {
+    const synced = await Promise.all(
+      activeShipments.map((s) => syncSingleShipmentFromGHN(s).catch(() => null))
+    );
+    synced.forEach((updated) => {
+      if (updated && updated._id) {
+        const idx = shipments.findIndex((s) => String(s._id) === String(updated._id));
+        if (idx !== -1) {
+          shipments[idx] = updated.toObject ? updated.toObject() : updated;
+        }
+      }
+    });
+  }
 
   await attachProductImages(details);
 
@@ -355,14 +405,26 @@ export const getRentalOrders = async (user, query = {}) => {
     detailsByOrderId.get(key).push(item);
   });
 
-  const enrichedOrders = orders.map((ord) => ({
-    ...ord,
-    items: detailsByOrderId.get(String(ord._id)) || [],
-    itemCount: (detailsByOrderId.get(String(ord._id)) || []).reduce(
-      (sum, item) => sum + (item.quantity || 1),
-      0
-    ),
-  }));
+  const shipmentsByOrderId = new Map();
+  shipments.forEach((s) => {
+    const key = String(s.orderId);
+    if (!shipmentsByOrderId.has(key)) shipmentsByOrderId.set(key, []);
+    shipmentsByOrderId.get(key).push(s);
+  });
+
+  const enrichedOrders = orders.map((ord) => {
+    const ordShipments = shipmentsByOrderId.get(String(ord._id)) || [];
+    return {
+      ...ord,
+      items: detailsByOrderId.get(String(ord._id)) || [],
+      itemCount: (detailsByOrderId.get(String(ord._id)) || []).reduce(
+        (sum, item) => sum + (item.quantity || 1),
+        0
+      ),
+      shipments: ordShipments,
+      shipment: resolvePrimaryShipment(ordShipments),
+    };
+  });
 
   return {
     orders: enrichedOrders,
@@ -388,7 +450,7 @@ export const getRentalOrderById = async (user, id) => {
     throw fail('Mã đơn thuê không hợp lệ.', 400);
   }
 
-  const order = await RentalOrder.findById(id)
+  let order = await RentalOrder.findById(id)
     .populate({
       path: 'customerId',
       select: 'FullName Email AvatarUrl Information',
@@ -432,13 +494,39 @@ export const getRentalOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'rental', orderId: order._id })
-      .populate({ path: 'createdBy', select: 'FullName Email' })
-      .lean(),
+      .populate({ path: 'createdBy', select: 'FullName Email' }),
   ]);
 
+  const activeShipments = shipments.filter((s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus));
+  if (activeShipments.length > 0) {
+    const synced = await Promise.all(
+      activeShipments.map((s) => syncSingleShipmentFromGHN(s).catch(() => null))
+    );
+    synced.forEach((updated) => {
+      if (updated && updated._id) {
+        const idx = shipments.findIndex((s) => String(s._id) === String(updated._id));
+        if (idx !== -1) shipments[idx] = updated;
+      }
+    });
+
+    const freshOrder = await RentalOrder.findById(order._id)
+      .populate({ path: 'customerId', select: 'FullName Email AvatarUrl Information' })
+      .populate({
+        path: 'locationId',
+        select: 'name code address type shopId',
+        populate: { path: 'shopId', select: 'name code address phone isHQ' },
+      })
+      .lean();
+    if (freshOrder) order = freshOrder;
+  }
+
+  const resolvedShipments = shipments.map((s) => (s.toObject ? s.toObject() : s));
+  const primaryShipment = resolvePrimaryShipment(resolvedShipments);
+  order.shipments = resolvedShipments;
+  order.shipment = primaryShipment;
   await attachProductImages(items);
 
-  return { order, items, shipments };
+  return { order, items, shipments: resolvedShipments, shipment: primaryShipment };
 };
 
 /**
@@ -459,7 +547,11 @@ export const getSalesOrders = async (user, query = {}) => {
 
   const activeStatus = (status || orderStatus || '').trim();
   if (activeStatus && activeStatus !== 'all') {
-    filter.orderStatus = activeStatus;
+    if (activeStatus === 'confirmed') {
+      filter.orderStatus = { $in: ['confirmed', 'draft'] };
+    } else {
+      filter.orderStatus = activeStatus;
+    }
   }
 
   if (fromDate || toDate) {
@@ -517,18 +609,43 @@ export const getSalesOrders = async (user, query = {}) => {
   ]);
 
   const orderIds = orders.map((o) => o._id);
-  const details = orderIds.length
-    ? await SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
-        .populate({
-          path: 'variantId',
-          select: 'sku variantName size color productId',
-          populate: {
-            path: 'productId',
-            select: 'name productCode brand salePrice images',
-          },
-        })
-        .lean()
-    : [];
+  const [details, shipments] = await Promise.all([
+    orderIds.length
+      ? SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
+          .populate({
+            path: 'variantId',
+            select: 'sku variantName size color productId',
+            populate: {
+              path: 'productId',
+              select: 'name productCode brand salePrice images',
+            },
+          })
+          .lean()
+      : [],
+    orderIds.length
+      ? OrderShipment.find({ orderId: { $in: orderIds } })
+          .sort({ createdAt: -1 })
+          .lean()
+      : [],
+  ]);
+
+  // Đồng bộ nhanh các vận đơn đang trong hành trình (preparing, shipped) từ GHN
+  const activeShipments = shipments.filter(
+    (s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus)
+  );
+  if (activeShipments.length > 0) {
+    const synced = await Promise.all(
+      activeShipments.map((s) => syncSingleShipmentFromGHN(s).catch(() => null))
+    );
+    synced.forEach((updated) => {
+      if (updated && updated._id) {
+        const idx = shipments.findIndex((s) => String(s._id) === String(updated._id));
+        if (idx !== -1) {
+          shipments[idx] = updated.toObject ? updated.toObject() : updated;
+        }
+      }
+    });
+  }
 
   await attachProductImages(details);
 
@@ -539,14 +656,26 @@ export const getSalesOrders = async (user, query = {}) => {
     detailsByOrderId.get(key).push(item);
   });
 
-  const enrichedOrders = orders.map((ord) => ({
-    ...ord,
-    items: detailsByOrderId.get(String(ord._id)) || [],
-    itemCount: (detailsByOrderId.get(String(ord._id)) || []).reduce(
-      (sum, item) => sum + (item.quantity || 1),
-      0
-    ),
-  }));
+  const shipmentsByOrderId = new Map();
+  shipments.forEach((s) => {
+    const key = String(s.orderId);
+    if (!shipmentsByOrderId.has(key)) shipmentsByOrderId.set(key, []);
+    shipmentsByOrderId.get(key).push(s);
+  });
+
+  const enrichedOrders = orders.map((ord) => {
+    const ordShipments = shipmentsByOrderId.get(String(ord._id)) || [];
+    return {
+      ...ord,
+      items: detailsByOrderId.get(String(ord._id)) || [],
+      itemCount: (detailsByOrderId.get(String(ord._id)) || []).reduce(
+        (sum, item) => sum + (item.quantity || 1),
+        0
+      ),
+      shipments: ordShipments,
+      shipment: resolvePrimaryShipment(ordShipments),
+    };
+  });
 
   return {
     orders: enrichedOrders,
@@ -572,7 +701,7 @@ export const getSalesOrderById = async (user, id) => {
     throw fail('Mã đơn bán không hợp lệ.', 400);
   }
 
-  const order = await SalesOrder.findById(id)
+  let order = await SalesOrder.findById(id)
     .populate({
       path: 'customerId',
       select: 'FullName Email AvatarUrl Information',
@@ -616,11 +745,38 @@ export const getSalesOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'sale', orderId: order._id })
-      .populate({ path: 'createdBy', select: 'FullName Email' })
-      .lean(),
+      .populate({ path: 'createdBy', select: 'FullName Email' }),
   ]);
 
-  return { order, items, shipments };
+  const activeShipments = shipments.filter((s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus));
+  if (activeShipments.length > 0) {
+    const synced = await Promise.all(
+      activeShipments.map((s) => syncSingleShipmentFromGHN(s).catch(() => null))
+    );
+    synced.forEach((updated) => {
+      if (updated && updated._id) {
+        const idx = shipments.findIndex((s) => String(s._id) === String(updated._id));
+        if (idx !== -1) shipments[idx] = updated;
+      }
+    });
+
+    const freshOrder = await SalesOrder.findById(order._id)
+      .populate({ path: 'customerId', select: 'FullName Email AvatarUrl Information' })
+      .populate({
+        path: 'locationId',
+        select: 'name code address type shopId',
+        populate: { path: 'shopId', select: 'name code address phone managerId isHQ' },
+      })
+      .lean();
+    if (freshOrder) order = freshOrder;
+  }
+
+  const resolvedShipments = shipments.map((s) => (s.toObject ? s.toObject() : s));
+  const primaryShipment = resolvePrimaryShipment(resolvedShipments);
+  order.shipments = resolvedShipments;
+  order.shipment = primaryShipment;
+
+  return { order, items, shipments: resolvedShipments, shipment: primaryShipment };
 };
 
 /**
@@ -691,6 +847,14 @@ export const getOrderMetrics = async (user, { branchId = '' } = {}) => {
     salesStatusMap[item._id] = item.count;
   });
 
+  const overdueCount = await RentalOrder.countDocuments({
+    ...matchRental,
+    $or: [
+      { rentalStatus: 'overdue' },
+      { rentalStatus: 'renting', dueDate: { $lt: new Date() } },
+    ],
+  });
+
   return {
     rentalMetrics: {
       total: rentalAgg[0]?.totals[0]?.totalRentals || 0,
@@ -699,19 +863,19 @@ export const getOrderMetrics = async (user, { branchId = '' } = {}) => {
       totalDepositHeld: rentalAgg[0]?.escrowHeld[0]?.totalEscrowHeld || 0,
       totalEscrowHeld: rentalAgg[0]?.escrowHeld[0]?.totalEscrowHeld || 0,
       draft: rentalStatusMap.draft || 0,
-      confirmed: rentalStatusMap.confirmed || 0,
+      confirmed: (rentalStatusMap.confirmed || 0) + (rentalStatusMap.draft || 0),
       renting: rentalStatusMap.renting || 0,
       partially_returned: rentalStatusMap.partially_returned || 0,
       returned: rentalStatusMap.returned || 0,
       cancelled: rentalStatusMap.cancelled || 0,
-      overdue: rentalStatusMap.overdue || 0,
+      overdue: overdueCount,
     },
     salesMetrics: {
       total: salesAgg[0]?.totals[0]?.totalSales || 0,
       totalAmount: salesAgg[0]?.totals[0]?.totalAmount || 0,
       completedRevenue: salesAgg[0]?.completedRevenue[0]?.completedRevenue || 0,
       draft: salesStatusMap.draft || 0,
-      confirmed: salesStatusMap.confirmed || 0,
+      confirmed: (salesStatusMap.confirmed || 0) + (salesStatusMap.draft || 0),
       processing: salesStatusMap.processing || 0,
       completed: salesStatusMap.completed || 0,
       cancelled: salesStatusMap.cancelled || 0,
@@ -729,7 +893,18 @@ export const getCustomerRentalOrders = async (user, query = {}) => {
 
   const filter = { customerId: user._id };
   if (query.status && query.status !== 'all') {
-    filter.rentalStatus = query.status;
+    if (query.status === 'overdue') {
+      filter.$or = [
+        { rentalStatus: 'overdue' },
+        { rentalStatus: 'renting', dueDate: { $lt: new Date() } },
+      ];
+    } else if (query.status === 'confirmed') {
+      filter.rentalStatus = { $in: ['confirmed', 'draft'] };
+    } else if (query.status === 'returned') {
+      filter.rentalStatus = { $in: ['returned', 'partially_returned'] };
+    } else {
+      filter.rentalStatus = query.status;
+    }
   }
   if (query.search && String(query.search).trim()) {
     filter.orderCode = { $regex: String(query.search).trim(), $options: 'i' };
@@ -750,7 +925,27 @@ export const getCustomerRentalOrders = async (user, query = {}) => {
 
   await attachProductImages(details);
 
-  const shipments = await OrderShipment.find({ orderId: { $in: orderIds } }).lean();
+  const shipments = await OrderShipment.find({ orderId: { $in: orderIds } })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Đồng bộ nhanh các vận đơn đang trong hành trình từ GHN
+  const activeShipments = shipments.filter(
+    (s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus)
+  );
+  if (activeShipments.length > 0) {
+    const synced = await Promise.all(
+      activeShipments.map((s) => syncSingleShipmentFromGHN(s).catch(() => null))
+    );
+    synced.forEach((updated) => {
+      if (updated && updated._id) {
+        const idx = shipments.findIndex((s) => String(s._id) === String(updated._id));
+        if (idx !== -1) {
+          shipments[idx] = updated.toObject ? updated.toObject() : updated;
+        }
+      }
+    });
+  }
 
   const detailsByOrder = {};
   for (const d of details) {
@@ -761,14 +956,20 @@ export const getCustomerRentalOrders = async (user, query = {}) => {
 
   const shipmentsByOrder = {};
   for (const s of shipments) {
-    shipmentsByOrder[String(s.orderId)] = s;
+    const oid = String(s.orderId);
+    if (!shipmentsByOrder[oid]) shipmentsByOrder[oid] = [];
+    shipmentsByOrder[oid].push(s);
   }
 
-  return orders.map((o) => ({
-    ...o,
-    items: detailsByOrder[String(o._id)] || [],
-    shipment: shipmentsByOrder[String(o._id)] || null,
-  }));
+  return orders.map((o) => {
+    const ordShipments = shipmentsByOrder[String(o._id)] || [];
+    return {
+      ...o,
+      items: detailsByOrder[String(o._id)] || [],
+      shipments: ordShipments,
+      shipment: resolvePrimaryShipment(ordShipments),
+    };
+  });
 };
 
 export const createCustomerCheckoutOrder = async (user, data = {}) => {
@@ -804,6 +1005,27 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
   const customerName = recipientName || user.FullName || user.name || 'Khách hàng';
   const customerPhone = phone || user.Phone || user.phone || '0901234567';
   const fullAddress = [address, ward, district, province].filter(Boolean).join(', ') || address || 'Nhận tại Showroom';
+
+  const structuredShippingAddress = deliveryMethod === 'pickup'
+    ? {
+        deliveryMethod: 'pickup',
+        receiverName: customerName,
+        phone: customerPhone,
+        address: 'Nhận tại Showroom Vestora',
+      }
+    : {
+        deliveryMethod: 'delivery',
+        receiverName: customerName,
+        phone: customerPhone,
+        address: fullAddress,
+        street: address || '',
+        ward: ward || '',
+        district: district || '',
+        province: province || '',
+        provinceId: Number(data.provinceId) || null,
+        districtId: Number(data.districtId) || null,
+        wardCode: data.wardCode ? String(data.wardCode) : null,
+      };
 
   const deliveryNote = deliveryMethod === 'pickup'
     ? '[Nhận tại Showroom Vestora]'
@@ -905,12 +1127,16 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
       createdBy: user._id,
       rentalStatus: 'confirmed',
       paymentStatus: 'paid', // Đơn thuê thanh toán qua ví luôn paid
+      deliveryMethod,
+      shippingAddress: structuredShippingAddress,
+      paymentMethod: appliedPaymentMethod,
+      paidAmount: totalRentalFee + totalDeposit,
       startDate: rentalStartDate,
       dueDate: rentalDueDate,
       rentalFee: totalRentalFee,
       depositAmount: totalDeposit,
       depositStatus: totalDeposit > 0 ? 'held' : 'pending',
-      note: combinedNote,
+      note: note || combinedNote,
     });
 
     for (const it of rentalItems) {
@@ -963,49 +1189,6 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
         note: it.size ? `Kích thước: ${it.size}` : '',
       });
     }
-
-    // Tạo vận đơn OrderShipment cho đơn thuê nếu giao tận nơi
-    if (deliveryMethod === 'delivery') {
-      try {
-        let fromShopId;
-        const loc = await InventoryLocation.findById(locationId).lean();
-        if (loc?.shopId) {
-          fromShopId = loc.shopId;
-        } else {
-          const shop = await Shop.findOne().lean();
-          fromShopId = shop?._id || locationId;
-        }
-
-        const trackingCode = `GHN${Date.now().toString().slice(-7)}${Math.floor(100 + Math.random() * 900)}`;
-        await OrderShipment.create({
-          trackingCode,
-          orderType: 'rental',
-          orderId: createdRentalOrder._id,
-          fromShopId,
-          carrierName: 'Giao Hàng Nhanh',
-          shipmentType: 'outbound',
-          shipmentStatus: 'preparing',
-          shippingFee: 0,
-          codAmount: 0,
-          receiverInfo: {
-            name: customerName,
-            phone: customerPhone,
-            address: fullAddress,
-          },
-          statusHistory: [
-            {
-              status: 'preparing',
-              description: 'Đơn thuê mới tạo, đang chuẩn bị trang phục tại showroom',
-              timestamp: new Date(),
-            },
-          ],
-          note: combinedNote,
-          createdBy: user._id,
-        });
-      } catch (shipmentErr) {
-        console.warn('[Checkout] Lỗi tự động tạo OrderShipment đơn thuê:', shipmentErr);
-      }
-    }
   }
 
   // Xử lý đơn MUA (Sale) nếu có sản phẩm mua
@@ -1019,11 +1202,15 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
       createdBy: user._id,
       orderStatus: 'confirmed',
       paymentStatus: appliedPaymentMethod === 'cod' ? 'unpaid' : 'paid',
+      deliveryMethod,
+      shippingAddress: structuredShippingAddress,
+      paymentMethod: appliedPaymentMethod,
+      paidAmount: appliedPaymentMethod === 'cod' ? 0 : totalSaleAmount,
       subtotal: totalSaleAmount,
       discountAmount: 0,
       totalAmount: totalSaleAmount,
       confirmedAt: new Date(),
-      note: combinedNote,
+      note: note || combinedNote,
     });
 
     for (const it of saleItems) {
@@ -1072,49 +1259,6 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
         discountAmount: 0,
         lineTotal: unitPrice * qty,
       });
-    }
-
-    // Tạo vận đơn OrderShipment cho đơn mua nếu giao tận nơi
-    if (deliveryMethod === 'delivery') {
-      try {
-        let fromShopId;
-        const loc = await InventoryLocation.findById(locationId).lean();
-        if (loc?.shopId) {
-          fromShopId = loc.shopId;
-        } else {
-          const shop = await Shop.findOne().lean();
-          fromShopId = shop?._id || locationId;
-        }
-
-        const trackingCode = `GHN${Date.now().toString().slice(-7)}${Math.floor(100 + Math.random() * 900)}`;
-        await OrderShipment.create({
-          trackingCode,
-          orderType: 'sale',
-          orderId: createdSalesOrder._id,
-          fromShopId,
-          carrierName: 'Giao Hàng Nhanh',
-          shipmentType: 'outbound',
-          shipmentStatus: 'preparing',
-          shippingFee: 0,
-          codAmount: appliedPaymentMethod === 'cod' ? totalSaleAmount : 0,
-          receiverInfo: {
-            name: customerName,
-            phone: customerPhone,
-            address: fullAddress,
-          },
-          statusHistory: [
-            {
-              status: 'preparing',
-              description: 'Đơn mua mới tạo, đang chuẩn bị đóng gói tại kho showroom',
-              timestamp: new Date(),
-            },
-          ],
-          note: combinedNote,
-          createdBy: user._id,
-        });
-      } catch (shipmentErr) {
-        console.warn('[Checkout] Lỗi tự động tạo OrderShipment đơn mua:', shipmentErr);
-      }
     }
   }
 
@@ -1207,7 +1351,11 @@ export const getCustomerSalesOrders = async (user, query = {}) => {
 
   const filter = { customerId: user._id };
   if (query.status && query.status !== 'all') {
-    filter.orderStatus = query.status;
+    if (query.status === 'confirmed') {
+      filter.orderStatus = { $in: ['confirmed', 'draft'] };
+    } else {
+      filter.orderStatus = query.status;
+    }
   }
   if (query.search && String(query.search).trim()) {
     filter.orderCode = { $regex: String(query.search).trim(), $options: 'i' };
@@ -1228,7 +1376,27 @@ export const getCustomerSalesOrders = async (user, query = {}) => {
 
   await attachProductImages(details);
 
-  const shipments = await OrderShipment.find({ orderId: { $in: orderIds } }).lean();
+  const shipments = await OrderShipment.find({ orderId: { $in: orderIds } })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Đồng bộ nhanh các vận đơn đang trong hành trình từ GHN
+  const activeShipments = shipments.filter(
+    (s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus)
+  );
+  if (activeShipments.length > 0) {
+    const synced = await Promise.all(
+      activeShipments.map((s) => syncSingleShipmentFromGHN(s).catch(() => null))
+    );
+    synced.forEach((updated) => {
+      if (updated && updated._id) {
+        const idx = shipments.findIndex((s) => String(s._id) === String(updated._id));
+        if (idx !== -1) {
+          shipments[idx] = updated.toObject ? updated.toObject() : updated;
+        }
+      }
+    });
+  }
 
   const detailsByOrder = {};
   for (const d of details) {
@@ -1239,13 +1407,19 @@ export const getCustomerSalesOrders = async (user, query = {}) => {
 
   const shipmentsByOrder = {};
   for (const s of shipments) {
-    shipmentsByOrder[String(s.orderId)] = s;
+    const oid = String(s.orderId);
+    if (!shipmentsByOrder[oid]) shipmentsByOrder[oid] = [];
+    shipmentsByOrder[oid].push(s);
   }
 
-  return orders.map((o) => ({
-    ...o,
-    items: detailsByOrder[String(o._id)] || [],
-    shipment: shipmentsByOrder[String(o._id)] || null,
-  }));
+  return orders.map((o) => {
+    const ordShipments = shipmentsByOrder[String(o._id)] || [];
+    return {
+      ...o,
+      items: detailsByOrder[String(o._id)] || [],
+      shipments: ordShipments,
+      shipment: resolvePrimaryShipment(ordShipments),
+    };
+  });
 };
 

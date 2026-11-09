@@ -23,10 +23,9 @@ import {
   formatCurrency,
   formatDate,
   formatPeriod,
-  RENTAL_STATUS_MAP,
-  SALES_STATUS_MAP,
   DEPOSIT_STATUS_MAP,
   PAYMENT_STATUS_MAP,
+  resolveOrderDisplayStatus,
 } from './orderUtils';
 import '../../styles/ShopDashboard.css';
 import '../../styles/ShopBranches.css';
@@ -69,6 +68,7 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
       const m = metrics || {};
       return [
         { key: 'all', label: 'Tất Cả', count: m.total },
+        { key: 'confirmed', label: 'Chờ Giao Đồ', count: m.confirmed },
         { key: 'renting', label: 'Đang Cho Thuê', count: m.renting },
         { key: 'overdue', label: 'Quá Hạn Trả', count: m.overdue },
         { key: 'partially_returned', label: 'Trả 1 Phần', count: m.partially_returned || m.partiallyReturned },
@@ -303,10 +303,7 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                         const extraCount = Math.max(0, (o.items?.length || 1) - 1);
 
                         if (type === 'rental') {
-                          const statusDef = RENTAL_STATUS_MAP[o.rentalStatus || o.status] || {
-                            text: o.rentalStatus || o.status || 'Chưa rõ',
-                            chipClass: 'draft',
-                          };
+                          const statusDef = resolveOrderDisplayStatus(o, 'rental', isBranch);
                           const depositDef = DEPOSIT_STATUS_MAP[o.depositStatus] || {
                             text: o.depositStatus || 'Chưa cọc',
                             chipClass: 'pending',
@@ -416,10 +413,7 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                         }
 
                         // type === 'sale'
-                        const salesStatusDef = SALES_STATUS_MAP[o.orderStatus || o.salesStatus || o.status] || {
-                          text: o.orderStatus || o.salesStatus || o.status || 'Chưa rõ',
-                          chipClass: 'draft',
-                        };
+                        const salesStatusDef = resolveOrderDisplayStatus(o, 'sale', isBranch);
                         const payDef = PAYMENT_STATUS_MAP[o.paymentStatus] || {
                           text: o.paymentStatus || 'Chưa thanh toán',
                           chipClass: 'cancelled',
@@ -526,7 +520,10 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
       {type === 'rental' ? (
         <RentalOrderDetailModal
           isOpen={isModalOpen}
-          onClose={closeOrderDetail}
+          onClose={() => {
+            closeOrderDetail();
+            refetch();
+          }}
           orderId={selectedOrderId}
           isReadOnly={!isBranch}
           onAction={(act, ord) => {
@@ -538,7 +535,10 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
       ) : (
         <SaleOrderDetailModal
           isOpen={isModalOpen}
-          onClose={closeOrderDetail}
+          onClose={() => {
+            closeOrderDetail();
+            refetch();
+          }}
           orderId={selectedOrderId}
           isReadOnly={!isBranch}
           onAction={(act, ord) => {

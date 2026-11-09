@@ -13,13 +13,14 @@ import {
   MapPin,
   Phone,
   Mail,
+  Store,
 } from 'lucide-react';
 import { getRentalOrderDetailApi } from '../../services/orderApi';
 import {
   formatCurrency,
   formatDate,
-  RENTAL_STATUS_MAP,
   DEPOSIT_STATUS_MAP,
+  resolveOrderDisplayStatus,
 } from './orderUtils';
 import {
   ShipmentTrackingTimeline,
@@ -110,16 +111,22 @@ export default function RentalOrderDetailModal({
   const customerName = order.shippingAddress?.receiverName || customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
   const customerPhone = order.shippingAddress?.phone || customerInfo?.Phone || customer.phone || 'Chưa cập nhật';
   const customerEmail = customer.Email || customer.email || '';
+  let noteDeliveryAddress = '';
+  if (order.note) {
+    const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
+    if (match) noteDeliveryAddress = match[3].trim();
+  }
   const customerAddress = order.shippingAddress?.street 
     ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
-    : (customerInfo?.AddressDetail || customerInfo?.Address || customer.address || '');
+    : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
   const shipments = detailData?.shipments || order.shipments || [];
 
-  const statusDef = RENTAL_STATUS_MAP[order.rentalStatus || order.status] || {
-    text: order.rentalStatus || order.status || 'Chưa xác định',
-    chipClass: 'draft',
-  };
+  const statusDef = resolveOrderDisplayStatus(
+    { ...order, shipments, shipment: detailData?.shipment || order.shipment },
+    'rental',
+    !isReadOnly
+  );
 
   const depositDef = DEPOSIT_STATUS_MAP[order.depositStatus] || {
     text: order.depositStatus || 'Chưa đặt cọc',
@@ -382,11 +389,15 @@ export default function RentalOrderDetailModal({
 
             {/* Section 4: Vận Chuyển & Giao Nhận */}
             {(() => {
+              const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
               const hasActiveOutbound = shipments.some(
                 (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus)
               );
-              const canCreateOutbound = !isReadOnly && !hasActiveOutbound && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
-              const canCreateReturn = !isReadOnly && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);
+              const hasActiveReturn = shipments.some(
+                (s) => s.shipmentType === 'return' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+              );
+              const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
+              const canCreateReturn = !isReadOnly && !hasActiveReturn && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);
 
               return (
                 <div className="modal-section-card">
@@ -395,7 +406,13 @@ export default function RentalOrderDetailModal({
                       <Truck size={16} className="text-primary me-2" />
                       <span>4. Vận Chuyển & Giao Nhận (GHN)</span>
                     </span>
-                    <div className="d-flex gap-2">
+                    <div className="d-flex align-items-center gap-2">
+                      {isPickup && (
+                        <span className="badge bg-light text-secondary border px-2 py-1 d-flex align-items-center gap-1">
+                          <Store size={13} />
+                          <span>Nhận tại Showroom</span>
+                        </span>
+                      )}
                       {canCreateOutbound && (
                         <button
                           type="button"
@@ -426,7 +443,13 @@ export default function RentalOrderDetailModal({
                           key={s._id}
                           shipment={s}
                           onCancel={handleCancelShipment}
-                          onRetry={() => setIsCreateShipmentOpen(true)}
+                          onRetry={(targetShipment) => {
+                            if ((targetShipment || s)?.shipmentType === 'return') {
+                              setIsReturnShipmentOpen(true);
+                            } else {
+                              setIsCreateShipmentOpen(true);
+                            }
+                          }}
                           isBranchManager={!isReadOnly}
                         />
                       ))}

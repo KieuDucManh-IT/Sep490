@@ -14,6 +14,7 @@ import {
   User,
   Store,
   ExternalLink,
+  RotateCw,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
@@ -34,6 +35,20 @@ const sanitizeTimelineText = (text) => {
     .trim();
 };
 
+const getShipmentTypeLabel = (data) => {
+  if (!data) return 'Đơn giao hàng';
+  if (data.shipmentType === 'return') {
+    return 'Đơn thu hồi trang phục cho thuê';
+  }
+  if (data.orderType === 'rental' || data.orderCode?.startsWith('RNT')) {
+    return 'Đơn thuê trang phục';
+  }
+  if (data.orderType === 'sale' || data.orderCode?.startsWith('SAL') || data.orderCode?.startsWith('ORD')) {
+    return 'Đơn mua hàng';
+  }
+  return 'Đơn giao hàng';
+};
+
 export default function CustomerOrderTrackingPage() {
   const { trackingCode: urlCode } = useParams();
   const [searchParams] = useSearchParams();
@@ -43,18 +58,27 @@ export default function CustomerOrderTrackingPage() {
   const [searchInput, setSearchInput] = useState(initialCode);
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const fetchTracking = async (code) => {
+  const fetchTracking = async (code, force = false) => {
     if (!code || !code.trim()) return;
-    setLoading(true);
+    if (force) {
+      setSyncing(true);
+    } else {
+      setLoading(true);
+    }
     setErrorMsg('');
     try {
-      const res = await trackPublicShipmentApi(code.trim());
+      const res = await trackPublicShipmentApi(code.trim(), { force });
       if (res?.success && res.data) {
         setTrackingData(res.data);
+        // Mã hiển thị trên thanh search luôn là mã đơn hàng của sàn
+        if (res.data.orderCode) {
+          setSearchInput(res.data.orderCode);
+        }
       } else {
-        setErrorMsg(res?.message || 'Không tìm thấy thông tin vận đơn khớp với mã vận đơn GHN đã cung cấp.');
+        setErrorMsg(res?.message || 'Không tìm thấy đơn hàng hoặc mã vận đơn phù hợp.');
         setTrackingData(null);
       }
     } catch (err) {
@@ -62,6 +86,7 @@ export default function CustomerOrderTrackingPage() {
       setTrackingData(null);
     } finally {
       setLoading(false);
+      setSyncing(false);
     }
   };
 
@@ -82,25 +107,30 @@ export default function CustomerOrderTrackingPage() {
   };
 
   // Tính bước tiến trình hiện tại (0 -> 3)
-  const getStepIndex = (status) => {
+  const getStepIndex = (status, displayStatusText = '') => {
+    if (String(displayStatusText).toLowerCase().includes('chuẩn bị lại')) {
+      return 1;
+    }
     switch (status) {
+      case 'pending_confirmation':
+        return 0; // Chờ xác nhận
       case 'preparing':
-        return 0; // Đã tiếp nhận đơn
+        return 1; // Chờ lấy hàng
       case 'shipped':
-        return 2; // Đang vận chuyển
+        return 2; // Đang giao hàng
       case 'delivered':
         return 3; // Giao thành công
       case 'failed':
       case 'cancelled':
         return -1;
       default:
-        return 1; // Đã lấy hàng
+        return 1;
     }
   };
 
-  const currentStep = trackingData ? getStepIndex(trackingData.shipmentStatus) : 0;
+  const currentStep = trackingData ? getStepIndex(trackingData.shipmentStatus, trackingData.displayStatusText) : 0;
   const statusDef = trackingData
-    ? SHIPMENT_STATUS_MAP[trackingData.shipmentStatus] || { text: trackingData.shipmentStatus, chipClass: 'pending' }
+    ? SHIPMENT_STATUS_MAP[trackingData.shipmentStatus] || { text: trackingData.displayStatusText || trackingData.shipmentStatus, chipClass: 'pending' }
     : null;
 
   return (
@@ -121,7 +151,7 @@ export default function CustomerOrderTrackingPage() {
               <input
                 type="text"
                 className="tracking-search-input"
-                placeholder="Nhập mã vận đơn"
+                placeholder="Nhập mã vận đơn GHN hoặc mã đơn hàng (VD: RNT-195647-586, LY7UKP)..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
               />
@@ -148,8 +178,8 @@ export default function CustomerOrderTrackingPage() {
           <div className="tracking-alert">
             <AlertCircle size={24} className="tracking-alert-icon" />
             <div>
-              <strong style={{ fontSize: '15px' }}>Không tìm thấy vận đơn</strong>
-              <div style={{ fontSize: '13px', marginTop: '4px' }}>{errorMsg}</div>
+              <strong className="tracking-alert-title">Không tìm thấy đơn hàng hoặc vận đơn</strong>
+              <div className="tracking-alert-desc">{errorMsg}</div>
             </div>
           </div>
         )}
@@ -166,25 +196,72 @@ export default function CustomerOrderTrackingPage() {
             {/* Header Banner */}
             <div className="tracking-card-header">
               <div>
-                <span className="tracking-carrier-tag">
-                  {trackingData.carrierName || 'Giao Hàng Nhanh'}
-                </span>
-                <h2 className="tracking-code-display">{trackingData.trackingCode}</h2>
-                <div className="tracking-type-label">
-                  {trackingData.shipmentType === 'return'
-                    ? 'Đơn thu hồi trang phục cho thuê'
-                    : 'Đơn giao trang phục thời trang cao cấp'}
+                <div className="tracking-header-tags">
+                  <span className="tracking-carrier-tag">
+                    {trackingData.carrierName || 'Giao Hàng Nhanh'}
+                  </span>
+                  {trackingData.hasGhnShipment ? (
+                    <span className="tracking-badge-delivered">
+                      <CheckCircle size={13} /> Đã bàn giao GHN
+                    </span>
+                  ) : (
+                    <span className="tracking-badge-preparing">
+                      <Clock size={13} /> Đang chuẩn bị tại Shop
+                    </span>
+                  )}
+                </div>
+                <div className="tracking-meta-section">
+                  <div className="tracking-type-label tracking-meta-code">
+                    <span>
+                      Mã vận đơn GHN:{' '}
+                      <strong className={trackingData.hasGhnShipment ? 'tracking-order-code-highlight' : 'tracking-code-empty'}>
+                        {trackingData.hasGhnShipment ? trackingData.trackingCode : 'Chưa có mã vận đơn'}
+                      </strong>
+                    </span>
+                  </div>
+                  <div className="tracking-type-label">
+                    <span className="me-2">
+                      Mã đơn hàng: <strong className="tracking-order-code-highlight">{trackingData.orderCode || trackingData.trackingCode}</strong> •
+                    </span>
+                    <span>{getShipmentTypeLabel(trackingData)}</span>
+                  </div>
                 </div>
               </div>
               <div className="text-end">
-                <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', display: 'block', marginBottom: '4px' }}>
+                <span className="tracking-status-sub">
                   Trạng thái hiện tại:
                 </span>
-                <span className={`tracking-status-badge status-${trackingData.shipmentStatus}`}>
-                  {statusDef?.text || trackingData.shipmentStatus}
-                </span>
+                <div className="tracking-status-actions">
+                  <span className={`tracking-status-badge status-${trackingData.shipmentStatus}`}>
+                    {trackingData.displayStatusText || statusDef?.text || trackingData.shipmentStatus}
+                  </span>
+                  {trackingData.hasGhnShipment && (
+                    <button
+                      type="button"
+                      onClick={() => fetchTracking(trackingData.trackingCode || trackingData.orderCode, true)}
+                      disabled={syncing || loading}
+                      title="Cập nhật trạng thái mới nhất trực tiếp từ GHN"
+                      className="tracking-sync-btn"
+                    >
+                      <RotateCw size={13} className={syncing ? 'animate-spin' : ''} />
+                      <span>{syncing ? 'Đang đồng bộ...' : 'Làm mới'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* Thông báo tiến độ khi shop chưa gửi bưu tá GHN */}
+            {!trackingData.hasGhnShipment && (
+              <div className="tracking-shop-notice">
+                <Clock size={18} className="tracking-notice-icon" />
+                <span>
+                  {trackingData.shipmentStatus === 'pending_confirmation'
+                    ? 'Đơn hàng đang chờ cửa hàng liên hệ xác nhận (Đơn ship COD). Sau khi xác nhận, đơn sẽ được đóng gói giao cho bưu tá GHN.'
+                    : 'Cửa hàng đang chuẩn bị sản phẩm và chờ shipper GHN đến lấy hàng. Mã vận đơn GHN chính thức sẽ được kích hoạt ngay khi bưu tá nhận kiện hàng.'}
+                </span>
+              </div>
+            )}
 
             {/* Stepper Progress */}
             <div className="tracking-stepper-wrap">
@@ -192,15 +269,17 @@ export default function CustomerOrderTrackingPage() {
                 <div className="stepper-progress-bg" />
                 <div
                   className="stepper-progress-fill"
-                  style={{
-                    width: `${Math.max(0, (currentStep / 3) * 100)}%`,
-                  }}
+                  data-step={currentStep}
                 />
 
                 {[
-                  { label: 'Tiếp nhận', icon: Package, step: 0 },
-                  { label: 'Đã lấy hàng', icon: ShieldCheck, step: 1 },
-                  { label: 'Đang vận chuyển', icon: Truck, step: 2 },
+                  {
+                    label: trackingData.shipmentStatus === 'pending_confirmation' ? 'Chờ xác nhận' : 'Tiếp nhận',
+                    icon: trackingData.shipmentStatus === 'pending_confirmation' ? Clock : Package,
+                    step: 0,
+                  },
+                  { label: 'Chờ lấy hàng', icon: ShieldCheck, step: 1 },
+                  { label: 'Đang giao hàng', icon: Truck, step: 2 },
                   { label: 'Giao thành công', icon: CheckCircle, step: 3 },
                 ].map((item, idx) => {
                   const isDone = currentStep >= item.step;
@@ -234,7 +313,7 @@ export default function CustomerOrderTrackingPage() {
                 <div className="info-main-text">{trackingData.receiverInfo?.name}</div>
                 <div className="info-sub-text">{trackingData.receiverInfo?.phone}</div>
                 <div className="info-sub-text info-address-row">
-                  <MapPin size={13} style={{ color: '#5b6e4e', flexShrink: 0, marginTop: '3px' }} />
+                  <MapPin size={13} className="info-icon-green" />
                   <span>{trackingData.receiverInfo?.maskedAddress}</span>
                 </div>
               </div>
@@ -248,7 +327,7 @@ export default function CustomerOrderTrackingPage() {
                 </div>
                 <div className="info-main-text">{trackingData.storeInfo?.name || 'Vestora Showroom'}</div>
                 <div className="info-sub-text info-address-row">
-                  <MapPin size={13} style={{ color: '#5b6e4e', flexShrink: 0, marginTop: '3px' }} />
+                  <MapPin size={13} className="info-icon-green" />
                   <span>{trackingData.storeInfo?.address || 'Hệ thống cửa hàng Vestora'}</span>
                 </div>
                 {trackingData.storeInfo?.latitude && trackingData.storeInfo?.longitude && (
@@ -274,7 +353,7 @@ export default function CustomerOrderTrackingPage() {
                 {trackingData.expectedDeliveryTime ? (
                   <>
                     <div className="info-sub-text">Thời gian dự kiến:</div>
-                    <div className="info-main-text" style={{ color: '#5b6e4e', marginTop: '2px' }}>
+                    <div className="info-main-text info-main-text-green">
                       {formatDate(trackingData.expectedDeliveryTime)}
                     </div>
                   </>
@@ -283,7 +362,7 @@ export default function CustomerOrderTrackingPage() {
                 )}
                 {trackingData.deliveredAt && (
                   <div className="info-delivered-tag">
-                    <CheckCircle size={13} style={{ flexShrink: 0 }} />
+                    <CheckCircle size={13} className="info-icon-shrink" />
                     <span>Đã giao thành công lúc {formatDate(trackingData.deliveredAt)}</span>
                   </div>
                 )}
@@ -293,7 +372,7 @@ export default function CustomerOrderTrackingPage() {
             {/* Timeline History */}
             <div className="tracking-timeline-section">
               <h3 className="timeline-heading">
-                <Clock size={18} style={{ color: '#5b6e4e' }} />
+                <Clock size={18} className="timeline-heading-icon" />
                 Lịch Sử Hành Trình Chi Tiết
               </h3>
 
@@ -320,7 +399,7 @@ export default function CustomerOrderTrackingPage() {
                     })}
                 </div>
               ) : (
-                <div style={{ color: '#888', fontStyle: 'italic', fontSize: '14px' }}>
+                <div className="timeline-empty-msg">
                   Đơn hàng đang chờ bưu tá GHN tiếp nhận gói hàng tại cửa hàng.
                 </div>
               )}

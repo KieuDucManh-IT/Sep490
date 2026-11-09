@@ -13,6 +13,10 @@ const rentalOrderSchema = new mongoose.Schema({
   rentalFee: { type: Number, min: 0, required: true, default: 0 },
   depositAmount: { type: Number, min: 0, required: true, default: 0 },
   depositStatus: { type: String, default: 'pending', enum: ['pending', 'held', 'partially_refunded', 'refunded', 'forfeited', 'partially_deducted'] },
+  deliveryMethod: { type: String, enum: ['delivery', 'pickup'], default: 'delivery' },
+  shippingAddress: { type: Object, default: null },
+  paymentMethod: { type: String, default: 'wallet' },
+  paidAmount: { type: Number, default: 0 },
   note: { type: String, trim: true },
 }, { timestamps: true });
 

@@ -68,7 +68,7 @@ export default function CheckoutPage() {
       {};
     const savedName = user?.fullName || user?.FullName || '';
     const savedPhone = info.Phone || user?.phone || user?.Phone || '';
-    const savedAddress = info.Address || info.AddressDetail || '';
+    const savedAddress = info.AddressDetail || info.Address || '';
     const savedProvince = info.ProvinceName || '';
     const savedDistrict = info.DistrictName || '';
 

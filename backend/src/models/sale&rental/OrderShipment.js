@@ -20,9 +20,10 @@ const addressInfoSchema = new mongoose.Schema({
 
 const orderShipmentSchema = new mongoose.Schema({
   trackingCode: { type: String, required: true, unique: true, trim: true }, 
+  orderCode: { type: String, trim: true, index: true }, // Mã đơn của sàn tham chiếu song hành với mã GHN
   orderType: { type: String, required: true, enum: ['sale', 'rental'] },
   orderId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  fromShopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true }, 
+  fromShopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', default: null }, 
   carrierName: { type: String, trim: true, default: 'Giao Hàng Nhanh' },
   shipmentType: { type: String, enum: ['outbound', 'return'], default: 'outbound' },
   shipmentStatus: { type: String, default: 'preparing', enum: ['preparing', 'shipped', 'delivered', 'failed', 'cancelled'] },
@@ -41,7 +42,7 @@ const orderShipmentSchema = new mongoose.Schema({
   note: { type: String, trim: true },
   shippedAt: { type: Date, default: null },
   deliveredAt: { type: Date, default: null },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
 
 orderShipmentSchema.index({ orderId: 1, orderType: 1 });

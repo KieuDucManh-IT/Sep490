@@ -123,8 +123,27 @@ export const getWardsHandler = async (req, res, next) => {
   }
 };
 
+export const getWardsByProvinceHandler = async (req, res, next) => {
+  try {
+    const result = await ghnService.getWardsByProvince(req.params.provinceId);
+    return res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
 export const ghnWebhookHandler = async (req, res, next) => {
   try {
+    const secretKey =
+      req.params.secretKey ||
+      req.query.secret ||
+      req.headers['x-ghn-secret'] ||
+      req.headers['x-webhook-secret'] ||
+      '';
+
     const payload = req.body || {};
     const normalized = {
       order_code: payload.order_code || payload.OrderCode,
@@ -132,8 +151,10 @@ export const ghnWebhookHandler = async (req, res, next) => {
       time: payload.time || payload.Time,
       reason: payload.reason || payload.Reason || payload.Description,
       fee: payload.fee || payload.Fee,
+      shop_id: payload.shop_id || payload.ShopID || payload.shopId,
+      client_id: payload.client_id || payload.ClientID,
     };
-    const result = await shipmentService.processGHNWebhook(normalized);
+    const result = await shipmentService.processGHNWebhook(normalized, secretKey);
     return res.json({
       success: true,
       data: result,

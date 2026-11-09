@@ -163,7 +163,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Liên Hệ (Gồm Liên hệ, Về VESTORA và Chính Sách) */}
+          {/* Liên Hệ & Về Chúng Tôi */}
           <div className="nav-dropdown-item">
             <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
               Liên Hệ <ChevronDown size={12} className="nav-arrow" />
@@ -172,17 +172,12 @@ export default function Navbar() {
               <Link to="/contact" className="nav-sublink">Liên hệ & Hỗ trợ</Link>
               <div className="nav-dropdown-divider"></div>
               <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
-              <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
-              <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
+              <Link to="/about#mission" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
+              <Link to="/about#commitment" className="nav-sublink">Cam kết dịch vụ</Link>
               <div className="nav-dropdown-divider"></div>
               <Link to="/policy" className="nav-sublink">Chính sách VESTORA</Link>
             </div>
           </div>
-
-          {/* Radar Cửa Hàng / Bản đồ chi nhánh */}
-          <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
-            Bản đồ chi nhánh
-          </Link>
 
           {/* Quick Access for Management Roles */}
           {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
@@ -211,14 +206,24 @@ export default function Navbar() {
           {/* Quick Location Picker */}
           <NavbarLocationWidget />
 
-          {/* Favorites Heart Icon (Sản phẩm yêu thích) */}
-          <Link to="/favorites" className={`navbar-icon-btn navbar-fav-btn ${isActive('/favorites')}`} title="Sản phẩm yêu thích" aria-label="Sản phẩm yêu thích">
-            <i className="fa-regular fa-heart"></i>
+          {/* Favorites / Wardrobe Icon with reactive badge */}
+          <Link
+            to="/wardrobe"
+            className={`navbar-icon-btn navbar-fav-btn ${isActive('/wardrobe') || isActive('/favorites') ? 'active' : ''}`}
+            title="Tủ đồ & Yêu thích"
+            aria-label="Tủ đồ & Yêu thích"
+          >
+            <Heart size={18} />
+            {wishlistCount > 0 && (
+              <span className="cart-badge-count">
+                {wishlistCount}
+              </span>
+            )}
           </Link>
 
-          {/* Notification Bell Icon (Chuông thông báo) */}
+          {/* Notification Bell Icon */}
           <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
-            <i className="fa-regular fa-bell"></i>
+            <Bell size={18} />
           </Link>
 
           {/* Consultation Chat Icon */}
@@ -238,11 +243,21 @@ export default function Navbar() {
             </Link>
           )}
 
-          {/* Cart Icon with badge 0 (Đặt trước tên customer) */}
-          <Link to="/cart" className={`navbar-icon-btn navbar-cart-btn ${isActive('/cart')}`} title="Giỏ hàng" aria-label="Giỏ hàng">
-            <i className="fa-solid fa-bag-shopping"></i>
-            <span className="cart-badge-count">0</span>
-          </Link>
+          {/* Cart Icon with real-time reactive badge & drawer trigger */}
+          <button
+            type="button"
+            className={`navbar-icon-btn navbar-cart-btn ${isActive('/cart') ? 'active' : ''}`}
+            title="Giỏ hàng"
+            aria-label="Giỏ hàng"
+            onClick={openCart}
+          >
+            <ShoppingBag size={18} />
+            {totalItemCount > 0 && (
+              <span className="cart-badge-count">
+                {totalItemCount}
+              </span>
+            )}
+          </button>
 
           {/* User Account / Login Button */}
           {loading ? (
@@ -402,44 +417,6 @@ export default function Navbar() {
               <User size={18} />
             </Link>
           )}
-
-          {/* Wishlist / Wardrobe Icon with reactive badge */}
-          <Link
-            to="/wardrobe"
-            className="navbar-icon-btn navbar-wishlist-btn"
-            title="Tủ đồ & Yêu thích"
-            aria-label="Tủ đồ & Yêu thích"
-            data-testid="navbar-wishlist-btn"
-          >
-            <Heart size={18} />
-            {wishlistCount > 0 && (
-              <span className="cart-badge-count" data-testid="navbar-wishlist-count">
-                {wishlistCount}
-              </span>
-            )}
-          </Link>
-
-          {/* Notification Bell Icon */}
-          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
-            <Bell size={18} />
-          </Link>
-
-          {/* Cart Icon with real-time reactive badge & drawer trigger */}
-          <button
-            type="button"
-            className="navbar-icon-btn navbar-cart-btn"
-            title="Giỏ hàng"
-            aria-label="Giỏ hàng"
-            onClick={openCart}
-            data-testid="navbar-cart-btn"
-          >
-            <ShoppingBag size={18} />
-            {totalItemCount > 0 && (
-              <span className="cart-badge-count" data-testid="navbar-cart-count">
-                {totalItemCount}
-              </span>
-            )}
-          </button>
         </div>
       </div>
     </header>

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   Truck,
   Package,
-  Search,
   CheckCircle,
   Clock,
   MapPin,
@@ -15,6 +14,7 @@ import {
   Store,
   ExternalLink,
   RotateCw,
+  Loader2,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
@@ -52,17 +52,15 @@ const getShipmentTypeLabel = (data) => {
 export default function CustomerOrderTrackingPage() {
   const { trackingCode: urlCode } = useParams();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
 
-  const initialCode = urlCode || searchParams.get('code') || '';
-  const [searchInput, setSearchInput] = useState(initialCode);
+  const code = urlCode || searchParams.get('code') || '';
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const fetchTracking = async (code, force = false) => {
-    if (!code || !code.trim()) return;
+  const fetchTracking = async (trackingTarget, force = false) => {
+    if (!trackingTarget || !trackingTarget.trim()) return;
     if (force) {
       setSyncing(true);
     } else {
@@ -70,13 +68,9 @@ export default function CustomerOrderTrackingPage() {
     }
     setErrorMsg('');
     try {
-      const res = await trackPublicShipmentApi(code.trim(), { force });
+      const res = await trackPublicShipmentApi(trackingTarget.trim(), { force });
       if (res?.success && res.data) {
         setTrackingData(res.data);
-        // Mã hiển thị trên thanh search luôn là mã đơn hàng của sàn
-        if (res.data.orderCode) {
-          setSearchInput(res.data.orderCode);
-        }
       } else {
         setErrorMsg(res?.message || 'Không tìm thấy đơn hàng hoặc mã vận đơn phù hợp.');
         setTrackingData(null);
@@ -91,20 +85,10 @@ export default function CustomerOrderTrackingPage() {
   };
 
   useEffect(() => {
-    if (initialCode) {
-      setSearchInput(initialCode);
-      fetchTracking(initialCode);
-    }
-  }, [initialCode]);
-
-  const handleSearchSubmit = (e) => {
-    if (e) e.preventDefault();
-    const code = searchInput.trim();
     if (code) {
-      navigate(`/tracking/${encodeURIComponent(code)}`);
       fetchTracking(code);
     }
-  };
+  }, [code]);
 
   // Tính bước tiến trình hiện tại (0 -> 3)
   const getStepIndex = (status, displayStatusText = '') => {
@@ -140,53 +124,75 @@ export default function CustomerOrderTrackingPage() {
       <main className="tracking-main-container">
         {/* 1. Hero Section */}
         <section className="tracking-hero-section">
-          <h1 className="tracking-title">Tra Cứu Đơn Hàng</h1>
+          <h1 className="tracking-title">Tiến Trình Đơn Hàng</h1>
+          <p className="tracking-lead">
+            {code ? `Theo dõi hành trình kiện hàng #${code}` : 'Kiểm tra trạng thái vận chuyển và mốc thời gian giao nhận'}
+          </p>
         </section>
 
-        {/* 2. Search Box Card */}
-        <section className="tracking-search-card">
-          <form onSubmit={handleSearchSubmit} className="tracking-search-form">
-            <div className="tracking-input-wrapper">
-              <Search size={20} className="tracking-input-icon" />
-              <input
-                type="text"
-                className="tracking-search-input"
-                placeholder="Nhập mã vận đơn GHN hoặc mã đơn hàng (VD: RNT-195647-586, LY7UKP)..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-              />
-            </div>
-            <button
-              type="submit"
-              className="tracking-search-btn"
-              disabled={loading || !searchInput.trim()}
-            >
-              {loading ? (
-                <span>Đang tra cứu...</span>
-              ) : (
-                <>
-                  <span>Tra cứu</span>
-                  <ChevronRight size={18} />
-                </>
-              )}
-            </button>
-          </form>
-        </section>
+        {/* 2. Loading State */}
+        {loading && !trackingData && (
+          <div style={{ padding: '60px 0', textAlign: 'center', color: '#78716C' }}>
+            <Loader2 size={36} className="animate-spin" style={{ margin: '0 auto 16px auto', display: 'block', color: '#96723D' }} />
+            <p style={{ fontSize: '15px' }}>Đang nạp tiến trình vận chuyển thời gian thực từ GHN...</p>
+          </div>
+        )}
 
         {/* 3. Error Alert */}
         {errorMsg && (
-          <div className="tracking-alert">
+          <div className="tracking-alert" style={{ marginBottom: '24px' }}>
             <AlertCircle size={24} className="tracking-alert-icon" />
-            <div>
+            <div style={{ flex: 1 }}>
               <strong className="tracking-alert-title">Không tìm thấy đơn hàng hoặc vận đơn</strong>
-              <div className="tracking-alert-desc">{errorMsg}</div>
+              <div className="tracking-alert-desc" style={{ marginBottom: '12px' }}>{errorMsg}</div>
+              <Link
+                to="/history"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 16px',
+                  background: '#171717',
+                  color: '#FFFFFF',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                }}
+              >
+                <span>Xem danh sách đơn hàng của bạn</span>
+                <ChevronRight size={14} />
+              </Link>
             </div>
           </div>
         )}
 
-        {/* 4. Empty Initial Guide (khi chưa có kết quả) */}
-        {!trackingData && !errorMsg && !loading && (
-          <div className="tracking-empty-guide">
+        {/* 4. Empty State khi không có mã trong URL */}
+        {!code && !loading && (
+          <div style={{ padding: '48px 24px', background: '#FFFFFF', borderRadius: '16px', border: '1px solid #E5E0D8', textAlign: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+            <Package size={52} style={{ color: '#D6D3D1', margin: '0 auto 16px auto', display: 'block' }} />
+            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#171717', marginBottom: '8px' }}>Theo Dõi Hành Trình Qua Lịch Sử Đơn Hàng</h3>
+            <p style={{ fontSize: '14px', color: '#78716C', maxWidth: '520px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+              Quý khách vui lòng truy cập danh sách Lịch Sử Đơn Hàng và bấm "Xem Chi Tiết" trên từng đơn hàng để theo dõi tiến trình giao nhận và lịch sử GHN chi tiết.
+            </p>
+            <Link
+              to="/history"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 28px',
+                background: '#171717',
+                color: '#FFFFFF',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              <span>Xem Lịch Sử Đơn Hàng</span>
+              <ChevronRight size={16} />
+            </Link>
           </div>
         )}
 
@@ -308,13 +314,30 @@ export default function CustomerOrderTrackingPage() {
                   <span className="info-block-title">
                     <User size={14} /> Người nhận
                   </span>
-                  <span className="info-block-badge">Bảo mật</span>
+                  {trackingData.receiverInfo?.isMasked === false ? (
+                    <span
+                      className="info-block-badge"
+                      style={{
+                        backgroundColor: '#ECFDF5',
+                        color: '#059669',
+                        borderColor: '#A7F3D0',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <ShieldCheck size={11} />
+                      Đã xác thực
+                    </span>
+                  ) : (
+                    <span className="info-block-badge">Bảo mật</span>
+                  )}
                 </div>
                 <div className="info-main-text">{trackingData.receiverInfo?.name}</div>
                 <div className="info-sub-text">{trackingData.receiverInfo?.phone}</div>
                 <div className="info-sub-text info-address-row">
                   <MapPin size={13} className="info-icon-green" />
-                  <span>{trackingData.receiverInfo?.maskedAddress}</span>
+                  <span>{trackingData.receiverInfo?.address || trackingData.receiverInfo?.maskedAddress}</span>
                 </div>
               </div>
 

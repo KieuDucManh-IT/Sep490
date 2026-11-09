@@ -35,8 +35,8 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
       return shipment;
     }
 
-    // Xử lý mã thử nghiệm cũ (TRK-...): đánh dấu đã hủy để không tiếp tục quét GHN
-    if (shipment.trackingCode.startsWith('TRK-')) {
+    // Bỏ qua mã thử nghiệm hoặc mã nội bộ (TRK-..., SHP-...): không quét GHN
+    if (shipment.trackingCode.startsWith('TRK-') || shipment.trackingCode.startsWith('SHP-')) {
       await OrderShipment.updateOne(
         { _id: shipment._id },
         {
@@ -47,7 +47,7 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
           $push: {
             statusHistory: {
               status: 'cancelled',
-              description: 'Vận đơn thử nghiệm không hợp lệ',
+              description: 'Vận đơn nội bộ/thử nghiệm đã hủy',
               timestamp: new Date(),
             },
           },
@@ -117,15 +117,15 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
           );
         } else if (shipment.orderType === 'rental') {
           if (shipment.shipmentType === 'outbound') {
-            const rental = await RentalOrder.findOne({
-              _id: shipment.orderId,
-              rentalStatus: { $in: ['confirmed', 'draft'] },
-            });
-            if (rental) {
+            const rental = await RentalOrder.findOne({ _id: shipment.orderId });
+            // Chỉ kích hoạt chu kỳ thuê một lần khi bưu tá giao thành công thực tế
+            if (rental && !rental.actualDeliveryDate && rental.rentalStatus !== 'renting') {
               const durationMs = rental.dueDate && rental.startDate
                 ? Math.max(86400000, new Date(rental.dueDate).getTime() - new Date(rental.startDate).getTime())
                 : 3 * 86400000;
               rental.rentalStatus = 'renting';
+              rental.actualDeliveryDate = actionTime;
+              rental.actualPickupDate = actionTime;
               rental.startDate = actionTime;
               rental.dueDate = new Date(actionTime.getTime() + durationMs);
               await rental.save();
@@ -136,16 +136,17 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
         shipment.shippedAt = actionTime;
       } else if (mapped.internalStatus === 'cancelled') {
         shipment.cancelledAt = shipment.cancelledAt || actionTime;
+        // Đồng bộ hủy vận đơn outbound từ GHN sang đơn hàng của khách.
         if (shipment.shipmentType === 'outbound') {
           if (shipment.orderType === 'rental') {
             await RentalOrder.findOneAndUpdate(
               { _id: shipment.orderId, rentalStatus: { $in: ['confirmed', 'draft'] } },
-              { rentalStatus: 'cancelled' }
+              { $set: { rentalStatus: 'cancelled' } }
             );
           } else if (shipment.orderType === 'sale') {
             await SalesOrder.findOneAndUpdate(
-              { _id: shipment.orderId, orderStatus: { $in: ['confirmed', 'draft', 'processing'] } },
-              { orderStatus: 'cancelled', cancelledAt: actionTime }
+              { _id: shipment.orderId, orderStatus: { $in: ['confirmed', 'draft', 'processing', 'shipped'] } },
+              { $set: { orderStatus: 'cancelled', cancelledAt: actionTime } }
             );
           }
         }
@@ -211,7 +212,7 @@ export const syncInFlightShipments = async () => {
 
     const inFlightShipments = await OrderShipment.find({
       shipmentStatus: { $in: ['preparing', 'shipped'] },
-      trackingCode: { $exists: true, $ne: '' },
+      trackingCode: { $exists: true, $ne: '', $not: /^(SHP|TRK)-/ },
       $or: [
         { lastSyncedAt: { $lt: thresholdDate } },
         { lastSyncedAt: null },

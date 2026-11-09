@@ -120,7 +120,7 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
-        <Route path="/tracking" element={<CustomerOrderTrackingPage />} />
+        <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
         <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
         <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
         <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />

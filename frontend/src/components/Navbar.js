@@ -15,7 +15,6 @@ import {
   LogOut,
   ClipboardList,
   Wallet,
-  Truck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import NavbarLocationWidget from "./NavbarLocationWidget";
@@ -134,11 +133,6 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Tra Cứu Đơn Hàng */}
-          <Link to="/tracking" className={`navbar-link ${isActive("/tracking")}`}>
-            Tra Cứu Đơn
-          </Link>
-
           {/* Quick Access for Management Roles */}
           {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
             <Link
@@ -218,13 +212,6 @@ export default function Navbar() {
                     onClick={() => setDropdownOpen(false)}
                   >
                     <ClipboardList size={15} className="menu-icon" /> Đơn thuê của tôi
-                  </Link>
-                  <Link
-                    to="/tracking"
-                    className="menu-item"
-                    onClick={() => setDropdownOpen(false)}
-                  >
-                    <Truck size={15} className="menu-icon" /> Tra cứu đơn hàng
                   </Link>
                   <Link
                     to="/wallet"

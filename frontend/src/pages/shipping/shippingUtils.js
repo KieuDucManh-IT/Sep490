@@ -270,6 +270,8 @@ export const extractOrderAddressInfo = (order) => {
     provHint,
     wardHint,
     wardCodeHint,
+    provinceIdHint: shipAddr.provinceId || null,
+    districtIdHint: shipAddr.districtId || null,
     fullAddr,
   };
 };

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import crypto from 'node:crypto';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
@@ -6,6 +7,7 @@ import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js
 import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
 import { resolveLocationScope } from '../order/orderMonitoringService.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
+import { Shop } from '../../models/shop/Shop.js';
 
 export const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
@@ -76,7 +78,31 @@ export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
  */
 export const resolveBranchShippingInfo = async (order) => {
   const loc = order?.locationId || {};
-  const shop = loc.shopId || {};
+  let shop = loc.shopId || {};
+
+  // Nếu shopId là ObjectId chưa populate hoặc rỗng, tra cứu từ DB
+  if (shop && mongoose.isValidObjectId(shop) && typeof shop.name === 'undefined') {
+    const foundShop = await Shop.findById(shop).lean();
+    if (foundShop) shop = foundShop;
+  }
+
+  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop chính (isHQ: true) hoặc Shop bất kỳ đang active
+  if (!shop?.phone || !shop?.address) {
+    const fallbackShop = (await Shop.findOne({ isHQ: true, status: 'ACTIVE' }).lean())
+      || (await Shop.findOne({ status: 'ACTIVE' }).lean());
+    if (fallbackShop) {
+      shop = {
+        ...fallbackShop,
+        ...shop,
+        phone: shop?.phone || fallbackShop.phone,
+        address: shop?.address || fallbackShop.address,
+        provinceId: shop?.provinceId || fallbackShop.provinceId,
+        districtId: shop?.districtId || fallbackShop.districtId,
+        wardCode: shop?.wardCode || fallbackShop.wardCode,
+        ghnShopId: shop?.ghnShopId || fallbackShop.ghnShopId,
+      };
+    }
+  }
 
   const name = shop.name || loc.name || 'Cửa hàng';
   const phone = shop.phone || loc.phone || '';
@@ -208,13 +234,24 @@ export const saveShipmentRecord = async ({
   ];
 
   const fromShopId = order.locationId?.shopId?._id || order.locationId?.shopId || order.locationId;
+  const fromLocationId = order.locationId?._id || (order.locationId && typeof order.locationId === 'object' ? order.locationId._id : order.locationId) || null;
+  const deliveryAddress = receiverInfo?.address || order.shippingAddress?.street || '';
+  const deliveryMethod = order.deliveryMethod || 'carrier';
+
+  const shipmentDateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
+  const shipmentCode = `SHP-${shipmentDateStr}-${randomHex}`;
 
   return await OrderShipment.create({
     trackingCode: canonicalTrackingCode,
+    shipmentCode,
     orderCode: order.orderCode,
     orderType,
     orderId: order._id,
     fromShopId,
+    fromLocationId,
+    deliveryAddress,
+    deliveryMethod,
     carrierName: 'Giao Hàng Nhanh',
     shipmentType,
     shipmentStatus: 'preparing',

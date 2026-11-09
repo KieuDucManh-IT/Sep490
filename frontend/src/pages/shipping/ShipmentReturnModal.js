@@ -55,6 +55,7 @@ export default function ShipmentReturnModal({
       provHint,
       wardHint,
       wardCodeHint,
+      provinceIdHint,
       fullAddr,
     } = extractOrderAddressInfo(order);
 
@@ -65,9 +66,13 @@ export default function ShipmentReturnModal({
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã cho điểm lấy đồ
     if (provinces.length > 0) {
-      const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
-      if (matchedProv) {
-        handleProvinceChange(String(matchedProv.ProvinceID), wardHint, wardCodeHint, fullAddr);
+      if (provinceIdHint) {
+        handleProvinceChange(String(provinceIdHint), wardHint, wardCodeHint, fullAddr);
+      } else {
+        const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
+        if (matchedProv) {
+          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, wardCodeHint, fullAddr);
+        }
       }
     }
   }, [show, order, provinces, handleProvinceChange]);

@@ -380,7 +380,7 @@ export default function SaleOrderDetailModal({
             {(() => {
               const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
               const hasActiveOutbound = shipments.some(
-                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus) && s.trackingCode && !s.trackingCode.startsWith('SHP-') && !s.trackingCode.startsWith('TRK-')
               );
               const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && ['draft', 'confirmed', 'processing'].includes(order.orderStatus || order.status);
 

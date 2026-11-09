@@ -27,7 +27,7 @@ export const resolvePrimaryShipment = (list = []) => {
   if (!Array.isArray(list) || !list.length) return null;
   const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
   if (active.length > 0) {
-    const withCode = active.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-')));
+    const withCode = active.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
     return withCode || active[0];
   }
   return null;
@@ -1021,7 +1021,8 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
         street: address || '',
         ward: ward || '',
         district: district || '',
-        province: province || '',
+        city: province || data.city || '',
+        province: province || data.city || '',
         provinceId: Number(data.provinceId) || null,
         districtId: Number(data.districtId) || null,
         wardCode: data.wardCode ? String(data.wardCode) : null,

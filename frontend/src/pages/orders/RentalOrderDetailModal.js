@@ -391,10 +391,10 @@ export default function RentalOrderDetailModal({
             {(() => {
               const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
               const hasActiveOutbound = shipments.some(
-                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus) && s.trackingCode && !s.trackingCode.startsWith('SHP-') && !s.trackingCode.startsWith('TRK-')
               );
               const hasActiveReturn = shipments.some(
-                (s) => s.shipmentType === 'return' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+                (s) => s.shipmentType === 'return' && ['preparing', 'shipped'].includes(s.shipmentStatus) && s.trackingCode && !s.trackingCode.startsWith('SHP-') && !s.trackingCode.startsWith('TRK-')
               );
               const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
               const canCreateReturn = !isReadOnly && !hasActiveReturn && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);

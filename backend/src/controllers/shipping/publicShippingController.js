@@ -1,8 +1,36 @@
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
+import User from '../../models/system/User.js';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { syncSingleShipmentFromGHN } from '../../services/shipping/shipmentSyncService.js';
+
+/**
+ * Trích xuất người dùng tùy chọn từ Authorization Header hoặc Cookie
+ * Cho phép khách hàng đã đăng nhập xem đầy đủ PII đơn hàng của chính mình
+ */
+const extractOptionalUser = async (req) => {
+  try {
+    const authHeader = req.get?.('Authorization') || req.headers?.authorization || '';
+    const token = (typeof authHeader === 'string' && /^Bearer\s+/i.test(authHeader)
+      ? authHeader.replace(/^Bearer\s+/i, '').trim()
+      : null) || req.cookies?.vestora_token || null;
+
+    if (!token || !process.env.JWT_SECRET) return null;
+
+    const payload = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: 'vestora',
+      audience: 'vestora-web',
+    });
+
+    if (!payload?.sub || !/^[a-f0-9]{24}$/i.test(payload.sub)) return null;
+    return await User.findById(payload.sub).lean();
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Che bớt thông tin nhạy cảm (PII Masking) cho màn hình tra cứu công khai
@@ -57,6 +85,9 @@ export const trackPublicShipmentHandler = async (req, res, next) => {
       });
     }
 
+    // Xác thực người dùng tùy chọn (Optional Auth)
+    const currentUser = await extractOptionalUser(req);
+
     // 1. Tìm trong bảng OrderShipment theo mã vận đơn GHN HOẶC mã đơn sàn (hỗ trợ hoa/thường)
     const shipmentQuery = {
       $or: [
@@ -86,6 +117,17 @@ export const trackPublicShipmentHandler = async (req, res, next) => {
       const orderType = shipment.orderType || (shipment.orderCode?.startsWith('SAL') ? 'sale' : 'rental');
       const isReturn = shipment.shipmentType === 'return';
 
+      // Chỉ chính khách hàng sở hữu đơn mới được xem đầy đủ PII.
+      // Các vai trò khác khi tra cứu qua endpoint công khai vẫn nhận dữ liệu đã che.
+      let isOrderOwner = false;
+      if (currentUser) {
+        const OrderModel = orderType === 'rental' ? RentalOrder : SalesOrder;
+        const parentOrder = await OrderModel.findById(shipment.orderId).select('customerId').lean();
+        if (parentOrder && String(parentOrder.customerId) === String(currentUser._id)) {
+          isOrderOwner = true;
+        }
+      }
+
       let displayStatusText = undefined;
       if (shipment.shipmentStatus === 'preparing') {
         displayStatusText = isReturn ? 'Chờ lấy hàng thu hồi' : 'Chờ lấy hàng';
@@ -105,6 +147,11 @@ export const trackPublicShipmentHandler = async (req, res, next) => {
         displayStatusText = 'Giao hàng thất bại';
       }
 
+      const receiverName = shipment.receiverInfo?.name || 'Khách Hàng';
+      const receiverPhone = shipment.receiverInfo?.phone || '';
+      const receiverAddress = shipment.receiverInfo?.address || '';
+      const displayedAddress = isOrderOwner ? receiverAddress : maskAddress(receiverAddress);
+
       const sanitizedData = {
         trackingCode: shipment.trackingCode,
         orderCode: shipment.orderCode || null,
@@ -118,9 +165,11 @@ export const trackPublicShipmentHandler = async (req, res, next) => {
         shippedAt: shipment.shippedAt,
         deliveredAt: shipment.deliveredAt,
         receiverInfo: {
-          name: maskName(shipment.receiverInfo?.name),
-          phone: maskPhone(shipment.receiverInfo?.phone),
-          maskedAddress: maskAddress(shipment.receiverInfo?.address),
+          name: isOrderOwner ? receiverName : maskName(receiverName),
+          phone: isOrderOwner ? receiverPhone : maskPhone(receiverPhone),
+          address: displayedAddress,
+          maskedAddress: displayedAddress,
+          isMasked: !isOrderOwner,
         },
         storeInfo: {
           name: shipment.shipmentType === 'return' ? shipment.receiverInfo?.name : shipment.senderInfo?.name,
@@ -277,6 +326,13 @@ export const trackPublicShipmentHandler = async (req, res, next) => {
       });
     }
 
+    // Chỉ chính khách hàng sở hữu đơn mới được xem đầy đủ PII.
+    let isOrderOwner = false;
+    if (currentUser) {
+      isOrderOwner = String(order.customerId?._id || order.customerId) === String(currentUser._id);
+    }
+    const displayedAddress = isOrderOwner ? receiverAddress : maskAddress(receiverAddress);
+
     const sanitizedOrderData = {
       trackingCode: order.orderCode,
       orderCode: order.orderCode,
@@ -290,9 +346,11 @@ export const trackPublicShipmentHandler = async (req, res, next) => {
       shippedAt: null,
       deliveredAt: null,
       receiverInfo: {
-        name: maskName(receiverName),
-        phone: maskPhone(receiverPhone),
-        maskedAddress: maskAddress(receiverAddress),
+        name: isOrderOwner ? receiverName : maskName(receiverName),
+        phone: isOrderOwner ? receiverPhone : maskPhone(receiverPhone),
+        address: displayedAddress,
+        maskedAddress: displayedAddress,
+        isMasked: !isOrderOwner,
       },
       storeInfo: {
         name: storeName,

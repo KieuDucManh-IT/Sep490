@@ -25,6 +25,7 @@ import {
   createSalesOrderSchema,
   updateSalesOrderStatusSchema,
 } from '../../validations/sale&rental/salesOrderValidation.js';
+import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
 
 export class ServiceError extends Error {
   constructor(status, message) {
@@ -262,54 +263,6 @@ export const createSalesOrder = async ({
       { session }
     );
 
-    // Tạo bản ghi OrderShipment đồng bộ cho đơn mua
-    if (mongoose.connection.readyState !== 0 || typeof OrderShipment.create?.mock === 'object') {
-      try {
-        const formattedAddress =
-          typeof shippingAddress === 'string'
-            ? shippingAddress
-            : shippingAddress && typeof shippingAddress === 'object'
-              ? [
-                  shippingAddress.receiverName
-                    ? `${shippingAddress.receiverName}${shippingAddress.phone ? ` (${shippingAddress.phone})` : ''}`
-                    : '',
-                  shippingAddress.street,
-                  shippingAddress.ward,
-                  shippingAddress.district,
-                  shippingAddress.city,
-                ]
-                  .filter(Boolean)
-                  .join(', ')
-              : '';
-
-        const shipmentDateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const randomShipmentHex = crypto.randomBytes(2).toString('hex').toUpperCase();
-        const shipmentCode = `SHP-${shipmentDateStr}-${randomShipmentHex}`;
-
-        await OrderShipment.create(
-          [
-            {
-              trackingCode: shipmentCode,
-              shipmentCode,
-              orderCode: order.orderCode,
-              orderType: 'sale',
-              orderId: order._id,
-              fromLocationId: locationId,
-              deliveryAddress: formattedAddress || 'Nhận trực tiếp tại Showroom',
-              deliveryMethod: formattedAddress ? 'carrier' : 'pickup',
-              shipmentStatus: 'preparing',
-              createdBy: createdBy || customerId,
-            },
-          ],
-          { session }
-        );
-      } catch (shipmentErr) {
-        if (process.env.NODE_ENV !== 'test') {
-          throw shipmentErr;
-        }
-      }
-    }
-
     // 7. Tạo SalesOrderDetail & Giữ chỗ kho (InventoryReservation)
     const detailDocs = priceCalc.itemsDetail.map((it) => ({
       salesOrderId: order._id,
@@ -362,9 +315,6 @@ export const createSalesOrder = async ({
   }
 };
 
-/**
- * Lấy danh sách đơn mua của khách hàng
- */
 export const getMySalesOrders = async ({
   customerId,
   page = 1,
@@ -391,16 +341,25 @@ export const getMySalesOrders = async ({
   ]);
 
   const orderIds = orders.map((o) => o._id);
-  const details = await SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
-    .populate({
-      path: 'variantId',
-      select: 'sku size color productId attributes',
-      populate: {
-        path: 'productId',
-        select: 'name productCode images thumbnail thumbnailImage brand',
-      },
-    })
-    .lean();
+  const [details, shipments] = await Promise.all([
+    orderIds.length
+      ? SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
+          .populate({
+            path: 'variantId',
+            select: 'sku size color productId attributes',
+            populate: {
+              path: 'productId',
+              select: 'name productCode images thumbnail thumbnailImage brand',
+            },
+          })
+          .lean()
+      : [],
+    orderIds.length
+      ? OrderShipment.find({ orderId: { $in: orderIds }, orderType: 'sale' })
+          .sort({ createdAt: -1 })
+          .lean()
+      : [],
+  ]);
 
   const detailsByOrder = new Map();
   for (const d of details) {
@@ -409,10 +368,22 @@ export const getMySalesOrders = async ({
     detailsByOrder.get(oid).push(d);
   }
 
-  const enrichedOrders = orders.map((o) => ({
-    ...o,
-    items: detailsByOrder.get(String(o._id)) || [],
-  }));
+  const shipmentsByOrder = new Map();
+  for (const s of shipments) {
+    const oid = String(s.orderId);
+    if (!shipmentsByOrder.has(oid)) shipmentsByOrder.set(oid, []);
+    shipmentsByOrder.get(oid).push(s);
+  }
+
+  const enrichedOrders = orders.map((o) => {
+    const ordShipments = shipmentsByOrder.get(String(o._id)) || [];
+    return {
+      ...o,
+      items: detailsByOrder.get(String(o._id)) || [],
+      shipments: ordShipments,
+      shipment: resolvePrimaryShipment(ordShipments),
+    };
+  });
 
   return {
     orders: enrichedOrders,
@@ -443,20 +414,27 @@ export const getSalesOrderById = async (orderId, currentUser) => {
     throw new ServiceError(403, 'Bạn không có quyền xem thông tin đơn hàng này');
   }
 
-  const items = await SalesOrderDetail.find({ salesOrderId: order._id })
-    .populate({
-      path: 'variantId',
-      select: 'sku size color productId attributes',
-      populate: {
-        path: 'productId',
-        select: 'name productCode images thumbnail thumbnailImage brand',
-      },
-    })
-    .lean();
+  const [items, shipments] = await Promise.all([
+    SalesOrderDetail.find({ salesOrderId: order._id })
+      .populate({
+        path: 'variantId',
+        select: 'sku size color productId attributes',
+        populate: {
+          path: 'productId',
+          select: 'name productCode images thumbnail thumbnailImage brand',
+        },
+      })
+      .lean(),
+    OrderShipment.find({ orderId: order._id, orderType: 'sale' })
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
 
   return {
     ...order,
     items,
+    shipments,
+    shipment: resolvePrimaryShipment(shipments),
   };
 };
 
@@ -509,16 +487,25 @@ export const getBranchSalesOrders = async ({
   ]);
 
   const orderIds = orders.map((o) => o._id);
-  const details = await SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
-    .populate({
-      path: 'variantId',
-      select: 'sku size color productId',
-      populate: {
-        path: 'productId',
-        select: 'name productCode',
-      },
-    })
-    .lean();
+  const [details, shipments] = await Promise.all([
+    orderIds.length
+      ? SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
+          .populate({
+            path: 'variantId',
+            select: 'sku size color productId',
+            populate: {
+              path: 'productId',
+              select: 'name productCode',
+            },
+          })
+          .lean()
+      : [],
+    orderIds.length
+      ? OrderShipment.find({ orderId: { $in: orderIds }, orderType: 'sale' })
+          .sort({ createdAt: -1 })
+          .lean()
+      : [],
+  ]);
 
   const detailsByOrder = new Map();
   for (const d of details) {
@@ -527,10 +514,22 @@ export const getBranchSalesOrders = async ({
     detailsByOrder.get(oid).push(d);
   }
 
-  const enrichedOrders = orders.map((o) => ({
-    ...o,
-    items: detailsByOrder.get(String(o._id)) || [],
-  }));
+  const shipmentsByOrder = new Map();
+  for (const s of shipments) {
+    const oid = String(s.orderId);
+    if (!shipmentsByOrder.has(oid)) shipmentsByOrder.set(oid, []);
+    shipmentsByOrder.get(oid).push(s);
+  }
+
+  const enrichedOrders = orders.map((o) => {
+    const ordShipments = shipmentsByOrder.get(String(o._id)) || [];
+    return {
+      ...o,
+      items: detailsByOrder.get(String(o._id)) || [],
+      shipments: ordShipments,
+      shipment: resolvePrimaryShipment(ordShipments),
+    };
+  });
 
   return {
     orders: enrichedOrders,

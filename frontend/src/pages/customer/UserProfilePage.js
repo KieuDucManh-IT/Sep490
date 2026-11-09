@@ -4,6 +4,19 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import {
+  User,
+  Edit3,
+  Lock,
+  Wallet,
+  ShoppingBag,
+  Heart,
+  Sparkles,
+  ClipboardList,
+  LogOut,
+  ChevronRight,
+  ChevronDown,
+} from "lucide-react";
 
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
@@ -844,9 +857,7 @@ export default function UserProfilePage() {
                   onClick={handleOpenEdit}
                   disabled={accountBusy}
                 >
-                  <span className="profile-submenu-icon" aria-hidden="true">
-                    ✎
-                  </span>
+                  <Edit3 size={14} className="profile-submenu-icon" aria-hidden="true" />
                   <span>Chỉnh sửa thông tin</span>
                 </button>
 
@@ -858,25 +869,47 @@ export default function UserProfilePage() {
                     onClick={handleOpenPassword}
                     disabled={accountBusy}
                   >
-                    <span
-                      className="profile-submenu-icon"
-                      aria-hidden="true"
-                    >
-                      🔒
-                    </span>
+                    <Lock size={14} className="profile-submenu-icon" aria-hidden="true" />
                     <span>Đổi mật khẩu</span>
                   </button>
                 )}
               </div>
             )}
+
+            <button
+              type="button"
+              className="profile-nav-btn"
+              onClick={() => navigate("/rental-orders")}
+              disabled={accountBusy}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <ClipboardList size={15} color="#C5A880" /> Đơn Thuê Của Tôi
+              </span>
+              <ChevronRight size={14} color="#A3A3A3" />
+            </button>
+
+            <button
+              type="button"
+              className="profile-nav-btn"
+              onClick={() => navigate("/rental-orders?tab=sale")}
+              disabled={accountBusy}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <ShoppingBag size={15} color="#C5A880" /> Đơn Mua Sắm Của Tôi
+              </span>
+              <ChevronRight size={14} color="#A3A3A3" />
+            </button>
+
             <button
               type="button"
               className="profile-nav-btn"
               onClick={() => navigate("/wallet")}
               disabled={accountBusy}
             >
-              <span>Ví Của Tôi</span>
-              <span>›</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Wallet size={15} color="#C5A880" /> Ví Vestora
+              </span>
+              <ChevronRight size={14} color="#A3A3A3" />
             </button>
 
             <button
@@ -885,18 +918,22 @@ export default function UserProfilePage() {
               onClick={() => navigate("/cart")}
               disabled={accountBusy}
             >
-              <span>🛍️ Giỏ Hàng Của Tôi</span>
-              <span>›</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <ShoppingBag size={15} color="#C5A880" /> Giỏ Hàng Thời Trang
+              </span>
+              <ChevronRight size={14} color="#A3A3A3" />
             </button>
 
             <button
               type="button"
               className="profile-nav-btn"
-              onClick={() => navigate("/favorites")}
+              onClick={() => navigate("/wardrobe")}
               disabled={accountBusy}
             >
-              <span>♡ Sản Phẩm Yêu Thích</span>
-              <span>›</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Heart size={15} color="#C5A880" /> Tủ Đồ & Yêu Thích
+              </span>
+              <ChevronRight size={14} color="#A3A3A3" />
             </button>
 
             <button
@@ -905,8 +942,10 @@ export default function UserProfilePage() {
               onClick={() => navigate("/try-on-photo")}
               disabled={accountBusy}
             >
-              <span>👗 Thử Đồ Với Ảnh</span>
-              <span>›</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Sparkles size={15} color="#C5A880" /> Ướm Thử Trang Phục AI
+              </span>
+              <ChevronRight size={14} color="#A3A3A3" />
             </button>
 
             <button
@@ -922,10 +961,11 @@ export default function UserProfilePage() {
                 opacity: accountBusy ? 0.6 : 1,
               }}
             >
-              <span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <LogOut size={15} />
                 {loggingOut
                   ? "Đang đăng xuất..."
-                  : "🚪 Đăng Xuất Tài Khoản"}
+                  : "Đăng Xuất Tài Khoản"}
               </span>
             </button>
 

@@ -13,6 +13,14 @@ const rentalOrderSchema = new mongoose.Schema({
   rentalFee: { type: Number, min: 0, required: true, default: 0 },
   depositAmount: { type: Number, min: 0, required: true, default: 0 },
   depositStatus: { type: String, default: 'pending', enum: ['pending', 'held', 'partially_refunded', 'refunded', 'forfeited', 'partially_deducted'] },
+  shippingAddress: {
+    receiverName: { type: String, trim: true },
+    phone: { type: String, trim: true },
+    street: { type: String, trim: true },
+    ward: { type: String, trim: true },
+    district: { type: String, trim: true },
+    city: { type: String, trim: true },
+  },
   note: { type: String, trim: true },
 }, { timestamps: true });
 

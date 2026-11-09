@@ -1559,11 +1559,11 @@ export default function AdminAccountsPage() {
                               <polyline points="9 12 11 14 15 10" />
                             </svg>
                           </div>
-                          <div className="admin-acc-stat-box-label">Điểm uy tín Escrow</div>
+                          <div className="admin-acc-stat-box-label">Điểm uy tín</div>
                           <div className="admin-acc-stat-box-val" style={{ color: '#059669' }}>
                             {selectedUser.rating}
                           </div>
-                          <div className="admin-acc-stat-box-sub">PayOS Bảo đảm</div>
+                          <div className="admin-acc-stat-box-sub">Đánh giá khách hàng</div>
                         </div>
 
                         <div className="admin-acc-stat-box">
@@ -1690,7 +1690,7 @@ export default function AdminAccountsPage() {
               {activeDrawerTab === 'TRANSACTIONS' && (
                 <div>
                   <h4 className="admin-acc-sec-title" style={{ marginBottom: '14px' }}>
-                    Lịch sử thuê đồ &amp; Cọc Escrow PayOS
+                    Lịch sử thuê đồ &amp; Tiền đặt cọc
                   </h4>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1701,7 +1701,7 @@ export default function AdminAccountsPage() {
                       </div>
                       <div style={{ fontSize: '11.5px', color: '#64748B', display: 'flex', justifyContent: 'space-between' }}>
                         <span>Tổng số đơn thuê: {selectedUser.totalOrders} đơn</span>
-                        <span style={{ color: '#0284C7' }}>Hợp đồng bảo đảm PayOS</span>
+                        <span style={{ color: '#0284C7' }}>Thanh toán qua PayOS</span>
                       </div>
                     </div>
                   </div>

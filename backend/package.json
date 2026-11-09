@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "nodemon server.js",
-    "test": "node --test tests/**/*.test.js"
+    "test": "node --test \"../tests/backend/**/*.test.js\""
   },
   "keywords": [],
   "author": "",

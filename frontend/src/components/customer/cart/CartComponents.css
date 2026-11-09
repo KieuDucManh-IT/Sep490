@@ -1,0 +1,490 @@
+/**
+ * Haute Couture Styling Tokens for Vestora Cart Components
+ * Strict adherence to BEM, Zero-Emoji, and Haute Couture design tokens
+ */
+
+:root {
+  --vestora-black: #171717;
+  --vestora-gold: #C5A880;
+  --vestora-gold-dark: #96723D;
+  --vestora-bg-light: #F8F7F4;
+  --vestora-bg-card: #FBF9F5;
+  --vestora-border: #E5E0D8;
+  --vestora-text-muted: #737373;
+  --vestora-danger: #B91C1C;
+}
+
+/* ==========================================================================
+   Custom Haute Couture Modal (Zero-Native Dialogs)
+   ========================================================================== */
+
+.vestora-cart-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 23, 23, 0.65);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  padding: 16px;
+  animation: vestoraModalFadeIn 0.2s ease-out;
+}
+
+.vestora-cart-modal-container {
+  background: #FFFDF9;
+  border: 1px solid var(--vestora-border);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  animation: vestoraModalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vestora-cart-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--vestora-border);
+  background: #FAF8F5;
+}
+
+.vestora-cart-modal-header-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vestora-cart-modal-title {
+  font-family: 'Newsreader', 'Playfair Display', Georgia, serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--vestora-black);
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.vestora-cart-modal-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--vestora-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.vestora-cart-modal-close-btn:hover {
+  background: #EAE5DC;
+  color: var(--vestora-black);
+}
+
+.vestora-cart-modal-body {
+  padding: 24px;
+  color: #383838;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.vestora-cart-modal-product-preview {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--vestora-bg-light);
+  border: 1px solid var(--vestora-border);
+  border-radius: 8px;
+  margin-top: 14px;
+}
+
+.vestora-cart-modal-product-img {
+  width: 50px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.vestora-cart-modal-product-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--vestora-black);
+}
+
+.vestora-cart-modal-product-meta {
+  font-size: 12px;
+  color: var(--vestora-text-muted);
+}
+
+.vestora-cart-modal-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  background: #FAF8F5;
+  border-top: 1px solid var(--vestora-border);
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.vestora-cart-btn-secondary {
+  padding: 9px 20px;
+  border: 1px solid #D4CEBE;
+  background: #FFFFFF;
+  color: #333333;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vestora-cart-btn-secondary:hover {
+  background: #F3EFEA;
+  border-color: #B5AD9D;
+}
+
+.vestora-cart-btn-danger {
+  padding: 9px 20px;
+  border: 1px solid var(--vestora-danger);
+  background: var(--vestora-danger);
+  color: #FFFFFF;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vestora-cart-btn-danger:hover {
+  background: #991B1B;
+  border-color: #991B1B;
+}
+
+.vestora-cart-btn-primary {
+  padding: 9px 22px;
+  border: 1px solid var(--vestora-gold);
+  background: var(--vestora-gold);
+  color: #171717;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vestora-cart-btn-primary:hover {
+  background: #B6986F;
+  border-color: #B6986F;
+}
+
+.vestora-cart-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Cart Item Card (Haute Couture)
+   ========================================================================== */
+
+.vestora-cart-item-card {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  background: #FFFFFF;
+  border: 1px solid var(--vestora-border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+
+.vestora-cart-item-card:hover {
+  border-color: var(--vestora-gold);
+  box-shadow: 0 4px 12px rgba(197, 168, 128, 0.1);
+}
+
+.vestora-cart-item-thumbnail {
+  width: 80px;
+  height: 104px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--vestora-bg-light);
+  flex-shrink: 0;
+  border: 1px solid #ECE7DE;
+}
+
+.vestora-cart-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.vestora-cart-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.vestora-cart-item-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.vestora-cart-badge-rental {
+  background: #FDF9F3;
+  color: var(--vestora-gold-dark);
+  border: 1px solid #E3D3BA;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vestora-cart-badge-sale {
+  background: #F3F4F6;
+  color: #374151;
+  border: 1px solid #D1D5DB;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vestora-cart-item-name {
+  font-family: 'Newsreader', 'Playfair Display', Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--vestora-black);
+  margin: 0 0 4px 0;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vestora-cart-item-variant {
+  font-size: 12px;
+  color: var(--vestora-text-muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.vestora-cart-item-rental-dates {
+  font-size: 12px;
+  color: #4A4A4A;
+  background: #FAF8F5;
+  border: 1px dashed var(--vestora-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vestora-cart-item-date-text {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vestora-cart-btn-edit-date {
+  background: transparent;
+  border: none;
+  color: var(--vestora-gold-dark);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.vestora-cart-btn-edit-date:hover {
+  color: var(--vestora-black);
+}
+
+.vestora-cart-item-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.vestora-cart-item-pricing {
+  display: flex;
+  flex-direction: column;
+}
+
+.vestora-cart-item-line-total {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--vestora-black);
+}
+
+.vestora-cart-item-deposit-note {
+  font-size: 11px;
+  color: var(--vestora-gold-dark);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.vestora-cart-item-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vestora-cart-stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--vestora-border);
+  border-radius: 6px;
+  background: #FFFDF9;
+}
+
+.vestora-cart-stepper-btn {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vestora-black);
+  transition: background 0.15s ease;
+}
+
+.vestora-cart-stepper-btn:hover {
+  background: #F0ECE4;
+}
+
+.vestora-cart-stepper-value {
+  width: 32px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vestora-black);
+}
+
+.vestora-cart-remove-icon-btn {
+  background: transparent;
+  border: none;
+  color: #9CA3AF;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.vestora-cart-remove-icon-btn:hover {
+  background: #FEE2E2;
+  color: var(--vestora-danger);
+}
+
+/* ==========================================================================
+   Date Picker Modal Input Group
+   ========================================================================== */
+
+.vestora-date-input-group {
+  margin-bottom: 16px;
+}
+
+.vestora-date-input-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vestora-black);
+  margin-bottom: 6px;
+}
+
+.vestora-date-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--vestora-border);
+  border-radius: 6px;
+  background: #FFFFFF;
+  font-size: 14px;
+  color: var(--vestora-black);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.vestora-date-input:focus {
+  border-color: var(--vestora-gold);
+}
+
+.vestora-date-summary-box {
+  background: #FAF8F5;
+  border: 1px solid var(--vestora-border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.vestora-date-summary-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.vestora-date-summary-row:last-child {
+  margin-bottom: 0;
+}
+
+.vestora-date-error-msg {
+  color: var(--vestora-danger);
+  font-size: 12px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Animations */
+@keyframes vestoraModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes vestoraModalSlideUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

@@ -16,6 +16,7 @@ import chatRoutes from "./src/routes/chatRoutes.js";
 import conversationRoutes from "./src/routes/conversationRoutes.js";
 import tryOnRoutes from "./src/routes/tryOnRoutes.js";
 import wardrobeRoutes from "./src/routes/wardrobeRoutes.js";
+import { wishlistRouter, collectionRouter } from "./src/routes/customer/collectionRoutes.js";
 import { initSocket } from "./src/socket/index.js";
 import http from "http";
 import User from "./src/models/system/User.js";
@@ -99,6 +100,10 @@ app.use("/api/conversations", conversationRoutes);
 app.use("/api/try-on", tryOnRoutes);
 app.use("/api/wardrobe", wardrobeRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/v1/wishlist", wishlistRouter);
+app.use("/api/wishlist", wishlistRouter);
+app.use("/api/v1/collections", collectionRouter);
+app.use("/api/collections", collectionRouter);
 app.use("/api", apiRoutes);
 
 app.use(notFound);

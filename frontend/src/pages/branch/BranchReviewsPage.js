@@ -21,7 +21,7 @@ export default function BranchReviewsPage() {
       rating: 5,
       date: '05/10/2026',
       product: 'Bộ Vest Nam Tailored Smoking Tuxedo',
-      content: 'Vest lên form cực chuẩn, mới 99% thơm tho sạch sẽ. Khoản tiền cọc Escrow hoàn lại rất nhanh sau khi trả đồ!',
+      content: 'Vest lên form cực chuẩn, mới 99% thơm tho sạch sẽ. Khoản tiền cọc được shop hoàn lại rất nhanh sau khi trả đồ!',
       reply: ''
     }
   ]);

@@ -1,6 +1,25 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  ChevronDown,
+  Search,
+  Heart,
+  Bell,
+  ShoppingBag,
+  User,
+  Store,
+  BarChart2,
+  Settings,
+  ShieldCheck,
+  Package,
+  LogOut,
+  RefreshCw,
+  ClipboardList,
+  Wallet,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useCartStore } from "../stores/useCartStore";
+import { useWishlistStore } from "../stores/useWishlistStore";
 import NavbarLocationWidget from "./NavbarLocationWidget";
 import chatApi from "../services/chatApi";
 import socketService from "../services/socket";
@@ -10,9 +29,16 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading, authError, logout, refreshUser } = useAuth();
+  const { totalItemCount, openCart } = useCartStore();
+  const wishlistCount = useWishlistStore((state) => state.itemCount);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const dropdownRef = useRef(null);
+
+  // Nạp danh sách yêu thích khi khởi động navbar
+  useEffect(() => {
+    useWishlistStore.getState().fetchWishlist();
+  }, []);
 
   const isActive = (path) => (location.pathname === path ? "active" : "");
   const avatarUrl = user?.avatar || "";
@@ -114,7 +140,7 @@ export default function Navbar() {
           {/* Sản Phẩm */}
           <div className="nav-dropdown-item">
             <Link to="/catalog" className={`navbar-link ${isActive("/catalog")}`}>
-              Sản Phẩm <i className="fa-solid fa-chevron-down nav-arrow"></i>
+              Sản Phẩm <ChevronDown size={12} className="nav-arrow" />
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/catalog" className="nav-sublink">Tất cả sản phẩm</Link>
@@ -124,11 +150,10 @@ export default function Navbar() {
             </div>
           </div>
 
-
           {/* Tủ Đồ Cá Nhân */}
           <div className="nav-dropdown-item">
             <Link to="/wardrobe" className={`navbar-link ${isActive("/wardrobe")}`}>
-              Tủ Đồ Cá Nhân <i className="fa-solid fa-chevron-down nav-arrow"></i>
+              Tủ Đồ Cá Nhân <ChevronDown size={12} className="nav-arrow" />
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
@@ -141,7 +166,7 @@ export default function Navbar() {
           {/* Liên Hệ (Gồm Liên hệ, Về VESTORA và Chính Sách) */}
           <div className="nav-dropdown-item">
             <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
-              Liên Hệ <i className="fa-solid fa-chevron-down nav-arrow"></i>
+              Liên Hệ <ChevronDown size={12} className="nav-arrow" />
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/contact" className="nav-sublink">Liên hệ & Hỗ trợ</Link>
@@ -154,7 +179,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Radar Cửa Hàng */}
+          {/* Radar Cửa Hàng / Bản đồ chi nhánh */}
           <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
             Bản đồ chi nhánh
           </Link>
@@ -243,7 +268,7 @@ export default function Navbar() {
                   </span>
                 )}
                 <span className="user-display-name">{displayName || "Người dùng"}</span>
-                <i className={`fa-solid fa-chevron-down chevron-icon ${dropdownOpen ? "open" : ""}`}></i>
+                <ChevronDown size={14} className={`chevron-icon ${dropdownOpen ? "open" : ""}`} />
               </button>
 
               {dropdownOpen && (
@@ -258,14 +283,14 @@ export default function Navbar() {
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
-                    <i className="fa-regular fa-user menu-icon"></i> Tài khoản cá nhân
+                    <User size={15} className="menu-icon" /> Tài khoản cá nhân
                   </Link>
                   <Link
-                    to="/cart"
+                    to="/rental-orders"
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
-                    <i className="fa-solid fa-bag-shopping menu-icon"></i> Giỏ hàng & Đơn thuê
+                    <ClipboardList size={15} className="menu-icon" /> Đơn thuê của tôi
                   </Link>
                   <Link
                     to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
@@ -286,68 +311,76 @@ export default function Navbar() {
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
-                    <i className="fa-regular fa-heart menu-icon"></i> Sản phẩm yêu thích
+                    <Wallet size={15} className="menu-icon" /> Ví Vestora
                   </Link>
                   <Link
                     to="/wardrobe"
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
-                    <i className="fa-solid fa-wand-magic-sparkles menu-icon"></i> Tủ đồ cá nhân (AI)
+                    <Heart size={15} className="menu-icon" /> Tủ đồ &amp; Bộ sưu tập
                   </Link>
                   {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
                     <>
+                      <div className="menu-divider"></div>
                       <Link
                         to="/owner/branches"
                         className="menu-item"
                         onClick={() => setDropdownOpen(false)}
                       >
-                        <i className="fa-solid fa-store menu-icon"></i> Quản lý chi nhánh
+                        <Store size={15} className="menu-icon" /> Quản lý chi nhánh
                       </Link>
                       <Link
                         to="/owner/dashboard"
                         className="menu-item"
                         onClick={() => setDropdownOpen(false)}
                       >
-                        <i className="fa-solid fa-chart-line menu-icon"></i> Tổng quan chuỗi
+                        <BarChart2 size={15} className="menu-icon" /> Tổng quan chuỗi
                       </Link>
                     </>
                   )}
                   {/branch_manager/i.test(user?.Role || user?.role || '') && (
                     <>
+                      <div className="menu-divider"></div>
                       <Link
                         to="/branch/dashboard"
                         className="menu-item"
                         onClick={() => setDropdownOpen(false)}
                       >
-                        <i className="fa-solid fa-store menu-icon"></i> Vận hành chi nhánh
+                        <Store size={15} className="menu-icon" /> Vận hành chi nhánh
                       </Link>
                       <Link
                         to="/branch/settings"
                         className="menu-item"
                         onClick={() => setDropdownOpen(false)}
                       >
-                        <i className="fa-solid fa-gear menu-icon"></i> Cài đặt cửa hàng & Bản đồ
+                        <Settings size={15} className="menu-icon" /> Cài đặt cửa hàng &amp; Bản đồ
                       </Link>
                     </>
                   )}
                   {/admin/i.test(user?.Role || user?.role || '') && (
-                    <Link
-                      to="/admin/accounts"
-                      className="menu-item"
-                      onClick={() => setDropdownOpen(false)}
-                    >
-                      <i className="fa-solid fa-shield-halved menu-icon"></i> Quản trị hệ thống
-                    </Link>
+                    <>
+                      <div className="menu-divider"></div>
+                      <Link
+                        to="/admin/accounts"
+                        className="menu-item"
+                        onClick={() => setDropdownOpen(false)}
+                      >
+                        <ShieldCheck size={15} className="menu-icon" /> Quản trị hệ thống
+                      </Link>
+                    </>
                   )}
                   {/operation_staff/i.test(user?.Role || user?.role || '') && (
-                    <Link
-                      to="/ops/shops"
-                      className="menu-item"
-                      onClick={() => setDropdownOpen(false)}
-                    >
-                      <i className="fa-solid fa-boxes-packing menu-icon"></i> Vận hành OPS
-                    </Link>
+                    <>
+                      <div className="menu-divider"></div>
+                      <Link
+                        to="/ops/shops"
+                        className="menu-item"
+                        onClick={() => setDropdownOpen(false)}
+                      >
+                        <Package size={15} className="menu-icon" /> Vận hành OPS
+                      </Link>
+                    </>
                   )}
                   <div className="menu-divider"></div>
                   <button
@@ -355,7 +388,7 @@ export default function Navbar() {
                     className="menu-item menu-item-logout"
                     onClick={handleLogout}
                   >
-                    <i className="fa-solid fa-arrow-right-from-bracket menu-icon"></i> Đăng xuất
+                    <LogOut size={15} className="menu-icon" /> Đăng xuất
                   </button>
                 </div>
               )}
@@ -366,11 +399,47 @@ export default function Navbar() {
             </button>
           ) : (
             <Link to="/login" className="navbar-icon-btn" title="Đăng nhập tài khoản">
-              <i className="fa-regular fa-user"></i>
+              <User size={18} />
             </Link>
           )}
 
+          {/* Wishlist / Wardrobe Icon with reactive badge */}
+          <Link
+            to="/wardrobe"
+            className="navbar-icon-btn navbar-wishlist-btn"
+            title="Tủ đồ & Yêu thích"
+            aria-label="Tủ đồ & Yêu thích"
+            data-testid="navbar-wishlist-btn"
+          >
+            <Heart size={18} />
+            {wishlistCount > 0 && (
+              <span className="cart-badge-count" data-testid="navbar-wishlist-count">
+                {wishlistCount}
+              </span>
+            )}
+          </Link>
 
+          {/* Notification Bell Icon */}
+          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
+            <Bell size={18} />
+          </Link>
+
+          {/* Cart Icon with real-time reactive badge & drawer trigger */}
+          <button
+            type="button"
+            className="navbar-icon-btn navbar-cart-btn"
+            title="Giỏ hàng"
+            aria-label="Giỏ hàng"
+            onClick={openCart}
+            data-testid="navbar-cart-btn"
+          >
+            <ShoppingBag size={18} />
+            {totalItemCount > 0 && (
+              <span className="cart-badge-count" data-testid="navbar-cart-count">
+                {totalItemCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
     </header>

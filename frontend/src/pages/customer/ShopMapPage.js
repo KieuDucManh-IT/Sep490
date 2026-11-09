@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Info, X } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import { useShopRadarData } from './shopMap/hooks/useShopRadarData';
@@ -23,6 +24,8 @@ export default function ShopMapPage() {
     setSearchTerm,
     selectedStore,
     setSelectedStore,
+    toastMessage,
+    clearToast,
   } = useShopRadarData();
 
   // Handle clicking a card in the sidebar
@@ -62,6 +65,47 @@ export default function ShopMapPage() {
   return (
     <div className="shop-radar-page">
       <Navbar />
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 80,
+            right: 24,
+            zIndex: 99999,
+            background: '#171717',
+            color: '#F8F7F4',
+            border: '1px solid #C5A880',
+            borderRadius: 10,
+            padding: '12px 18px',
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          }}
+        >
+          <Info size={16} color="#C5A880" />
+          <span>{toastMessage}</span>
+          <button
+            onClick={clearToast}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#A1A1AA',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              padding: 2,
+              marginLeft: 8,
+            }}
+            aria-label="Đóng thông báo"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <section className="radar-header-hero" aria-labelledby="radar-page-title">
         <h1 id="radar-page-title" className="radar-title">Danh Sách Cửa Hàng</h1>

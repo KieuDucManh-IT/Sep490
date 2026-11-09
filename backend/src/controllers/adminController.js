@@ -54,8 +54,8 @@ export const getAdminMetrics = async (req, res) => {
           active: activeBranches,
           suspended: suspendedBranches,
         },
-        platformRevenue: 125000000,
-        escrowHolding: 45000000,
+        systemRevenue: 125000000,
+        depositHolding: 45000000,
       },
     });
   } catch (error) {

@@ -8,8 +8,8 @@ export default function OwnerAnalyticsPage() {
   const [metrics, setMetrics] = useState({
     users: { total: 11, customers: 9, staff: 2 },
     branches: { total: 8, active: 7, suspended: 1 },
-    platformRevenue: 125000000,
-    escrowHolding: 45000000
+    systemRevenue: 125000000,
+    depositHolding: 45000000
   });
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function OwnerAnalyticsPage() {
           {/* Page Hero */}
           <div className="admin-page-hero">
             <div>
-              <h1 className="admin-page-title">Báo Cáo Thống Kê Chuyên Sâu Toàn Sàn VESTORA</h1>
+              <h1 className="admin-page-title">Báo Cáo Thống Kê Chuyên Sâu Toàn Chuỗi VESTORA</h1>
               <p className="admin-page-desc">
                 Phân tích chỉ số tăng trưởng doanh thu thuê, tỷ lệ mua bán đứt thanh lý và hiệu suất AR Try-On
               </p>
@@ -72,9 +72,9 @@ export default function OwnerAnalyticsPage() {
             </div>
 
             <div className="admin-kpi-card">
-              <span className="admin-kpi-title">TỔNG TIỀN CỌC ĐANG GIỮ (PAYOS ESCROW)</span>
+              <span className="admin-kpi-title">TỔNG TIỀN CỌC ĐANG TẠM GIỮ</span>
               <div className="admin-kpi-value" style={{ margin: '8px 0', color: '#C5A880' }}>1.240.000.000 đ</div>
-              <span className="admin-kpi-trend positive">100% An Toàn Theo Hợp Đồng</span>
+              <span className="admin-kpi-trend positive">100% Minh Bạch Tài Chính</span>
             </div>
 
             <div className="admin-kpi-card">

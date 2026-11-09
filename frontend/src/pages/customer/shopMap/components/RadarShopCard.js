@@ -1,4 +1,13 @@
 import React from 'react';
+import {
+  Zap,
+  AlertTriangle,
+  MapPin,
+  Phone,
+  Star,
+  ExternalLink,
+  ShoppingBag,
+} from 'lucide-react';
 
 function RadarShopCard({ store, isSelected, userLocation, onSelect, onNavigateToProducts }) {
   const gmapsDirectionUrl =
@@ -41,33 +50,33 @@ function RadarShopCard({ store, isSelected, userLocation, onSelect, onNavigateTo
         </div>
 
         {store.hasGps ? (
-          <div className="radar-card-distance-badge">
-            <i className="fa-solid fa-bolt" aria-hidden="true"></i>
+          <div className="radar-card-distance-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Zap size={13} color="#C5A880" aria-hidden="true" />
             <span>{store.distanceLabel}</span>
             <span style={{ opacity: 0.8 }}>({store.travelTimeLabel})</span>
           </div>
         ) : (
-          <div className="radar-card-distance-badge no-gps">
-            <i className="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          <div className="radar-card-distance-badge no-gps" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <AlertTriangle size={13} color="#D97706" aria-hidden="true" />
             <span>Đang cập nhật vị trí</span>
           </div>
         )}
       </div>
 
-      <p className="radar-card-address">
-        <i className="fa-solid fa-location-dot" style={{ color: '#ea580c', marginRight: '6px' }} aria-hidden="true"></i>
-        {store.address}
+      <p className="radar-card-address" style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        <MapPin size={14} color="#C5A880" style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+        <span>{store.address}</span>
       </p>
 
       <div className="radar-card-meta-line">
-        <span>
-          <i className="fa-solid fa-phone" style={{ marginRight: '4px' }} aria-hidden="true"></i>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Phone size={13} aria-hidden="true" />
           <a href={`tel:${store.phone}`} className="radar-phone-link" onClick={(e) => e.stopPropagation()}>
             {store.phone}
           </a>
         </span>
-        <span>
-          <i className="fa-solid fa-star" style={{ color: '#f59e0b', marginRight: '4px' }} aria-hidden="true"></i>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Star size={13} fill="#C5A880" color="#C5A880" aria-hidden="true" />
           5.0 (Cửa hàng chính hãng)
         </span>
       </div>
@@ -80,8 +89,9 @@ function RadarShopCard({ store, isSelected, userLocation, onSelect, onNavigateTo
           className="radar-btn-outline"
           aria-label={`Mở Google Maps chỉ đường tới ${store.name}`}
           onClick={(e) => e.stopPropagation()}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
         >
-          <i className="fa-solid fa-arrow-up-right-from-square" style={{ color: '#ea580c' }} aria-hidden="true"></i>
+          <ExternalLink size={14} color="#C5A880" aria-hidden="true" />
           <span>Mở Google Maps</span>
         </a>
 
@@ -93,8 +103,9 @@ function RadarShopCard({ store, isSelected, userLocation, onSelect, onNavigateTo
             e.stopPropagation();
             onNavigateToProducts(store.id);
           }}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
         >
-          <i className="fa-solid fa-bag-shopping" aria-hidden="true"></i>
+          <ShoppingBag size={14} aria-hidden="true" />
           <span>Xem sản phẩm</span>
         </button>
       </div>

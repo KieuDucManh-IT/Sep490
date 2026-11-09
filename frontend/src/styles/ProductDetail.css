@@ -120,6 +120,23 @@
   z-index: 3;
 }
 
+.pdetail-badge-top-left.badge-sale {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.pdetail-badge-top-left.badge-both {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+}
+
+.pdetail-badge-top-left.badge-rental {
+  background: rgba(255, 255, 255, 0.92);
+  color: #18181b;
+}
+
 .pdetail-badge-top-left i {
   color: #5b6e4e;
 }

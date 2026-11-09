@@ -1,5 +1,30 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import {
+  Search,
+  X,
+  RotateCcw,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  Tag,
+  Ruler,
+  Palette,
+  Check,
+  Award,
+  ArrowRight,
+  AlertTriangle,
+  Heart,
+  Star,
+  Package,
+  MapPin,
+  ShieldCheck,
+  CreditCard,
+  Headphones,
+} from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
@@ -313,7 +338,7 @@ export default function CatalogPage() {
       <div className="catalog-controls-container">
         <div className="catalog-search-sort-row">
           <div className="catalog-search-wrapper">
-            <i className="fa-solid fa-magnifying-glass catalog-search-icon"></i>
+            <Search size={16} className="catalog-search-icon" />
             <input
               type="text"
               className="catalog-search-input"
@@ -327,7 +352,7 @@ export default function CatalogPage() {
                 onClick={() => setSearchQuery('')}
                 aria-label="Xóa tìm kiếm"
               >
-                <i className="fa-solid fa-xmark"></i>
+                <X size={14} />
               </button>
             )}
           </div>
@@ -372,7 +397,7 @@ export default function CatalogPage() {
               setCurrentPage(1);
             }}
           >
-            Mua đồ cũ
+            Mua sản phẩm
           </button>
         </div>
 
@@ -403,7 +428,7 @@ export default function CatalogPage() {
                   onClick={() => toggleCategory(cat)}
                   aria-label="Xóa danh mục"
                 >
-                  <i className="fa-solid fa-xmark"></i>
+                  <X size={12} />
                 </button>
               </span>
             ))}
@@ -416,7 +441,7 @@ export default function CatalogPage() {
                   onClick={() => toggleSize(sz)}
                   aria-label="Xóa kích cỡ"
                 >
-                  <i className="fa-solid fa-xmark"></i>
+                  <X size={12} />
                 </button>
               </span>
             ))}
@@ -431,7 +456,7 @@ export default function CatalogPage() {
                     onClick={() => toggleCondition(cond)}
                     aria-label="Xóa tình trạng"
                   >
-                    <i className="fa-solid fa-xmark"></i>
+                    <X size={12} />
                   </button>
                 </span>
               );
@@ -447,7 +472,7 @@ export default function CatalogPage() {
                     onClick={() => toggleColor(clr)}
                     aria-label="Xóa màu"
                   >
-                    <i className="fa-solid fa-xmark"></i>
+                    <X size={12} />
                   </button>
                 </span>
               );
@@ -456,16 +481,16 @@ export default function CatalogPage() {
             {aiTryOnOnly && (
               <span
                 className="catalog-chip-pill"
-                style={{ color: '#6e3eb3', borderColor: '#dfd1ef', background: '#f5f0fb' }}
+                style={{ color: '#6e3eb3', borderColor: '#dfd1ef', background: '#f5f0fb', display: 'inline-flex', alignItems: 'center', gap: 4 }}
               >
-                <i className="fa-solid fa-wand-magic-sparkles" style={{ marginRight: '4px' }}></i>
+                <Sparkles size={12} />
                 Thử đồ AI
                 <button
                   className="catalog-chip-remove"
                   onClick={() => setAiTryOnOnly(false)}
                   aria-label="Tắt thử đồ AI"
                 >
-                  <i className="fa-solid fa-xmark"></i>
+                  <X size={12} />
                 </button>
               </span>
             )}
@@ -481,13 +506,13 @@ export default function CatalogPage() {
                   }}
                   aria-label="Xóa từ khóa tìm kiếm"
                 >
-                  <i className="fa-solid fa-xmark"></i>
+                  <X size={12} />
                 </button>
               </span>
             )}
 
-            <button className="catalog-chip-clear-all" onClick={resetFilters}>
-              <i className="fa-solid fa-rotate-right"></i>
+            <button className="catalog-chip-clear-all" onClick={resetFilters} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <RotateCcw size={12} />
               Xóa tất cả
             </button>
           </div>
@@ -502,13 +527,15 @@ export default function CatalogPage() {
             className="catalog-sidebar-header"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           >
-            <span className="catalog-sidebar-title">
-              <i className="fa-solid fa-sliders catalog-sidebar-icon"></i>
+            <span className="catalog-sidebar-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <SlidersHorizontal size={16} className="catalog-sidebar-icon" />
               Bộ lọc tìm kiếm
             </span>
-            <i
-              className={`fa-solid fa-chevron-${sidebarCollapsed ? 'down' : 'up'} catalog-collapse-arrow`}
-            ></i>
+            {sidebarCollapsed ? (
+              <ChevronDown size={16} className="catalog-collapse-arrow" />
+            ) : (
+              <ChevronUp size={16} className="catalog-collapse-arrow" />
+            )}
           </div>
 
           {!sidebarCollapsed && (
@@ -516,8 +543,8 @@ export default function CatalogPage() {
               {/* AI Try-on Toggle */}
               <div className="catalog-ai-box">
                 <div>
-                  <div className="catalog-ai-title">
-                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                  <div className="catalog-ai-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Sparkles size={14} color="#C5A880" />
                     Hỗ trợ thử đồ AI
                   </div>
                   <div className="catalog-ai-desc">Chỉ hiển thị sản phẩm có thể thử đồ AI</div>
@@ -534,8 +561,8 @@ export default function CatalogPage() {
 
               {/* Category Filter from Backend */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">
-                  <i className="fa-solid fa-shirt"></i>
+                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Sparkles size={14} />
                   Danh mục
                 </div>
                 <div className="catalog-checkbox-list">
@@ -558,8 +585,8 @@ export default function CatalogPage() {
 
               {/* Price Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">
-                  <i className="fa-solid fa-tag"></i>
+                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Tag size={14} />
                   Khoảng giá
                 </div>
                 <div className="catalog-price-inputs">
@@ -598,8 +625,8 @@ export default function CatalogPage() {
 
               {/* Size Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">
-                  <i className="fa-solid fa-ruler-combined"></i>
+                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Ruler size={14} />
                   Kích cỡ
                 </div>
                 <div className="catalog-checkbox-list">
@@ -622,8 +649,8 @@ export default function CatalogPage() {
 
               {/* Color Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">
-                  <i className="fa-solid fa-palette"></i>
+                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Palette size={14} />
                   Màu sắc
                 </div>
                 <div className="catalog-color-grid">
@@ -639,13 +666,10 @@ export default function CatalogPage() {
                         onClick={() => toggleColor(clr.key)}
                       >
                         {isSelected && (
-                          <i
-                            className="fa-solid fa-check"
-                            style={{
-                              color: clr.code === '#F9FAFB' ? '#111827' : '#ffffff',
-                              fontSize: '9px',
-                            }}
-                          ></i>
+                          <Check
+                            size={10}
+                            color={clr.code === '#F9FAFB' ? '#111827' : '#ffffff'}
+                          />
                         )}
                       </div>
                     );
@@ -655,8 +679,8 @@ export default function CatalogPage() {
 
               {/* Condition Filter */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading">
-                  <i className="fa-solid fa-certificate"></i>
+                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Award size={14} />
                   Tình trạng (đồ cũ)
                 </div>
                 <div className="catalog-checkbox-list">
@@ -679,15 +703,15 @@ export default function CatalogPage() {
 
               {/* Promo Card: Thử đồ AI */}
               <div className="catalog-promo-card">
-                <div className="catalog-promo-badge">
-                  <i className="fa-solid fa-wand-magic-sparkles"></i>
+                <div className="catalog-promo-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Sparkles size={12} />
                   <span>Thử đồ AI</span>
                 </div>
                 <p className="catalog-promo-text">
                   Khám phá phiên bản tốt nhất của bạn chỉ với 1 bức ảnh!
                 </p>
-                <Link to="/try-on-photo" className="catalog-promo-btn">
-                  Thử đồ ngay <i className="fa-solid fa-arrow-right"></i>
+                <Link to="/try-on-photo" className="catalog-promo-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span>Thử đồ ngay</span> <ArrowRight size={13} />
                 </Link>
                 <img
                   src="/assets/hero_model.jpg"
@@ -700,8 +724,8 @@ export default function CatalogPage() {
               </div>
 
               {/* Reset Filter Button */}
-              <button className="catalog-clear-btn" onClick={resetFilters}>
-                <i className="fa-solid fa-rotate-right"></i>
+              <button className="catalog-clear-btn" onClick={resetFilters} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <RotateCcw size={14} />
                 Xóa bộ lọc
               </button>
             </>
@@ -723,20 +747,17 @@ export default function CatalogPage() {
             </div>
           ) : errorMsg ? (
             <div className="catalog-empty-state">
-              <i
-                className="fa-solid fa-triangle-exclamation catalog-empty-icon"
-                style={{ color: '#dc2626' }}
-              ></i>
+              <AlertTriangle size={36} style={{ color: '#dc2626' }} className="catalog-empty-icon" />
               <div className="catalog-empty-title">Không thể tải dữ liệu từ máy chủ</div>
               <p className="catalog-empty-desc">{errorMsg}</p>
-              <button className="catalog-tab-btn active" onClick={fetchProducts}>
-                <i className="fa-solid fa-rotate-right" style={{ marginRight: '6px' }}></i>
+              <button className="catalog-tab-btn active" onClick={fetchProducts} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <RotateCcw size={14} />
                 Thử lại
               </button>
             </div>
           ) : products.length === 0 ? (
             <div className="catalog-empty-state">
-              <i className="fa-solid fa-shirt catalog-empty-icon"></i>
+              <Sparkles size={36} color="#A1A1AA" className="catalog-empty-icon" />
               <div className="catalog-empty-title">Không tìm thấy sản phẩm trong cơ sở dữ liệu</div>
               <p className="catalog-empty-desc">
                 Không có sản phẩm nào khớp với tiêu chí lọc hiện tại của bạn.
@@ -748,30 +769,54 @@ export default function CatalogPage() {
           ) : (
             <div className="catalog-grid-4cols">
               {products.map((item) => {
-                // Xác định sản phẩm là đồ Thuê hay Bán chuẩn xác theo tab đang chọn và tag sản phẩm
+                const hasRentalPrice = Boolean(
+                  (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) ||
+                  (item.rentalPricePerDay && item.rentalPricePerDay > 0)
+                );
+                const hasSalePrice = Boolean(item.salePrice && item.salePrice > 0);
+
+                let isBoth = false;
+                let isSale = false;
                 let isRental = false;
+
                 if (activeTab === 'rental') {
                   isRental = true;
                 } else if (activeTab === 'sale') {
-                  isRental = false;
+                  isSale = true;
                 } else {
-                  // activeTab === 'all'
-                  if (item.tag === 'sale') {
-                    isRental = false;
-                  } else if (item.tag === 'rental') {
-                    isRental = true;
-                  } else {
-                    const hasRentalPrice = (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) || (item.rentalPricePerDay && item.rentalPricePerDay > 0);
-                    isRental = hasRentalPrice;
-                  }
+                  isBoth = item.tag === 'both' || (item.tag !== 'rental' && item.tag !== 'sale' && hasRentalPrice && hasSalePrice);
+                  isSale = !isBoth && (item.tag === 'sale' || (hasSalePrice && !hasRentalPrice));
+                  isRental = !isBoth && !isSale;
                 }
 
-                const priceNumber = isRental
-                  ? item.rentalPricePer3Days || (item.rentalPricePerDay ? item.rentalPricePerDay * 3 : 0)
-                  : item.salePrice || 0;
+                let badgeText = 'Cho thuê';
+                let badgeClass = 'badge-rental';
+                if (isBoth) {
+                  badgeText = 'Thuê & Mua';
+                  badgeClass = 'badge-both';
+                } else if (isSale) {
+                  badgeText = 'Mua sản phẩm';
+                  badgeClass = 'badge-sale';
+                }
+
+                const rentalPriceNumber =
+                  item.rentalPricePer3Days || (item.rentalPricePerDay ? item.rentalPricePerDay * 3 : 0);
+                const salePriceNumber = item.salePrice || 0;
+
+                let priceNumber = 0;
+                let priceUnit = '';
+                if (isBoth) {
+                  priceNumber = rentalPriceNumber > 0 ? rentalPriceNumber : salePriceNumber;
+                  priceUnit = rentalPriceNumber > 0 ? '/ 3 ngày' : '';
+                } else if (isSale) {
+                  priceNumber = salePriceNumber;
+                  priceUnit = '';
+                } else {
+                  priceNumber = rentalPriceNumber;
+                  priceUnit = rentalPriceNumber > 0 ? '/ 3 ngày' : '';
+                }
 
                 const priceMain = priceNumber > 0 ? formatVND(priceNumber) : 'Liên hệ';
-                const priceUnit = isRental && priceNumber > 0 ? '/ 3 ngày' : '';
                 const isFavorited = favorites.includes(item._id || item.productCode);
                 const mainImage =
                   item.images && item.images.length > 0 && item.images[0]
@@ -796,10 +841,8 @@ export default function CatalogPage() {
                   >
                     <div className="card-media-box">
                       {/* Type Badge */}
-                      <span
-                        className={`product-type-badge ${isRental ? 'badge-rental' : 'badge-resale'}`}
-                      >
-                        {isRental ? 'Cho thuê' : 'Mua đồ cũ'}
+                      <span className={`product-type-badge ${badgeClass}`}>
+                        {badgeText}
                       </span>
 
                       {/* Favorite Button */}
@@ -809,7 +852,11 @@ export default function CatalogPage() {
                         title={isFavorited ? 'Bỏ thích' : 'Yêu thích'}
                         aria-label="Lưu vào yêu thích"
                       >
-                        <i className={isFavorited ? 'fa-solid fa-heart' : 'fa-regular fa-heart'}></i>
+                        <Heart
+                          size={15}
+                          fill={isFavorited ? '#C5A880' : 'none'}
+                          color={isFavorited ? '#C5A880' : '#71717A'}
+                        />
                       </button>
 
                       {/* Product Image */}
@@ -829,7 +876,7 @@ export default function CatalogPage() {
                         className="product-card-placeholder-box"
                         style={{ display: mainImage ? 'none' : 'flex' }}
                       >
-                        <i className="fa-solid fa-shirt"></i>
+                        <Sparkles size={24} color="#D1D5DB" />
                       </div>
                     </div>
 
@@ -843,7 +890,7 @@ export default function CatalogPage() {
                       <div className="card-meta-line">
                         {item.rating > 0 ? (
                           <>
-                            <i className="fa-solid fa-star rating-star"></i>
+                            <Star size={12} fill="#F59E0B" color="#F59E0B" className="rating-star" />
                             <span className="rating-score">{item.rating}</span>
                             {item.reviewsCount > 0 && <span>({item.reviewsCount})</span>}
                             <span className="meta-separator">•</span>
@@ -861,17 +908,33 @@ export default function CatalogPage() {
                       <div className="card-pricing-line">
                         <span className="price-main">{priceMain}</span>
                         {priceUnit && <span className="price-unit">{priceUnit}</span>}
+                        {isBoth && salePriceNumber > 0 && rentalPriceNumber > 0 && (
+                          <span
+                            className="card-sale-price-hint"
+                            style={{
+                              fontSize: '11px',
+                              color: '#854d0e',
+                              background: '#fef3c7',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              marginLeft: '6px',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Mua: {formatVND(salePriceNumber)}
+                          </span>
+                        )}
                       </div>
 
                       {/* Attributes */}
                       <div className="card-attributes-list">
                         <div className="card-attr-row card-quantity-row">
-                          <i className="fa-solid fa-boxes-stacked card-attr-icon" style={{ color: '#4f46e5', marginRight: '5px' }}></i>
+                          <Package size={13} style={{ color: '#C5A880', marginRight: '5px' }} />
                           <span>Số lượng: <strong>{typeof item.quantity === 'number' ? item.quantity : (item.quantityOnHand ?? 0)}</strong></span>
                         </div>
 
                         <div className="card-attr-row card-branch-row" title={item.branchAddress || item.branchName || 'Chi nhánh toàn hệ thống'}>
-                          <i className="fa-solid fa-location-dot card-attr-icon" style={{ color: '#e11d48', marginRight: '5px' }}></i>
+                          <MapPin size={13} style={{ color: '#e11d48', marginRight: '5px' }} />
                           <span className="card-branch-text">{item.branchAddress || item.branchName || 'Chi nhánh toàn hệ thống'}</span>
                         </div>
                         {item.sizes && item.sizes.length > 0 ? (
@@ -905,7 +968,7 @@ export default function CatalogPage() {
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 aria-label="Trang trước"
               >
-                <i className="fa-solid fa-chevron-left"></i>
+                <ChevronLeft size={16} />
               </button>
 
               {Array.from({ length: pagination.totalPages }).map((_, idx) => {
@@ -927,7 +990,7 @@ export default function CatalogPage() {
                 onClick={() => setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))}
                 aria-label="Trang tiếp"
               >
-                <i className="fa-solid fa-chevron-right"></i>
+                <ChevronRight size={16} />
               </button>
             </div>
           )}
@@ -938,7 +1001,7 @@ export default function CatalogPage() {
       <div className="catalog-trust-bar">
         <div className="catalog-trust-item">
           <div className="catalog-trust-icon-box">
-            <i className="fa-solid fa-shield-halved"></i>
+            <ShieldCheck size={22} color="#C5A880" />
           </div>
           <div>
             <h4 className="catalog-trust-title">Sản phẩm được kiểm duyệt</h4>
@@ -948,7 +1011,7 @@ export default function CatalogPage() {
 
         <div className="catalog-trust-item">
           <div className="catalog-trust-icon-box">
-            <i className="fa-solid fa-credit-card"></i>
+            <CreditCard size={22} color="#C5A880" />
           </div>
           <div>
             <h4 className="catalog-trust-title">Thanh toán an toàn</h4>
@@ -958,7 +1021,7 @@ export default function CatalogPage() {
 
         <div className="catalog-trust-item">
           <div className="catalog-trust-icon-box">
-            <i className="fa-solid fa-headset"></i>
+            <Headphones size={22} color="#C5A880" />
           </div>
           <div>
             <h4 className="catalog-trust-title">Hỗ trợ khách hàng</h4>

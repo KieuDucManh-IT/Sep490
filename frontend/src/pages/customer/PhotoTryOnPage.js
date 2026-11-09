@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { CheckCircle2, X } from 'lucide-react';
 import '../../styles/PhotoTryOn.css';
 import tryOnApi from '../../services/tryOnApi';
 import productService from '../../services/productService';
@@ -83,6 +84,14 @@ export default function PhotoTryOnPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [isSavingWardrobe, setIsSavingWardrobe] = useState(false);
   const [lastSavedImageUrl, setLastSavedImageUrl] = useState('');
+
+  // Auto-dismiss notification
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   // 1. Fetch sample models from server on mount
   useEffect(() => {
@@ -279,6 +288,32 @@ export default function PhotoTryOnPage() {
 
   return (
     <div className="tryon-room-container">
+      {/* Toast Notification */}
+      {successMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 24,
+            right: 24,
+            zIndex: 99999,
+            background: '#171717',
+            color: '#F8F7F4',
+            border: '1px solid #C5A880',
+            borderRadius: 10,
+            padding: '12px 20px',
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <CheckCircle2 size={16} color="#C5A880" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
       {/* Top Header Bar */}
       <header className="tryon-header-bar">
         <Link
@@ -319,7 +354,7 @@ export default function PhotoTryOnPage() {
               fontSize: '18px',
             }}
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
       </header>
@@ -436,7 +471,7 @@ export default function PhotoTryOnPage() {
         {/* LEFT PANEL: Step 1 Upload Model */}
         <div className="panel-dark-box">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold)' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold, #C5A880)' }}>
               BƯỚC 1
             </span>
             <span
@@ -452,7 +487,7 @@ export default function PhotoTryOnPage() {
             </span>
           </div>
 
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '20px', margin: 0 }}>
+          <h2 style={{ fontFamily: 'var(--font-title, serif)', fontSize: '20px', margin: 0 }}>
             1. Ảnh Người Mẫu / Cá Nhân
           </h2>
 
@@ -673,7 +708,7 @@ export default function PhotoTryOnPage() {
         {/* RIGHT PANEL: Step 2 Item Selection & Adjustments */}
         <div className="panel-dark-box">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold)' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', color: 'var(--color-gold, #C5A880)' }}>
               BƯỚC 2
             </span>
             <span
@@ -690,7 +725,7 @@ export default function PhotoTryOnPage() {
             </span>
           </div>
 
-          <h2 style={{ fontFamily: 'var(--font-title)', fontSize: '20px', margin: 0 }}>
+          <h2 style={{ fontFamily: 'var(--font-title, serif)', fontSize: '20px', margin: 0 }}>
             2. Trang Phục Đang Thử
           </h2>
 
@@ -916,7 +951,7 @@ export default function PhotoTryOnPage() {
           <button
             type="button"
             className="btn-primary"
-            style={{ padding: '12px 28px' }}
+            style={{ padding: '12px 28px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
             onClick={() => {
               if (product?._id && product._id !== 'sample-001') {
                 navigate(`/product/${product._id}`);

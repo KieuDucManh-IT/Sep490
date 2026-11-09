@@ -14,6 +14,8 @@ import HomePage from './pages/customer/HomePage';
 import CatalogPage from './pages/customer/CatalogPage';
 import ProductDetailPage from './pages/customer/ProductDetailPage';
 import CartPage from './pages/customer/CartPage';
+import CheckoutPage from './pages/customer/CheckoutPage';
+import SaleCheckoutPage from './pages/customer/SaleCheckoutPage';
 import FavoritesPage from './pages/customer/FavoritesPage';
 import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
@@ -44,6 +46,7 @@ import WarehouseModerationPage from './pages/warehouse/WarehouseModerationPage';
 import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
 import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
+import CartDrawer from './components/customer/cart/CartDrawer';
 import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 import WarehouseStocktakePage from './pages/warehouse/WarehouseStocktakePage';
@@ -71,16 +74,19 @@ function App() {
   return (
     <Router>
       <ForceChangePasswordModal />
+      <CartDrawer />
       <Routes>
         {/* ========================================================
-            CUSTOMER PORTAL (KhÃ¡ch HÃ ng)
+            CUSTOMER PORTAL (Khách Hàng)
             ======================================================== */}
         <Route path="/" element={<HomePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/product" element={<ProductDetailPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/cart" element={<CartPage />} />
-        <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+        <Route path="/checkout/sale" element={<ProtectedRoute><SaleCheckoutPage /></ProtectedRoute>} />
+        <Route path="/favorites" element={<Navigate to="/wardrobe" replace />} />
         <Route path="/map" element={<ShopMapPage />} />
         <Route
           path="/profile"
@@ -98,6 +104,7 @@ function App() {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
+        <Route path="/policy/:tab" element={<PolicyPage />} />
         <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
         <Route path="/stylist" element={<StylistPage />} />

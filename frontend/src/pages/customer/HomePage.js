@@ -1,5 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  Shirt,
+  Sparkles,
+  Store,
+  ShieldCheck,
+  ArrowRight,
+  PlayCircle,
+  Tag,
+  Camera,
+  Video,
+  ChevronRight,
+  Heart,
+  Star,
+  Package,
+  MapPin,
+  Map,
+  Crosshair,
+  SlidersHorizontal,
+  Leaf,
+  Users,
+} from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
@@ -17,7 +38,7 @@ import '../../styles/HomePage.css';
 const FEATURED_PRODUCTS = [
   {
     id: 'VESTORA-DR-089',
-    type: 'Thuê đồ',
+    type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Đầm dạ hội ánh tím',
     rating: '4.9',
@@ -30,8 +51,8 @@ const FEATURED_PRODUCTS = [
   },
   {
     id: 'VESTORA-BZ-012',
-    type: 'Mua đồ cũ',
-    typeBadge: 'resale',
+    type: 'Mua sản phẩm',
+    typeBadge: 'sale',
     title: 'Blazer thanh lịch',
     rating: '4.8',
     reviews: '96',
@@ -40,10 +61,11 @@ const FEATURED_PRODUCTS = [
     priceUnit: '',
     image: '/assets/beige_blazer.jpg',
     isRental: false,
+    isSale: true,
   },
   {
     id: 'VESTORA-AD-007',
-    type: 'Thuê đồ',
+    type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Áo dài cách tân',
     rating: '4.9',
@@ -56,8 +78,8 @@ const FEATURED_PRODUCTS = [
   },
   {
     id: 'VESTORA-BG-045',
-    type: 'Mua đồ cũ',
-    typeBadge: 'resale',
+    type: 'Mua sản phẩm',
+    typeBadge: 'sale',
     title: 'Túi dây tiệc mini',
     rating: '4.7',
     reviews: '52',
@@ -66,10 +88,11 @@ const FEATURED_PRODUCTS = [
     priceUnit: '',
     image: '/assets/mini_bag.jpg',
     isRental: false,
+    isSale: true,
   },
   {
     id: 'VESTORA-BD-022',
-    type: 'Thuê đồ',
+    type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Đầm body đen',
     rating: '4.8',
@@ -166,7 +189,7 @@ export default function HomePage() {
     const syncFav = () => {
       try {
         setFavoriteIds(JSON.parse(localStorage.getItem('vestora_favorites') || '[]'));
-      } catch {}
+      } catch { }
     };
     window.addEventListener('favoritesUpdated', syncFav);
     return () => window.removeEventListener('favoritesUpdated', syncFav);
@@ -181,7 +204,7 @@ export default function HomePage() {
       try {
         localStorage.setItem('vestora_favorites', JSON.stringify(next));
         window.dispatchEvent(new Event('favoritesUpdated'));
-      } catch {}
+      } catch { }
       return next;
     });
   };
@@ -206,17 +229,31 @@ export default function HomePage() {
               p.tag === 'rental' ||
               (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
               (p.rentalPricePerDay && p.rentalPricePerDay > 0);
+            const isSale =
+              p.tag === 'sale' ||
+              (p.salePrice && p.salePrice > 0);
+            const isBoth = p.tag === 'both' || (isRental && isSale);
 
-            const price = isRental
-              ? (p.rentalPricePer3Days || (p.rentalPricePerDay ? p.rentalPricePerDay * 3 : 0))
-              : (p.salePrice || 0);
+            let type = 'Cho thuê';
+            let typeBadge = 'rental';
+            if (isBoth) {
+              type = 'Thuê & Mua';
+              typeBadge = 'both';
+            } else if (p.tag === 'sale' || (isSale && !isRental)) {
+              type = 'Mua sản phẩm';
+              typeBadge = 'sale';
+            }
+
+            const price = isSale && !isBoth
+              ? (p.salePrice || 0)
+              : (p.rentalPricePer3Days || (p.rentalPricePerDay ? p.rentalPricePerDay * 3 : (p.salePrice || 0)));
 
             const mainImage = (p.images && p.images.length > 0 && p.images[0]) || p.image || '/assets/purple_gown.jpg';
 
             return {
               id: p._id || p.productCode || p.sku,
-              type: isRental ? 'Thuê đồ' : 'Mua đồ cũ',
-              typeBadge: isRental ? 'rental' : 'resale',
+              type: type,
+              typeBadge: typeBadge,
               title: p.name,
               rating: typeof p.rating === 'number' ? Number(p.rating).toFixed(1) : '4.9',
               reviews: typeof p.reviewsCount === 'number' ? p.reviewsCount : 95,
@@ -229,6 +266,7 @@ export default function HomePage() {
               priceUnit: isRental && price > 0 ? '/ 3 ngày' : '',
               image: mainImage,
               isRental: isRental,
+              isSale: isSale,
               raw: p,
             };
           });
@@ -320,12 +358,12 @@ export default function HomePage() {
     };
   }, []);
 
-  // Filter products by mode (Cho thuê / Mua đồ cũ / Tất cả)
+  // Filter products by mode (Tất cả / Cho thuê / Mua sản phẩm)
   const allFilteredProducts = useMemo(() => {
     const source = apiProducts.length > 0 ? apiProducts : FEATURED_PRODUCTS;
     return source.filter((item) => {
-      if (productFilter === 'RENTAL') return item.isRental;
-      if (productFilter === 'RESALE') return !item.isRental;
+      if (productFilter === 'RENTAL') return item.isRental || item.typeBadge === 'rental' || item.typeBadge === 'both';
+      if (productFilter === 'SALE' || productFilter === 'RESALE') return item.isSale || item.typeBadge === 'sale' || item.typeBadge === 'both';
       return true;
     });
   }, [apiProducts, productFilter]);
@@ -376,14 +414,14 @@ export default function HomePage() {
 
               <p className="hero-subtext">
                 Khám phá hàng ngàn trang phục từ các gian hàng uy tín.<br />
-                Thuê, mua đồ cũ hoặc trải nghiệm thử đồ bằng AI, camera ngay tại nhà. <span className="inline-sparkle">✦</span>
+                Thuê, mua đồ cũ hoặc trải nghiệm thử đồ bằng AI, camera ngay tại nhà.
               </p>
 
               {/* 4 Feature Badges */}
               <div className="hero-features-strip">
                 <div className="hero-pill-item">
-                  <div className="hero-pill-icon-box">
-                    <i className="fa-solid fa-shirt"></i>
+                  <div className="hero-pill-icon-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Shirt size={18} color="#C5A880" />
                   </div>
                   <div className="hero-pill-text-col">
                     <span>Đa dạng</span>
@@ -392,8 +430,8 @@ export default function HomePage() {
                 </div>
 
                 <div className="hero-pill-item">
-                  <div className="hero-pill-icon-box">
-                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                  <div className="hero-pill-icon-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sparkles size={18} color="#C5A880" />
                   </div>
                   <div className="hero-pill-text-col">
                     <span>Thử đồ AI</span>
@@ -402,8 +440,8 @@ export default function HomePage() {
                 </div>
 
                 <div className="hero-pill-item">
-                  <div className="hero-pill-icon-box">
-                    <i className="fa-solid fa-store"></i>
+                  <div className="hero-pill-icon-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Store size={18} color="#C5A880" />
                   </div>
                   <div className="hero-pill-text-col">
                     <span>Showroom</span>
@@ -412,8 +450,8 @@ export default function HomePage() {
                 </div>
 
                 <div className="hero-pill-item">
-                  <div className="hero-pill-icon-box">
-                    <i className="fa-solid fa-shield-halved"></i>
+                  <div className="hero-pill-icon-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShieldCheck size={18} color="#C5A880" />
                   </div>
                   <div className="hero-pill-text-col">
                     <span>Mua đồ cũ</span>
@@ -427,15 +465,17 @@ export default function HomePage() {
                 <button
                   className="btn-hero-primary"
                   onClick={() => navigate('/catalog')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
                 >
-                  <i className="fa-solid fa-shirt btn-hanger-icon"></i>
-                  Khám phá ngay <i className="fa-solid fa-arrow-right btn-arrow-icon"></i>
+                  <Shirt size={16} className="btn-hanger-icon" />
+                  Khám phá ngay <ArrowRight size={16} className="btn-arrow-icon" />
                 </button>
                 <button
                   className="btn-hero-outline"
                   onClick={() => navigate('/try-on/photo')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
                 >
-                  <i className="fa-regular fa-circle-play btn-play-icon"></i>
+                  <PlayCircle size={16} className="btn-play-icon" />
                   Xem hướng dẫn
                 </button>
               </div>
@@ -452,16 +492,16 @@ export default function HomePage() {
                   muted
                   playsInline
                 />
-                <div className="hero-video-live-badge">
+                {/* <div className="hero-video-live-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <span className="live-pulse-dot"></span>
-                  <i className="fa-solid fa-wand-magic-sparkles"></i> AI Try-On Live
-                </div>
+                  <Sparkles size={14} color="#C5A880" /> AI Try-On Live
+                </div> */}
                 <div className="hero-script-overlay">
                   Fashion<br />
                   <span>for your</span><br />
-                  <span className="script-life">life ♡</span>
+                  <span className="script-life">life</span>
                 </div>
-                <i className="fa-solid fa-star sparkle-star sparkle-1"></i>
+                <Sparkles size={20} className="sparkle-star sparkle-1" color="#C5A880" />
               </div>
             </div>
           </div>
@@ -479,8 +519,9 @@ export default function HomePage() {
                   setQuickMode('thue-do');
                   setProductFilter('RENTAL');
                 }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                <i className="fa-solid fa-shirt tab-icon"></i>
+                <Shirt size={16} className="tab-icon" />
                 <span>Thuê đồ</span>
               </button>
 
@@ -490,30 +531,33 @@ export default function HomePage() {
                   setQuickMode('mua-do-cu');
                   setProductFilter('RESALE');
                 }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                <i className="fa-solid fa-tags tab-icon"></i>
+                <Tag size={16} className="tab-icon" />
                 <span>Mua đồ cũ</span>
               </button>
 
               <button
                 className={`quick-tab-btn ${quickMode === 'thu-do-ai' ? 'active' : ''}`}
                 onClick={() => navigate('/try-on/photo')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                <i className="fa-solid fa-camera tab-icon"></i>
+                <Camera size={16} className="tab-icon" />
                 <span>Thử đồ AI</span>
               </button>
 
               <button
                 className={`quick-tab-btn ${quickMode === 'thu-do-camera' ? 'active' : ''}`}
                 onClick={() => navigate('/try-on/webcam')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                <i className="fa-solid fa-video tab-icon"></i>
+                <Video size={16} className="tab-icon" />
                 <span>Thử đồ Camera</span>
               </button>
             </div>
 
-            <Link to="/catalog" className="view-all-link">
-              Xem tất cả <i className="fa-solid fa-arrow-right"></i>
+            <Link to="/catalog" className="view-all-link" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              Xem tất cả <ArrowRight size={14} />
             </Link>
           </div>
         </section>
@@ -524,21 +568,36 @@ export default function HomePage() {
         <section className="featured-products-section">
           <div className="section-header-row">
             <div className="header-left-group">
-              <h2 className="section-title-with-star">
-                <i className="fa-solid fa-star sparkle-heading-icon"></i> Sản phẩm nổi bật
+              <h2 className="section-title-with-star" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Sparkles size={20} color="#C5A880" className="sparkle-heading-icon" /> Sản phẩm nổi bật
               </h2>
               <div className="filter-pill-switch">
                 <button
-                  className={`filter-chip ${productFilter === 'ALL' || productFilter === 'RENTAL' ? 'active' : ''}`}
-                  onClick={() => setProductFilter('ALL')}
+                  className={`filter-chip ${productFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => {
+                    setProductFilter('ALL');
+                    setCarouselIndex(0);
+                  }}
+                >
+                  Tất cả
+                </button>
+                <button
+                  className={`filter-chip ${productFilter === 'RENTAL' ? 'active' : ''}`}
+                  onClick={() => {
+                    setProductFilter('RENTAL');
+                    setCarouselIndex(0);
+                  }}
                 >
                   Cho thuê
                 </button>
                 <button
-                  className={`filter-chip ${productFilter === 'RESALE' ? 'active' : ''}`}
-                  onClick={() => setProductFilter('RESALE')}
+                  className={`filter-chip ${productFilter === 'SALE' ? 'active' : ''}`}
+                  onClick={() => {
+                    setProductFilter('SALE');
+                    setCarouselIndex(0);
+                  }}
                 >
-                  Đồ cũ
+                  Mua sản phẩm
                 </button>
               </div>
             </div>
@@ -547,8 +606,9 @@ export default function HomePage() {
               className="carousel-nav-btn"
               onClick={handleNextCarousel}
               title={carouselIndex + 1 < maxPages ? "Xem các sản phẩm tiếp theo" : "Xem tất cả trong bộ sưu tập"}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              <i className="fa-solid fa-chevron-right"></i>
+              <ChevronRight size={18} />
             </button>
           </div>
 
@@ -567,8 +627,13 @@ export default function HomePage() {
                       onClick={(e) => toggleFavorite(e, String(product.id))}
                       aria-label="Thêm vào yêu thích"
                       title={isFav ? "Bỏ yêu thích" : "Lưu vào yêu thích"}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <i className={isFav ? 'fa-solid fa-heart' : 'fa-regular fa-heart'}></i>
+                      <Heart
+                        size={15}
+                        fill={isFav ? '#C5A880' : 'none'}
+                        color={isFav ? '#C5A880' : '#171717'}
+                      />
                     </button>
                     <img
                       src={product.image}
@@ -582,8 +647,8 @@ export default function HomePage() {
 
                   <div className="card-info-box">
                     <h3 className="card-product-name" title={product.title}>{product.title}</h3>
-                    <div className="card-meta-line">
-                      <i className="fa-solid fa-star rating-star"></i>
+                    <div className="card-meta-line" style={{ display: 'flex', alignItems: 'center' }}>
+                      <Star size={13} fill="#C5A880" color="#C5A880" className="rating-star" />
                       <span className="rating-score">{product.rating}</span>
                       <span className="rating-count">({product.reviews})</span>
                       <span className="meta-separator">•</span>
@@ -602,14 +667,14 @@ export default function HomePage() {
                     {(product.quantity != null || product.branchAddress) && (
                       <div className="card-attributes-list" style={{ marginBottom: '8px', gap: '3px' }}>
                         {product.quantity != null && (
-                          <div className="card-attr-row card-quantity-row">
-                            <i className="fa-solid fa-boxes-stacked card-attr-icon" style={{ color: '#4f46e5', marginRight: '5px' }}></i>
+                          <div className="card-attr-row card-quantity-row" style={{ display: 'flex', alignItems: 'center' }}>
+                            <Package size={13} color="#C5A880" className="card-attr-icon" style={{ marginRight: '5px' }} />
                             <span>Số lượng: <strong>{product.quantity}</strong></span>
                           </div>
                         )}
                         {product.branchAddress && (
-                          <div className="card-attr-row card-branch-row" title={product.branchAddress}>
-                            <i className="fa-solid fa-location-dot card-attr-icon" style={{ color: '#e11d48', marginRight: '5px' }}></i>
+                          <div className="card-attr-row card-branch-row" title={product.branchAddress} style={{ display: 'flex', alignItems: 'center' }}>
+                            <MapPin size={13} color="#C5A880" className="card-attr-icon" style={{ marginRight: '5px' }} />
                             <span className="card-branch-text">{product.branchAddress}</span>
                           </div>
                         )}
@@ -633,8 +698,8 @@ export default function HomePage() {
           {/* Left Column: Tìm Showroom Gần Bạn */}
           <div className="dual-column-box showroom-column">
             <div className="column-head">
-              <h3 className="column-title">
-                <i className="fa-solid fa-location-dot column-icon"></i> Tìm showroom gần bạn
+              <h3 className="column-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <MapPin size={18} color="#C5A880" className="column-icon" /> Tìm showroom gần bạn
               </h3>
               <p className="column-desc">
                 Khám phá các showroom đối tác của VESTORA quanh khu vực của bạn.
@@ -657,16 +722,16 @@ export default function HomePage() {
 
                   {/* Location Pins */}
                   <div className="map-pin pin-1" title="Showroom 1">
-                    <i className="fa-solid fa-location-dot map-pin-icon"></i>
+                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
                   </div>
                   <div className="map-pin pin-2" title="Showroom 2">
-                    <i className="fa-solid fa-location-dot map-pin-icon"></i>
+                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
                   </div>
                   <div className="map-pin pin-3" title="Showroom 3">
-                    <i className="fa-solid fa-location-dot map-pin-icon"></i>
+                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
                   </div>
                   <div className="map-pin pin-4" title="Showroom 4">
-                    <i className="fa-solid fa-location-dot map-pin-icon"></i>
+                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
                   </div>
                 </div>
 
@@ -677,8 +742,9 @@ export default function HomePage() {
                       e.stopPropagation();
                       navigate('/map');
                     }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    <i className="fa-regular fa-map map-btn-icon"></i> Xem bản đồ lớn
+                    <Map size={14} className="map-btn-icon" /> Xem bản đồ lớn
                   </button>
                   <button
                     className="btn-map-locate"
@@ -687,8 +753,9 @@ export default function HomePage() {
                       navigate('/map');
                     }}
                     title="Vị trí hiện tại"
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <i className="fa-solid fa-crosshairs"></i>
+                    <Crosshair size={14} />
                   </button>
                 </div>
               </div>
@@ -713,13 +780,13 @@ export default function HomePage() {
                     <div className="showroom-details">
                       <h4 className="showroom-name">{store.name}</h4>
                       <p className="showroom-address">{store.address}</p>
-                      <div className="showroom-meta">
-                        <i className="fa-solid fa-star star-icon"></i> {store.rating} ({store.reviews})
+                      <div className="showroom-meta" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Star size={12} fill="#C5A880" color="#C5A880" className="star-icon" /> {store.rating} ({store.reviews})
                       </div>
                     </div>
                     <div className="showroom-dist-col">
                       <span className="showroom-distance">{store.distance}</span>
-                      <i className="fa-solid fa-chevron-right chevron-right"></i>
+                      <ChevronRight size={14} className="chevron-right" />
                     </div>
                   </div>
                 ))}
@@ -730,8 +797,8 @@ export default function HomePage() {
           {/* Right Column: Thử Đồ Theo Cách Của Bạn */}
           <div className="dual-column-box tryon-column">
             <div className="column-head">
-              <h3 className="column-title">
-                <i className="fa-solid fa-sliders column-icon"></i> Thử đồ theo cách của bạn
+              <h3 className="column-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <SlidersHorizontal size={18} color="#C5A880" className="column-icon" /> Thử đồ theo cách của bạn
               </h3>
               <p className="column-desc">
                 Công nghệ AI giúp bạn thử trang phục ngay tại nhà, chỉ với vài thao tác.
@@ -761,8 +828,8 @@ export default function HomePage() {
                   </p>
                 </div>
 
-                <div className="feature-arrow-btn">
-                  <i className="fa-solid fa-arrow-right"></i>
+                <div className="feature-arrow-btn" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ArrowRight size={16} />
                 </div>
               </div>
 
@@ -789,14 +856,14 @@ export default function HomePage() {
                   </p>
                 </div>
 
-                <div className="feature-arrow-btn">
-                  <i className="fa-solid fa-arrow-right"></i>
+                <div className="feature-arrow-btn" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ArrowRight size={16} />
                 </div>
               </div>
 
               {/* Security note */}
-              <div className="camera-security-note">
-                <i className="fa-solid fa-shield-halved shield-icon"></i>
+              <div className="camera-security-note" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ShieldCheck size={14} color="#C5A880" className="shield-icon" />
                 <span>Camera chỉ được khởi động khi bạn cho phép.</span>
               </div>
             </div>
@@ -808,11 +875,11 @@ export default function HomePage() {
             ==================================================== */}
         <section className="style-suggestions-section">
           <div className="section-header-row">
-            <h2 className="section-title-with-star">
-              <i className="fa-solid fa-star sparkle-heading-icon"></i> Gợi ý phong cách theo nhu cầu
+            <h2 className="section-title-with-star" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Sparkles size={20} color="#C5A880" className="sparkle-heading-icon" /> Gợi ý phong cách theo nhu cầu
             </h2>
-            <Link to="/catalog?category=suggest" className="view-all-link">
-              Xem tất cả <i className="fa-solid fa-arrow-right"></i>
+            <Link to="/catalog?category=suggest" className="view-all-link" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              Xem tất cả <ArrowRight size={14} />
             </Link>
           </div>
 
@@ -829,7 +896,7 @@ export default function HomePage() {
                     <h3 className="style-title">{cat.title}</h3>
                     <p className="style-subtitle">{cat.desc}</p>
                   </div>
-                  <i className="fa-solid fa-chevron-right style-arrow-icon"></i>
+                  <ChevronRight size={16} className="style-arrow-icon" />
                 </div>
               </div>
             ))}
@@ -852,8 +919,8 @@ export default function HomePage() {
 
             {/* Middle Content */}
             <div className="sustain-content-col">
-              <div className="sustain-badge-title">
-                <i className="fa-solid fa-leaf leaf-icon"></i>
+              <div className="sustain-badge-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Leaf size={18} color="#C5A880" className="leaf-icon" />
                 <h3>Mua đồ cũ – Thời trang bền vững</h3>
               </div>
               <p className="sustain-description">
@@ -863,23 +930,24 @@ export default function HomePage() {
               <button
                 className="btn-sustain-cta"
                 onClick={() => navigate('/catalog?type=sale')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                Khám phá đồ cũ <i className="fa-solid fa-arrow-right"></i>
+                Khám phá đồ cũ <ArrowRight size={14} />
               </button>
             </div>
 
             {/* Right 3 Highlight Badges */}
             <div className="sustain-benefits-col">
-              <div className="benefit-card">
-                <i className="fa-solid fa-shield-halved benefit-icon"></i>
+              <div className="benefit-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={18} color="#C5A880" className="benefit-icon" />
                 <span className="benefit-label">Sản phẩm chất lượng được kiểm duyệt</span>
               </div>
-              <div className="benefit-card">
-                <i className="fa-solid fa-tags benefit-icon"></i>
+              <div className="benefit-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Tag size={18} color="#C5A880" className="benefit-icon" />
                 <span className="benefit-label">Giá tốt hơn thị trường</span>
               </div>
-              <div className="benefit-card">
-                <i className="fa-solid fa-users benefit-icon"></i>
+              <div className="benefit-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Users size={18} color="#C5A880" className="benefit-icon" />
                 <span className="benefit-label">Cộng đồng thời trang văn minh, bền vững</span>
               </div>
             </div>
@@ -897,8 +965,8 @@ export default function HomePage() {
           <div className="steps-flow-container">
             {/* Step 1 */}
             <div className="step-item-card">
-              <div className="step-icon-bubble">
-                <i className="fa-solid fa-shirt"></i>
+              <div className="step-icon-bubble" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Shirt size={22} color="#C5A880" />
               </div>
               <h4 className="step-name">1. Chọn trang phục</h4>
               <p className="step-detail">
@@ -906,12 +974,12 @@ export default function HomePage() {
               </p>
             </div>
 
-            <i className="fa-solid fa-arrow-right step-flow-arrow"></i>
+            <ArrowRight size={18} color="#C5A880" className="step-flow-arrow" />
 
             {/* Step 2 */}
             <div className="step-item-card">
-              <div className="step-icon-bubble">
-                <i className="fa-solid fa-camera"></i>
+              <div className="step-icon-bubble" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Camera size={22} color="#C5A880" />
               </div>
               <h4 className="step-name">2. Thử đồ AI / Camera</h4>
               <p className="step-detail">
@@ -919,25 +987,25 @@ export default function HomePage() {
               </p>
             </div>
 
-            <i className="fa-solid fa-arrow-right step-flow-arrow"></i>
+            <ArrowRight size={18} color="#C5A880" className="step-flow-arrow" />
 
             {/* Step 3 */}
             <div className="step-item-card">
-              <div className="step-icon-bubble">
-                <i className="fa-solid fa-shield-halved"></i>
+              <div className="step-icon-bubble" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ShieldCheck size={22} color="#C5A880" />
               </div>
-              <h4 className="step-name">3. Đặt thuê / mua và thanh toán Escrow</h4>
+              <h4 className="step-name">3. Đặt thuê / mua và thanh toán an toàn</h4>
               <p className="step-detail">
                 An toàn, minh bạch, bảo vệ quyền lợi
               </p>
             </div>
 
-            <i className="fa-solid fa-arrow-right step-flow-arrow"></i>
+            <ArrowRight size={18} color="#C5A880" className="step-flow-arrow" />
 
             {/* Step 4 */}
             <div className="step-item-card">
-              <div className="step-icon-bubble">
-                <i className="fa-solid fa-box-open"></i>
+              <div className="step-icon-bubble" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Package size={22} color="#C5A880" />
               </div>
               <h4 className="step-name">
                 4. Trả đồ / Nhận hoàn cọc

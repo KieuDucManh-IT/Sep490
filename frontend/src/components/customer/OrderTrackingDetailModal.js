@@ -11,7 +11,6 @@ import {
   Clock,
   MapPin,
   Calendar,
-  AlertCircle,
   ShieldCheck,
   User,
   Store,
@@ -19,9 +18,7 @@ import {
   RotateCw,
   XCircle,
   RotateCcw,
-  ShoppingBag,
   Loader2,
-  CheckCircle2,
 } from 'lucide-react';
 import '../../styles/CustomerOrderTracking.css';
 

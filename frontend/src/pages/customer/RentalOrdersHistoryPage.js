@@ -20,7 +20,6 @@ import {
   Loader2,
   ChevronRight,
   AlertCircle,
-  MapPin,
   Truck,
   Wallet,
   Banknote,

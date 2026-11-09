@@ -71,7 +71,6 @@ export default function ShipmentCreateModal({
       wardHint,
       wardCodeHint,
       provinceIdHint,
-      districtIdHint,
       fullAddr,
     } = extractOrderAddressInfo(order);
 

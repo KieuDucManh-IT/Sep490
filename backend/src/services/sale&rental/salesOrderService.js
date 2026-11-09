@@ -338,7 +338,7 @@ export const createSalesOrder = async ({
       await InventoryBalance.updateOne(
         { locationId, variantId: it.variantId },
         { $inc: { quantityReserved: it.quantity } },
-        { session }
+        { session, upsert: true }
       );
     }
 

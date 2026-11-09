@@ -95,7 +95,6 @@ app.post(
 );
 
 app.use("/api/wallet", walletRoutes);
-
 app.use("/api/auth", authRoutes);
 app.use("/api/shops", shopRoutes);
 app.use("/api/admin/shops", shopRoutes);

@@ -196,11 +196,12 @@ export const createSalesOrder = async ({
       const wallet = await getWallet(customerId);
       const balances = getBalances(wallet);
       const requiredAmount = priceCalc.totalAmount;
+      const availableBalance = balances.availableBalance ?? balances.available ?? 0;
 
-      if (balances.available < requiredAmount) {
+      if (availableBalance < requiredAmount) {
         throw new ServiceError(
           409,
-          `Số dư khả dụng trong Ví (${balances.available.toLocaleString('vi-VN')} đ) không đủ để thanh toán đơn mua (${priceCalc.totalAmount.toLocaleString('vi-VN')} đ)`
+          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán đơn mua (${priceCalc.totalAmount.toLocaleString('vi-VN')} đ)`
         );
       }
 
@@ -288,7 +289,9 @@ export const createSalesOrder = async ({
         await OrderShipment.create(
           [
             {
+              trackingCode: shipmentCode,
               shipmentCode,
+              orderCode: order.orderCode,
               orderType: 'sale',
               orderId: order._id,
               fromLocationId: locationId,

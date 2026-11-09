@@ -19,11 +19,15 @@ const addressInfoSchema = new mongoose.Schema({
 }, { _id: false });
 
 const orderShipmentSchema = new mongoose.Schema({
-  trackingCode: { type: String, required: true, unique: true, trim: true }, 
+  trackingCode: { type: String, trim: true, unique: true, sparse: true }, 
+  shipmentCode: { type: String, trim: true, index: true },
   orderCode: { type: String, trim: true, index: true }, // Mã đơn của sàn tham chiếu song hành với mã GHN
   orderType: { type: String, required: true, enum: ['sale', 'rental'] },
   orderId: { type: mongoose.Schema.Types.ObjectId, required: true },
   fromShopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', default: null }, 
+  fromLocationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', default: null },
+  deliveryAddress: { type: String, trim: true },
+  deliveryMethod: { type: String, enum: ['pickup', 'internal', 'carrier', 'delivery'], default: 'delivery' },
   carrierName: { type: String, trim: true, default: 'Giao Hàng Nhanh' },
   shipmentType: { type: String, enum: ['outbound', 'return'], default: 'outbound' },
   shipmentStatus: { type: String, default: 'preparing', enum: ['preparing', 'shipped', 'delivered', 'failed', 'cancelled'] },

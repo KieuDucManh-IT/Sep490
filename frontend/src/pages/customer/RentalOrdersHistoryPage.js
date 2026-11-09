@@ -25,9 +25,6 @@ import {
   Truck,
   Wallet,
   Banknote,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
 } from 'lucide-react';
 import '../../styles/RentalOrdersHistory.css';
 

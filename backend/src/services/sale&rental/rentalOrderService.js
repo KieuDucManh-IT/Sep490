@@ -239,11 +239,12 @@ export const createRentalOrder = async ({
       const wallet = await getWallet(customerId);
       const balances = getBalances(wallet);
       const requiredAmount = priceCalc.totalPayable; // rentalFee + depositAmount
+      const availableBalance = balances.availableBalance ?? balances.available ?? 0;
 
-      if (balances.available < requiredAmount) {
+      if (availableBalance < requiredAmount) {
         throw new ServiceError(
           409,
-          `Số dư khả dụng trong Ví (${balances.available.toLocaleString('vi-VN')} đ) không đủ để thanh toán tiền thuê (${priceCalc.totalRentalFee.toLocaleString('vi-VN')} đ) và cọc (${priceCalc.totalDeposit.toLocaleString('vi-VN')} đ)`
+          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán tiền thuê (${priceCalc.totalRentalFee.toLocaleString('vi-VN')} đ) và cọc (${priceCalc.totalDeposit.toLocaleString('vi-VN')} đ)`
         );
       }
 
@@ -329,7 +330,9 @@ export const createRentalOrder = async ({
         await OrderShipment.create(
           [
             {
+              trackingCode: shipmentCode,
               shipmentCode,
+              orderCode: order.orderCode,
               orderType: 'rental',
               orderId: order._id,
               fromLocationId: locationId,

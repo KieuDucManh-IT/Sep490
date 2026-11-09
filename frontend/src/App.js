@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -16,7 +16,6 @@ import ProductDetailPage from './pages/customer/ProductDetailPage';
 import CartPage from './pages/customer/CartPage';
 import CheckoutPage from './pages/customer/CheckoutPage';
 import SaleCheckoutPage from './pages/customer/SaleCheckoutPage';
-import FavoritesPage from './pages/customer/FavoritesPage';
 import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
@@ -29,6 +28,7 @@ import WardrobePage from './pages/customer/WardrobePage';
 import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
+import CustomerOrderTrackingPage from './pages/customer/CustomerOrderTrackingPage';
 import SharedLookbookPage from './pages/customer/SharedLookbookPage';
 import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
 
@@ -67,6 +67,8 @@ import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
 import OwnerBranchesListPage from './pages/owner/OwnerBranchesListPage';
 import OwnerPoliciesPage from './pages/owner/OwnerPoliciesPage';
+import OwnerRentalOrdersPage from './pages/owner/OwnerRentalOrdersPage';
+import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
@@ -118,6 +120,8 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
+        <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
         <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
         <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
 
@@ -354,6 +358,22 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <OwnerPoliciesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/rental-orders"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerRentalOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/sale-orders"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerSaleOrdersPage />
             </ProtectedRoute>
           }
         />

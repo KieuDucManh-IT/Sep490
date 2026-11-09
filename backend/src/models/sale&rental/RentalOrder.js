@@ -9,10 +9,13 @@ const rentalOrderSchema = new mongoose.Schema({
   paymentStatus: { type: String, default: 'unpaid', enum: ['unpaid', 'partial', 'paid', 'refunded', 'partially_refunded'] },
   startDate: { type: Date, required: true },
   dueDate: { type: Date, required: true },
+  actualDeliveryDate: { type: Date, default: null },
+  actualPickupDate: { type: Date, default: null },
   actualReturnedAt: { type: Date, default: null },
   rentalFee: { type: Number, min: 0, required: true, default: 0 },
   depositAmount: { type: Number, min: 0, required: true, default: 0 },
   depositStatus: { type: String, default: 'pending', enum: ['pending', 'held', 'partially_refunded', 'refunded', 'forfeited', 'partially_deducted'] },
+  deliveryMethod: { type: String, enum: ['delivery', 'pickup', 'carrier'], default: 'delivery' },
   shippingAddress: {
     receiverName: { type: String, trim: true },
     phone: { type: String, trim: true },
@@ -20,7 +23,12 @@ const rentalOrderSchema = new mongoose.Schema({
     ward: { type: String, trim: true },
     district: { type: String, trim: true },
     city: { type: String, trim: true },
+    provinceId: { type: Number, default: null },
+    districtId: { type: Number, default: null },
+    wardCode: { type: String, trim: true, default: null },
   },
+  paymentMethod: { type: String, default: 'wallet' },
+  paidAmount: { type: Number, default: 0 },
   note: { type: String, trim: true },
 }, { timestamps: true });
 

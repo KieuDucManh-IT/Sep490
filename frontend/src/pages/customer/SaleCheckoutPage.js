@@ -88,7 +88,7 @@ export default function SaleCheckoutPage() {
         setLoadingWallet(true);
         const data = await walletRequest('');
         if (isMounted && data?.wallet) {
-          setWalletBalance(Number(data.wallet.available) || 0);
+          setWalletBalance(Number(data.wallet.availableBalance ?? data.wallet.available) || 0);
         }
       } catch (err) {
         console.warn('Không thể tải số dư ví:', err.message);

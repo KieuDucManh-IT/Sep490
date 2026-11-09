@@ -29,6 +29,9 @@ export const shippingAddressSchema = z.object({
   ward: z.string().trim().optional().default(''),
   district: z.string().trim().optional().default(''),
   city: z.string().trim().min(1, 'Tỉnh/Thành phố không được để trống'),
+  provinceId: z.number().int().nullish(),
+  districtId: z.number().int().nullish(),
+  wardCode: z.string().trim().nullish(),
 });
 
 export const createSalesOrderSchema = z.object({

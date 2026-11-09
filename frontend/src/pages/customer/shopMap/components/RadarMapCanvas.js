@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Layers, Map, Maximize2 } from 'lucide-react';
+import { Layers, Map as MapIcon, Maximize2, Crosshair } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isValidCoordinate } from '../../../../utils/geoUtils';
@@ -30,25 +30,27 @@ const createStoreMarkerIcon = (isSelected = false) => {
 const DEFAULT_STORE_ICON = createStoreMarkerIcon(false);
 const SELECTED_STORE_ICON = createStoreMarkerIcon(true);
 
-// Customer Location Pin with Blue Radar Pulse
+// Customer Location Pin with Blue Radar Pulse and Visible Badge
 const createCustomerMarkerIcon = () => {
   const html = `
     <div class="customer-radar-pin">
       <div class="customer-radar-pulse"></div>
+      <div class="customer-radar-pulse-outer"></div>
       <div class="customer-radar-core">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
           <circle cx="12" cy="7" r="4"></circle>
         </svg>
       </div>
+      <div class="customer-radar-badge">Vị trí của bạn</div>
     </div>
   `;
   return L.divIcon({
     html,
     className: 'custom-customer-pin-container',
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
-    popupAnchor: [0, -18],
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+    popupAnchor: [0, -24],
   });
 };
 
@@ -57,6 +59,7 @@ export default function RadarMapCanvas({
   selectedStore,
   userLocation,
   onSelectStoreFromMarker,
+  onQuickGps,
 }) {
   const mapContainerRef = useRef(null);
   const localMapRef = useRef(null);
@@ -65,6 +68,7 @@ export default function RadarMapCanvas({
   const storeMarkersGroupRef = useRef(null);
   const markersMapRef = useRef(new Map());
   const prevSelectedStoreIdRef = useRef(null);
+  const isInitialMountRef = useRef(true);
 
   const [mapLayerType, setMapLayerType] = useState('roadmap');
 
@@ -73,6 +77,7 @@ export default function RadarMapCanvas({
     if (!mapContainerRef.current) return;
     if (localMapRef.current) return;
 
+    const markersMap = markersMapRef.current;
     const initialLat = userLocation?.latitude || 21.028511;
     const initialLng = userLocation?.longitude || 105.854167;
 
@@ -101,6 +106,11 @@ export default function RadarMapCanvas({
     return () => {
       map.remove();
       localMapRef.current = null;
+      userMarkerRef.current = null;
+      storeMarkersGroupRef.current = null;
+      tileLayerRef.current = null;
+      markersMap.clear();
+      isInitialMountRef.current = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -137,19 +147,42 @@ export default function RadarMapCanvas({
 
     if (!isValidCoordinate(uLat, uLng)) return;
 
-    if (!userMarkerRef.current) {
+    const userPopupContent = `
+      <div class="popup-inner-card" style="width: 230px; padding: 14px 16px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+          <div style="width: 26px; height: 26px; border-radius: 50%; background: #2563EB; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <div>
+            <div style="font-weight: 700; font-size: 13.5px; color: #171717;">Vị trí của bạn</div>
+            <div style="font-size: 11px; color: ${userLocation?.isExactGps ? '#059669' : '#D97706'}; font-weight: 600;">
+              ${userLocation?.isExactGps ? '● GPS chính xác' : '● Vị trí khu vực'}
+            </div>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #555; line-height: 1.4; margin-top: 6px; border-top: 1px solid #eee; padding-top: 6px;">
+          ${userLocation?.city || 'Hà Nội'}
+        </div>
+      </div>
+    `;
+
+    if (!userMarkerRef.current || !map.hasLayer(userMarkerRef.current)) {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+      }
       const marker = L.marker([uLat, uLng], {
         icon: createCustomerMarkerIcon(),
         zIndexOffset: 1000,
       }).addTo(map);
-      marker.bindPopup(
-        `<div style="font-size: 12.5px; font-weight: 700; color: #C5A880; padding: 2px;">
-          Vị trí hiện tại của bạn
-        </div>`
-      );
+
+      marker.bindPopup(userPopupContent, { className: 'vestora-popup', autoPan: false });
       userMarkerRef.current = marker;
     } else {
       userMarkerRef.current.setLatLng([uLat, uLng]);
+      userMarkerRef.current.setPopupContent(userPopupContent);
     }
   }, [userLocation]);
 
@@ -208,8 +241,8 @@ export default function RadarMapCanvas({
       boundsPoints.push([store.latitude, store.longitude]);
     });
 
-    if (boundsPoints.length > 1) {
-      map.fitBounds(boundsPoints, { padding: [40, 40], maxZoom: 15 });
+    if (boundsPoints.length > 0) {
+      map.fitBounds(boundsPoints, { padding: [50, 50], maxZoom: 15 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stores, userLocation, onSelectStoreFromMarker]);
@@ -238,14 +271,18 @@ export default function RadarMapCanvas({
       currentMarker.setIcon(SELECTED_STORE_ICON);
       currentMarker.setZIndexOffset(500);
 
-      // Smooth camera glide (duration: 0.55s, crisp and fluid)
-      if (isValidCoordinate(selectedStore.latitude, selectedStore.longitude)) {
-        map.flyTo([selectedStore.latitude, selectedStore.longitude], 15, {
-          animate: true,
-          duration: 0.55,
-          easeLinearity: 0.25,
-        });
-        currentMarker.openPopup();
+      // Do not fly away on initial mount so customer can see both their location and stores overview
+      if (isInitialMountRef.current) {
+        isInitialMountRef.current = false;
+      } else {
+        if (isValidCoordinate(selectedStore.latitude, selectedStore.longitude)) {
+          map.flyTo([selectedStore.latitude, selectedStore.longitude], 15, {
+            animate: true,
+            duration: 0.55,
+            easeLinearity: 0.25,
+          });
+          currentMarker.openPopup();
+        }
       }
     }
 
@@ -272,11 +309,46 @@ export default function RadarMapCanvas({
     }
   }, [stores, userLocation]);
 
+  // 7. Center on Customer Location
+  const handleCenterOnUser = useCallback(() => {
+    const map = localMapRef.current;
+    if (!map) return;
+
+    const uLat = userLocation?.latitude;
+    const uLng = userLocation?.longitude;
+
+    if (isValidCoordinate(uLat, uLng)) {
+      map.flyTo([uLat, uLng], 15, {
+        animate: true,
+        duration: 0.6,
+        easeLinearity: 0.25,
+      });
+
+      if (userMarkerRef.current) {
+        userMarkerRef.current.openPopup();
+      }
+    } else if (onQuickGps) {
+      onQuickGps();
+    }
+  }, [userLocation, onQuickGps]);
+
   return (
     <section className="radar-map-wrapper" aria-label="Bản đồ tương tác showroom">
       <div ref={mapContainerRef} className="radar-leaflet-container" />
 
       <div className="radar-map-floating-actions" role="toolbar" aria-label="Công cụ bản đồ">
+        {/* Center / Locate User */}
+        <button
+          type="button"
+          className="radar-fab-btn radar-fab-user"
+          onClick={handleCenterOnUser}
+          title="Xem vị trí của bạn"
+          aria-label="Xem vị trí của bạn"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Crosshair size={18} color="#2563EB" aria-hidden="true" />
+        </button>
+
         {/* Toggle Satellite / Road view */}
         <button
           type="button"
@@ -289,7 +361,7 @@ export default function RadarMapCanvas({
           {mapLayerType === 'roadmap' ? (
             <Layers size={18} color="#C5A880" aria-hidden="true" />
           ) : (
-            <Map size={18} color="#C5A880" aria-hidden="true" />
+            <MapIcon size={18} color="#C5A880" aria-hidden="true" />
           )}
         </button>
 

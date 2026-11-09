@@ -130,9 +130,12 @@ export function errorHandler(error, req, res, next) {
   }
 
   if (error.name === "ValidationError") {
+    const errorList = Object.values(error.errors || {}).map((item) => item.message).filter(Boolean);
+    const message = errorList.length > 0 ? errorList.join("; ") : "Dữ liệu không hợp lệ";
     return res.status(400).json({
-      message: "Thông tin tài khoản không hợp lệ",
-      errors: Object.values(error.errors).map((item) => ({
+      success: false,
+      message,
+      errors: Object.values(error.errors || {}).map((item) => ({
         field: item.path,
         message: item.message,
       })),

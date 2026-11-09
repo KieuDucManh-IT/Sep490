@@ -20,13 +20,6 @@ import { useAuth } from '../context/AuthContext';
 import { getAssignedBranchApi } from '../services/shopApi';
 import '../styles/ShopDashboard.css';
 
-/**
- * BranchSidebar - Luxury Navigation Taskbar for Branch Manager Role
- * Compliant with:
- *  - react-best-practices: derived state, stable callbacks, bundle-friendly imports
- *  - ui-styling & ui-ux-pro-max: >=44px touch targets, obsidian/gold palette, smooth micro-interactions
- *  - web-design-guidelines: semantic HTML, accessible ARIA, keyboard focus-visible rings
- */
 export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle: externalOnToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -160,15 +153,15 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
           },
           {
             path: '/branch/rental-orders',
-            label: 'Đơn Thuê Trang Phục',
+            label: 'Theo Dõi Đơn Thuê',
             icon: CalendarRange,
-            desc: 'Lịch fitting, giao nhận và hạn trả đồ',
+            desc: 'Giám sát chu kỳ thuê & cọc của chi nhánh',
           },
           {
             path: '/branch/sale-orders',
-            label: 'Đơn Bán Đứt',
+            label: 'Theo Dõi Đơn Mua',
             icon: ShoppingBag,
-            desc: 'Đơn hàng mua thanh lý & bán thẳng',
+            desc: 'Giám sát các đơn bán & giao vận của chi nhánh',
           },
           {
             path: '/branch/returns',

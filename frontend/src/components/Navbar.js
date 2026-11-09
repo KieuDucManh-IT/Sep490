@@ -13,31 +13,40 @@ import {
   ShieldCheck,
   Package,
   LogOut,
-  RefreshCw,
   ClipboardList,
   Wallet,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import NavbarLocationWidget from "./NavbarLocationWidget";
-import { useCartStore } from "../stores/useCartStore";
-import { useWishlistStore } from "../stores/useWishlistStore";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading, authError, logout, refreshUser } = useAuth();
-  const { totalItemCount, openCart } = useCartStore();
-  const wishlistCount = useWishlistStore((state) => state.itemCount);
+  const [cartCount] = useState(() => {
+    try {
+      const raw = localStorage.getItem('vestora_cart');
+      return raw ? JSON.parse(raw).length : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [wishlistCount] = useState(() => {
+    try {
+      const raw = localStorage.getItem('vestora_favorites');
+      return raw ? JSON.parse(raw).length : 0;
+    } catch {
+      return 0;
+    }
+  });
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Nạp danh sách yêu thích khi khởi động navbar
-  useEffect(() => {
-    useWishlistStore.getState().fetchWishlist();
-  }, []);
-
-  const isActive = (path) => (location.pathname === path ? "active" : "");
+  const isActive = (path) => {
+    if (path === '/') return location.pathname === '/' ? 'active' : '';
+    return location.pathname.startsWith(path) ? 'active' : '';
+  };
   const avatarUrl = user?.avatar || "";
   const displayName = user?.fullName || "";
   const avatarInitial = displayName ? displayName.trim().charAt(0).toUpperCase() : "N";
@@ -123,11 +132,6 @@ export default function Navbar() {
               <Link to="/policy" className="nav-sublink">Chính sách VESTORA</Link>
             </div>
           </div>
-
-          {/* Radar Cửa Hàng / Bản đồ chi nhánh */}
-          <Link to="/map" className={`navbar-link ${isActive("/map")}`}>
-            Bản đồ chi nhánh
-          </Link>
 
           {/* Quick Access for Management Roles */}
           {/shop_owner|owner/i.test(user?.Role || user?.role || '') && (
@@ -327,22 +331,21 @@ export default function Navbar() {
             <Bell size={18} />
           </Link>
 
-          {/* Cart Icon with real-time reactive badge & drawer trigger */}
-          <button
-            type="button"
+          {/* Cart Icon with Link to /cart */}
+          <Link
+            to="/cart"
             className="navbar-icon-btn navbar-cart-btn"
             title="Giỏ hàng"
             aria-label="Giỏ hàng"
-            onClick={openCart}
             data-testid="navbar-cart-btn"
           >
             <ShoppingBag size={18} />
-            {totalItemCount > 0 && (
+            {cartCount > 0 && (
               <span className="cart-badge-count" data-testid="navbar-cart-count">
-                {totalItemCount}
+                {cartCount}
               </span>
             )}
-          </button>
+          </Link>
         </div>
       </div>
     </header>

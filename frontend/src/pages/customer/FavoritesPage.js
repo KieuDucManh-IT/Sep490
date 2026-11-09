@@ -1,22 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  Heart,
-  ShoppingCart,
-  Trash2,
-  ShieldCheck,
-  Loader2,
-  Sparkles,
-  Crown,
-  CheckCircle2,
-  X,
-  ArrowRight,
-} from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
-import { useCartStore } from '../../stores/useCartStore';
-import { ORDER_TYPES } from '../../services/cart/cartTypes';
 import '../../styles/Favorites.css';
 
 export default function FavoritesPage() {
@@ -33,13 +19,6 @@ export default function FavoritesPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
-  const [showClearModal, setShowClearModal] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
 
   // Format currency
   const formatVND = (amount) => {
@@ -57,11 +36,10 @@ export default function FavoritesPage() {
         const res = await productService.getProducts({ limit: 50 });
         if (isMounted && res?.data) {
           if (favoriteIds.length > 0) {
-            const matched = res.data.filter(
-              (p) =>
-                favoriteIds.includes(String(p._id)) ||
-                favoriteIds.includes(String(p.productCode)) ||
-                favoriteIds.includes(String(p.sku))
+            const matched = res.data.filter((p) =>
+              favoriteIds.includes(String(p._id)) ||
+              favoriteIds.includes(String(p.productCode)) ||
+              favoriteIds.includes(String(p.sku))
             );
             setProducts(matched);
           } else {
@@ -89,31 +67,25 @@ export default function FavoritesPage() {
     try {
       localStorage.setItem('vestora_favorites', JSON.stringify(updated));
       window.dispatchEvent(new Event('favoritesUpdated'));
-      showToast('Đã bỏ trang phục khỏi danh sách yêu thích');
-    } catch {}
+    } catch { }
   };
 
   // Clear all favorites
-  const handleConfirmClearAll = () => {
-    setFavoriteIds([]);
-    setShowClearModal(false);
-    try {
-      localStorage.removeItem('vestora_favorites');
-      window.dispatchEvent(new Event('favoritesUpdated'));
-      showToast('Đã xóa toàn bộ danh sách yêu thích');
-    } catch {}
+  const handleClearAll = () => {
+    if (window.confirm('Bạn có chắc muốn xóa tất cả sản phẩm khỏi danh sách yêu thích?')) {
+      setFavoriteIds([]);
+      try {
+        localStorage.removeItem('vestora_favorites');
+        window.dispatchEvent(new Event('favoritesUpdated'));
+      } catch { }
+    }
   };
 
   // Move all to cart
   const handleMoveAllToCart = () => {
     if (products.length === 0) return;
     try {
-      const today = new Date();
-      const startDate = today.toISOString().split('T')[0];
-      const due = new Date();
-      due.setDate(due.getDate() + 3);
-      const dueDate = due.toISOString().split('T')[0];
-
+      const existingCart = JSON.parse(localStorage.getItem('vestora_cart') || '[]');
       products.forEach((p) => {
         const isRental =
           p.tag === 'rental' ||
@@ -124,30 +96,34 @@ export default function FavoritesPage() {
           ? p.rentalPricePerDay || (p.rentalPricePer3Days ? Math.round(p.rentalPricePer3Days / 3) : 0)
           : p.salePrice || 0;
 
-        const variantId = `${p._id || p.productCode || 'prod'}-M-default`;
-        const sku = p.productCode || p.sku || `SKU-${p._id || 'VAR'}`;
-
-        useCartStore.getState().addItem({
-          productId: String(p._id || p.productCode),
-          variantId,
-          sku,
-          name: p.name,
-          size: (p.sizes && p.sizes[0]) || 'M',
-          color: (p.colors && p.colors[0]) || 'Mặc định',
-          thumbnailImage: (p.images && p.images[0]?.imageUrl) || p.image || p.imageUrl || '',
-          orderType: isRental ? ORDER_TYPES.RENTAL : ORDER_TYPES.SALE,
-          quantity: 1,
-          rentalPricePerDay: isRental ? price : 0,
-          depositAmount: isRental ? p.deposit || Math.round(price * 2.5) : 0,
-          startDate: isRental ? startDate : '',
-          dueDate: isRental ? dueDate : '',
-          rentalDays: isRental ? 3 : 0,
-          salePrice: !isRental ? price : 0,
-        });
+        const exists = existingCart.find((ci) => ci.productId === (p._id || p.productCode));
+        if (exists) {
+          exists.quantity += 1;
+        } else {
+          existingCart.push({
+            id: `cart-${Date.now()}-${p._id || p.productCode}`,
+            productId: p._id || p.productCode,
+            name: p.name,
+            shopName: p.shopId?.name || p.brand || 'VESTORA ATELIER',
+            image: (p.images && p.images[0]?.imageUrl) || p.image || p.imageUrl || '',
+            size: (p.sizes && p.sizes[0]) || 'M',
+            color: (p.colors && p.colors[0]) || 'Mặc định',
+            duration: 1,
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: '',
+            price,
+            deposit: p.deposit || Math.round(price * 2.5),
+            quantity: 1,
+            isRental,
+            condition: p.condition || 'Rất tốt',
+            inStock: p.inStock !== false,
+            aiTryOn: p.aiTryOn !== false,
+          });
+        }
       });
-
-      useCartStore.getState().openCart();
-      showToast(`Đã thêm ${products.length} sản phẩm vào giỏ hàng`);
+      localStorage.setItem('vestora_cart', JSON.stringify(existingCart));
+      window.dispatchEvent(new Event('cartUpdated'));
+      navigate('/cart');
     } catch (err) {
       console.error(err);
     }
@@ -169,31 +145,6 @@ export default function FavoritesPage() {
     <div className="favorites-page-container">
       <Navbar />
 
-      {/* Floating Toast */}
-      {toastMessage && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 80,
-            right: 24,
-            zIndex: 99999,
-            background: '#171717',
-            color: '#F8F7F4',
-            border: '1px solid #C5A880',
-            borderRadius: 10,
-            padding: '12px 20px',
-            fontSize: 13,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-          }}
-        >
-          <CheckCircle2 size={16} color="#C5A880" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {/* Header Banner */}
       <div className="fav-header-hero">
         <div className="fav-breadcrumb">
@@ -213,16 +164,14 @@ export default function FavoritesPage() {
               <button
                 className="btn-fav-move-all"
                 onClick={handleMoveAllToCart}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
               >
-                <ShoppingCart size={15} /> CHUYỂN TẤT CẢ VÀO GIỎ
+                <i className="fa-solid fa-cart-shopping"></i> CHUYỂN TẤT CẢ VÀO GIỎ
               </button>
               <button
                 className="btn-fav-clear-all"
-                onClick={() => setShowClearModal(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                onClick={handleClearAll}
               >
-                <Trash2 size={15} /> XÓA TẤT CẢ
+                <i className="fa-regular fa-trash-can"></i> XÓA TẤT CẢ
               </button>
             </div>
           )}
@@ -251,8 +200,8 @@ export default function FavoritesPage() {
             </button>
           </div>
 
-          <div className="fav-guarantee-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <ShieldCheck size={14} color="#C5A880" /> CAM KẾT CHÍNH HÃNG 100% KIỂM ĐỊNH
+          <div className="fav-escrow-badge">
+            <i className="fa-solid fa-shield-halved"></i> BẢO CHỨNG 100% KIỂM ĐỊNH CHÍNH HÃNG
           </div>
         </div>
       </div>
@@ -261,20 +210,20 @@ export default function FavoritesPage() {
       <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '0 32px' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '90px 0', color: '#687261' }}>
-            <Loader2 size={32} color="#C5A880" className="spin" style={{ margin: '0 auto 14px' }} />
+            <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '32px', color: '#5b6e4e', marginBottom: '14px' }}></i>
             <p style={{ fontSize: '14px' }}>Đang tải danh sách trang phục yêu thích của bạn...</p>
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="fav-empty-state">
-            <div className="fav-empty-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Heart size={38} color="#C5A880" />
+            <div className="fav-empty-icon">
+              <i className="fa-regular fa-heart"></i>
             </div>
             <h3 className="fav-empty-title">Danh sách yêu thích đang trống</h3>
             <p className="fav-empty-desc">
               Hãy nhấn vào biểu tượng trái tim ở bất kỳ trang phục nào trong bộ sưu tập để lưu vào đây và theo dõi tiện lợi.
             </p>
-            <Link to="/catalog" className="fav-btn-explore" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Sparkles size={16} /> Khám phá bộ sưu tập ngay
+            <Link to="/catalog" className="fav-btn-explore">
+              <i className="fa-solid fa-shirt"></i> Khám phá bộ sưu tập ngay
             </Link>
           </div>
         ) : (
@@ -299,22 +248,19 @@ export default function FavoritesPage() {
                     {imgUrl ? (
                       <img src={imgUrl} alt={item.name} loading="lazy" />
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#F8F7F4' }}>
-                        <Sparkles size={36} color="#C5A880" />
-                      </div>
+                      <span style={{ fontSize: 36, color: '#9da396' }}>👗</span>
                     )}
 
                     <span className="fav-card-tag-badge">
-                      {isRental ? 'THUÊ ĐỒ' : 'MUA BÁN'}
+                      {isRental ? 'THUÊ ĐỒ' : 'MUA BÁN'} {item.aiTryOn && ' '}
                     </span>
 
                     <button
                       className="fav-card-heart-btn"
                       onClick={() => handleRemoveFavorite(targetId)}
                       title="Xóa khỏi yêu thích"
-                      aria-label="Xóa khỏi yêu thích"
                     >
-                      <Heart size={16} fill="#C5A880" color="#C5A880" />
+                      <i className="fa-solid fa-heart"></i>
                     </button>
                   </div>
 
@@ -351,9 +297,8 @@ export default function FavoritesPage() {
                           className="fav-btn-tryon"
                           onClick={() => navigate('/try-on/photo')}
                           title="Thử đồ AI trực tuyến"
-                          aria-label="Thử đồ AI trực tuyến"
                         >
-                          <Sparkles size={14} color="#C5A880" />
+                          <i className="fa-solid fa-wand-magic-sparkles"></i>
                         </button>
                       )}
                     </div>
@@ -369,8 +314,8 @@ export default function FavoritesPage() {
       <div className="fav-prive-banner">
         <div className="fav-prive-card">
           <div>
-            <div className="fav-prive-eyebrow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Crown size={15} color="#C5A880" /> ĐẶC QUYỀN HỘI VIÊN VESTORA
+            <div className="fav-prive-eyebrow">
+              <i className="fa-solid fa-crown"></i> ĐẶC QUYỀN HỘI VIÊN VESTORA
             </div>
             <h2 className="fav-prive-title">
               Đồng Bộ Tủ Đồ Ảo Với Chuyên Gia Phong Cách
@@ -380,111 +325,11 @@ export default function FavoritesPage() {
             </p>
           </div>
 
-          <button
-            className="btn-prive-tryon"
-            onClick={() => navigate('/try-on/photo')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
-          >
-            <Sparkles size={16} /> THỬ ĐỒ AI NGAY
+          <button className="btn-prive-tryon" onClick={() => navigate('/try-on/photo')}>
+            <i className="fa-solid fa-wand-magic-sparkles"></i> THỬ ĐỒ AI NGAY
           </button>
         </div>
       </div>
-
-      {/* Custom Confirmation Modal */}
-      {showClearModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 99999,
-            backgroundColor: 'rgba(23, 23, 23, 0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-          onClick={() => setShowClearModal(false)}
-        >
-          <div
-            style={{
-              backgroundColor: '#FFFFFF',
-              borderRadius: 16,
-              maxWidth: 420,
-              width: '100%',
-              padding: '28px 24px',
-              border: '1px solid #E5E0D8',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
-              textAlign: 'center',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: '50%',
-                background: '#FEF2F2',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px',
-              }}
-            >
-              <Trash2 size={24} color="#DC2626" />
-            </div>
-            <h3
-              style={{
-                fontFamily: "'Newsreader', 'Playfair Display', Georgia, serif",
-                fontSize: 20,
-                color: '#171717',
-                marginBottom: 8,
-              }}
-            >
-              Xóa Danh Sách Yêu Thích?
-            </h3>
-            <p style={{ fontSize: 13.5, color: '#71717A', lineHeight: 1.5, marginBottom: 24 }}>
-              Toàn bộ các trang phục đã lưu sẽ bị gỡ khỏi danh sách của bạn. Quý khách có thể thêm lại bất cứ lúc nào trong danh mục.
-            </p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => setShowClearModal(false)}
-                style={{
-                  flex: 1,
-                  padding: '11px',
-                  borderRadius: 8,
-                  border: '1px solid #E5E0D8',
-                  background: '#F8F7F4',
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  color: '#171717',
-                  cursor: 'pointer',
-                }}
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmClearAll}
-                style={{
-                  flex: 1,
-                  padding: '11px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: '#DC2626',
-                  color: '#FFFFFF',
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Xóa tất cả
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <Footer />
     </div>

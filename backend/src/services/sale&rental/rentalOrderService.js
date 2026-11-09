@@ -39,6 +39,7 @@ import {
   assignPhysicalItemsSchema,
   cancelRentalOrderSchema,
 } from '../../validations/sale&rental/rentalOrderValidation.js';
+import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
 
 export class ServiceError extends Error {
   constructor(status, message) {
@@ -239,11 +240,12 @@ export const createRentalOrder = async ({
       const wallet = await getWallet(customerId);
       const balances = getBalances(wallet);
       const requiredAmount = priceCalc.totalPayable; // rentalFee + depositAmount
+      const availableBalance = balances.availableBalance ?? balances.available ?? 0;
 
-      if (balances.available < requiredAmount) {
+      if (availableBalance < requiredAmount) {
         throw new ServiceError(
           409,
-          `Số dư khả dụng trong Ví (${balances.available.toLocaleString('vi-VN')} đ) không đủ để thanh toán tiền thuê (${priceCalc.totalRentalFee.toLocaleString('vi-VN')} đ) và cọc (${priceCalc.totalDeposit.toLocaleString('vi-VN')} đ)`
+          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán tiền thuê (${priceCalc.totalRentalFee.toLocaleString('vi-VN')} đ) và cọc (${priceCalc.totalDeposit.toLocaleString('vi-VN')} đ)`
         );
       }
 
@@ -301,52 +303,6 @@ export const createRentalOrder = async ({
       ],
       { session }
     );
-
-    // Tạo bản ghi OrderShipment đồng bộ cho đơn thuê
-    if (mongoose.connection.readyState !== 0 || typeof OrderShipment.create?.mock === 'object') {
-      try {
-        const formattedAddress =
-          typeof shippingAddress === 'string'
-            ? shippingAddress
-            : shippingAddress && typeof shippingAddress === 'object'
-              ? [
-                  shippingAddress.receiverName
-                    ? `${shippingAddress.receiverName}${shippingAddress.phone ? ` (${shippingAddress.phone})` : ''}`
-                    : '',
-                  shippingAddress.street,
-                  shippingAddress.ward,
-                  shippingAddress.district,
-                  shippingAddress.city,
-                ]
-                  .filter(Boolean)
-                  .join(', ')
-              : '';
-
-        const shipmentDateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const randomShipmentHex = crypto.randomBytes(2).toString('hex').toUpperCase();
-        const shipmentCode = `SHP-${shipmentDateStr}-${randomShipmentHex}`;
-
-        await OrderShipment.create(
-          [
-            {
-              shipmentCode,
-              orderType: 'rental',
-              orderId: order._id,
-              fromLocationId: locationId,
-              deliveryAddress: formattedAddress || 'Nhận trực tiếp tại Showroom',
-              deliveryMethod: formattedAddress ? 'carrier' : 'pickup',
-              shipmentStatus: 'preparing',
-              createdBy: createdBy || customerId,
-            },
-          ],
-          { session }
-        );
-      } catch (shipmentErr) {
-        if (process.env.NODE_ENV !== 'test') {
-          throw shipmentErr;
-        }
-      }
-    }
 
     // 7. Tạo RentalOrderDetail & InventoryReservation
     const detailDocs = [];
@@ -813,9 +769,21 @@ export const getRentalOrderById = async (orderId) => {
     throw new ServiceError(404, 'Không tìm thấy đơn thuê');
   }
 
-  const details = await RentalOrderDetail.find({ rentalOrderId: order._id })
-    .populate('variantId')
-    .lean();
+  const [details, shipments] = await Promise.all([
+    RentalOrderDetail.find({ rentalOrderId: order._id })
+      .populate({
+        path: 'variantId',
+        select: 'sku size color productId attributes',
+        populate: {
+          path: 'productId',
+          select: 'name productCode images thumbnail thumbnailImage brand rentalPricePerDay depositRate',
+        },
+      })
+      .lean(),
+    OrderShipment.find({ orderId: order._id, orderType: 'rental' })
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
 
   const detailIds = details.map((d) => d._id);
   const items = await RentalOrderItem.find({ rentalOrderDetailId: { $in: detailIds } })
@@ -831,12 +799,16 @@ export const getRentalOrderById = async (orderId) => {
 
   const enrichedDetails = details.map((d) => ({
     ...d,
+    productName: d.variantId?.productId?.name || d.productName,
     assignedItems: itemsByDetail.get(String(d._id)) || [],
   }));
 
   return {
     ...order,
     details: enrichedDetails,
+    items: enrichedDetails,
+    shipments,
+    shipment: resolvePrimaryShipment(shipments),
   };
 };
 
@@ -868,8 +840,58 @@ export const listRentalOrders = async ({
     RentalOrder.countDocuments(filter),
   ]);
 
+  const orderIds = orders.map((o) => o._id);
+  const [details, shipments] = await Promise.all([
+    orderIds.length
+      ? RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } })
+          .populate({
+            path: 'variantId',
+            select: 'sku size color productId',
+            populate: {
+              path: 'productId',
+              select: 'name productCode images thumbnail thumbnailImage brand',
+            },
+          })
+          .lean()
+      : [],
+    orderIds.length
+      ? OrderShipment.find({ orderId: { $in: orderIds }, orderType: 'rental' })
+          .sort({ createdAt: -1 })
+          .lean()
+      : [],
+  ]);
+
+  const detailsByOrder = new Map();
+  for (const d of details) {
+    const k = String(d.rentalOrderId);
+    if (!detailsByOrder.has(k)) detailsByOrder.set(k, []);
+    detailsByOrder.get(k).push({
+      ...d,
+      productName: d.variantId?.productId?.name || d.productName,
+    });
+  }
+
+  const shipmentsByOrder = new Map();
+  for (const s of shipments) {
+    const k = String(s.orderId);
+    if (!shipmentsByOrder.has(k)) shipmentsByOrder.set(k, []);
+    shipmentsByOrder.get(k).push(s);
+  }
+
+  const enrichedOrders = orders.map((o) => {
+    const ordShipments = shipmentsByOrder.get(String(o._id)) || [];
+    const ordDetails = detailsByOrder.get(String(o._id)) || [];
+    return {
+      ...o,
+      details: ordDetails,
+      items: ordDetails,
+      shipments: ordShipments,
+      shipment: resolvePrimaryShipment(ordShipments),
+    };
+  });
+
   return {
-    orders,
+    orders: enrichedOrders,
     pagination: {
       page: Number(page),
       limit: Number(limit),

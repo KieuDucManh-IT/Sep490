@@ -9,8 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
-import RentalOrderDetailModal from '../../components/customer/RentalOrderDetailModal';
-import HauteCoutureModal from '../../components/HauteCoutureModal';
+import OrderTrackingDetailModal from '../../components/customer/OrderTrackingDetailModal';
 import { getRentalOrders } from '../../services/rentalOrderApi';
 import { getMySalesOrders } from '../../services/salesOrderApi';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
@@ -21,13 +20,9 @@ import {
   Loader2,
   ChevronRight,
   AlertCircle,
-  MapPin,
   Truck,
   Wallet,
   Banknote,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
 } from 'lucide-react';
 import '../../styles/RentalOrdersHistory.css';
 
@@ -323,6 +318,12 @@ export default function RentalOrdersHistoryPage() {
                           <Calendar size={14} color="#C5A880" />
                           <span>{formatDate(o.startDate)} → {formatDate(o.dueDate)}</span>
                         </div>
+                        {o.shipment?.trackingCode && (
+                          <div className="rental-order-card__meta-item" style={{ color: '#B45309', fontWeight: 600 }}>
+                            <Truck size={14} color="#D97706" />
+                            <span>Vận đơn: {o.shipment.trackingCode}</span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="rental-order-card__footer">
@@ -455,6 +456,12 @@ export default function RentalOrdersHistoryPage() {
                             </>
                           )}
                         </div>
+                        {o.shipment?.trackingCode && (
+                          <div className="rental-order-card__meta-item" style={{ color: '#B45309', fontWeight: 600 }}>
+                            <Truck size={14} color="#D97706" />
+                            <span>Vận đơn: {o.shipment.trackingCode}</span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="rental-order-card__footer">
@@ -487,139 +494,23 @@ export default function RentalOrdersHistoryPage() {
 
       <Footer />
 
-      {/* Modal chi tiết đơn thuê */}
-      <RentalOrderDetailModal
+      {/* Modal chi tiết đơn thuê với đầy đủ tiến trình vận chuyển GHN */}
+      <OrderTrackingDetailModal
         isOpen={Boolean(selectedRentalOrder)}
         onClose={() => setSelectedRentalOrder(null)}
         order={selectedRentalOrder}
+        orderType="rental"
         onOrderUpdated={fetchRentalOrders}
       />
 
-      {/* Modal chi tiết đơn mua (Haute Couture) */}
-      <HauteCoutureModal
+      {/* Modal chi tiết đơn mua với đầy đủ tiến trình vận chuyển GHN */}
+      <OrderTrackingDetailModal
         isOpen={Boolean(selectedSaleOrder)}
         onClose={() => setSelectedSaleOrder(null)}
-        title={`Đơn Mua: ${selectedSaleOrder?.orderCode || ''}`}
-        subtitle="Chi tiết kiện hàng và tiến trình vận chuyển"
-      >
-        {selectedSaleOrder && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '8px 0' }}>
-            {/* Trạng thái & Phương thức */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px 16px',
-                background: '#FAF9F6',
-                borderRadius: '8px',
-                border: '1px solid #E5E0D8',
-              }}
-            >
-              <div>
-                <span style={{ fontSize: '12px', color: '#71717A', display: 'block' }}>Trạng thái đơn:</span>
-                <span
-                  style={{
-                    display: 'inline-block',
-                    marginTop: '4px',
-                    padding: '3px 8px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: getSaleStatusInfo(selectedSaleOrder.orderStatus).color,
-                    background: getSaleStatusInfo(selectedSaleOrder.orderStatus).bg,
-                  }}
-                >
-                  {getSaleStatusInfo(selectedSaleOrder.orderStatus).label}
-                </span>
-              </div>
-
-              <div>
-                <span style={{ fontSize: '12px', color: '#71717A', display: 'block' }}>Thanh toán:</span>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#171717', marginTop: '4px', display: 'block' }}>
-                  {selectedSaleOrder.paymentMethod === 'wallet' ? 'Ví nội bộ Vestora' : 'Thanh toán COD'}
-                </span>
-              </div>
-            </div>
-
-            {/* Địa chỉ nhận hàng */}
-            <div
-              style={{
-                padding: '14px 16px',
-                borderRadius: '8px',
-                border: '1px solid #E5E0D8',
-                background: '#FFFFFF',
-              }}
-            >
-              <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#171717', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <MapPin size={15} color="#96723D" />
-                <span>Địa chỉ nhận hàng</span>
-              </h4>
-              <div style={{ fontSize: '13px', color: '#3F3F46', lineHeight: 1.6 }}>
-                <div><strong>Người nhận:</strong> {selectedSaleOrder.shippingAddress?.receiverName} ({selectedSaleOrder.shippingAddress?.phone})</div>
-                <div><strong>Địa chỉ:</strong> {selectedSaleOrder.shippingAddress?.street}, {selectedSaleOrder.shippingAddress?.city}</div>
-                {selectedSaleOrder.note && (
-                  <div style={{ marginTop: '4px', color: '#71717A', fontStyle: 'italic' }}>
-                    <strong>Ghi chú:</strong> {selectedSaleOrder.note}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Danh sách sản phẩm */}
-            <div>
-              <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#171717', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Package size={15} color="#96723D" />
-                <span>Sản phẩm trong kiện hàng</span>
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                {(selectedSaleOrder.items || []).map((it, idx) => (
-                  <div
-                    key={it._id || idx}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 12px',
-                      background: '#FAF9F6',
-                      borderRadius: '8px',
-                      border: '1px solid #E5E0D8',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '13px', color: '#171717' }}>
-                        {it.variantId?.productId?.name || 'Sản phẩm Haute Couture'}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#71717A' }}>
-                        Size: {it.variantId?.size || 'M'} | SL: {it.quantity} x {formatCurrencyVND(it.unitPrice)}
-                      </div>
-                    </div>
-                    <strong style={{ fontSize: '13px', color: '#96723D' }}>
-                      {formatCurrencyVND(it.lineTotal || (it.unitPrice * it.quantity))}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tổng tiền */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingTop: '12px',
-                borderTop: '1px solid #E5E0D8',
-              }}
-            >
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#171717' }}>Tổng thanh toán:</span>
-              <strong style={{ fontSize: '18px', color: '#96723D' }}>
-                {formatCurrencyVND(selectedSaleOrder.totalAmount)}
-              </strong>
-            </div>
-          </div>
-        )}
-      </HauteCoutureModal>
+        order={selectedSaleOrder}
+        orderType="sale"
+        onOrderUpdated={fetchSaleOrders}
+      />
     </div>
   );
 }

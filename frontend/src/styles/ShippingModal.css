@@ -1,0 +1,160 @@
+/* ==========================================================================
+   SHIPPING MODAL & TIMELINE - VESTORA
+   ========================================================================== */
+
+.shipping-modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1060;
+}
+
+.shipping-modal-dialog {
+  max-width: 740px;
+}
+
+.shipping-modal-body-scroll {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.shipping-store-card {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.shipping-section-title {
+  font-size: 0.825rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.shipping-fee-box {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  padding: 12px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.shipping-fee-sub {
+  font-size: 0.75rem;
+  color: #6c757d;
+}
+
+.shipping-num-tnum {
+  font-feature-settings: 'tnum';
+}
+
+.shipping-badge-outbound {
+  background-color: #0d6efd;
+  color: #ffffff;
+}
+
+.shipping-badge-return {
+  background-color: #0dcaf0;
+  color: #ffffff;
+}
+
+.shipping-badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* Shipping Timeline Card */
+.shipping-timeline-card {
+  background-color: #ffffff;
+  border: 1px solid #e7e5e4;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.shipping-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #f5f5f4;
+}
+
+.shipping-timeline-meta {
+  font-size: 12.5px;
+  color: #78716c;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shipping-timeline-code {
+  font-family: monospace;
+  font-weight: 700;
+  color: #1c1917;
+}
+
+.shipping-timeline-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 8px;
+}
+
+.shipping-timeline-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.shipping-timeline-step-circle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #d6d3d1;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.shipping-timeline-step-circle.active {
+  background-color: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
+}
+
+.shipping-timeline-step-desc {
+  font-size: 13px;
+  color: #292524;
+}
+
+.shipping-timeline-step-time {
+  font-size: 11.5px;
+  color: #a8a29e;
+}
+
+.shipping-timeline-bullet {
+  width: 10px;
+  height: 10px;
+  left: -22px;
+  top: 4px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+}
+
+.shipping-timeline-timestamp {
+  font-size: 0.78rem;
+  color: #6c757d;
+}

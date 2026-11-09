@@ -327,19 +327,28 @@ export const getProducts = async (req, res, next) => {
         branches,
         rating: typeof p.rating === 'number' ? p.rating : null,
         reviewsCount: typeof p.reviewsCount === 'number' ? p.reviewsCount : 0,
-        inStock: inv.inStock != null ? inv.inStock : (quantity > 0),
-          // inStock
-          // pVariants
+        inStock: inv.inStock != null ? inv.inStock : (quantityAvailable > 0),
       };
     });
 
+    // Lọc theo trạng thái khả dụng: Mặc định ẩn sản phẩm hết hàng (quantityAvailable <= 0) khỏi Cổng Khách Hàng / Trang Shop
+    let finalProducts = enrichedProducts;
+    if (req.query.includeOutOfStock !== 'true') {
+      finalProducts = enrichedProducts.filter((p) => {
+        if (p.inStock === false) return false;
+        if (p.quantityAvailable != null && p.quantityAvailable <= 0) return false;
+        if (p.quantity != null && p.quantity <= 0) return false;
+        return true;
+      });
+    }
+
     res.json({
       success: true,
-      data: enrichedProducts,
+      data: finalProducts,
       pagination: {
-        total,
+        total: req.query.includeOutOfStock === 'true' ? total : finalProducts.length,
         page: pageNum,
-        totalPages: Math.ceil(total / limitNum) || 1,
+        totalPages: Math.ceil((req.query.includeOutOfStock === 'true' ? total : finalProducts.length) / limitNum) || 1,
         limit: limitNum,
       },
     });

@@ -165,6 +165,14 @@ export default function CatalogPage() {
         list = list.filter((item) => item.tag !== 'sale');
       }
 
+      // Lọc bỏ sản phẩm hết hàng: Nếu sản phẩm không khả dụng (hết hàng) thì ẩn không hiển thị
+      list = list.filter((item) => {
+        if (item.inStock === false) return false;
+        if (item.quantityAvailable != null && item.quantityAvailable <= 0) return false;
+        if (item.quantity != null && item.quantity <= 0) return false;
+        return true;
+      });
+
       setProducts(list);
     } catch (err) {
       console.error('Lỗi khi gọi API /api/products:', err);
@@ -897,10 +905,8 @@ export default function CatalogPage() {
                           </>
                         ) : null}
                         <span className="stock-indicator">
-                          <span
-                            className={`stock-dot ${item.inStock === false ? 'out-of-stock' : ''}`}
-                          ></span>
-                          <span>{item.inStock !== false && (item.quantity == null || item.quantity > 0) ? `Còn hàng (${item.quantity ?? 1})` : 'Hết hàng'}</span>
+                          <span className="stock-dot"></span>
+                          <span>Còn hàng ({item.quantityAvailable || item.quantity || 1})</span>
                         </span>
                       </div>
 

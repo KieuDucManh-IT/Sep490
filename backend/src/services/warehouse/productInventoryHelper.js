@@ -218,7 +218,7 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
           longitude: entry.longitude,
           quantityOnHand: locOnHand,
           quantityAvailable: locAvailable,
-          quantity: locAvailable > 0 ? locAvailable : locOnHand,
+          quantity: Math.max(0, locAvailable),
         });
 
         totalOnHand += locOnHand;
@@ -257,7 +257,8 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
       branchAddress = 'Chưa có hàng tại chi nhánh';
     }
 
-    const quantity = totalAvailable > 0 ? totalAvailable : totalOnHand;
+    // Số lượng khả dụng thực tế của sản phẩm
+    const quantity = Math.max(0, totalAvailable);
     const inStock = quantity > 0;
 
     return {

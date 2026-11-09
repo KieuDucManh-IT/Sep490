@@ -61,7 +61,7 @@ export const calculateSalesOrderPrice = async (items) => {
   }
 
   const variantIds = items.map((it) => it.variantId);
-  const variants = await ProductVariant.find({ _id: { $in: variantIds }, isDeleted: false })
+  const variants = await ProductVariant.find({ _id: { $in: variantIds }, isDeleted: { $ne: true } })
     .populate('productId')
     .lean();
 

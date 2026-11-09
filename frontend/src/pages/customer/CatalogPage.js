@@ -377,7 +377,7 @@ export default function CatalogPage() {
               setCurrentPage(1);
             }}
           >
-            Mua đồ cũ
+            Mua sản phẩm
           </button>
         </div>
 
@@ -733,18 +733,44 @@ export default function CatalogPage() {
           ) : (
             <div className="catalog-grid-4cols">
               {products.map((item) => {
-                const isRental =
-                  item.tag === 'rental' ||
-                  item.tag === 'rental' ||
+                const hasRentalPrice = Boolean(
                   (item.rentalPricePer3Days && item.rentalPricePer3Days > 0) ||
-                  (item.rentalPricePerDay && item.rentalPricePerDay > 0);
+                  (item.rentalPricePerDay && item.rentalPricePerDay > 0)
+                );
+                const hasSalePrice = Boolean(item.salePrice && item.salePrice > 0);
 
-                const priceNumber = isRental
-                  ? item.rentalPricePer3Days || (item.rentalPricePerDay ? item.rentalPricePerDay * 3 : 0)
-                  : item.salePrice || 0;
+                const isBoth = item.tag === 'both' || (item.tag !== 'rental' && item.tag !== 'sale' && hasRentalPrice && hasSalePrice);
+                const isSale = item.tag === 'sale' || (!isBoth && hasSalePrice && !hasRentalPrice);
+                const isRental = item.tag === 'rental' || (!isBoth && !isSale);
+
+                let badgeText = 'Cho thuê';
+                let badgeClass = 'badge-rental';
+                if (isBoth) {
+                  badgeText = 'Thuê & Mua';
+                  badgeClass = 'badge-both';
+                } else if (isSale) {
+                  badgeText = 'Mua sản phẩm';
+                  badgeClass = 'badge-sale';
+                }
+
+                const rentalPriceNumber =
+                  item.rentalPricePer3Days || (item.rentalPricePerDay ? item.rentalPricePerDay * 3 : 0);
+                const salePriceNumber = item.salePrice || 0;
+
+                let priceNumber = 0;
+                let priceUnit = '';
+                if (isBoth) {
+                  priceNumber = rentalPriceNumber > 0 ? rentalPriceNumber : salePriceNumber;
+                  priceUnit = rentalPriceNumber > 0 ? '/ 3 ngày' : '';
+                } else if (isSale) {
+                  priceNumber = salePriceNumber;
+                  priceUnit = '';
+                } else {
+                  priceNumber = rentalPriceNumber;
+                  priceUnit = rentalPriceNumber > 0 ? '/ 3 ngày' : '';
+                }
 
                 const priceMain = priceNumber > 0 ? formatVND(priceNumber) : 'Liên hệ';
-                const priceUnit = isRental && priceNumber > 0 ? '/ 3 ngày' : '';
                 const isFavorited = favorites.includes(item._id || item.productCode);
                 const mainImage =
                   item.images && item.images.length > 0 && item.images[0]
@@ -769,10 +795,8 @@ export default function CatalogPage() {
                   >
                     <div className="card-media-box">
                       {/* Type Badge */}
-                      <span
-                        className={`product-type-badge ${isRental ? 'badge-rental' : 'badge-resale'}`}
-                      >
-                        {isRental ? 'Cho thuê' : 'Mua đồ cũ'}
+                      <span className={`product-type-badge ${badgeClass}`}>
+                        {badgeText}
                       </span>
 
                       {/* Favorite Button */}
@@ -838,6 +862,22 @@ export default function CatalogPage() {
                       <div className="card-pricing-line">
                         <span className="price-main">{priceMain}</span>
                         {priceUnit && <span className="price-unit">{priceUnit}</span>}
+                        {isBoth && salePriceNumber > 0 && rentalPriceNumber > 0 && (
+                          <span
+                            className="card-sale-price-hint"
+                            style={{
+                              fontSize: '11px',
+                              color: '#854d0e',
+                              background: '#fef3c7',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              marginLeft: '6px',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Mua: {formatVND(salePriceNumber)}
+                          </span>
+                        )}
                       </div>
 
                       {/* Attributes */}

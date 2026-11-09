@@ -1,0 +1,602 @@
+/**
+ * Haute Couture Styling Tokens & Modal Styles for Vestora Wardrobe
+ * Strict adherence to BEM, Zero-Emoji, and Haute Couture design tokens (CLAUDE.md)
+ */
+
+:root {
+  --vst-black: #171717;
+  --vst-gold: #C5A880;
+  --vst-gold-dark: #96723D;
+  --vst-gold-light: #F7F3ED;
+  --vst-bg-light: #F8F7F4;
+  --vst-bg-card: #FBF9F5;
+  --vst-border: #E5E0D8;
+  --vst-border-light: #EFECE6;
+  --vst-text-main: #1F1F1F;
+  --vst-text-muted: #737373;
+  --vst-danger: #B91C1C;
+  --vst-danger-light: #FEE2E2;
+  --vst-success: #15803D;
+  --vst-success-light: #DCFCE7;
+  --vst-font-serif: 'Newsreader', 'Playfair Display', Georgia, serif;
+  --vst-font-sans: 'Inter', 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+}
+
+/* ==========================================================================
+   Custom Haute Couture Modal (Zero-Native Dialogs)
+   ========================================================================== */
+
+.vst-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 23, 23, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1060;
+  padding: 16px;
+  animation: vstFadeIn 0.2s ease-out;
+}
+
+.vst-modal-container {
+  background: #FFFDF9;
+  border: 1px solid var(--vst-border);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: vstSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: 90vh;
+}
+
+.vst-modal-container--sm {
+  max-width: 440px;
+}
+
+.vst-modal-container--lg {
+  max-width: 640px;
+}
+
+.vst-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--vst-border);
+  background: #FAF8F5;
+}
+
+.vst-modal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vst-modal-icon-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--vst-gold-light);
+  color: var(--vst-gold-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vst-modal-icon-badge--danger {
+  background: var(--vst-danger-light);
+  color: var(--vst-danger);
+}
+
+.vst-modal-title {
+  font-family: var(--vst-font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--vst-black);
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+
+.vst-modal-subtitle {
+  font-size: 13px;
+  color: var(--vst-text-muted);
+  margin: 2px 0 0 0;
+}
+
+.vst-modal-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--vst-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.vst-modal-close-btn:hover {
+  background: var(--vst-border-light);
+  color: var(--vst-black);
+}
+
+.vst-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  font-size: 14px;
+  color: var(--vst-text-main);
+  line-height: 1.6;
+}
+
+.vst-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--vst-border);
+  background: #FAF8F5;
+}
+
+/* ==========================================================================
+   Form Controls (Haute Couture)
+   ========================================================================== */
+
+.vst-form-group {
+  margin-bottom: 18px;
+}
+
+.vst-form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vst-black);
+  margin-bottom: 6px;
+  letter-spacing: 0.2px;
+}
+
+.vst-form-label span.required {
+  color: var(--vst-danger);
+  margin-left: 2px;
+}
+
+.vst-form-input,
+.vst-form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: var(--vst-font-sans);
+  color: var(--vst-black);
+  background: #FFFFFF;
+  border: 1px solid var(--vst-border);
+  border-radius: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.vst-form-input:focus,
+.vst-form-textarea:focus {
+  outline: none;
+  border-color: var(--vst-gold);
+  box-shadow: 0 0 0 3px rgba(197, 168, 128, 0.15);
+}
+
+.vst-form-textarea {
+  min-height: 85px;
+  resize: vertical;
+}
+
+.vst-form-hint {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--vst-text-muted);
+  margin-top: 4px;
+}
+
+/* ==========================================================================
+   Buttons (Haute Couture)
+   ========================================================================== */
+
+.vst-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  font-family: var(--vst-font-sans);
+  text-decoration: none;
+}
+
+.vst-btn--primary {
+  background: var(--vst-black);
+  color: #FFFFFF;
+  border-color: var(--vst-black);
+}
+
+.vst-btn--primary:hover {
+  background: #2D2D2D;
+  border-color: #2D2D2D;
+  transform: translateY(-1px);
+}
+
+.vst-btn--gold {
+  background: var(--vst-gold);
+  color: #FFFFFF;
+  border-color: var(--vst-gold);
+}
+
+.vst-btn--gold:hover {
+  background: var(--vst-gold-dark);
+  border-color: var(--vst-gold-dark);
+}
+
+.vst-btn--outline {
+  background: transparent;
+  color: var(--vst-black);
+  border-color: var(--vst-border);
+}
+
+.vst-btn--outline:hover {
+  background: var(--vst-border-light);
+  border-color: #D3CDC4;
+}
+
+.vst-btn--danger {
+  background: var(--vst-danger);
+  color: #FFFFFF;
+  border-color: var(--vst-danger);
+}
+
+.vst-btn--danger:hover {
+  background: #991B1B;
+}
+
+.vst-btn--sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.vst-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ==========================================================================
+   Heart Button (Reactive & Haute Couture)
+   ========================================================================== */
+
+.vst-heart-btn {
+  background: #FFFFFF;
+  border: 1px solid var(--vst-border);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 8px;
+  color: var(--vst-text-muted);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.vst-heart-btn:hover {
+  transform: scale(1.1);
+  color: var(--vst-gold-dark);
+  border-color: var(--vst-gold);
+}
+
+.vst-heart-btn--active {
+  background: #FFFBF5;
+  color: var(--vst-gold);
+  border-color: var(--vst-gold);
+}
+
+.vst-heart-btn--animating {
+  animation: vstHeartPop 0.35s ease-out;
+}
+
+.vst-heart-btn--sm {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+}
+
+.vst-heart-btn--md {
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+}
+
+.vst-heart-btn--lg {
+  width: 48px;
+  height: 48px;
+  padding: 10px;
+}
+
+@keyframes vstHeartPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+@keyframes vstFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes vstSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ==========================================================================
+   Collection Sidebar & Lookbook Grid
+   ========================================================================== */
+
+.vst-sidebar {
+  background: var(--vst-bg-card);
+  border: 1px solid var(--vst-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vst-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--vst-border);
+}
+
+.vst-sidebar-title {
+  font-family: var(--vst-font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vst-black);
+  margin: 0;
+}
+
+.vst-collection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  color: var(--vst-text-main);
+}
+
+.vst-collection-item:hover {
+  background: #FFFFFF;
+  border-color: var(--vst-border-light);
+}
+
+.vst-collection-item--active {
+  background: #FFFFFF;
+  border-color: var(--vst-gold);
+  color: var(--vst-gold-dark);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(197, 168, 128, 0.1);
+}
+
+.vst-collection-badge {
+  background: var(--vst-border-light);
+  color: var(--vst-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.vst-collection-item--active .vst-collection-badge {
+  background: var(--vst-gold-light);
+  color: var(--vst-gold-dark);
+}
+
+/* ==========================================================================
+   Lookbook Grid Cards
+   ========================================================================== */
+
+.vst-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+}
+
+.vst-card {
+  background: #FFFFFF;
+  border: 1px solid var(--vst-border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  position: relative;
+}
+
+.vst-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.vst-card-img-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 133%; /* 3:4 aspect ratio */
+  background: #F4EFEB;
+  overflow: hidden;
+}
+
+.vst-card-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.vst-card:hover .vst-card-img {
+  transform: scale(1.05);
+}
+
+.vst-card-top-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vst-card-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(23, 23, 23, 0.85);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.vst-card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.vst-card-code {
+  font-size: 11px;
+  color: var(--vst-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.vst-card-title {
+  font-family: var(--vst-font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vst-black);
+  margin: 0 0 8px 0;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.vst-card-price-row {
+  margin-top: auto;
+  padding-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px dashed var(--vst-border-light);
+}
+
+.vst-card-price {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--vst-gold-dark);
+}
+
+.vst-card-notes {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--vst-bg-light);
+  border-radius: 6px;
+  border-left: 2px solid var(--vst-gold);
+  font-size: 12px;
+  color: #4A4A4A;
+  font-style: italic;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.vst-card-notes-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.vst-card-footer {
+  padding: 12px 16px;
+  background: #FAF8F5;
+  border-top: 1px solid var(--vst-border);
+  display: flex;
+  gap: 8px;
+}
+
+/* ==========================================================================
+   Lookbook Share Box & Toast
+   ========================================================================== */
+
+.vst-share-box {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.vst-share-input {
+  flex: 1;
+  background: var(--vst-bg-light);
+  border: 1px solid var(--vst-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: monospace;
+  color: var(--vst-black);
+}
+
+.vst-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--vst-black);
+  color: #FFFFFF;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  z-index: 1080;
+  animation: vstSlideUp 0.25s ease-out;
+}

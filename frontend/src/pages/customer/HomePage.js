@@ -38,7 +38,7 @@ import '../../styles/HomePage.css';
 const FEATURED_PRODUCTS = [
   {
     id: 'VESTORA-DR-089',
-    type: 'Thuê đồ',
+    type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Đầm dạ hội ánh tím',
     rating: '4.9',
@@ -51,8 +51,8 @@ const FEATURED_PRODUCTS = [
   },
   {
     id: 'VESTORA-BZ-012',
-    type: 'Mua đồ cũ',
-    typeBadge: 'resale',
+    type: 'Mua sản phẩm',
+    typeBadge: 'sale',
     title: 'Blazer thanh lịch',
     rating: '4.8',
     reviews: '96',
@@ -61,10 +61,11 @@ const FEATURED_PRODUCTS = [
     priceUnit: '',
     image: '/assets/beige_blazer.jpg',
     isRental: false,
+    isSale: true,
   },
   {
     id: 'VESTORA-AD-007',
-    type: 'Thuê đồ',
+    type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Áo dài cách tân',
     rating: '4.9',
@@ -77,8 +78,8 @@ const FEATURED_PRODUCTS = [
   },
   {
     id: 'VESTORA-BG-045',
-    type: 'Mua đồ cũ',
-    typeBadge: 'resale',
+    type: 'Mua sản phẩm',
+    typeBadge: 'sale',
     title: 'Túi dây tiệc mini',
     rating: '4.7',
     reviews: '52',
@@ -87,10 +88,11 @@ const FEATURED_PRODUCTS = [
     priceUnit: '',
     image: '/assets/mini_bag.jpg',
     isRental: false,
+    isSale: true,
   },
   {
     id: 'VESTORA-BD-022',
-    type: 'Thuê đồ',
+    type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Đầm body đen',
     rating: '4.8',
@@ -187,7 +189,7 @@ export default function HomePage() {
     const syncFav = () => {
       try {
         setFavoriteIds(JSON.parse(localStorage.getItem('vestora_favorites') || '[]'));
-      } catch {}
+      } catch { }
     };
     window.addEventListener('favoritesUpdated', syncFav);
     return () => window.removeEventListener('favoritesUpdated', syncFav);
@@ -202,7 +204,7 @@ export default function HomePage() {
       try {
         localStorage.setItem('vestora_favorites', JSON.stringify(next));
         window.dispatchEvent(new Event('favoritesUpdated'));
-      } catch {}
+      } catch { }
       return next;
     });
   };
@@ -227,17 +229,31 @@ export default function HomePage() {
               p.tag === 'rental' ||
               (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
               (p.rentalPricePerDay && p.rentalPricePerDay > 0);
+            const isSale =
+              p.tag === 'sale' ||
+              (p.salePrice && p.salePrice > 0);
+            const isBoth = p.tag === 'both' || (isRental && isSale);
 
-            const price = isRental
-              ? (p.rentalPricePer3Days || (p.rentalPricePerDay ? p.rentalPricePerDay * 3 : 0))
-              : (p.salePrice || 0);
+            let type = 'Cho thuê';
+            let typeBadge = 'rental';
+            if (isBoth) {
+              type = 'Thuê & Mua';
+              typeBadge = 'both';
+            } else if (p.tag === 'sale' || (isSale && !isRental)) {
+              type = 'Mua sản phẩm';
+              typeBadge = 'sale';
+            }
+
+            const price = isSale && !isBoth
+              ? (p.salePrice || 0)
+              : (p.rentalPricePer3Days || (p.rentalPricePerDay ? p.rentalPricePerDay * 3 : (p.salePrice || 0)));
 
             const mainImage = (p.images && p.images.length > 0 && p.images[0]) || p.image || '/assets/purple_gown.jpg';
 
             return {
               id: p._id || p.productCode || p.sku,
-              type: isRental ? 'Thuê đồ' : 'Mua đồ cũ',
-              typeBadge: isRental ? 'rental' : 'resale',
+              type: type,
+              typeBadge: typeBadge,
               title: p.name,
               rating: typeof p.rating === 'number' ? Number(p.rating).toFixed(1) : '4.9',
               reviews: typeof p.reviewsCount === 'number' ? p.reviewsCount : 95,
@@ -250,6 +266,7 @@ export default function HomePage() {
               priceUnit: isRental && price > 0 ? '/ 3 ngày' : '',
               image: mainImage,
               isRental: isRental,
+              isSale: isSale,
               raw: p,
             };
           });
@@ -341,12 +358,12 @@ export default function HomePage() {
     };
   }, []);
 
-  // Filter products by mode (Cho thuê / Mua đồ cũ / Tất cả)
+  // Filter products by mode (Tất cả / Cho thuê / Mua sản phẩm)
   const allFilteredProducts = useMemo(() => {
     const source = apiProducts.length > 0 ? apiProducts : FEATURED_PRODUCTS;
     return source.filter((item) => {
-      if (productFilter === 'RENTAL') return item.isRental;
-      if (productFilter === 'RESALE') return !item.isRental;
+      if (productFilter === 'RENTAL') return item.isRental || item.typeBadge === 'rental' || item.typeBadge === 'both';
+      if (productFilter === 'SALE' || productFilter === 'RESALE') return item.isSale || item.typeBadge === 'sale' || item.typeBadge === 'both';
       return true;
     });
   }, [apiProducts, productFilter]);
@@ -475,10 +492,10 @@ export default function HomePage() {
                   muted
                   playsInline
                 />
-                <div className="hero-video-live-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {/* <div className="hero-video-live-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <span className="live-pulse-dot"></span>
                   <Sparkles size={14} color="#C5A880" /> AI Try-On Live
-                </div>
+                </div> */}
                 <div className="hero-script-overlay">
                   Fashion<br />
                   <span>for your</span><br />
@@ -556,16 +573,31 @@ export default function HomePage() {
               </h2>
               <div className="filter-pill-switch">
                 <button
-                  className={`filter-chip ${productFilter === 'ALL' || productFilter === 'RENTAL' ? 'active' : ''}`}
-                  onClick={() => setProductFilter('ALL')}
+                  className={`filter-chip ${productFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => {
+                    setProductFilter('ALL');
+                    setCarouselIndex(0);
+                  }}
+                >
+                  Tất cả
+                </button>
+                <button
+                  className={`filter-chip ${productFilter === 'RENTAL' ? 'active' : ''}`}
+                  onClick={() => {
+                    setProductFilter('RENTAL');
+                    setCarouselIndex(0);
+                  }}
                 >
                   Cho thuê
                 </button>
                 <button
-                  className={`filter-chip ${productFilter === 'RESALE' ? 'active' : ''}`}
-                  onClick={() => setProductFilter('RESALE')}
+                  className={`filter-chip ${productFilter === 'SALE' ? 'active' : ''}`}
+                  onClick={() => {
+                    setProductFilter('SALE');
+                    setCarouselIndex(0);
+                  }}
                 >
-                  Đồ cũ
+                  Mua sản phẩm
                 </button>
               </div>
             </div>

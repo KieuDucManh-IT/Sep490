@@ -11,13 +11,13 @@
 .sdd/
 .agents/
 /src/
-/slides/
-/tests/
+slides/
+tests/
 plans/
 *.plan.md
 plan.md
 docs/
-/scripts/
+scripts/
 AGENTS.md
 CONSTITUTION.md
 repomix-output.*

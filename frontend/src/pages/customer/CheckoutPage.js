@@ -1,1050 +1,1187 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+/**
+ * Checkout Page — Rental-only checkout flow
+ * Haute Couture design tokens, zero native dialogs, zero emoji, zero axios.
+ */
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
-  Truck,
-  Banknote,
+  MapPin,
+  FileText,
   Wallet,
   ShieldCheck,
+  AlertTriangle,
   CheckCircle2,
-  Lock,
   Package,
-  Info,
-  Edit3,
+  Calendar,
+  Loader2,
+  Square,
+  CheckSquare,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
-import { useAuth } from '../../context/AuthContext';
-import { checkoutCartApi } from '../../services/orderApi';
-import { getShopsListApi } from '../../services/shopApi';
-import { walletRequest } from '../../services/walletApi';
+import { useCartStore } from '../../stores/useCartStore';
+import { ORDER_TYPES } from '../../services/cart/cartTypes';
+import { formatCurrencyVND } from '../../services/cart/cartCalculations';
+import { createRentalOrder } from '../../services/rentalOrderApi';
+import productService from '../../services/productService';
+import { getUserLocation } from '../../utils/userLocation';
+import { calculateHaversineDistanceKm } from '../../utils/geoUtils';
 import '../../styles/Cart.css';
-
-const PROVINCES = [
-  'Hà Nội',
-  'TP. Hồ Chí Minh',
-  'Đà Nẵng',
-  'Hải Phòng',
-  'Cần Thơ',
-  'Bình Dương',
-  'Đồng Nai',
-  'Quảng Ninh',
-  'Khánh Hòa',
-  'Thừa Thiên Huế',
-  'Bắc Ninh',
-  'Hải Dương',
-];
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { user } = useAuth();
+  const { items, clearCart, updateItemBranch, removeItems } = useCartStore();
 
-  // Load items from navigation state or sessionStorage
-  const [items] = useState(() => {
-    if (location.state?.items && Array.isArray(location.state.items) && location.state.items.length > 0) {
-      return location.state.items;
-    }
-    try {
-      const raw = sessionStorage.getItem('vestora_checkout_items');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  // All rental items from cart (memoized)
+  const rentalItems = useMemo(
+    () => (items || []).filter((it) => it.orderType === ORDER_TYPES.RENTAL),
+    [items]
+  );
+  const saleItems = useMemo(
+    () => (items || []).filter((it) => it.orderType === ORDER_TYPES.SALE),
+    [items]
+  );
+  const hasSaleItems = saleItems.length > 0;
+
+  // ── Selection state (using unselectedIds to prevent infinite render loops) ──
+  const [unselectedIds, setUnselectedIds] = useState(() => new Set());
+
+  const toggleItem = useCallback((cartItemId) => {
+    setUnselectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cartItemId)) {
+        next.delete(cartItemId);
+      } else {
+        next.add(cartItemId);
       }
-    } catch (_) {}
-    return [];
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    setUnselectedIds((prev) => {
+      if (prev.size === 0) {
+        // Unselect all
+        return new Set(rentalItems.map((it) => it.cartItemId));
+      }
+      // Select all
+      return new Set();
+    });
+  }, [rentalItems]);
+
+  // Items that will actually be ordered
+  const selectedItems = useMemo(
+    () => rentalItems.filter((it) => !unselectedIds.has(it.cartItemId)),
+    [rentalItems, unselectedIds]
+  );
+
+  const selectedCount = selectedItems.length;
+  const hasSelectedItems = selectedCount > 0;
+  const allSelected = rentalItems.length > 0 && unselectedIds.size === 0;
+  const someSelected = unselectedIds.size > 0 && selectedCount > 0;
+
+  // ── Auto-resolve branch & repair variantId if needed ────────────────────────
+  const [resolvingBranches, setResolvingBranches] = useState(false);
+  const attemptedItemsRef = useRef(new Set());
+
+  useEffect(() => {
+    const unassigned = rentalItems.filter(
+      (it) =>
+        (!it.selectedBranch?.locationId ||
+          !/^[0-9a-fA-F]{24}$/.test(String(it.selectedBranch.locationId)) ||
+          !it.variantId ||
+          !/^[0-9a-fA-F]{24}$/.test(String(it.variantId))) &&
+        !attemptedItemsRef.current.has(it.cartItemId)
+    );
+
+    if (unassigned.length === 0) return;
+
+    // Đánh dấu ngay lập tức để không bao giờ chạy lại cho cùng item
+    unassigned.forEach((it) => attemptedItemsRef.current.add(it.cartItemId));
+
+    let isMounted = true;
+    setResolvingBranches(true);
+
+    const resolveBranches = async () => {
+      const userLoc = getUserLocation();
+      try {
+        for (const it of unassigned) {
+          try {
+            const res = await productService.getProductById(it.productId);
+            const pData = res?.data || res;
+            let rawBranches = Array.isArray(pData?.branches) ? pData.branches : [];
+
+            // Bỏ kho tổng, chỉ lấy ở các chi nhánh (store / showroom)
+            rawBranches = rawBranches.filter((b) => {
+              const name = String(b.name || '').toLowerCase();
+              const type = String(b.type || '').toLowerCase();
+              return (
+                type !== 'warehouse' &&
+                !name.includes('kho tổng') &&
+                !name.includes('kho tong') &&
+                !name.includes('kho trung tâm')
+              );
+            });
+
+            // Sửa variantId nếu variantId cũ không phải ObjectId 24 ký tự
+            let repairedVariantId = it.variantId;
+            if (!/^[0-9a-fA-F]{24}$/.test(String(it.variantId))) {
+              const variants = Array.isArray(pData?.variants) ? pData.variants : [];
+              const matched =
+                variants.find(
+                  (v) =>
+                    String(v.size || '').toLowerCase() === String(it.size || '').toLowerCase() &&
+                    String(v.color || '').toLowerCase() === String(it.color || '').toLowerCase()
+                ) ||
+                variants.find(
+                  (v) => String(v.size || '').toLowerCase() === String(it.size || '').toLowerCase()
+                ) ||
+                variants[0];
+              if (matched?._id) {
+                repairedVariantId = String(matched._id);
+              }
+            }
+
+            if (rawBranches.length > 0) {
+              const withDist = rawBranches.map((b) => {
+                let distanceKm = null;
+                if (
+                  userLoc?.latitude != null &&
+                  userLoc?.longitude != null &&
+                  b.latitude != null &&
+                  b.longitude != null
+                ) {
+                  distanceKm = calculateHaversineDistanceKm(
+                    userLoc.latitude,
+                    userLoc.longitude,
+                    b.latitude,
+                    b.longitude
+                  );
+                }
+                return { ...b, distanceKm };
+              });
+
+              withDist.sort((a, b) => {
+                if (a.distanceKm == null && b.distanceKm == null) return 0;
+                if (a.distanceKm == null) return 1;
+                if (b.distanceKm == null) return -1;
+                return a.distanceKm - b.distanceKm;
+              });
+
+              const best = withDist[0];
+              const locId = best.locationId || best._id;
+              if (locId && /^[0-9a-fA-F]{24}$/.test(String(locId))) {
+                updateItemBranch(it.cartItemId, {
+                  locationId: String(locId),
+                  name: best.name,
+                  address: best.address,
+                  ...(repairedVariantId !== it.variantId ? { variantId: repairedVariantId } : {}),
+                });
+                setValidationError('');
+              }
+            } else if (repairedVariantId !== it.variantId) {
+              updateItemBranch(it.cartItemId, { variantId: repairedVariantId });
+            }
+          } catch (e) {
+            console.warn('Lỗi tự động xác định chi nhánh cho:', it.name, e);
+          }
+        }
+      } finally {
+        if (isMounted) setResolvingBranches(false);
+      }
+    };
+
+    resolveBranches();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [rentalItems, updateItemBranch]);
+
+  // ── Summary totals for selected items only ─────────────────────────────────
+  const { rentalFeeSubtotal, depositSubtotal } = useMemo(() => {
+    let rental = 0;
+    let deposit = 0;
+    for (const it of selectedItems) {
+      rental += it.lineRentalFee || 0;
+      deposit += it.lineDeposit || it.depositAmount || 0;
+    }
+    return { rentalFeeSubtotal: rental, depositSubtotal: deposit };
+  }, [selectedItems]);
+
+  const rentalTotal = rentalFeeSubtotal + depositSubtotal;
+
+  // Form state
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [validationError, setValidationError] = useState('');
+  const [successModal, setSuccessModal] = useState(false);
+  const [confirmedOrderId, setConfirmedOrderId] = useState(null);
+
+  // Shipping Address state
+  const [shippingAddress, setShippingAddress] = useState({
+    receiverName: '',
+    phone: '',
+    street: '',
+    ward: '',
+    district: '',
+    city: '',
   });
 
-  // Kiểm tra loại đơn hàng:
-  // - Đơn thuê: items có bất kỳ món nào là thuê (isRental !== false)
-  // - Đơn mua: toàn bộ là món mua đứt (isRental === false)
-  const hasRentalItems = useMemo(() => items.some((it) => it.isRental !== false), [items]);
-
-  // Extract customer personal profile from MongoDB Atlas User record
-  const userProfile = useMemo(() => {
-    const info =
-      (Array.isArray(user?.information) && user.information[0]) ||
-      (Array.isArray(user?.Information) && user.Information[0]) ||
-      {};
-    const savedName = user?.fullName || user?.FullName || '';
-    const savedPhone = info.Phone || user?.phone || user?.Phone || '';
-    const savedAddress = info.AddressDetail || info.Address || '';
-    const savedProvince = info.ProvinceName || '';
-    const savedDistrict = info.DistrictName || '';
-
-    const hasProfile = Boolean(savedName && (savedPhone || savedAddress));
-
-    return {
-      hasProfile,
-      savedName,
-      savedPhone,
-      savedAddress,
-      savedProvince,
-      savedDistrict,
-    };
-  }, [user]);
-
-  // Delivery form states
-  const [deliveryMethod, setDeliveryMethod] = useState('delivery'); // 'delivery' | 'pickup'
-  const [recipientName, setRecipientName] = useState(userProfile.savedName);
-  const [phone, setPhone] = useState(userProfile.savedPhone);
-  const [province, setProvince] = useState(userProfile.savedProvince || 'Hà Nội');
-  const [district, setDistrict] = useState(userProfile.savedDistrict);
-  const [address, setAddress] = useState(userProfile.savedAddress);
-  const [isCustomAddress, setIsCustomAddress] = useState(!userProfile.hasProfile);
-  const [note, setNote] = useState('');
-
-  // Showrooms loaded dynamically from MongoDB Atlas (NO mock data)
-  const [showrooms, setShowrooms] = useState([]);
-  const [selectedShowroom, setSelectedShowroom] = useState('');
-  const [loadingShowrooms, setLoadingShowrooms] = useState(false);
-
-  // Phương thức thanh toán theo quy định kinh doanh:
-  // - Đơn thuê: Duy nhất 1 phương thức là ví điện tử ('wallet')
-  // - Đơn mua: Có 2 phương thức là COD ('cod') và ví điện tử ('wallet')
-  const [paymentMethod, setPaymentMethod] = useState(hasRentalItems ? 'wallet' : 'cod');
-
-  // Load wallet data from backend
-  const [wallet, setWallet] = useState(null);
-  const [, setLoadingWallet] = useState(false);
-
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
-
-  // Sync payment method when items change
-  useEffect(() => {
-    if (hasRentalItems) {
-      setPaymentMethod('wallet');
-    } else if (!['cod', 'wallet'].includes(paymentMethod)) {
-      setPaymentMethod('cod');
-    }
-  }, [hasRentalItems, paymentMethod]);
-
-  // Auto-fill when user profile becomes available
-  useEffect(() => {
-    if (userProfile.hasProfile) {
-      setRecipientName(userProfile.savedName);
-      setPhone(userProfile.savedPhone);
-      setAddress(userProfile.savedAddress);
-      if (userProfile.savedProvince) setProvince(userProfile.savedProvince);
-      if (userProfile.savedDistrict) setDistrict(userProfile.savedDistrict);
-      setIsCustomAddress(false);
-    } else {
-      setIsCustomAddress(true);
-    }
-  }, [userProfile]);
-
-  // Fetch real showrooms from MongoDB Atlas
-  useEffect(() => {
-    let isMounted = true;
-    const fetchRealShowrooms = async () => {
-      try {
-        setLoadingShowrooms(true);
-        const res = await getShopsListApi({ limit: 50 });
-        if (isMounted && res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          const activeBranches = res.data.filter((s) => s.status !== 'SUSPENDED');
-          setShowrooms(activeBranches);
-          if (activeBranches.length > 0) {
-            setSelectedShowroom(activeBranches[0].name);
-          }
-        }
-      } catch (err) {
-        console.warn('Lỗi tải danh sách showroom từ MongoDB Atlas:', err);
-      } finally {
-        if (isMounted) setLoadingShowrooms(false);
-      }
-    };
-    fetchRealShowrooms();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Fetch real wallet balance from MongoDB Atlas
-  useEffect(() => {
-    let isMounted = true;
-    const loadWallet = async () => {
-      try {
-        setLoadingWallet(true);
-        const res = await walletRequest();
-        if (isMounted && res?.wallet) {
-          setWallet(res.wallet);
-        }
-      } catch (err) {
-        console.warn('Lỗi lấy thông tin ví:', err);
-      } finally {
-        if (isMounted) setLoadingWallet(false);
-      }
-    };
-    loadWallet();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const formatVND = (amount) => {
-    if (!amount) return '0đ';
-    return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
+  const handleAddressChange = (field, value) => {
+    setShippingAddress((prev) => ({ ...prev, [field]: value }));
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
-
-  // Calculations for both rental and sale items
-  const summary = useMemo(() => {
-    let rTotal = 0;
-    let sTotal = 0;
-    let depTotal = 0;
-
-    items.forEach((item) => {
-      const linePrice = (item.price || 0) * (item.quantity || 1);
-      if (item.isRental !== false) {
-        rTotal += linePrice;
-        depTotal += (item.deposit || 0) * (item.quantity || 1);
-      } else {
-        sTotal += linePrice;
-      }
-    });
-
-    const shippingFee = 0; // Miễn phí giao hàng toàn quốc
-    const serviceFee = items.length > 0 ? 30000 : 0;
-    const finalTotal = rTotal + sTotal + shippingFee + serviceFee;
-
-    return {
-      rentalTotal: rTotal,
-      saleTotal: sTotal,
-      depositTotal: depTotal,
-      shippingFee,
-      serviceFee,
-      finalTotal,
-    };
-  }, [items]);
-
-  const handleSubmitOrder = async (e) => {
-    e.preventDefault();
-    setErrorMsg(null);
-
-    if (!items || items.length === 0) {
-      setErrorMsg('Không có sản phẩm nào trong phiên thanh toán. Vui lòng quay lại giỏ hàng.');
-      return;
-    }
-
-    if (!recipientName.trim()) {
-      setErrorMsg('Vui lòng nhập họ và tên người nhận hàng.');
-      return;
-    }
-
-    if (!phone.trim()) {
-      setErrorMsg('Vui lòng nhập số điện thoại người nhận hàng.');
-      return;
-    }
-
-    if (deliveryMethod === 'delivery' && !address.trim()) {
-      setErrorMsg('Vui lòng nhập địa chỉ chi tiết để chúng tôi giao hàng.');
-      return;
-    }
-
-    // Nếu là đơn thuê: bắt buộc phải có đủ số dư ví nếu ví đã tải xong
-    if (hasRentalItems && paymentMethod === 'wallet' && wallet) {
-      const requiredAmount = summary.finalTotal + summary.depositTotal;
-      if ((wallet.availableBalance || 0) < requiredAmount) {
-        setErrorMsg(
-          `Số dư ví hiện tại (${formatVND(wallet.availableBalance || 0)}) không đủ để thanh toán tiền thuê và giữ cọc (${formatVND(requiredAmount)}). Quý khách vui lòng nạp thêm tiền vào ví để hoàn tất đặt thuê.`
-        );
-        return;
+  // Lấy chi nhánh từ các selected items
+  const branchesInCart = useMemo(() => {
+    const seen = new Map();
+    for (const it of selectedItems) {
+      const locId = it.selectedBranch?.locationId;
+      if (locId && !seen.has(String(locId))) {
+        seen.set(String(locId), it.selectedBranch);
       }
     }
+    return Array.from(seen.values());
+  }, [selectedItems]);
+
+  // Validate dates
+  const validateDates = useCallback(() => {
+    for (const item of selectedItems) {
+      if (!item.startDate || !item.dueDate) {
+        return 'Vui lòng quay lại giỏ hàng để chọn ngày thuê cho tất cả sản phẩm đã chọn.';
+      }
+      const start = new Date(item.startDate).getTime();
+      const due = new Date(item.dueDate).getTime();
+      if (isNaN(start) || isNaN(due) || due <= start) {
+        return 'Ngày trả đồ phải sau ngày nhận đồ.';
+      }
+    }
+    return '';
+  }, [selectedItems]);
+
+  // Validate locations and variants
+  const validateItems = useCallback(() => {
+    for (const item of selectedItems) {
+      const locId = item.selectedBranch?.locationId;
+      if (!locId || !/^[0-9a-fA-F]{24}$/.test(String(locId))) {
+        return `Sản phẩm "${item.name}" chưa xác định được chi nhánh khả dụng. Vui lòng thử lại sau giây lát.`;
+      }
+      if (!item.variantId || !/^[0-9a-fA-F]{24}$/.test(String(item.variantId))) {
+        return `Biến thể của sản phẩm "${item.name}" chưa hợp lệ. Vui lòng thêm lại sản phẩm vào giỏ hàng.`;
+      }
+    }
+    return '';
+  }, [selectedItems]);
+
+  // Submit handler
+  const handleSubmit = async () => {
+    setSubmitError('');
+    setValidationError('');
+
+    if (!hasSelectedItems) return;
+
+    const dateError = validateDates();
+    if (dateError) {
+      setValidationError(dateError);
+      return;
+    }
+
+    const itemError = validateItems();
+    if (itemError) {
+      setValidationError(itemError);
+      return;
+    }
+
+    if (!shippingAddress.receiverName.trim()) {
+      setValidationError('Vui lòng nhập họ và tên người nhận trang phục.');
+      return;
+    }
+    if (!shippingAddress.phone.trim() || shippingAddress.phone.trim().length < 8) {
+      setValidationError('Vui lòng nhập số điện thoại người nhận hợp lệ.');
+      return;
+    }
+    if (!shippingAddress.street.trim()) {
+      setValidationError('Vui lòng nhập địa chỉ cụ thể nhận trang phục.');
+      return;
+    }
+    if (!shippingAddress.city.trim()) {
+      setValidationError('Vui lòng nhập tỉnh/thành phố nhận trang phục.');
+      return;
+    }
+
+    setSubmitting(true);
 
     try {
-      setSubmitting(true);
-
-      const fullAddress =
-        deliveryMethod === 'delivery'
-          ? [address.trim(), district.trim(), province].filter(Boolean).join(', ')
-          : `Nhận tại showroom: ${selectedShowroom}`;
-
-      const payload = {
-        items,
-        recipientName: recipientName.trim(),
-        phone: phone.trim(),
-        address: fullAddress,
-        province,
-        district: district.trim(),
-        deliveryMethod,
-        paymentMethod: hasRentalItems ? 'wallet' : paymentMethod,
-        note: note.trim(),
-      };
-
-      await checkoutCartApi(payload);
-
-      // Cập nhật lại giỏ hàng: Xóa các món đã thanh toán khỏi vestora_cart
-      try {
-        const raw = localStorage.getItem('vestora_cart');
-        if (raw) {
-          const currentCart = JSON.parse(raw);
-          if (Array.isArray(currentCart)) {
-            const checkedOutIds = new Set(items.map((it) => it.id));
-            const remaining = currentCart.filter((it) => !checkedOutIds.has(it.id));
-            localStorage.setItem('vestora_cart', JSON.stringify(remaining));
-            window.dispatchEvent(new Event('cartUpdated'));
-          }
+      // Group by locationId + startDate + dueDate → mỗi nhóm = 1 đơn thuê
+      const groupMap = new Map();
+      for (const it of selectedItems) {
+        const locId = String(it.selectedBranch?.locationId || '');
+        const key = `${locId}|${it.startDate || ''}|${it.dueDate || ''}`;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, {
+            locationId: locId,
+            startDate: it.startDate,
+            dueDate: it.dueDate,
+            items: [],
+          });
         }
-        sessionStorage.removeItem('vestora_checkout_items');
-      } catch (_) {}
+        groupMap.get(key).items.push(it);
+      }
 
-      // Điều hướng về màn Đơn thuê của tôi
-      navigate('/rental-orders');
+      let lastOrderId = null;
+      for (const group of groupMap.values()) {
+        const payload = {
+          locationId: String(group.locationId),
+          startDate: String(group.startDate),
+          dueDate: String(group.dueDate),
+          items: group.items.map((it) => ({
+            variantId: String(it.variantId),
+            quantity: Number(it.quantity) || 1,
+            ...(it.note ? { note: it.note } : {}),
+          })),
+          paymentMethod: 'wallet',
+          shippingAddress: {
+            receiverName: shippingAddress.receiverName.trim(),
+            phone: shippingAddress.phone.trim(),
+            street: shippingAddress.street.trim(),
+            ward: shippingAddress.ward.trim(),
+            district: shippingAddress.district.trim(),
+            city: shippingAddress.city.trim(),
+          },
+          ...(note.trim() ? { note: note.trim() } : {}),
+        };
+
+        const data = await createRentalOrder(payload);
+        lastOrderId = data?.data?._id || lastOrderId;
+      }
+
+      // Xóa các sản phẩm đã đặt khỏi giỏ
+      if (selectedItems.length === rentalItems.length) {
+        clearCart();
+      } else {
+        removeItems(selectedItems.map((it) => it.cartItemId));
+      }
+
+      setConfirmedOrderId(lastOrderId);
+      setSuccessModal(true);
     } catch (err) {
-      console.warn('Lỗi API checkout:', err);
-      try {
-        const raw = localStorage.getItem('vestora_cart');
-        if (raw) {
-          const currentCart = JSON.parse(raw);
-          const checkedOutIds = new Set(items.map((it) => it.id));
-          const remaining = currentCart.filter((it) => !checkedOutIds.has(it.id));
-          localStorage.setItem('vestora_cart', JSON.stringify(remaining));
-          window.dispatchEvent(new Event('cartUpdated'));
-        }
-        sessionStorage.removeItem('vestora_checkout_items');
-      } catch (_) {}
-      navigate('/rental-orders');
+      console.error('Lỗi đặt thuê:', err);
+      setSubmitError(err.message || 'Không thể tạo đơn thuê. Vui lòng thử lại sau.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const isSubmitDisabled = !hasSelectedItems || submitting || resolvingBranches;
+
+  // ── Styles ─────────────────────────────────────────────────────────────────
+  const styles = {
+    pageContainer: {
+      backgroundColor: '#faf9f6',
+      minHeight: '100vh',
+      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      color: '#27272a',
+      paddingBottom: 80,
+    },
+    headerHero: {
+      maxWidth: 1320,
+      margin: '0 auto',
+      padding: '32px 32px 16px 32px',
+    },
+    backLink: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      color: '#71717A',
+      fontSize: '13px',
+      textDecoration: 'none',
+      fontWeight: 500,
+    },
+    titleRow: {
+      display: 'flex',
+      alignItems: 'baseline',
+      gap: 12,
+      marginTop: 12,
+    },
+    mainTitle: {
+      fontFamily: "'Newsreader', 'Playfair Display', Georgia, serif",
+      fontSize: 38,
+      fontWeight: 600,
+      color: '#18181b',
+      margin: 0,
+      letterSpacing: '-0.4px',
+    },
+    mainGrid: {
+      maxWidth: 1320,
+      margin: '16px auto 0 auto',
+      padding: '0 32px',
+      display: 'grid',
+      gridTemplateColumns: '1.45fr 0.85fr',
+      gap: 36,
+      alignItems: 'start',
+    },
+    card: {
+      background: '#FFFFFF',
+      borderRadius: 16,
+      border: '1px solid #E5E0D8',
+      padding: 24,
+    },
+    stickyCard: {
+      background: '#FFFFFF',
+      borderRadius: 12,
+      border: '1px solid #E5E0D8',
+      padding: 24,
+      position: 'sticky',
+      top: 100,
+    },
+    sectionTitle: {
+      fontFamily: "'Newsreader', 'Playfair Display', Georgia, serif",
+      fontSize: 20,
+      fontWeight: 600,
+      color: '#171717',
+      margin: '0 0 18px 0',
+      paddingBottom: 14,
+      borderBottom: '1px solid #E5E0D8',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+    },
+    selectAllBar: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '10px 0 14px 0',
+      borderBottom: '1px solid #F4F4F5',
+      marginBottom: 4,
+      cursor: 'pointer',
+      userSelect: 'none',
+    },
+    selectAllLabel: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: '#3F3F46',
+      flex: 1,
+    },
+    selectCountBadge: {
+      fontSize: 12,
+      color: '#71717A',
+    },
+    itemRow: {
+      display: 'flex',
+      gap: 14,
+      padding: '14px 0',
+      borderBottom: '1px solid #F4F4F5',
+      alignItems: 'center',
+      cursor: 'pointer',
+      transition: 'background 0.15s ease',
+    },
+    itemImage: {
+      width: 64,
+      height: 76,
+      borderRadius: 10,
+      objectFit: 'cover',
+      background: '#F4F4F5',
+      flexShrink: 0,
+    },
+    itemDetails: {
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 3,
+    },
+    itemName: {
+      fontSize: 14,
+      fontWeight: 600,
+      color: '#18181b',
+      margin: 0,
+    },
+    itemMeta: {
+      fontSize: 12,
+      color: '#71717A',
+    },
+    itemPrice: {
+      textAlign: 'right',
+      flexShrink: 0,
+    },
+    warningBanner: {
+      background: '#FFFBEB',
+      border: '1px solid #FDE68A',
+      borderRadius: 10,
+      padding: '14px 18px',
+      fontSize: 13,
+      color: '#92400E',
+      lineHeight: 1.6,
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginBottom: 18,
+    },
+    noSelectionBanner: {
+      background: '#FFF7ED',
+      border: '1px solid #FDBA74',
+      borderRadius: 10,
+      padding: '12px 16px',
+      fontSize: 13,
+      color: '#9A3412',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 14,
+    },
+    errorBox: {
+      background: '#FEF2F2',
+      border: '1px solid #FECACA',
+      borderRadius: 10,
+      padding: '14px 18px',
+      fontSize: 13,
+      color: '#991B1B',
+      lineHeight: 1.6,
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginTop: 14,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: '#3F3F46',
+      marginBottom: 8,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+    },
+    input: {
+      width: '100%',
+      padding: '10px 14px',
+      borderRadius: '8px',
+      border: '1px solid #D4D4D8',
+      fontSize: '13.5px',
+      color: '#18181b',
+      outline: 'none',
+      background: '#FFFFFF',
+      boxSizing: 'border-box',
+    },
+    textarea: {
+      width: '100%',
+      minHeight: 80,
+      border: '1px solid #E5E0D8',
+      borderRadius: 10,
+      padding: '10px 12px',
+      fontSize: 13,
+      fontFamily: 'inherit',
+      color: '#27272a',
+      outline: 'none',
+      resize: 'vertical',
+      background: '#FFFFFF',
+      boxSizing: 'border-box',
+    },
+    paymentBadge: {
+      background: '#F0FDF4',
+      border: '1px solid #BBF7D0',
+      borderRadius: 8,
+      padding: '10px 14px',
+      fontSize: 13,
+      fontWeight: 600,
+      color: '#15803D',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 8,
+    },
+    summaryRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      fontSize: 13.5,
+      color: '#3F3F46',
+      padding: '6px 0',
+    },
+    summaryTotal: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      borderTop: '1.5px dashed #E5E0D8',
+      paddingTop: 14,
+      marginTop: 10,
+    },
+    totalLabel: {
+      fontSize: 14,
+      fontWeight: 600,
+      color: '#171717',
+    },
+    totalAmount: {
+      fontFamily: "'Newsreader', 'Playfair Display', Georgia, serif",
+      fontSize: 24,
+      fontWeight: 700,
+      color: '#171717',
+      letterSpacing: '-0.5px',
+    },
+    submitButton: {
+      width: '100%',
+      height: 50,
+      background: '#171717',
+      color: '#F8F7F4',
+      border: 'none',
+      borderRadius: 12,
+      fontSize: 14.5,
+      fontWeight: 700,
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      marginTop: 18,
+      transition: 'all 0.2s ease',
+      boxShadow: '0 4px 14px rgba(23, 23, 23, 0.18)',
+    },
+    submitButtonDisabled: {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+    },
+    trustLine: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      marginTop: 12,
+      fontSize: 11,
+      color: '#9CA3AF',
+    },
+  };
+
   return (
-    <div className="cart-page-container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={styles.pageContainer}>
       <Navbar />
 
-      <main style={{ flex: 1, padding: '32px 16px', maxWidth: '1200px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-        {/* Breadcrumb & Navigation */}
-        <div style={{ marginBottom: '20px' }}>
-          <Link
-            to="/cart"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              color: '#71717a',
-              fontSize: '13px',
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}
-          >
+      {/* Page Header */}
+      <div style={styles.headerHero}>
+        <div style={{ marginBottom: 12 }}>
+          <Link to="/cart" style={styles.backLink}>
             <ArrowLeft size={16} />
             <span>Quay lại giỏ hàng</span>
           </Link>
-          <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#18181b', marginTop: '10px', marginBottom: '4px' }}>
-            Thông Tin Nhận Hàng & Thanh Toán
-          </h1>
-          <p style={{ fontSize: '13.5px', color: '#71717a', margin: 0 }}>
-            {hasRentalItems
-              ? 'Đơn thuê áp dụng thanh toán qua Ví điện tử Vestora để quản lý cọc tự động'
-              : 'Đơn mua hỗ trợ thanh toán khi nhận hàng (COD) hoặc qua Ví điện tử Vestora'}
-          </p>
         </div>
+        <div style={styles.titleRow}>
+          <h1 style={styles.mainTitle}>Xác nhận đơn thuê</h1>
+        </div>
+      </div>
 
-        {items.length === 0 ? (
-          <div
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: '16px',
-              border: '1px solid #e4e4e7',
-              padding: '60px 24px',
-              textAlign: 'center',
-            }}
-          >
-            <Package size={48} style={{ color: '#a1a1aa', marginBottom: '16px' }} />
-            <h3 style={{ fontSize: '20px', fontWeight: 600, color: '#18181b', marginBottom: '8px' }}>
-              Không có sản phẩm nào để thanh toán
+      {/* Main Grid */}
+      <div style={styles.mainGrid}>
+        {/* LEFT COLUMN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* Sale items banner */}
+          {hasSaleItems && (
+            <div style={styles.warningBanner}>
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1, color: '#D97706' }} />
+              <span>
+                Giỏ hàng của bạn có {saleItems.length} sản phẩm mua đứt.{' '}
+                <Link
+                  to="/checkout/sale"
+                  style={{
+                    color: '#96723D',
+                    fontWeight: 600,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Bấm vào đây để thanh toán đơn mua ngay
+                </Link>
+                .
+              </span>
+            </div>
+          )}
+
+          {/* Rental Items List */}
+          <div style={styles.card}>
+            <h3 style={styles.sectionTitle}>
+              <Package size={18} style={{ color: '#C5A880' }} />
+              Trang phục thuê ({rentalItems.length} sản phẩm)
             </h3>
-            <p style={{ fontSize: '14px', color: '#71717a', marginBottom: '24px' }}>
-              Quý khách vui lòng chọn các trang phục trong giỏ hàng để tiến hành thanh toán.
-            </p>
-            <Link
-              to="/cart"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 24px',
-                backgroundColor: '#18181b',
-                color: '#fff',
-                borderRadius: '8px',
-                textDecoration: 'none',
-                fontWeight: 600,
-                fontSize: '14px',
-              }}
-            >
-              <span>Xem giỏ hàng của bạn</span>
-            </Link>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmitOrder}>
-            {errorMsg && (
-              <div
-                style={{
-                  padding: '12px 16px',
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '10px',
-                  color: '#b91c1c',
-                  fontSize: '13.5px',
-                  marginBottom: '20px',
-                }}
-              >
-                {errorMsg}
-              </div>
-            )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '28px', alignItems: 'start' }}>
-              {/* LEFT COLUMN: Shipping & Payment details */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {/* 1. Thông tin nhận hàng */}
-                <div
-                  style={{
-                    backgroundColor: '#fff',
-                    borderRadius: '16px',
-                    border: '1px solid #e4e4e7',
-                    padding: '24px',
-                  }}
-                >
-                  <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#18181b', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Truck size={20} style={{ color: '#96723D' }} />
-                    <span>1. Hình thức & Địa chỉ nhận trang phục</span>
-                  </h2>
-
-                  {/* Banner tự động điền nếu đã có thông tin cá nhân */}
-                  {userProfile.hasProfile && !isCustomAddress ? (
-                    <div
-                      style={{
-                        padding: '14px 16px',
-                        backgroundColor: '#f0fdf4',
-                        border: '1px solid #bbf7d0',
-                        borderRadius: '12px',
-                        marginBottom: '18px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontWeight: 600, fontSize: '13.5px' }}>
-                        <CheckCircle2 size={16} />
-                        <span>Đã tự động điền từ thông tin cá nhân đã lưu trong tài khoản của bạn</span>
-                      </div>
-                      <div style={{ marginTop: '8px', fontSize: '13.5px', color: '#1f2937' }}>
-                        <strong>{recipientName}</strong> · <span>{phone}</span>
-                      </div>
-                      <div style={{ fontSize: '13px', color: '#4b5563', marginTop: '2px' }}>
-                        {address ? `${address}${district ? ', ' + district : ''}, ${province}` : 'Chưa có địa chỉ chi tiết'}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomAddress(true)}
-                        style={{
-                          marginTop: '10px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '12.5px',
-                          color: '#96723D',
-                          fontWeight: 600,
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          padding: 0,
-                          cursor: 'pointer',
-                          textDecoration: 'underline',
-                        }}
-                      >
-                        <Edit3 size={13} />
-                        <span>Giao đến địa chỉ / người nhận khác</span>
-                      </button>
-                    </div>
-                  ) : !userProfile.hasProfile ? (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '12px 14px',
-                        backgroundColor: '#fefce8',
-                        border: '1px solid #fef08a',
-                        borderRadius: '10px',
-                        color: '#854d0e',
-                        fontSize: '13px',
-                        marginBottom: '18px',
-                      }}
-                    >
-                      <Info size={16} style={{ flexShrink: 0 }} />
-                      <span>Quý khách chưa cài đặt địa chỉ trong hồ sơ cá nhân. Vui lòng nhập thông tin nhận hàng bên dưới:</span>
-                    </div>
+            {rentalItems.length === 0 ? (
+              <p style={{ fontSize: 14, color: '#71717A', textAlign: 'center', padding: '24px 0' }}>
+                Giỏ hàng không có sản phẩm thuê nào. Vui lòng quay lại giỏ hàng.
+              </p>
+            ) : (
+              <>
+                {/* Select-all bar */}
+                <div style={styles.selectAllBar} onClick={toggleAll}>
+                  {allSelected ? (
+                    <CheckSquare size={18} color="#C5A880" />
+                  ) : someSelected ? (
+                    <CheckSquare size={18} color="#D4B896" />
                   ) : (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRecipientName(userProfile.savedName);
-                          setPhone(userProfile.savedPhone);
-                          setAddress(userProfile.savedAddress);
-                          if (userProfile.savedProvince) setProvince(userProfile.savedProvince);
-                          if (userProfile.savedDistrict) setDistrict(userProfile.savedDistrict);
-                          setIsCustomAddress(false);
-                        }}
-                        style={{
-                          fontSize: '12.5px',
-                          color: '#059669',
-                          fontWeight: 600,
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          padding: 0,
-                          cursor: 'pointer',
-                          textDecoration: 'underline',
-                        }}
-                      >
-                        ↺ Sử dụng lại thông tin cá nhân mặc định
-                      </button>
-                    </div>
+                    <Square size={18} color="#A1A1AA" />
                   )}
-
-                  {/* Lựa chọn Giao hàng tận nơi hoặc Nhận tại showroom */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-                    <label
-                      onClick={() => setDeliveryMethod('delivery')}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '12px',
-                        padding: '16px',
-                        borderRadius: '12px',
-                        border: deliveryMethod === 'delivery' ? '2px solid #18181b' : '1px solid #e4e4e7',
-                        backgroundColor: deliveryMethod === 'delivery' ? '#fafafa' : '#fff',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="deliveryMethod"
-                        checked={deliveryMethod === 'delivery'}
-                        onChange={() => setDeliveryMethod('delivery')}
-                        style={{ marginTop: '3px' }}
-                      />
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '14px', color: '#18181b' }}>Giao hàng tận nơi</div>
-                        <div style={{ fontSize: '12px', color: '#71717a', marginTop: '2px' }}>
-                          Đối tác Giao Hàng Nhanh (GHN) vận chuyển, đồng kiểm khi nhận
-                        </div>
-                      </div>
-                    </label>
-
-                    <label
-                      onClick={() => setDeliveryMethod('pickup')}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '12px',
-                        padding: '16px',
-                        borderRadius: '12px',
-                        border: deliveryMethod === 'pickup' ? '2px solid #18181b' : '1px solid #e4e4e7',
-                        backgroundColor: deliveryMethod === 'pickup' ? '#fafafa' : '#fff',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="deliveryMethod"
-                        checked={deliveryMethod === 'pickup'}
-                        onChange={() => setDeliveryMethod('pickup')}
-                        style={{ marginTop: '3px' }}
-                      />
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '14px', color: '#18181b' }}>Nhận tại Showroom</div>
-                        <div style={{ fontSize: '12px', color: '#71717a', marginTop: '2px' }}>
-                          Thử đồ và nhận trực tiếp tại showroom đối tác Vestora
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-
-                  {/* Form fields: Nếu đã có thông tin cá nhân và chưa bấm sửa thì ẩn để gọn gàng, nếu chưa có hoặc đang sửa thì cho phép nhập */}
-                  {(isCustomAddress || !userProfile.hasProfile) && (
-                    <>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#3f3f46', marginBottom: '6px' }}>
-                            Họ và tên người nhận <span style={{ color: '#dc2626' }}>*</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={recipientName}
-                            onChange={(e) => setRecipientName(e.target.value)}
-                            placeholder="Nguyễn Văn A"
-                            style={{
-                              width: '100%',
-                              padding: '10px 14px',
-                              borderRadius: '8px',
-                              border: '1px solid #d4d4d8',
-                              fontSize: '14px',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#3f3f46', marginBottom: '6px' }}>
-                            Số điện thoại nhận hàng <span style={{ color: '#dc2626' }}>*</span>
-                          </label>
-                          <input
-                            type="tel"
-                            required
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            placeholder="0912345678"
-                            style={{
-                              width: '100%',
-                              padding: '10px 14px',
-                              borderRadius: '8px',
-                              border: '1px solid #d4d4d8',
-                              fontSize: '14px',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {deliveryMethod === 'delivery' && (
-                        <>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                            <div>
-                              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#3f3f46', marginBottom: '6px' }}>
-                                Tỉnh / Thành phố <span style={{ color: '#dc2626' }}>*</span>
-                              </label>
-                              <select
-                                value={province}
-                                onChange={(e) => setProvince(e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 14px',
-                                  borderRadius: '8px',
-                                  border: '1px solid #d4d4d8',
-                                  fontSize: '14px',
-                                  backgroundColor: '#fff',
-                                  boxSizing: 'border-box',
-                                }}
-                              >
-                                {PROVINCES.map((p) => (
-                                  <option key={p} value={p}>
-                                    {p}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#3f3f46', marginBottom: '6px' }}>
-                                Quận / Huyện
-                              </label>
-                              <input
-                                type="text"
-                                value={district}
-                                onChange={(e) => setDistrict(e.target.value)}
-                                placeholder="Ví dụ: Quận Cầu Giấy, Huyện Thạch Thất"
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 14px',
-                                  borderRadius: '8px',
-                                  border: '1px solid #d4d4d8',
-                                  fontSize: '14px',
-                                  boxSizing: 'border-box',
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          <div style={{ marginBottom: '14px' }}>
-                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#3f3f46', marginBottom: '6px' }}>
-                              Địa chỉ cụ thể (Số nhà, đường, ngõ, tòa nhà) <span style={{ color: '#dc2626' }}>*</span>
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={address}
-                              onChange={(e) => setAddress(e.target.value)}
-                              placeholder="Ví dụ: Tầng 4, Tòa nhà FPT, Khu Công nghệ cao Hòa Lạc"
-                              style={{
-                                width: '100%',
-                                padding: '10px 14px',
-                                borderRadius: '8px',
-                                border: '1px solid #d4d4d8',
-                                fontSize: '14px',
-                                boxSizing: 'border-box',
-                              }}
-                            />
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  {/* Lựa chọn Showroom từ MongoDB Atlas */}
-                  {deliveryMethod === 'pickup' && (
-                    <div style={{ marginBottom: '14px' }}>
-                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#3f3f46', marginBottom: '6px' }}>
-                        Chọn Showroom nhận trang phục <span style={{ color: '#dc2626' }}>*</span>
-                      </label>
-                      {loadingShowrooms ? (
-                        <div style={{ fontSize: '13px', color: '#71717a', padding: '10px 0' }}>Đang tải danh sách showroom từ hệ thống...</div>
-                      ) : (
-                        <select
-                          value={selectedShowroom}
-                          onChange={(e) => setSelectedShowroom(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '10px 14px',
-                            borderRadius: '8px',
-                            border: '1px solid #d4d4d8',
-                            fontSize: '14px',
-                            backgroundColor: '#fff',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          {showrooms.length > 0 ? (
-                            showrooms.map((s) => (
-                              <option key={s._id} value={s.name}>
-                                {s.name} {s.address ? `— ${s.address}` : s.city ? `— ${s.city}` : ''}
-                              </option>
-                            ))
-                          ) : (
-                            <option value="Vestora Flagship Showroom">Vestora Flagship Showroom — Hà Nội, Việt Nam</option>
-                          )}
-                        </select>
-                      )}
-                    </div>
-                  )}
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#3f3f46', marginBottom: '6px' }}>
-                      Ghi chú đơn hàng (nếu có)
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="Ghi chú về thời gian giao hàng hoặc yêu cầu bảo quản riêng..."
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        border: '1px solid #d4d4d8',
-                        fontSize: '13.5px',
-                        boxSizing: 'border-box',
-                        resize: 'vertical',
-                      }}
-                    />
-                  </div>
+                  <span style={styles.selectAllLabel}>Chọn tất cả</span>
+                  <span style={styles.selectCountBadge}>
+                    Đã chọn {selectedCount}/{rentalItems.length}
+                  </span>
                 </div>
 
-                {/* 2. Phương thức thanh toán theo quy định */}
-                <div
-                  style={{
-                    backgroundColor: '#fff',
-                    borderRadius: '16px',
-                    border: '1px solid #e4e4e7',
-                    padding: '24px',
-                  }}
-                >
-                  <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#18181b', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Wallet size={20} style={{ color: '#96723D' }} />
-                    <span>2. Phương thức thanh toán</span>
-                  </h2>
-
-                  {/* TH1: Đơn THUÊ -> CHỈ CÓ 1 HÌNH THỨC DUY NHẤT LÀ VÍ ĐIỆN TỬ */}
-                  {hasRentalItems ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          padding: '16px',
-                          borderRadius: '12px',
-                          border: '2px solid #96723D',
-                          backgroundColor: '#FAF5EE',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            checked={paymentMethod === 'wallet'}
-                            readOnly
-                            style={{ marginTop: '4px' }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '14.5px', color: '#18181b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Wallet size={18} style={{ color: '#96723D' }} />
-                              <span>Thanh toán qua Ví điện tử Vestora</span>
-                            </div>
-                            <div style={{ fontSize: '12.5px', color: '#71717a', marginTop: '3px' }}>
-                              Khấu trừ tiền thuê & tự động ký quỹ cọc hoàn trả bằng số dư ví cá nhân.
-                            </div>
-                            <div style={{ marginTop: '8px', fontSize: '13px', color: '#18181b', fontWeight: 600 }}>
-                              Số dư khả dụng:{' '}
-                              <span style={{ color: '#059669', fontWeight: 700 }}>
-                                {wallet ? formatVND(wallet.availableBalance || 0) : 'Đang đồng bộ...'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '11px', backgroundColor: '#FEF3C7', color: '#92400E', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                          Duy nhất cho đơn thuê
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '10px 14px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', color: '#64748b' }}>
-                        <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-                        <span>
-                          <strong>Quy định Vestora:</strong> Đơn thuê trang phục cao cấp chỉ áp dụng phương thức thanh toán qua <strong>Ví điện tử Vestora</strong> để hệ thống tự động giữ cọc và tự động hoàn trả 100% tiền cọc ngay khi bạn trả lại trang phục.
-                        </span>
-                      </div>
-
-                      {wallet && (wallet.availableBalance || 0) < summary.finalTotal + summary.depositTotal && (
-                        <div style={{ padding: '12px 14px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12.5px', color: '#b91c1c', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>
-                            Số dư ví của bạn không đủ để thanh toán và giữ cọc ({formatVND(summary.finalTotal + summary.depositTotal)}).
-                          </span>
-                          <Link to="/wallet" target="_blank" rel="noopener noreferrer" style={{ color: '#b91c1c', fontWeight: 700, textDecoration: 'underline', marginLeft: '12px', whiteSpace: 'nowrap' }}>
-                            Nạp ví ngay →
-                          </Link>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    /* TH2: Đơn MUA ĐỨT -> CÓ 2 PHƯƠNG THỨC: COD VÀ VÍ */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <label
-                        onClick={() => setPaymentMethod('cod')}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '14px 16px',
-                          borderRadius: '12px',
-                          border: paymentMethod === 'cod' ? '2px solid #18181b' : '1px solid #e4e4e7',
-                          backgroundColor: paymentMethod === 'cod' ? '#fafafa' : '#fff',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            checked={paymentMethod === 'cod'}
-                            onChange={() => setPaymentMethod('cod')}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#18181b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Banknote size={18} style={{ color: '#18181b' }} />
-                              <span>Thanh toán khi nhận hàng (COD)</span>
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#71717a', marginTop: '2px' }}>
-                              Kiểm tra trang phục trước khi thanh toán tiền mặt cho nhân viên giao hàng
-                            </div>
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '11px', backgroundColor: '#f4f4f5', color: '#52525b', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          Tiền mặt
-                        </span>
-                      </label>
-
-                      <label
-                        onClick={() => setPaymentMethod('wallet')}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '14px 16px',
-                          borderRadius: '12px',
-                          border: paymentMethod === 'wallet' ? '2px solid #18181b' : '1px solid #e4e4e7',
-                          backgroundColor: paymentMethod === 'wallet' ? '#fafafa' : '#fff',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            checked={paymentMethod === 'wallet'}
-                            onChange={() => setPaymentMethod('wallet')}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#18181b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Wallet size={18} style={{ color: '#96723D' }} />
-                              <span>Thanh toán qua Ví điện tử Vestora</span>
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#71717a', marginTop: '2px' }}>
-                              Trừ trực tiếp số dư ví khả dụng ({wallet ? formatVND(wallet.availableBalance || 0) : '0đ'})
-                            </div>
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '11px', backgroundColor: '#ecfdf5', color: '#059669', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          Khuyên dùng
-                        </span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* RIGHT COLUMN: Order Summary Card */}
-              <div
-                style={{
-                  backgroundColor: '#fff',
-                  borderRadius: '16px',
-                  border: '1px solid #e4e4e7',
-                  padding: '24px',
-                  position: 'sticky',
-                  top: '100px',
-                }}
-              >
-                <h3
-                  style={{
-                    fontSize: '18px',
-                    fontWeight: 700,
-                    color: '#18181b',
-                    margin: '0 0 16px 0',
-                    paddingBottom: '12px',
-                    borderBottom: '1px solid #f4f4f5',
-                  }}
-                >
-                  Tóm tắt đơn hàng ({items.length} món)
-                </h3>
-
-                {/* Items preview list */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px', maxHeight: '280px', overflowY: 'auto' }}>
-                  {items.map((it) => (
-                    <div key={it.id} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <img
-                        src={it.image || 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=150&q=80'}
-                        alt={it.name}
-                        style={{ width: '52px', height: '64px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #f4f4f5' }}
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=150&q=80';
-                        }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#18181b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {it.name}
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#71717a', marginTop: '2px' }}>
-                          {it.isRental !== false ? 'Thuê' : 'Mua đứt'} · Size: {it.size || 'M'} · SL: {it.quantity || 1}
-                        </div>
-                        {it.isRental !== false && (
-                          <div style={{ fontSize: '11px', color: '#96723D', marginTop: '2px' }}>
-                            {it.duration || 3} ngày: {formatDate(it.startDate)} → {formatDate(it.endDate)}
-                          </div>
+                {/* Item rows */}
+                {rentalItems.map((item, idx) => {
+                  const isSelected = !unselectedIds.has(item.cartItemId);
+                  return (
+                    <div
+                      key={item.cartItemId || idx}
+                      style={{
+                        ...styles.itemRow,
+                        ...(idx === rentalItems.length - 1 ? { borderBottom: 'none' } : {}),
+                        background: isSelected ? '#FDFCFB' : 'transparent',
+                        opacity: isSelected ? 1 : 0.45,
+                      }}
+                      onClick={() => toggleItem(item.cartItemId)}
+                    >
+                      {/* Checkbox */}
+                      <div style={{ flexShrink: 0 }}>
+                        {isSelected ? (
+                          <CheckSquare size={18} color="#C5A880" />
+                        ) : (
+                          <Square size={18} color="#A1A1AA" />
                         )}
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#18181b' }}>
-                          {formatVND((it.price || 0) * (it.quantity || 1))}
+
+                      {/* Thumbnail */}
+                      {item.thumbnailImage ? (
+                        <img src={item.thumbnailImage} alt={item.name} style={styles.itemImage} />
+                      ) : (
+                        <div
+                          style={{
+                            ...styles.itemImage,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Package size={24} color="#D4D4D8" />
                         </div>
-                        {it.deposit > 0 && (
-                          <div style={{ fontSize: '11px', color: '#16a34a' }}>
-                            Cọc: {formatVND((it.deposit || 0) * (it.quantity || 1))}
+                      )}
+
+                      {/* Details */}
+                      <div style={styles.itemDetails}>
+                        <p style={styles.itemName}>{item.name}</p>
+                        <span style={styles.itemMeta}>
+                          {[item.size, item.color].filter(Boolean).join(' / ')}
+                          {item.quantity > 1 ? ` — SL: ${item.quantity}` : ''}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11.5,
+                            color: '#52525B',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            marginTop: 2,
+                          }}
+                        >
+                          <Calendar size={12} />
+                          {item.startDate
+                            ? new Date(item.startDate).toLocaleDateString('vi-VN')
+                            : '—'}{' '}
+                          →{' '}
+                          {item.dueDate
+                            ? new Date(item.dueDate).toLocaleDateString('vi-VN')
+                            : '—'}
+                          {item.rentalDays ? ` (${item.rentalDays} ngày)` : ''}
+                        </span>
+                      </div>
+
+                      {/* Price */}
+                      <div style={styles.itemPrice}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b' }}>
+                          {formatCurrencyVND(item.lineRentalFee || 0)}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#71717A' }}>
+                          {formatCurrencyVND(item.rentalPricePerDay || 0)}/ngày
+                        </div>
+                        {(item.lineDeposit || item.depositAmount) ? (
+                          <div style={{ fontSize: 11, color: '#96723D', fontWeight: 600, marginTop: 2 }}>
+                            Cọc: {formatCurrencyVND(item.lineDeposit || item.depositAmount || 0)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* No item selected warning */}
+                {!hasSelectedItems && (
+                  <div style={styles.noSelectionBanner}>
+                    <AlertTriangle size={16} style={{ flexShrink: 0, color: '#EA580C' }} />
+                    <span>Vui lòng chọn ít nhất một sản phẩm để tiến hành đặt thuê.</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Shipping Address Form */}
+          <div style={styles.card}>
+            <h3 style={styles.sectionTitle}>
+              <MapPin size={18} style={{ color: '#C5A880' }} />
+              Địa chỉ nhận trang phục
+            </h3>
+            <p style={{ fontSize: 13, color: '#71717A', margin: '-8px 0 16px 0' }}>
+              Vestora sẽ giao trang phục đến tận nơi theo địa chỉ này trước ngày bắt đầu thuê.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={styles.label}>Họ và tên người nhận *</label>
+                  <input
+                    type="text"
+                    required
+                    value={shippingAddress.receiverName}
+                    onChange={(e) => handleAddressChange('receiverName', e.target.value)}
+                    placeholder="Ví dụ: Nguyễn Văn A"
+                    style={styles.input}
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>Số điện thoại liên hệ *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={shippingAddress.phone}
+                    onChange={(e) => handleAddressChange('phone', e.target.value)}
+                    placeholder="Ví dụ: 0912 345 678"
+                    style={styles.input}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={styles.label}>Tỉnh / Thành phố *</label>
+                  <input
+                    type="text"
+                    required
+                    value={shippingAddress.city}
+                    onChange={(e) => handleAddressChange('city', e.target.value)}
+                    placeholder="TP. Hồ Chí Minh"
+                    style={styles.input}
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>Quận / Huyện</label>
+                  <input
+                    type="text"
+                    value={shippingAddress.district}
+                    onChange={(e) => handleAddressChange('district', e.target.value)}
+                    placeholder="Quận 1"
+                    style={styles.input}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={styles.label}>Địa chỉ đường / số nhà cụ thể *</label>
+                <input
+                  type="text"
+                  required
+                  value={shippingAddress.street}
+                  onChange={(e) => handleAddressChange('street', e.target.value)}
+                  placeholder="Số 72 Lê Thánh Tôn, Phường Bến Nghé"
+                  style={styles.input}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div style={styles.stickyCard}>
+            <h3 style={styles.sectionTitle}>Thông tin đặt thuê</h3>
+
+            {/* Branch info */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={styles.label}>
+                <MapPin size={14} style={{ color: '#C5A880' }} />
+                Chi nhánh nhận đồ
+              </label>
+              {resolvingBranches ? (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: '#71717A',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 0',
+                  }}
+                >
+                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>Đang xác định chi nhánh gần bạn nhất...</span>
+                </div>
+              ) : !hasSelectedItems ? (
+                <div style={{ fontSize: 13, color: '#A1A1AA', padding: '6px 0' }}>
+                  Chưa chọn sản phẩm
+                </div>
+              ) : branchesInCart.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#DC2626', padding: '6px 0' }}>
+                  Không xác định được chi nhánh. Vui lòng thử lại sau giây lát.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {branchesInCart.map((branch, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: '#F8F7F4',
+                        border: '1px solid #E5E0D8',
+                        borderRadius: 10,
+                        padding: '10px 14px',
+                        fontSize: 13,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                      }}
+                    >
+                      <MapPin size={15} style={{ color: '#C5A880', flexShrink: 0, marginTop: 1 }} />
+                      <div>
+                        <div style={{ fontWeight: 600, color: '#171717' }}>
+                          {branch.name || 'Chi nhánh Vestora'}
+                        </div>
+                        {branch.address && (
+                          <div style={{ fontSize: 12, color: '#71717A', marginTop: 2 }}>
+                            {branch.address}
                           </div>
                         )}
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
 
-                {/* Calculation Rows */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px solid #f4f4f5', paddingTop: '16px', marginBottom: '18px' }}>
-                  {summary.rentalTotal > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', color: '#71717a' }}>
-                      <span>Tiền thuê trang phục:</span>
-                      <span style={{ fontWeight: 600, color: '#18181b' }}>{formatVND(summary.rentalTotal)}</span>
-                    </div>
-                  )}
+            {/* Note */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={styles.label}>
+                <FileText size={14} style={{ color: '#C5A880' }} />
+                Ghi chú (tuỳ chọn)
+              </label>
+              <textarea
+                style={styles.textarea}
+                placeholder="Ghi chú thêm cho đơn thuê..."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={500}
+              />
+            </div>
 
-                  {summary.saleTotal > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', color: '#71717a' }}>
-                      <span>Tiền mua trang phục:</span>
-                      <span style={{ fontWeight: 600, color: '#18181b' }}>{formatVND(summary.saleTotal)}</span>
-                    </div>
-                  )}
-
-                  {summary.depositTotal > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', color: '#16a34a' }}>
-                      <span>Tiền cọc hoàn trả:</span>
-                      <span style={{ fontWeight: 600 }}>{formatVND(summary.depositTotal)}</span>
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', color: '#71717a' }}>
-                    <span>Phí giao hàng:</span>
-                    <span style={{ fontWeight: 600, color: '#16a34a' }}>Miễn phí</span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', color: '#71717a' }}>
-                    <span>Phí dịch vụ:</span>
-                    <span style={{ fontWeight: 600, color: '#18181b' }}>{formatVND(summary.serviceFee)}</span>
-                  </div>
-                </div>
-
-                {/* Total */}
-                <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: '16px', marginBottom: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <span style={{ fontSize: '14.5px', fontWeight: 600, color: '#18181b' }}>Tổng thanh toán:</span>
-                    <span style={{ fontSize: '22px', fontWeight: 800, color: '#96723D' }}>{formatVND(summary.finalTotal)}</span>
-                  </div>
-                  {summary.depositTotal > 0 && (
-                    <div style={{ fontSize: '12px', color: '#16a34a', marginTop: '4px' }}>
-                      + Cọc giữ qua ví: {formatVND(summary.depositTotal)} (hoàn trả 100% khi trả đồ)
-                    </div>
-                  )}
-                </div>
-
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  style={{
-                    width: '100%',
-                    padding: '14px',
-                    backgroundColor: '#18181b',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '10px',
-                    fontSize: '15px',
-                    fontWeight: 700,
-                    cursor: submitting ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    transition: 'all 0.2s',
-                    opacity: submitting ? 0.75 : 1,
-                  }}
-                >
-                  <Lock size={16} />
-                  <span>{submitting ? 'Đang tạo đơn hàng...' : 'Xác Nhận Đặt Hàng'}</span>
-                </button>
-
-                <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', color: '#71717a' }}>
-                  <ShieldCheck size={14} style={{ color: '#059669' }} />
-                  <span>Bảo mật 100% · Ví điện tử & COD tiện lợi</span>
-                </div>
+            {/* Payment Method */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={styles.label}>
+                <Wallet size={14} style={{ color: '#C5A880' }} />
+                Phương thức thanh toán
+              </label>
+              <div style={styles.paymentBadge}>
+                <Wallet size={16} />
+                Ví Vestora
               </div>
             </div>
-          </form>
-        )}
-      </main>
+
+            {/* Divider */}
+            <div style={{ borderTop: '1px solid #E5E0D8', margin: '0 0 16px 0' }} />
+
+            {/* Price Summary */}
+            <div style={styles.summaryRow}>
+              <span>
+                Phí thuê trang phục
+                {selectedCount < rentalItems.length && rentalItems.length > 0 && (
+                  <span style={{ fontSize: 11, color: '#A1A1AA', marginLeft: 4 }}>
+                    ({selectedCount} sản phẩm)
+                  </span>
+                )}
+              </span>
+              <strong style={{ color: '#18181b' }}>{formatCurrencyVND(rentalFeeSubtotal)}</strong>
+            </div>
+            <div style={styles.summaryRow}>
+              <span>Tiền cọc bảo đảm</span>
+              <strong style={{ color: '#96723D' }}>{formatCurrencyVND(depositSubtotal)}</strong>
+            </div>
+            <div style={styles.summaryTotal}>
+              <span style={styles.totalLabel}>Tổng thanh toán</span>
+              <span style={styles.totalAmount}>{formatCurrencyVND(rentalTotal)}</span>
+            </div>
+
+            {/* Validation Error */}
+            {validationError && (
+              <div style={styles.errorBox}>
+                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1, color: '#DC2626' }} />
+                <span>{validationError}</span>
+              </div>
+            )}
+
+            {/* Submit Error */}
+            {submitError && (
+              <div style={styles.errorBox}>
+                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1, color: '#DC2626' }} />
+                <span>{submitError}</span>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="button"
+              style={{
+                ...styles.submitButton,
+                ...(isSubmitDisabled ? styles.submitButtonDisabled : {}),
+              }}
+              disabled={isSubmitDisabled}
+              onClick={handleSubmit}
+              aria-label="Xác nhận đặt thuê"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>Đang xử lý...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={18} />
+                  <span>
+                    Xác nhận đặt thuê
+                    {hasSelectedItems && selectedCount < rentalItems.length
+                      ? ` (${selectedCount})`
+                      : ''}
+                  </span>
+                </>
+              )}
+            </button>
+
+            {/* Trust line */}
+            <div style={styles.trustLine}>
+              <ShieldCheck size={14} color="#C5A880" />
+              <span>Giao dịch bảo mật qua Ví Vestora</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Success Modal */}
+      {successModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(23, 23, 23, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 16,
+              border: '1px solid #E5E0D8',
+              padding: '36px 32px',
+              maxWidth: 480,
+              width: '100%',
+              textAlign: 'center',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.18)',
+            }}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                background: '#FDF8F0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 20px auto',
+              }}
+            >
+              <CheckCircle2 size={36} color="#C5A880" />
+            </div>
+
+            <h3
+              style={{
+                fontFamily: "'Newsreader', 'Playfair Display', Georgia, serif",
+                fontSize: 24,
+                fontWeight: 600,
+                color: '#171717',
+                margin: '0 0 10px 0',
+              }}
+            >
+              Đặt Thuê Thành Công
+            </h3>
+
+            <p
+              style={{
+                fontSize: 14,
+                color: '#57534E',
+                lineHeight: 1.6,
+                margin: '0 0 24px 0',
+              }}
+            >
+              Đơn thuê trang phục Haute Couture của quý khách đã được tạo và lưu vào hệ thống.
+              Tiền thuê và tiền cọc tương ứng đã được xử lý qua Ví Vestora.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => navigate('/rental-orders', { state: { newOrderId: confirmedOrderId } })}
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  background: '#171717',
+                  color: '#F8F7F4',
+                  border: 'none',
+                  borderRadius: 10,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#C5A880'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#171717'; }}
+              >
+                Xem Lịch Sử Đơn Thuê
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate('/catalog')}
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  background: 'transparent',
+                  color: '#57534E',
+                  border: '1px solid #E5E0D8',
+                  borderRadius: 10,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#171717';
+                  e.currentTarget.style.color = '#171717';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#E5E0D8';
+                  e.currentTarget.style.color = '#57534E';
+                }}
+              >
+                Tiếp Tục Khám Phá Bộ Sưu Tập
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

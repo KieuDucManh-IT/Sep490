@@ -16,6 +16,12 @@ import shipmentRoutes from './shipmentRoutes.js';
 import { trackPublicShipmentHandler } from '../controllers/shipping/publicShippingController.js';
 import rateLimit from 'express-rate-limit';
 
+import rentalOrderRoutes from './rentalOrderRoutes.js';
+import rentalReturnRoutes from './rentalReturnRoutes.js';
+import rentalDisputeRoutes from './rentalDisputeRoutes.js';
+import salesOrderRoutes from './salesOrderRoutes.js';
+const router = express.Router();
+
 const publicTrackingLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 phút
   max: 60, // Tối đa 60 lượt tra cứu / IP / 15 phút
@@ -26,8 +32,6 @@ const publicTrackingLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
-const router = express.Router();
 
 router.get('/health', (req, res) => {
   res.json({
@@ -54,4 +58,8 @@ router.use('/warehouse/transfers', warehouseTransferRoutes);
 router.use('/orders', orderRoutes);
 router.use('/shipping', shipmentRoutes);
 router.get('/public/shipping/track/:trackingCode', publicTrackingLimiter, trackPublicShipmentHandler);
+router.use('/rental-orders', rentalOrderRoutes);
+router.use('/rental-returns', rentalReturnRoutes);
+router.use('/rental-disputes', rentalDisputeRoutes);
+router.use('/sales-orders', salesOrderRoutes);
 export default router;

@@ -70,10 +70,12 @@ export default function CatalogPage() {
   const [selectedConditions, setSelectedConditions] = useState([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
 
   // Backend Data States
   const [products, setProducts] = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1, limit: 12 });
+  const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1, limit: 8 });
   const [filterMeta, setFilterMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -128,7 +130,7 @@ export default function CatalogPage() {
     try {
       const params = {
         page: currentPage,
-        limit: 12,
+        limit: 8,
         sort: sortOption,
       };
 
@@ -151,10 +153,10 @@ export default function CatalogPage() {
         }
       } else if (Array.isArray(res)) {
         list = res;
-        setPagination({ total: res.length, page: 1, totalPages: 1, limit: 12 });
+        setPagination({ total: res.length, page: 1, totalPages: 1, limit: 8 });
       } else {
         setProducts([]);
-        setPagination({ total: 0, page: 1, totalPages: 1, limit: 12 });
+        setPagination({ total: 0, page: 1, totalPages: 1, limit: 8 });
         return;
       }
 
@@ -178,7 +180,7 @@ export default function CatalogPage() {
       console.error('Lỗi khi gọi API /api/products:', err);
       setErrorMsg(err.message || 'Không thể kết nối đến máy chủ backend.');
       setProducts([]);
-      setPagination({ total: 0, page: 1, totalPages: 1, limit: 12 });
+      setPagination({ total: 0, page: 1, totalPages: 1, limit: 8 });
     } finally {
       setLoading(false);
     }
@@ -264,7 +266,7 @@ export default function CatalogPage() {
     return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
   };
 
-  // Categories dynamically loaded from backend
+  // Danh mục tải từ backend (giữ nguyên thứ tự gốc, không đảo vị trí khi tick)
   const categoryItems = useMemo(() => {
     if (filterMeta?.categories && Array.isArray(filterMeta.categories)) {
       return filterMeta.categories
@@ -272,11 +274,25 @@ export default function CatalogPage() {
         .map((c) => ({
           _id: c._id,
           name: c.name,
-          count: c.count ?? (filterMeta.categoryCounts?.[c.name] ?? 0),
         }));
     }
     return [];
   }, [filterMeta]);
+
+  // Lọc theo từ khóa tìm kiếm nhanh danh mục
+  const filteredCategoryItems = useMemo(() => {
+    if (!categorySearchQuery.trim()) return categoryItems;
+    const q = categorySearchQuery.trim().toLowerCase();
+    return categoryItems.filter((c) => c.name.toLowerCase().includes(q));
+  }, [categoryItems, categorySearchQuery]);
+
+  // Giới hạn hiển thị: mặc định 6 mục gọn gàng, mở rộng khi bấm "Xem thêm" hoặc khi tìm kiếm
+  const visibleCategories = useMemo(() => {
+    if (showAllCategories || categorySearchQuery.trim()) {
+      return filteredCategoryItems;
+    }
+    return filteredCategoryItems.slice(0, 6);
+  }, [filteredCategoryItems, showAllCategories, categorySearchQuery]);
 
   // Sizes with real counts from backend
   const sizeItems = useMemo(() => {
@@ -569,26 +585,95 @@ export default function CatalogPage() {
 
               {/* Category Filter from Backend */}
               <div className="catalog-filter-group">
-                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Sparkles size={14} />
-                  Danh mục
+                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Sparkles size={14} color="#C5A880" />
+                    <span>Danh mục</span>
+                    {selectedCategories.length > 0 && (
+                      <span className="catalog-category-badge">{selectedCategories.length}</span>
+                    )}
+                  </div>
+                  {selectedCategories.length > 0 && (
+                    <button
+                      type="button"
+                      className="catalog-category-clear-btn"
+                      onClick={() => {
+                        setSelectedCategories([]);
+                        setCurrentPage(1);
+                      }}
+                    >
+                      Bỏ chọn
+                    </button>
+                  )}
                 </div>
-                <div className="catalog-checkbox-list">
-                  {categoryItems.map((cat) => (
-                    <label key={cat.name} className="catalog-checkbox-label">
-                      <div className="catalog-checkbox-left">
-                        <input
-                          type="checkbox"
-                          className="catalog-checkbox-input"
-                          checked={selectedCategories.includes(cat.name)}
-                          onChange={() => toggleCategory(cat.name)}
-                        />
-                        <span>{cat.name}</span>
-                      </div>
-                      <span className="catalog-checkbox-count">{cat.count}</span>
-                    </label>
-                  ))}
+
+                {/* Tìm kiếm nhanh danh mục */}
+                {categoryItems.length > 6 && (
+                  <div className="catalog-category-search-box">
+                    <Search size={12} className="catalog-category-search-icon" />
+                    <input
+                      type="text"
+                      className="catalog-category-search-input"
+                      placeholder="Tìm nhanh danh mục..."
+                      value={categorySearchQuery}
+                      onChange={(e) => setCategorySearchQuery(e.target.value)}
+                    />
+                    {categorySearchQuery && (
+                      <button
+                        type="button"
+                        className="catalog-category-search-clear"
+                        onClick={() => setCategorySearchQuery('')}
+                        aria-label="Xóa tìm kiếm danh mục"
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Danh sách danh mục gọn gàng (cuộn mượt max-height khi mở rộng) */}
+                <div className={`catalog-checkbox-list ${showAllCategories || categorySearchQuery.trim() ? 'catalog-checkbox-scrollable' : ''}`}>
+                  {visibleCategories.length > 0 ? (
+                    visibleCategories.map((cat) => (
+                      <label key={cat.name} className="catalog-checkbox-label">
+                        <div className="catalog-checkbox-left">
+                          <input
+                            type="checkbox"
+                            className="catalog-checkbox-input"
+                            checked={selectedCategories.includes(cat.name)}
+                            onChange={() => toggleCategory(cat.name)}
+                          />
+                          <span className={selectedCategories.includes(cat.name) ? 'catalog-checkbox-text-active' : ''}>
+                            {cat.name}
+                          </span>
+                        </div>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="catalog-category-no-result">Không tìm thấy danh mục phù hợp</div>
+                  )}
                 </div>
+
+                {/* Nút Xem thêm / Thu gọn */}
+                {categoryItems.length > 6 && !categorySearchQuery.trim() && (
+                  <button
+                    type="button"
+                    className="catalog-category-toggle-btn"
+                    onClick={() => setShowAllCategories(!showAllCategories)}
+                  >
+                    {showAllCategories ? (
+                      <>
+                        <span>Thu gọn</span>
+                        <ChevronUp size={13} />
+                      </>
+                    ) : (
+                      <>
+                        <span>Xem thêm ({categoryItems.length - 6} danh mục)</span>
+                        <ChevronDown size={13} />
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Price Filter */}
@@ -631,29 +716,6 @@ export default function CatalogPage() {
                 />
               </div>
 
-              {/* Size Filter */}
-              <div className="catalog-filter-group">
-                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Ruler size={14} />
-                  Kích cỡ
-                </div>
-                <div className="catalog-checkbox-list">
-                  {sizeItems.map((sz) => (
-                    <label key={sz.name} className="catalog-checkbox-label">
-                      <div className="catalog-checkbox-left">
-                        <input
-                          type="checkbox"
-                          className="catalog-checkbox-input"
-                          checked={selectedSizes.includes(sz.name)}
-                          onChange={() => toggleSize(sz.name)}
-                        />
-                        <span>{sz.name}</span>
-                      </div>
-                      <span className="catalog-checkbox-count">{sz.count}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
 
               {/* Color Filter */}
               <div className="catalog-filter-group">
@@ -685,51 +747,8 @@ export default function CatalogPage() {
                 </div>
               </div>
 
-              {/* Condition Filter */}
-              <div className="catalog-filter-group">
-                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Award size={14} />
-                  Tình trạng (đồ cũ)
-                </div>
-                <div className="catalog-checkbox-list">
-                  {conditionItems.map((cond) => (
-                    <label key={cond.key} className="catalog-checkbox-label">
-                      <div className="catalog-checkbox-left">
-                        <input
-                          type="checkbox"
-                          className="catalog-checkbox-input"
-                          checked={selectedConditions.includes(cond.key)}
-                          onChange={() => toggleCondition(cond.key)}
-                        />
-                        <span>{cond.label}</span>
-                      </div>
-                      <span className="catalog-checkbox-count">{cond.count}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
 
-              {/* Promo Card: Thử đồ AI */}
-              <div className="catalog-promo-card">
-                <div className="catalog-promo-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Sparkles size={12} />
-                  <span>Thử đồ AI</span>
-                </div>
-                <p className="catalog-promo-text">
-                  Khám phá phiên bản tốt nhất của bạn chỉ với 1 bức ảnh!
-                </p>
-                <Link to="/try-on-photo" className="catalog-promo-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span>Thử đồ ngay</span> <ArrowRight size={13} />
-                </Link>
-                <img
-                  src="/assets/hero_model.jpg"
-                  alt="Thử đồ AI"
-                  className="catalog-promo-model"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                  }}
-                />
-              </div>
+
 
               {/* Reset Filter Button */}
               <button className="catalog-clear-btn" onClick={resetFilters} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
@@ -977,18 +996,39 @@ export default function CatalogPage() {
                 <ChevronLeft size={16} />
               </button>
 
-              {Array.from({ length: pagination.totalPages }).map((_, idx) => {
-                const pageNum = idx + 1;
-                return (
-                  <button
-                    key={pageNum}
-                    className={`catalog-page-btn ${currentPage === pageNum ? 'active' : ''}`}
-                    onClick={() => setCurrentPage(pageNum)}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
+              {(() => {
+                const totalP = pagination.totalPages;
+                let pages = [];
+                if (totalP <= 7) {
+                  pages = Array.from({ length: totalP }, (_, i) => i + 1);
+                } else {
+                  if (currentPage <= 4) {
+                    pages = [1, 2, 3, 4, 5, '...', totalP];
+                  } else if (currentPage >= totalP - 3) {
+                    pages = [1, '...', totalP - 4, totalP - 3, totalP - 2, totalP - 1, totalP];
+                  } else {
+                    pages = [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalP];
+                  }
+                }
+                return pages.map((item, idx) => {
+                  if (item === '...') {
+                    return (
+                      <span key={`dots-${idx}`} className="catalog-pagination-dots" style={{ padding: '0 6px', color: '#9ca3af', userSelect: 'none' }}>
+                        ...
+                      </span>
+                    );
+                  }
+                  return (
+                    <button
+                      key={item}
+                      className={`catalog-page-btn ${currentPage === item ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(item)}
+                    >
+                      {item}
+                    </button>
+                  );
+                });
+              })()}
 
               <button
                 className="catalog-page-btn"

@@ -26,7 +26,7 @@ export const getProducts = async (req, res, next) => {
       aiTryOn,
       sort = 'newest',
       page = 1,
-      limit = 12,
+      limit = 8,
     } = req.query;
 
     const query = {
@@ -185,7 +185,7 @@ export const getProducts = async (req, res, next) => {
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit, 10) || 12);
+    const limitNum = Math.max(1, parseInt(limit, 10) || 8);
     const skip = (pageNum - 1) * limitNum;
 
     let products = [];
@@ -362,7 +362,7 @@ export const getProducts = async (req, res, next) => {
         total: 0,
         page: 1,
         totalPages: 1,
-        limit: 12,
+        limit: 8,
       },
     });
   }

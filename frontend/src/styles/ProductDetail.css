@@ -6,9 +6,15 @@
 .product-detail-page-container {
   background-color: #ffffff;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: #27272a;
-  padding-bottom: 72px;
+  padding-bottom: 0;
+}
+
+.product-detail-page-container .vestora-footer {
+  margin-top: auto;
 }
 
 /* ============================================

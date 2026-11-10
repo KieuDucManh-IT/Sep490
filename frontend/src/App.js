@@ -16,7 +16,6 @@ import ProductDetailPage from './pages/customer/ProductDetailPage';
 import CartPage from './pages/customer/CartPage';
 import CheckoutPage from './pages/customer/CheckoutPage';
 import SaleCheckoutPage from './pages/customer/SaleCheckoutPage';
-import FavoritesPage from './pages/customer/FavoritesPage';
 import ShopMapPage from './pages/customer/ShopMapPage';
 import UserProfilePage from './pages/customer/UserProfilePage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
@@ -30,6 +29,9 @@ import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
 import ChatPage from './pages/customer/ChatPage';
 import BranchChatPage from './pages/branch/BranchChatPage';
+import CustomerOrderTrackingPage from './pages/customer/CustomerOrderTrackingPage';
+import SharedLookbookPage from './pages/customer/SharedLookbookPage';
+import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
 
 // 3. Role Branch Manager (UC-43..UC-52)
 import BranchDashboardPage from './pages/branch/BranchDashboardPage';
@@ -66,6 +68,8 @@ import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
 import OwnerBranchesListPage from './pages/owner/OwnerBranchesListPage';
 import OwnerPoliciesPage from './pages/owner/OwnerPoliciesPage';
+import OwnerRentalOrdersPage from './pages/owner/OwnerRentalOrdersPage';
+import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
@@ -108,6 +112,7 @@ function App() {
         <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
         <Route path="/stylist" element={<StylistPage />} />
+        <Route path="/lookbook/:shareCode" element={<SharedLookbookPage />} />
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -116,6 +121,10 @@ function App() {
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
         <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+        <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
+        <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
+        <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
+        <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)
@@ -366,6 +375,22 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <OwnerPoliciesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/rental-orders"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerRentalOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/sale-orders"
+          element={
+            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <OwnerSaleOrdersPage />
             </ProtectedRoute>
           }
         />

@@ -1,6 +1,7 @@
 module.exports = {
   testEnvironment: 'jsdom',
-  roots: ['<rootDir>/../tests/frontend'],
+  roots: ['<rootDir>/src'],
+  passWithNoTests: true,
   moduleDirectories: ['<rootDir>/node_modules', 'node_modules', '<rootDir>/src'],
   moduleNameMapper: {
     '\\.(css|less|sass|scss)$': 'identity-obj-proxy',

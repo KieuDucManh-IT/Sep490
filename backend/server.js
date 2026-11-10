@@ -28,6 +28,9 @@ import walletRoutes, {
 import {
   payosWebhook,
 } from "./src/controllers/walletController.js";
+import {
+  ghnWebhookHandler,
+} from "./src/controllers/shipping/shipmentController.js";
 
 import { Wallet } from "./src/models/finance/Wallet.js";
 import {
@@ -41,6 +44,10 @@ import {
 import {
   startWalletReconcileJob,
 } from "./src/jobs/walletReconcileJob.js";
+
+import {
+  startShipmentSyncJob,
+} from "./src/services/shipping/shipmentSyncService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,9 +94,12 @@ app.post(
   "/api/webhooks/payos",
   asyncRoute(payosWebhook)
 );
+app.post(
+  "/api/webhooks/ghn",
+  asyncRoute(ghnWebhookHandler)
+);
 
 app.use("/api/wallet", walletRoutes);
-
 app.use("/api/auth", authRoutes);
 app.use("/api/shops", shopRoutes);
 app.use("/api/admin/shops", shopRoutes);
@@ -153,6 +163,7 @@ async function startServer() {
     await WalletTransaction.init();
 
     startWalletReconcileJob();
+    startShipmentSyncJob();
 
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);

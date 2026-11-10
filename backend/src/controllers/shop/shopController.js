@@ -23,7 +23,6 @@ import {
 
 import { resolveReverseGeocode } from '../../services/shop/geoService.js';
 import { processAndUploadShopMedia } from '../../services/shop/shopMediaService.js';
-import { getBranchPerformanceReportData } from '../../services/shop/branchReportService.js';
 
 /**
  * Lấy danh sách hồ sơ chi nhánh có phân trang, bộ lọc và tìm kiếm
@@ -384,50 +383,3 @@ export const uploadShopImage = async (req, res, next) => {
     next(error);
   }
 };
-
-/**
- * Báo cáo hiệu suất và vận hành chi nhánh (DÀNH RIÊNG CHO BRANCH MANAGER & ADMIN)
- * GET /api/shops/reports/branch-performance
- */
-export const getBranchPerformanceReport = async (req, res) => {
-  try {
-    const userId = req.user?._id;
-    const rawRole = req.user?.Role || req.user?.role || '';
-    const normalizedRole = String(rawRole).trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
-    const branchId = req.query.branchId;
-
-    // Yêu cầu nghiệp vụ: Tính năng này dành riêng cho Branch Manager (và Admin hệ thống)
-    if (normalizedRole !== 'branchmanager' && normalizedRole !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Quyền truy cập bị từ chối: Báo cáo hiệu suất chi nhánh chỉ dành riêng cho Quản lý chi nhánh (Branch Manager).',
-      });
-    }
-
-    const assigned = await resolveAssignedBranchForUser({
-      userId,
-      userRole: String(rawRole).toLowerCase(),
-      branchId,
-    });
-    const targetBranchId = assigned?.shop?._id ? String(assigned.shop._id) : (branchId || null);
-
-    const data = await getBranchPerformanceReportData({
-      branchId: targetBranchId,
-      timeRange: req.query.timeRange || 'MONTH',
-      startDate: req.query.startDate,
-      endDate: req.query.endDate,
-    });
-
-    return res.json({
-      success: true,
-      data,
-    });
-  } catch (error) {
-    const status = error.statusCode || 500;
-    return res.status(status).json({
-      success: false,
-      message: error.message || 'Lỗi khi lấy dữ liệu báo cáo hiệu suất chi nhánh.',
-    });
-  }
-};
-

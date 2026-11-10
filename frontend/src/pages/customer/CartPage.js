@@ -11,7 +11,7 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, Trash2, Sparkles, ArrowLeft, Calendar, Package } from 'lucide-react';
+import { ShoppingBag, Trash2, Sparkles, ArrowLeft, Calendar } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import { useCartStore } from '../../stores/useCartStore';

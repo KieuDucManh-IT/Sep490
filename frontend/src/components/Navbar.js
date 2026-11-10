@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Package,
   LogOut,
-  RefreshCw,
   ClipboardList,
   Wallet,
 } from "lucide-react";
@@ -40,7 +39,10 @@ export default function Navbar() {
     useWishlistStore.getState().fetchWishlist();
   }, []);
 
-  const isActive = (path) => (location.pathname === path ? "active" : "");
+  const isActive = (path) => {
+    if (path === '/') return location.pathname === '/' ? 'active' : '';
+    return location.pathname.startsWith(path) ? 'active' : '';
+  };
   const avatarUrl = user?.avatar || "";
   const displayName = user?.fullName || "";
   const avatarInitial = displayName ? displayName.trim().charAt(0).toUpperCase() : "N";
@@ -209,13 +211,14 @@ export default function Navbar() {
           {/* Favorites / Wardrobe Icon with reactive badge */}
           <Link
             to="/wardrobe"
-            className={`navbar-icon-btn navbar-fav-btn ${isActive('/wardrobe') || isActive('/favorites') ? 'active' : ''}`}
+            className={`navbar-icon-btn navbar-fav-btn navbar-wishlist-btn ${isActive('/wardrobe') || isActive('/favorites') ? 'active' : ''}`}
             title="Tủ đồ & Yêu thích"
             aria-label="Tủ đồ & Yêu thích"
+            data-testid="navbar-wishlist-btn"
           >
             <Heart size={18} />
             {wishlistCount > 0 && (
-              <span className="cart-badge-count">
+              <span className="cart-badge-count" data-testid="navbar-wishlist-count">
                 {wishlistCount}
               </span>
             )}
@@ -249,11 +252,12 @@ export default function Navbar() {
             className={`navbar-icon-btn navbar-cart-btn ${isActive('/cart') ? 'active' : ''}`}
             title="Giỏ hàng"
             aria-label="Giỏ hàng"
+            data-testid="navbar-cart-btn"
             onClick={openCart}
           >
             <ShoppingBag size={18} />
             {totalItemCount > 0 && (
-              <span className="cart-badge-count">
+              <span className="cart-badge-count" data-testid="navbar-cart-count">
                 {totalItemCount}
               </span>
             )}

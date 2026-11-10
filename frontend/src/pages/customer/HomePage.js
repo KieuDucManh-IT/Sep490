@@ -703,7 +703,12 @@ export default function HomePage() {
         <section className="dual-split-section">
           {/* Left Column: Tìm Showroom Gần Bạn */}
           <div className="dual-column-box showroom-column">
-            <div className="column-head">
+            <div
+              className="column-head"
+              onClick={() => navigate('/map')}
+              style={{ cursor: 'pointer' }}
+              title="Khám phá bản đồ showroom VESTORA"
+            >
               <h3 className="column-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <MapPin size={18} color="#C5A880" className="column-icon" /> Tìm showroom gần bạn
               </h3>
@@ -718,7 +723,7 @@ export default function HomePage() {
                 className="interactive-map-card"
                 onClick={() => navigate('/map')}
                 style={{ cursor: 'pointer' }}
-                title="Nhấn để mở bản đồ chi tiết"
+                title="Bấm để mở bản đồ showroom chi tiết"
               >
                 <div className="map-artistic-canvas">
                   <div className="map-river"></div>

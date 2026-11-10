@@ -1,19 +1,54 @@
 import mongoose from 'mongoose';
 
+const statusHistorySchema = new mongoose.Schema({
+  status: { type: String, required: true }, // preparing, shipped, delivered, failed, cancelled
+  ghnStatus: { type: String, trim: true },  // raw status code from GHN
+  description: { type: String, trim: true },
+  location: { type: String, trim: true },
+  timestamp: { type: Date, default: Date.now },
+}, { _id: false });
+
+const addressInfoSchema = new mongoose.Schema({
+  name: { type: String, trim: true },
+  phone: { type: String, trim: true },
+  address: { type: String, trim: true },
+  latitude: { type: Number, default: null },
+  longitude: { type: Number, default: null },
+  provinceId: { type: Number },
+  wardCode: { type: String, trim: true },
+}, { _id: false });
+
 const orderShipmentSchema = new mongoose.Schema({
-  shipmentCode: { type: String, required: true, unique: true, trim: true },
+  trackingCode: { type: String, trim: true, unique: true, sparse: true }, 
+  shipmentCode: { type: String, trim: true, index: true },
+  orderCode: { type: String, trim: true, index: true }, // Mã đơn của sàn tham chiếu song hành với mã GHN
   orderType: { type: String, required: true, enum: ['sale', 'rental'] },
   orderId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  fromLocationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', required: true },
-  toLocationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', default: null },
+  fromShopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', default: null }, 
+  fromLocationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', default: null },
   deliveryAddress: { type: String, trim: true },
-  deliveryMethod: { type: String, required: true, enum: ['pickup', 'internal', 'carrier'] },
-  carrierName: { type: String, trim: true },
-  trackingCode: { type: String, trim: true },
+  deliveryMethod: { type: String, enum: ['pickup', 'internal', 'carrier', 'delivery'], default: 'delivery' },
+  carrierName: { type: String, trim: true, default: 'Giao Hàng Nhanh' },
+  shipmentType: { type: String, enum: ['outbound', 'return'], default: 'outbound' },
   shipmentStatus: { type: String, default: 'preparing', enum: ['preparing', 'shipped', 'delivered', 'failed', 'cancelled'] },
+  shippingFee: { type: Number, min: 0, default: 0 },
+  codAmount: { type: Number, min: 0, default: 0 },
+  weight: { type: Number, min: 0, default: 500 }, // grams
+  length: { type: Number, min: 0, default: 30 },  // cm
+  width: { type: Number, min: 0, default: 20 },   // cm
+  height: { type: Number, min: 0, default: 10 },  // cm
+  expectedDeliveryTime: { type: Date, default: null },
+  senderInfo: { type: addressInfoSchema, default: null },
+  receiverInfo: { type: addressInfoSchema, default: null },
+  statusHistory: [statusHistorySchema],
+  lastSyncedAt: { type: Date, default: null },
+  cancellationReason: { type: String, trim: true },
+  note: { type: String, trim: true },
   shippedAt: { type: Date, default: null },
   deliveredAt: { type: Date, default: null },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
+
+orderShipmentSchema.index({ orderId: 1, orderType: 1 });
 
 export const OrderShipment = mongoose.models.OrderShipment || mongoose.model('OrderShipment', orderShipmentSchema);

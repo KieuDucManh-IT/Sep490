@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @ears .sdd/features/wishlist-collections/SPEC.md#REQ-UI-001
  * @ears .sdd/features/wishlist-collections/SPEC.md#REQ-UI-002
  * @ears .sdd/features/wishlist-collections/SPEC.md#REQ-UI-003

@@ -1,0 +1,738 @@
+/**
+ * OrderMonitoring.css - Vestora Atelier Design System
+ * Orders Monitoring Module (Shop Owner & Branch Manager)
+ * 100% Harmonized with ShopBranches.css & ShopDashboard.css
+ */
+
+/* ==========================================================================
+   1. Luxury Branch Dropdown (.order-branch-dropdown)
+   ========================================================================== */
+.order-branch-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.order-branch-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 14px;
+  height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1E293B;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 220px;
+  max-width: 340px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.order-branch-select-btn:hover {
+  border-color: #94A3B8;
+  background: #F8FAFC;
+}
+
+.order-branch-select-btn.active {
+  border-color: #B45309;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.12);
+  background: #FFFFFF;
+}
+
+.order-branch-btn-text {
+  font-weight: 600;
+  color: #0F172A;
+  max-width: 170px;
+}
+
+.order-branch-chevron {
+  color: #64748B;
+  flex-shrink: 0;
+}
+
+/* Dropdown Menu Popover */
+.order-branch-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 330px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  z-index: 1050;
+  overflow: hidden;
+  animation: branchDropdownFade 0.15s ease-out;
+}
+
+@keyframes branchDropdownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.order-branch-menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #F1F5F9;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.order-branch-menu-body {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.order-branch-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+  user-select: none;
+  gap: 8px;
+}
+
+.order-branch-menu-item:hover {
+  background-color: #F1F5F9;
+}
+
+.order-branch-menu-item.selected {
+  background-color: #EFF6FF;
+}
+
+.order-branch-item-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.order-branch-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #F1F5F9;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.order-branch-item-icon.hq {
+  background: #FEF3C7;
+  color: #B45309;
+}
+
+.order-branch-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0F172A;
+  white-space: nowrap;
+}
+
+.order-branch-item-desc {
+  font-size: 11.5px;
+  color: #64748B;
+  max-width: 210px;
+}
+
+.order-branch-code-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #F1F5F9;
+  color: #64748B;
+  font-family: monospace;
+}
+
+/* ==========================================================================
+   2. Golden Trụ Sở Chính Tag (.branch-tag-hq)
+   ========================================================================== */
+.branch-tag-hq {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+  white-space: nowrap;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.taskbar-branch-static-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+  height: 36px;
+}
+
+/* ==========================================================================
+   3. Taskbar Status Pills & Segments
+   ========================================================================== */
+.status-segment-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #E2E8F0;
+  color: #475569;
+  line-height: 1.2;
+}
+
+.taskbar-status-btn.active .status-segment-count {
+  background: #FEF3C7;
+  color: #B45309;
+}
+
+/* ==========================================================================
+   4. Orders Table Card & Layout
+   ========================================================================== */
+.order-table-card {
+  background: #FFFFFF;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.order-table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.order-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.order-table th {
+  padding: 14px 18px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+}
+
+.order-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+
+.order-table tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+.order-table tbody tr:hover {
+  background-color: #F8FAFC;
+}
+
+.order-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==========================================================================
+   5. Table Typography & Data Cells
+   ========================================================================== */
+.order-code-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0F172A;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.order-code-date {
+  font-size: 11px;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+.order-customer-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.order-customer-sub {
+  font-size: 11.5px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+.order-product-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.order-product-extra {
+  font-size: 11px;
+  font-weight: 700;
+  color: #B45309;
+  background: #FEF3C7;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.order-product-variant {
+  font-size: 11.5px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+.order-branch-col-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.order-period-text {
+  font-size: 12.5px;
+  color: #1E293B;
+  font-weight: 500;
+}
+
+.order-overdue-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #DC2626;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-top: 3px;
+}
+
+.order-fee-primary {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0F172A;
+  font-feature-settings: 'tnum';
+}
+
+.order-deposit-amount,
+.order-escrow-amount {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #B45309;
+  font-feature-settings: 'tnum';
+}
+
+/* Action button in table */
+.order-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.order-action-btn:hover {
+  background: #0F172A;
+  color: #FFFFFF;
+  border-color: #0F172A;
+}
+
+/* ==========================================================================
+   6. Status Badges & Pills
+   ========================================================================== */
+.order-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.order-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+.order-badge.draft {
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.order-badge.confirmed {
+  background: #FEF3C7;
+  color: #B45309;
+}
+
+.order-badge.renting {
+  background: #EFF6FF;
+  color: #1D4ED8;
+}
+
+.order-badge.processing {
+  background: #EDE9FE;
+  color: #6D28D9;
+}
+
+.order-badge.completed,
+.order-badge.returned {
+  background: #F0FDF4;
+  color: #15803D;
+}
+
+.order-badge.partially_returned {
+  background: #FEF9C3;
+  color: #854D0E;
+}
+
+.order-badge.overdue,
+.order-badge.cancelled {
+  background: #FEF2F2;
+  color: #DC2626;
+}
+
+.order-badge.pending {
+  background: #FFFBEB;
+  color: #B45309;
+}
+
+.order-readonly-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  background: #F1F5F9;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #E2E8F0;
+}
+
+.order-active-branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1E40AF;
+  background: #EFF6FF;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #DBEAFE;
+}
+
+/* ==========================================================================
+   7. Pagination Controls
+   ========================================================================== */
+.order-pagination-wrap {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #FAFAFA;
+  border-top: 1px solid #E2E8F0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.order-pagination-info {
+  font-size: 12.5px;
+  color: #64748B;
+}
+
+.order-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.order-pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.order-pagination-btn:hover:not(:disabled) {
+  background: #F1F5F9;
+  border-color: #94A3B8;
+  color: #0F172A;
+}
+
+.order-pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.order-pagination-page {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  padding: 0 8px;
+}
+
+/* ==========================================================================
+   8. Modal Box Items Table & Financial Cards
+   ========================================================================== */
+.order-items-table-wrap {
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.order-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.order-items-table th {
+  background: #F8FAFC;
+  padding: 10px 14px;
+  font-weight: 600;
+  color: #475569;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.order-items-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+
+.order-items-table tr:last-child td {
+  border-bottom: none;
+}
+
+.order-financial-card {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 14px 18px;
+}
+
+.financial-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.financial-row.total {
+  border-top: 1px solid #E2E8F0;
+  margin-top: 6px;
+  padding-top: 10px;
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.financial-label {
+  color: #64748B;
+}
+
+.financial-value {
+  font-weight: 600;
+  color: #0F172A;
+  font-feature-settings: 'tnum';
+}
+
+.financial-value.deposit {
+  color: #B45309;
+}
+
+/* ==========================================================================
+   9. Skeletons, Error Banner & Empty States
+   ========================================================================== */
+.order-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 8px;
+  color: #DC2626;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.order-skeleton {
+  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+  animation: orderSkeletonShimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes orderSkeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Customer Tracking Buttons & Banners */
+.order-tracking-btn {
+  padding: 7px 12px;
+  border-radius: 6px;
+  background-color: #f5f5f4;
+  color: #1c1917;
+  border: 1px solid #d6d3d1;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.order-tracking-btn:hover {
+  background-color: #e7e5e4;
+  border-color: #a8a29e;
+}
+
+.order-tracking-banner-active {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #fef3c7;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.order-tracking-banner-muted {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #f5f5f4;
+  border-radius: 8px;
+  border: 1px solid #e7e5e4;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.order-tracking-banner-title {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.order-tracking-banner-title.active {
+  color: #92400e;
+}
+
+.order-tracking-banner-title.muted {
+  color: #44403c;
+}
+
+.order-tracking-banner-action-active {
+  padding: 5px 10px;
+  background-color: #d97706;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+
+.order-tracking-banner-action-active:hover {
+  background-color: #b45309;
+}
+
+.order-tracking-banner-action-dark {
+  padding: 5px 10px;
+  background-color: #1c1917;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+
+.order-tracking-banner-action-dark:hover {
+  background-color: #292524;
+}

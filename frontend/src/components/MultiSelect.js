@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 
-export default function MultiSelect({ options, value = [], onChange, placeholder = 'Chọn...' }) {
+export default function MultiSelect({ options, value, onChange, placeholder = 'Chọn...' }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const selectedValues = Array.isArray(value) ? value : [];
+  const selectedValues = useMemo(
+    () => (Array.isArray(value) ? value : []),
+    [value]
+  );
   const selectedOptions = useMemo(
     () => selectedValues.map((id) => options.find((option) => option.value === id)).filter(Boolean),
     [options, selectedValues]

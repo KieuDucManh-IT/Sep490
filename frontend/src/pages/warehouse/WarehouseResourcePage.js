@@ -20,22 +20,30 @@ import '../../styles/ShopDashboard.css';
 
 const services = { categories: categoryService, products: productService, variants: productVariantService, suppliers: supplierService, inventoryLocations: inventoryLocationService, warehouseManagers: warehouseManagerService, shops: shopBranchService };
 const configs = {
-  'inventory-locations': { service: 'inventoryLocations', title: 'Kho / cửa hàng', searchFields: ['code', 'name', 'address'], filters: [
-    ['type', 'Loại vị trí', ['warehouse:Kho', 'store:Cửa hàng']], ['status', 'Trạng thái', ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
-  ], fields: [
-    ['code', 'Mã vị trí', 'text', true], ['name', 'Tên vị trí', 'text', true], ['type', 'Loại', 'select', true, ['warehouse:Kho', 'store:Cửa hàng']], ['address', 'Địa chỉ', 'text'], ['shopId', 'Chi nhánh liên kết', 'relation', false, 'shops', 'name'], ['managerId', 'Quản lý kho', 'relation', false, 'warehouseManagers', 'FullName'], ['maxCapacity', 'Sức chứa tối đa (cái)', 'number'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
-  ] },
-  categories: { service: 'categories', title: 'Loại sản phẩm', fields: [
-    ['parentCategoryId', 'Loại cha', 'relation', false, 'categories', 'name'], ['name', 'Tên loại', 'text', true], ['description', 'Mô tả', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
-  ] },
-  products: { service: 'products', title: 'Sản phẩm', multipleFields: ['categoryId'], listFields: [['productCode', 'Mã sản phẩm'], ['name', 'Tên sản phẩm'], ['categoryId', 'Loại sản phẩm'], ['variantCount', 'Số biến thể'], ['tag', 'Hình thức'], ['quantity', 'Số lượng tồn'], ['branchAddress', 'Địa chỉ chi nhánh'], ['trackingType', 'Kiểu quản lý'], ['status', 'Trạng thái']], fields: [
-    ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['tag', 'Hình thức', 'select', false, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['trackingType', 'Kiểu quản lý', 'select', true, ['quantity:Theo số lượng', 'individual:Theo từng cá thể']], ['brand', 'Thương hiệu', 'text'], ['material', 'Chất liệu', 'text'], ['gender', 'Giới tính', 'text'], ['aiTryOn', 'Thử đồ AI', 'select', false, ['true:Có', 'false:Không']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
-  ] },
-  suppliers: { service: 'suppliers', title: 'Nhà cung cấp', searchFields: ['supplierCode', 'name', 'contactName', 'phone', 'email', 'taxCode'], filters: [
-    ['status', 'Trạng thái', ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
-  ], fields: [
-    ['supplierCode', 'Mã nhà cung cấp', 'text', true], ['name', 'Tên nhà cung cấp', 'text', true], ['contactName', 'Người liên hệ', 'text'], ['phone', 'Số điện thoại', 'text'], ['email', 'Email', 'email'], ['taxCode', 'Mã số thuế', 'text'], ['address', 'Địa chỉ', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
-  ] },
+  'inventory-locations': {
+    service: 'inventoryLocations', title: 'Kho / cửa hàng', searchFields: ['code', 'name', 'address'], filters: [
+      ['type', 'Loại vị trí', ['warehouse:Kho', 'store:Cửa hàng']], ['status', 'Trạng thái', ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
+    ], fields: [
+      ['code', 'Mã vị trí', 'text', true], ['name', 'Tên vị trí', 'text', true], ['type', 'Loại', 'select', true, ['warehouse:Kho', 'store:Cửa hàng']], ['address', 'Địa chỉ', 'text'], ['shopId', 'Chi nhánh liên kết', 'relation', false, 'shops', 'name'], ['managerId', 'Quản lý kho', 'relation', false, 'warehouseManagers', 'FullName'], ['maxCapacity', 'Sức chứa tối đa (cái)', 'number'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
+    ]
+  },
+  categories: {
+    service: 'categories', title: 'Loại sản phẩm', fields: [
+      ['parentCategoryId', 'Loại cha', 'relation', false, 'categories', 'name'], ['name', 'Tên loại', 'text', true], ['description', 'Mô tả', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
+    ]
+  },
+  products: {
+    service: 'products', title: 'Sản phẩm', multipleFields: ['categoryId'], listFields: [['productCode', 'Mã sản phẩm'], ['name', 'Tên sản phẩm'], ['categoryId', 'Loại sản phẩm'], ['variantCount', 'Số biến thể'], ['tag', 'Hình thức'], ['quantity', 'Số lượng tồn'], ['branchAddress', 'Địa chỉ chi nhánh'], ['trackingType', 'Kiểu quản lý'], ['status', 'Trạng thái']], fields: [
+      ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['tag', 'Hình thức', 'select', false, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['trackingType', 'Kiểu quản lý', 'select', true, ['quantity:Theo số lượng', 'individual:Theo từng cá thể']], ['brand', 'Thương hiệu', 'text'], ['material', 'Chất liệu', 'text'], ['gender', 'Giới tính', 'text'], ['aiTryOn', 'Thử đồ AI', 'select', false, ['true:Có', 'false:Không']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
+    ]
+  },
+  suppliers: {
+    service: 'suppliers', title: 'Nhà cung cấp', searchFields: ['supplierCode', 'name', 'contactName', 'phone', 'email', 'taxCode'], filters: [
+      ['status', 'Trạng thái', ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
+    ], fields: [
+      ['supplierCode', 'Mã nhà cung cấp', 'text', true], ['name', 'Tên nhà cung cấp', 'text', true], ['contactName', 'Người liên hệ', 'text'], ['phone', 'Số điện thoại', 'text'], ['email', 'Email', 'email'], ['taxCode', 'Mã số thuế', 'text'], ['address', 'Địa chỉ', 'text'], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động']],
+    ]
+  },
 };
 
 const display = (value) => value == null || value === '' ? '—' : typeof value === 'object' ? value.FullName || value.name || value.code || value._id : String(value);
@@ -123,20 +131,57 @@ function WarehouseResourceList({ config }) {
     return matchesSearch && matchesFilters;
   };
   const filteredRows = useMemo(() => {
-    if (config.service !== 'categories') return rows.filter(matchesQuery);
+    const matchesQuery = (row) => {
+      const searchFields =
+        config.searchFields ||
+        config.fields.map((field) => field[0]);
+
+      const matchesSearch =
+        !query ||
+        searchFields.some((field) =>
+          String(display(row[field]))
+            .toLowerCase()
+            .includes(query.toLowerCase())
+        );
+
+      const matchesFilters = Object.entries(filters).every(
+        ([field, value]) =>
+          !value || String(row[field]) === value
+      );
+
+      return matchesSearch && matchesFilters;
+    };
+
+    if (config.service !== "categories") {
+      return rows.filter(matchesQuery);
+    }
+
     const ordered = orderCategoryTree(rows);
-    if (query) return ordered.filter(matchesQuery);
+
+    if (query) {
+      return ordered.filter(matchesQuery);
+    }
+
     return ordered.filter((row) => {
       const ancestors = [];
       let parent = row.parentCategoryId;
+
       while (parent) {
         const parentId = String(parent?._id || parent);
-        const parentRow = rows.find((item) => String(item._id) === parentId);
+
+        const parentRow = rows.find(
+          (item) => String(item._id) === parentId
+        );
+
         if (!parentRow) break;
+
         ancestors.push(parentId);
         parent = parentRow.parentCategoryId;
       }
-      return ancestors.every((id) => expandedCategories.has(id));
+
+      return ancestors.every((id) =>
+        expandedCategories.has(id)
+      );
     });
   }, [rows, query, config, filters, expandedCategories]);
   const pages = Math.max(1, Math.ceil(filteredRows.length / pageSize));

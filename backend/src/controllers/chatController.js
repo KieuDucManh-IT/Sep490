@@ -236,15 +236,21 @@ Từ chối chủ đề ngoài lề: Bạn từ chối lịch thiệp các câu 
 
 # ĐỊNH DẠNG OUTFIT ĐỀ XUẤT (KHI KHÁCH NHỜ PHỐI SET)
 
-Chỉ dùng khi khách nhờ phối cả bộ hoàn chỉnh:
+Chỉ dùng khi khách nhờ phối cả bộ hoàn chỉnh. Trình bày dạng văn bản thuần sạch sẽ, thoáng mắt, dễ đọc:
 
-✨ **Outfit: [Tên concept / phong cách]**
-- Trang phục chính: [Tên món] – Mã [Mã SP] – Thuê: [Giá thuê/ngày] (Cọc: [Giá cọc]) hoặc Mua: [Giá mua] — Lý do chọn
-- Phối cùng: [Áo khoác / Chân váy / Quần / Giày / Phụ kiện] (nếu có trong Catalog) — Lý do chọn
-- Tone màu & Hoàn cảnh: [Bảng màu chủ đạo, dịp phù hợp nhất]
-- Tạm tính: [Tổng tiền thuê hoặc mua] (Lưu ý: Tiền cọc được hoàn trả 100% sau khi trả đồ)
+Gợi ý Outfit: Tên phong cách (ví dụ: Nàng Thơ Thanh Lịch)
+- Trang phục chính: Tên sản phẩm (Mã: Mã SP)
+  • Giá: Thuê [Giá thuê]/ngày (Cọc: [Giá cọc]) hoặc Mua: [Giá mua]
+  • Điểm nổi bật: [Chất liệu, phom dáng, lý do tôn vóc dáng khách]
+- Gợi ý phối cùng: [Món phối thêm hoặc phụ kiện phù hợp] — [Lý do kết hợp]
+- Tone màu & Dịp mặc: [Màu sắc chủ đạo, hoàn cảnh phù hợp]
+- Chi phí tạm tính: [Tổng tiền thuê hoặc mua] (Lưu ý: Tiền cọc được hoàn trả 100% sau khi trả đồ)
 
-Kết thúc bằng 1 câu hỏi tự nhiên để tiếp tục hỗ trợ.
+QUY TẮC HIỂN THỊ TUYỆT ĐỐI (RẤT QUAN TRỌNG):
+1. TUYỆT ĐỐI KHÔNG dùng bất kỳ dấu sao nào, bao gồm dấu ** (in đậm markdown) hay dấu * hay icon sao (✨, 🌟, ⭐). Viết văn bản thuần túy không dùng cú pháp markdown.
+2. KHÔNG để các dấu ngoặc vuông [ ] trong câu trả lời cho khách. Tên và giá phải viết tự nhiên, ví dụ: "Chân váy ngắn Tafta (Mã: 033913)" thay vì "[Chân váy ngắn Tafta]".
+3. Định dạng giá tiền rõ ràng, chuẩn tiếng Việt (ví dụ: 150.000đ/ngày, Cọc: 1.000.000đ).
+4. Kết thúc bằng 1 câu hỏi ngắn tự nhiên để tiếp tục hỗ trợ.
 
 # TÌNH HUỐNG ĐẶC BIỆT & BẢO MẬT
 
@@ -261,7 +267,7 @@ Không thêm bất kỳ văn bản nào ngoài JSON.
 
 Cấu trúc:
 {
-  "reply": "Nội dung tin nhắn tư vấn gửi khách (hỗ trợ định dạng Markdown in đậm, gạch đầu dòng, xuống dòng)",
+  "reply": "Nội dung tin nhắn tư vấn gửi khách (dùng văn bản thuần sạch sẽ, tuyệt đối KHÔNG chứa dấu ** hay ký tự markdown in đậm)",
   "productIds": ["id_1", "id_2"],
   "quickReplies": ["Lựa chọn 1", "Lựa chọn 2"]
 }
@@ -397,11 +403,19 @@ export const chatWithStylist = async (req, res) => {
       throw new Error('Gemini không phản hồi nội dung.');
     }
 
+    const cleanReply = (text) => {
+      if (typeof text !== 'string') return '';
+      return text
+        .replace(/\*\*/g, '')
+        .replace(/^\s*#+\s*/gm, '')
+        .trim();
+    };
+
     const result = parseModelJson(generatedText);
 
     // Model trả sai định dạng: dùng nguyên văn làm câu trả lời thay vì báo lỗi 500
     if (!result) {
-      return res.json({ success: true, reply: generatedText, products: [], quickReplies: [] });
+      return res.json({ success: true, reply: cleanReply(generatedText), products: [], quickReplies: [] });
     }
 
     // Chỉ nhận ID có thật trong catalog, giữ thứ tự AI ưu tiên, tối đa 4, bỏ trùng
@@ -418,9 +432,8 @@ export const chatWithStylist = async (req, res) => {
       .slice(0, 4);
 
     const reply =
-      typeof result.reply === 'string' && result.reply.trim()
-        ? result.reply.trim()
-        : 'Mình rất vui được hỗ trợ bạn. Bạn dự định tham gia sự kiện gì và mong muốn phong cách như thế nào?';
+      cleanReply(result.reply) ||
+      'Mình rất vui được hỗ trợ bạn. Bạn dự định tham gia sự kiện gì và mong muốn phong cách như thế nào?';
 
     return res.json({
       success: true,

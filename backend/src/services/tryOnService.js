@@ -70,9 +70,27 @@ export function enhanceGarmentDescription(rawName = '', category = 'upper_body')
   if (/hồng|pink/.test(lower)) tokens.push('pink');
   if (/xám|ghi|grey|gray/.test(lower)) tokens.push('grey');
 
+  // 5. Phụ kiện thời trang (Túi xách, Kính, Nón, Giày, Khăn...)
+  if (/túi|tui|bag|clutch|handbag|tote/.test(lower)) {
+    tokens.push('luxury designer leather handbag accessory carried by model');
+  } else if (/kính|kinh|glasses|sunglasses|eyewear/.test(lower)) {
+    tokens.push('stylish designer fashion sunglasses eyewear on face');
+  } else if (/mũ|nón|hat|cap|beret/.test(lower)) {
+    tokens.push('fashion elegant hat headwear');
+  } else if (/khuyên|vòng|dây chuyền|jewelry|necklace|earrings/.test(lower)) {
+    tokens.push('luxury sparkling jewelry fashion accessory');
+  } else if (/giày|giay|shoes|heels|sneakers|boots/.test(lower)) {
+    tokens.push('designer high-end footwear shoes');
+  } else if (/khăn|scarf/.test(lower)) {
+    tokens.push('silk luxury scarf wrapped around neck');
+  } else if (category === 'accessories') {
+    tokens.push('luxury fashion accessory');
+  }
+
   if (tokens.length === 0) {
     if (category === 'lower_body') return 'skirt, trousers, lower body garment';
     if (category === 'dresses') return 'full body dress outfit';
+    if (category === 'accessories') return 'fashion luxury accessory';
     return 'upper body clothing';
   }
 
@@ -81,10 +99,19 @@ export function enhanceGarmentDescription(rawName = '', category = 'upper_body')
 
 /**
  * Tự động phân loại danh mục quần áo cho AI IDM-VTON:
- * IDM-VTON hỗ trợ 3 categories: 'upper_body', 'lower_body', 'dresses'
+ * Hỗ trợ 4 categories: 'dresses', 'upper_body', 'lower_body', 'accessories'
  */
 export function detectGarmentCategory(name = '', categoryStr = '') {
   const combined = `${name} ${categoryStr}`.toLowerCase();
+
+  // Phụ kiện: túi, kính, nón, khăn, trang sức, giày
+  if (
+    /túi|tui|bag|kính|kinh|glasses|mũ|nón|hat|khuyên|vòng|jewelry|giày|giay|shoes|phụ kiện|accessory|accessories/.test(
+      combined
+    )
+  ) {
+    return 'accessories';
+  }
 
   // Đầm, váy liền thân, áo dài, jumpsuit, cả bộ vest/suit nguyên bộ -> 'dresses'
   if (
@@ -114,7 +141,7 @@ export function detectGarmentCategory(name = '', categoryStr = '') {
  * @param {Object} params
  * @param {string} params.humanImageUrl - Link ảnh người mẫu/khách hàng
  * @param {string} params.garmentImageUrl - Link ảnh trang phục (sản phẩm)
- * @param {string} [params.category] - 'upper_body' | 'lower_body' | 'dresses'
+ * @param {string} [params.category] - 'upper_body' | 'lower_body' | 'dresses' | 'accessories'
  * @param {string} [params.garmentDescription] - Mô tả trang phục
  * @param {boolean} [params.crop=false] - Cắt tự động theo tỷ lệ 3:4 nếu ảnh không chuẩn
  * @param {number} [params.steps=30] - Số bước inference (20 - 40)
@@ -132,7 +159,16 @@ export async function generateTryOn({
   const startTime = Date.now();
 
   const validCategories = ['upper_body', 'lower_body', 'dresses'];
-  const normalizedCategory = validCategories.includes(category) ? category : 'upper_body';
+  let normalizedCategory = category;
+  if (!validCategories.includes(category)) {
+    if (category === 'accessories') {
+      normalizedCategory = /giày|giay|shoes|sneaker|boots/.test((garmentDescription || '').toLowerCase())
+        ? 'lower_body'
+        : 'upper_body';
+    } else {
+      normalizedCategory = 'upper_body';
+    }
+  }
 
   // Làm giàu prompt mô tả bằng tiếng Anh chuẩn thời trang để định hướng U-Net diffusion
   const promptDescription = enhanceGarmentDescription(garmentDescription, normalizedCategory);

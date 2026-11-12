@@ -100,6 +100,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/try-on" element={<PhotoTryOnPage />} />
         <Route path="/try-on/photo" element={<PhotoTryOnPage />} />
         <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
         <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />

@@ -159,7 +159,68 @@ router.post('/generate', upload.single('photo'), async (req, res, next) => {
         ? true
         : req.body.crop === 'true' || req.body.crop === true;
 
-    // 3. Gọi AI IDM-VTON
+    // 3. Kiểm tra nếu có phối thêm chân váy / quần (Set cả bộ Áo + Váy/Quần)
+    let bottomGarmentImageUrl = req.body.bottomGarmentImageUrl;
+    let bottomGarmentDescription = req.body.bottomGarmentDescription || '';
+
+    if (req.body.bottomProductId && !bottomGarmentImageUrl) {
+      try {
+        let bottomProd = null;
+        if (mongoose.Types.ObjectId.isValid(req.body.bottomProductId)) {
+          bottomProd = await Product.findById(req.body.bottomProductId).lean();
+        }
+        if (!bottomProd) {
+          bottomProd = await Product.findOne({ productCode: req.body.bottomProductId }).lean();
+        }
+        if (bottomProd) {
+          bottomGarmentDescription = bottomGarmentDescription || bottomProd.name;
+          bottomGarmentImageUrl =
+            (Array.isArray(bottomProd.images) && bottomProd.images[0]) ||
+            bottomProd.image;
+        }
+      } catch (err) {
+        console.warn('[TryOnRoutes] Lỗi tra cứu bottomProduct:', err.message);
+      }
+    }
+
+    if (bottomGarmentImageUrl && category === 'upper_body') {
+      console.log(
+        `[TryOnRoutes] Thử set cả bộ 2 bước: Áo (${garmentDescription}) + Chân váy/Quần (${bottomGarmentDescription})`
+      );
+
+      // Bước 1: Thử áo thân trên
+      const topResult = await generateTryOn({
+        humanImageUrl,
+        garmentImageUrl,
+        category: 'upper_body',
+        garmentDescription,
+        crop,
+        steps: 30,
+      });
+
+      const intermediateImage = topResult?.resultImageUrl;
+
+      if (!intermediateImage) {
+        throw new Error('Bước 1 (thử áo thân trên) không trả về kết quả ảnh');
+      }
+
+      // Bước 2: Thử chân váy/quần thân dưới lên ảnh đã có áo
+      const finalResult = await generateTryOn({
+        humanImageUrl: intermediateImage,
+        garmentImageUrl: bottomGarmentImageUrl,
+        category: 'lower_body',
+        garmentDescription: bottomGarmentDescription || 'skirt or trousers',
+        crop: false, // Giữ nguyên kích thước ảnh bước 1
+        steps: 30,
+      });
+
+      return res.json({
+        success: true,
+        data: finalResult,
+      });
+    }
+
+    // 4. Gọi AI IDM-VTON cho 1 món đơn lẻ
     const tryOnResult = await generateTryOn({
       humanImageUrl,
       garmentImageUrl,

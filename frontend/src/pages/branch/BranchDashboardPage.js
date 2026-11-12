@@ -1,532 +1,540 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Spinner } from 'react-bootstrap';
 import {
-  Building2,
-  RefreshCw,
-  ExternalLink,
-  Settings,
-  TrendingUp,
-  MapPin,
-  Phone,
+  AlertCircle,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
+  Award,
+  BarChart3,
+  Boxes,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
   Clock,
-  Star,
+  Eye,
+  MapPin,
+  PackageCheck,
+  Phone,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  ShoppingBag,
   Sparkles,
-  Store,
+  Truck,
+  Wallet,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import BranchSidebar from '../../components/BranchSidebar';
 import OwnerTopHeader from '../../components/OwnerTopHeader';
-import ImageLightboxModal from '../../components/ImageLightboxModal';
-import { getAssignedBranchApi } from '../../services/shopApi';
+import BranchEmptyState from './settings/components/BranchEmptyState';
+import RentalOrderDetailModal from '../orders/RentalOrderDetailModal';
+import SaleOrderDetailModal from '../orders/SaleOrderDetailModal';
+import { getBranchPerformanceReportApi } from '../../services/shopApi';
+import { formatCurrency, formatDate, resolveOrderDisplayStatus } from '../orders/orderUtils';
+
 import '../../styles/ShopDashboard.css';
+import '../../styles/ShopBranches.css';
+import '../../styles/BranchSettings.css';
+import '../../styles/AdminDashboard.css';
+import '../../styles/OrderMonitoring.css';
+import '../../styles/BranchDashboard.css';
+
+const TIME_RANGES = [
+  { key: 'TODAY', label: 'Hôm nay' },
+  { key: 'WEEK', label: 'Tuần này' },
+  { key: 'MONTH', label: 'Tháng này' },
+  { key: 'QUARTER', label: 'Quý này' },
+  { key: 'YEAR', label: 'Năm nay' },
+];
+
+const ORDER_FILTERS = [
+  { key: 'ALL', label: 'Tất cả' },
+  { key: 'RENTAL', label: 'Thuê' },
+  { key: 'SALE', label: 'Bán' },
+];
+
+const formatOpeningHours = (hours) => {
+  if (!hours) return '';
+  if (typeof hours === 'string') return hours;
+  return hours.open && hours.close ? `${hours.open} - ${hours.close}` : '';
+};
+
+const formatCountdown = (item) => {
+  const hours = Math.abs(Number(item.hoursRemaining || 0));
+  const label = hours >= 24 ? `${Math.ceil(hours / 24)} ngày` : `${Math.max(1, hours)} giờ`;
+  return item.isOverdue ? `Quá hạn ${label}` : `Còn ${label}`;
+};
 
 export default function BranchDashboardPage() {
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState('TẤT CẢ (08)');
-  const [shop, setShop] = useState(null);
+  const [timeRange, setTimeRange] = useState('MONTH');
+  const [activeBranchId, setActiveBranchId] = useState(() => {
+    try { return localStorage.getItem('vestora_active_branch_id') || ''; } catch { return ''; }
+  });
+  const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [lightboxImage, setLightboxImage] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('RECENT');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeOrderModal, setActiveOrderModal] = useState(null);
 
-  const fetchBranch = useCallback(async (targetBranchId) => {
+  const userRole = String(user?.Role || user?.role || '').trim().toUpperCase();
+  const isBranchManagerRole = ['BRANCH_MANAGER', 'BRAND_MANAGER'].includes(userRole);
+
+  const loadDashboard = useCallback(async ({ silent = false } = {}) => {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      const res = await getAssignedBranchApi(targetBranchId);
-      if (res?.success && res.data) {
-        setShop(res.data);
+      const res = await getBranchPerformanceReportApi({ branchId: activeBranchId, timeRange });
+      if (res?.success) {
+        setReport(res.data || null);
       } else {
-        setShop(null);
+        setError(res?.message || 'Không thể tải dữ liệu tổng quan chi nhánh.');
       }
-    } catch {
-      setShop(null);
+    } catch (err) {
+      if ((err?.status === 403 || err?.status === 404) && activeBranchId) {
+        try { localStorage.removeItem('vestora_active_branch_id'); } catch {}
+        setActiveBranchId('');
+      } else {
+        setError(err?.message || 'Không thể kết nối máy chủ khi tải tổng quan chi nhánh.');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  }, [activeBranchId, timeRange]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    const onBranchChanged = (e) => {
+      setActiveBranchId(e?.detail?.branchId || localStorage.getItem('vestora_active_branch_id') || '');
+    };
+    window.addEventListener('vestora_branch_changed', onBranchChanged);
+    return () => window.removeEventListener('vestora_branch_changed', onBranchChanged);
   }, []);
 
-  useEffect(() => {
-    fetchBranch();
-  }, [fetchBranch]);
+  const refresh = useCallback(() => loadDashboard({ silent: true }), [loadDashboard]);
 
-  useEffect(() => {
-    const handleBranchChanged = (e) => {
-      if (e.detail?.branch) {
-        setShop(e.detail.branch);
-      } else {
-        fetchBranch(e.detail?.branchId);
-      }
-    };
-    window.addEventListener('vestora_branch_changed', handleBranchChanged);
-    return () => {
-      window.removeEventListener('vestora_branch_changed', handleBranchChanged);
-    };
-  }, [fetchBranch]);
+  const filteredOrders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return (report?.recentOrders || []).filter((order) => {
+      if (typeFilter === 'RENTAL' && order.orderType !== 'rental') return false;
+      if (typeFilter === 'SALE' && order.orderType !== 'sale') return false;
+      if (!q) return true;
+      return [order.orderCode, order.customer?.fullName, order.customer?.phone].filter(Boolean).join(' ').toLowerCase().includes(q);
+    });
+  }, [report?.recentOrders, typeFilter, searchQuery]);
 
-  const orders = [
+  const branch = report?.branch;
+  const kpis = report?.kpis || {};
+  const stock = report?.stockBreakdown || {};
+  const ops = report?.operations || {};
+  const revenueSeries = report?.revenueSeries || [];
+  const upcomingReturns = report?.upcomingReturns || [];
+  const topProducts = report?.topProducts || [];
+
+  const isPositiveGrowth = typeof kpis.growthRate === 'number' && kpis.growthRate >= 0;
+  const maxBucketTotal = Math.max(1, ...revenueSeries.map((b) => Number(b.totalRevenue || 0)));
+  const stockDenom = Math.max(1, (stock.totalItems || 0) + (stock.rentingCount || 0));
+  const availPct = Math.round(((stock.availableCount || 0) / stockDenom) * 100);
+  const rentingPct = Math.round(((stock.rentingCount || 0) / stockDenom) * 100);
+  const reservedPct = Math.round(((stock.reservedCount || 0) / stockDenom) * 100);
+  const unavailPct = Math.max(0, 100 - availPct - rentingPct - reservedPct);
+
+  const kpiCards = [
     {
-      id: '#THUE-8892',
-      product: 'Đầm Dạ Hội Satin Midnight',
-      detail: 'Size S • Kèm túi voan',
-      image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=120&q=80',
-      customer: 'Nguyễn Lan Hương (0908***412 - VIP 2)',
-      duration: '3 ngày (24/10 - 27/10)',
-      amount: '700.000 đ',
-      depositNote: 'Đã nhận cọc',
-      status: 'CHỜ XÁC NHẬN',
-      statusType: 'pending',
-      action: 'DUYỆT ĐƠN',
+      title: 'Doanh thu',
+      icon: <Wallet size={17} />,
+      iconClass: 'gold',
+      value: formatCurrency(kpis.totalRevenue || 0),
+      sub: (
+        <>
+          {kpis.hasGrowthBaseline && typeof kpis.growthRate === 'number' ? (
+            <span className={`admin-kpi-trend ${isPositiveGrowth ? 'positive' : 'text-danger'}`}>
+              {isPositiveGrowth ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+              {isPositiveGrowth ? `+${kpis.growthRate}%` : `${kpis.growthRate}%`}
+            </span>
+          ) : (
+            <span>Kỳ tham chiếu đầu</span>
+          )}
+          <span>• Thuê {formatCurrency(kpis.rentalRevenue || 0)}</span>
+        </>
+      ),
     },
     {
-      id: '#THUE-8889',
-      product: 'Áo Khoác Tweed Thủ Công',
-      detail: 'Size M • Kèm bé ngọc trai',
-      image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=120&q=80',
-      customer: 'Trần Mai Chi (0971***890)',
-      duration: '2 ngày (25/10 - 27/10)',
-      amount: '500.000 đ',
-      depositNote: 'Đã nhận cọc',
-      status: 'ĐANG ĐÓNG GÓI',
-      statusType: 'shipping',
-      action: 'IN PHIẾU GỬI',
+      title: 'Đơn thuê',
+      icon: <CalendarClock size={17} />,
+      value: <>{kpis.rentalOrdersCount || 0} <span className="bd-kpi-unit">đơn</span></>,
+      sub: (
+        <>
+          <span>{kpis.activeRentalsCount || 0} đang thuê</span>
+          <span>•</span>
+          <span className={kpis.overdueRentalsCount > 0 ? 'text-danger fw-semibold' : ''}>{kpis.overdueRentalsCount || 0} quá hạn</span>
+        </>
+      ),
     },
     {
-      id: '#THUE-8879',
-      product: 'Đầm Dạ Hội Satin Midnight',
-      detail: 'Khách hoàn trả • Vết ố nhẹ',
-      image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=120&q=80',
-      customer: 'Đặng Hoàng Yến (0934***221)',
-      duration: 'Đã nhận hoàn trả (Chờ đối soát)',
-      amount: '700.000 đ',
-      depositNote: 'Đang giữ tiền cọc',
-      status: 'CHỜ KIỂM ĐỊNH CỌC',
-      statusType: 'return',
-      action: 'XỬ LÝ CỌC',
+      title: 'Đơn bán',
+      icon: <ShoppingBag size={17} />,
+      value: <>{kpis.salesOrdersCount || 0} <span className="bd-kpi-unit">đơn</span></>,
+      sub: <><span>Bán {formatCurrency(kpis.salesRevenue || 0)}</span><span>•</span><span>Cọc {formatCurrency(kpis.heldDeposits || 0)}</span></>,
     },
     {
-      id: '#MUA-1045',
-      product: 'Bộ Suit Tuxedo Slim Fit',
-      detail: 'Thanh Lý Like New 98%',
-      image: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=120&q=80',
-      customer: 'Phạm Thu Trang (0912***556)',
-      duration: 'Đơn Mua Sở Hữu (Đã nhận thanh toán)',
-      amount: '4.200.000 đ',
-      depositNote: 'Đã nhận thanh toán',
-      status: 'CHỜ GIAO SHIPPER',
-      statusType: 'completed',
-      action: 'GIAO SHIPPER',
+      title: 'Kho cửa hàng',
+      icon: <Boxes size={17} />,
+      value: <>{stock.availableCount || 0} <span className="bd-kpi-unit">/ {stock.totalItems || 0}</span></>,
+      sub: <><span>{stock.rentingCount || 0} đang thuê</span><span>•</span><span>{stock.unavailableCount || 0} bảo trì</span></>,
     },
   ];
 
+  const queueItems = [
+    { label: 'Chờ xác nhận / bàn giao', count: ops.pendingHandoverCount || 0, to: '/branch/rental-orders', icon: <Clock size={14} />, tone: 'warn' },
+    { label: 'Đơn thuê quá hạn trả', count: kpis.overdueRentalsCount || 0, to: '/branch/rental-orders', icon: <AlertTriangle size={14} />, tone: 'danger' },
+    { label: 'Khiếu nại đang mở', count: ops.openDisputesCount || 0, to: '/branch/rental-orders', icon: <ShieldAlert size={14} />, tone: 'danger' },
+    { label: 'Chuyển kho sắp về', count: ops.incomingTransfersToReceiveCount || 0, to: isBranchManagerRole ? '/branch/stock-requests' : '/branch/settings', icon: <PackageCheck size={14} />, tone: 'warn' },
+    { label: 'Vận đơn giao thất bại', count: ops.failedShipmentsCount || 0, to: '/branch/sale-orders', icon: <Truck size={14} />, tone: 'danger' },
+  ];
+
+  const shortLocation = [branch?.ward, branch?.city].filter(Boolean).join(', ') || branch?.address || '';
+  const hoursText = formatOpeningHours(branch?.openingHours);
+  const openOrderModal = (order) => order?._id && setActiveOrderModal({ type: order.orderType === 'sale' ? 'sale' : 'rental', order });
+
   return (
     <div className="shop-dashboard-layout">
-      {/* Reusable Branch Sidebar */}
-      <BranchSidebar
-        isCollapsed={isSidebarCollapsed}
-        onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
-      />
-
-      {/* Main Viewport */}
+      <BranchSidebar isCollapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed((p) => !p)} />
       <div className="admin-main-viewport">
-        {/* Top Header */}
-        <OwnerTopHeader
-          isSidebarCollapsed={isSidebarCollapsed}
-          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-          breadcrumb="Tổng Quan Chi Nhánh"
-        />
-
-        {/* Scroll Content */}
-        <div className="shop-content-scroll">
-          {loading ? (
-            <div className="text-center py-5 my-5">
-              <Spinner animation="border" variant="dark" role="status" className="mb-2" />
-              <div className="text-muted small">Đang tải dữ liệu tổng quan cửa hàng...</div>
-            </div>
-          ) : !shop ? (
-            /* ========================================================
-               EMPTY STATE: NOT ASSIGNED A BRANCH
-               ======================================================== */
-            <div className="text-center py-5">
-              <div
-                style={{
-                  maxWidth: '560px',
-                  margin: '40px auto',
-                  padding: '48px 36px',
-                  background: '#FFFFFF',
-                  borderRadius: '20px',
-                  boxShadow: '0 4px 25px rgba(0,0,0,0.06)',
-                  border: '1px solid #E2E8F0',
-                }}
-              >
-                <div
-                  style={{
-                    width: '72px',
-                    height: '72px',
-                    borderRadius: '20px',
-                    background: '#FEF3C7',
-                    color: '#D97706',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto 20px auto',
-                    boxShadow: '0 8px 16px -4px rgba(245, 158, 11, 0.25)',
-                  }}
-                >
-                  <Building2 size={36} strokeWidth={1.8} />
-                </div>
-                <h3
-                  style={{
-                    fontFamily: "'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                    fontSize: '22px',
-                    fontWeight: 700,
-                    color: '#0F172A',
-                    marginBottom: '12px',
-                  }}
-                >
-                  Chưa Được Phân Công Chi Nhánh
-                </h3>
-                <p
-                  style={{
-                    fontSize: '14px',
-                    color: '#64748B',
-                    lineHeight: 1.6,
-                    marginBottom: '28px',
-                  }}
-                >
-                  Tài khoản của bạn hiện chưa được Chủ sở hữu chuỗi (Shop Owner) bổ nhiệm quản lý cửa hàng nào trong hệ thống VESTORA. Vui lòng liên hệ quản lý để được chỉ định chi nhánh vận hành.
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary px-4 py-2 d-inline-flex align-items-center gap-2"
-                    style={{ fontSize: '13px', borderRadius: '8px', fontWeight: 600 }}
-                    onClick={() => window.location.reload()}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Tải Lại Trang</span>
-                  </button>
-                  <Link
-                    to="/"
-                    className="btn btn-dark px-4 py-2 d-inline-flex align-items-center gap-2"
-                    style={{ fontSize: '13px', borderRadius: '8px', fontWeight: 600, textDecoration: 'none', background: '#0F172A' }}
-                  >
-                    <span>Về Cổng Khách Hàng</span>
-                    <ExternalLink size={14} />
-                  </Link>
-                </div>
+        <OwnerTopHeader isSidebarCollapsed={isSidebarCollapsed} onToggleSidebar={() => setIsSidebarCollapsed((p) => !p)} breadcrumb="Tổng Quan Chi Nhánh" />
+        <main className="shop-main-content">
+          <div className="store-mgmt-container pb-5">
+            {loading && !report ? (
+              <div className="bd-loading-box">
+                <Spinner animation="border" variant="dark" />
+                <span>Đang tải tổng quan chi nhánh...</span>
               </div>
-            </div>
-          ) : (
-            /* ========================================================
-               ACTIVE STORE DASHBOARD
-               ======================================================== */
-            <>
-              {/* Header Title & Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        background: '#EEF2FF',
-                        color: '#4F46E5',
-                        padding: '3px 10px',
-                        borderRadius: '9999px',
-                        fontWeight: 700,
-                        letterSpacing: '0.5px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <Sparkles size={11} />
-                      CỬA HÀNG ĐƯỢC CHỈ ĐỊNH
-                    </span>
-                    {shop.isHQ && (
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          background: '#FEF3C7',
-                          color: '#B45309',
-                          padding: '3px 10px',
-                          borderRadius: '9999px',
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        <Star size={11} fill="#B45309" />
-                        TRỤ SỞ CHÍNH (HQ)
-                      </span>
-                    )}
-                  </div>
-                  <h1 className="admin-page-title" style={{ fontSize: '26px', margin: '0 0 6px 0', color: '#0F172A' }}>
-                    Tổng Quan: {shop.name}
-                  </h1>
-                  <p style={{ fontSize: '13px', color: '#64748B', margin: 0, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    <MapPin size={14} className="text-slate-400 flex-shrink-0" />
-                    <span>{shop.address ? `${shop.address}, ` : ''}{shop.city || ''}</span>
-                    {shop.phone && (
-                      <>
-                        <span className="text-muted">•</span>
-                        <Phone size={14} className="text-slate-400 flex-shrink-0" />
-                        <span>Hotline: {shop.phone}</span>
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <button className="btn-secondary d-inline-flex align-items-center gap-2" onClick={() => navigate('/branch/settings')}>
-                    <Settings size={15} />
-                    <span>Cài Đặt Cửa Hàng</span>
-                  </button>
-                  <button className="btn-primary d-inline-flex align-items-center gap-2" onClick={() => navigate('/branch/analytics')}>
-                    <TrendingUp size={15} />
-                    <span>Báo Cáo Doanh Thu</span>
+            ) : error ? (
+              <div className="branch-empty-card">
+                <div className="branch-empty-icon-wrap"><AlertCircle size={32} /></div>
+                <h2 className="branch-empty-title">Không thể tải tổng quan chi nhánh</h2>
+                <p className="branch-empty-desc">{error}</p>
+                <div className="branch-empty-actions">
+                  <button type="button" className="btn-tail-primary" onClick={refresh} disabled={refreshing}>
+                    <RefreshCw size={15} className={refreshing ? 'bd-spin' : ''} /> Thử lại
                   </button>
                 </div>
               </div>
-
-              {/* Store Information Quick Card */}
-              <div
-                style={{
-                  background: '#FFFFFF',
-                  borderRadius: '16px',
-                  border: '1px solid #E2E8F0',
-                  padding: '20px 24px',
-                  marginTop: '20px',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '16px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <img
-                    src={shop.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(shop.name)}&background=0F172A&color=D97706&size=100`}
-                    alt={shop.name}
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: '12px',
-                      objectFit: 'cover',
-                      border: '1px solid #E2E8F0',
-                      cursor: shop.imageUrl ? 'pointer' : 'default',
-                    }}
-                    onClick={() => {
-                      const logoSrc = shop.imageUrl;
-                      if (logoSrc) {
-                        setLightboxImage({
-                          url: logoSrc,
-                          title: `${shop.name} — Logo Cửa Hàng (Kích Thước Thật)`,
-                        });
-                      }
-                    }}
-                    title={shop.imageUrl ? 'Bấm để xem ảnh logo chi tiết' : shop.name}
-                  />
+            ) : !report?.hasAssignment || !branch ? (
+              <BranchEmptyState onRetry={refresh} />
+            ) : (
+              <>
+                <header className="bd-page-header">
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 700, color: '#0F172A' }}>{shop.name}</span>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: '9999px',
-                          background: shop.status === 'ACTIVE' ? '#ECFDF5' : '#FEF3C7',
-                          color: shop.status === 'ACTIVE' ? '#059669' : '#D97706',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: shop.status === 'ACTIVE' ? '#10B981' : '#F59E0B' }} />
-                        {shop.status === 'ACTIVE' ? 'Mở cửa đón khách' : 'Tạm ngưng hoạt động'}
+                    <div className="store-mgmt-tag">TỔNG QUAN CHI NHÁNH</div>
+                    <div className="d-flex align-items-center flex-wrap gap-2">
+                      <h1 className="store-mgmt-title">{branch.name || 'Chi nhánh Vestora'}</h1>
+                      <span className={`store-pill-active ${branch.status === 'ACTIVE' ? '' : 'inactive'}`}>
+                        {branch.status === 'ACTIVE' ? 'Đang hoạt động' : branch.status || 'Tạm ngưng'}
                       </span>
+                      {branch.isHQ && <span className="branch-badge-hq">HQ</span>}
                     </div>
-                    <div style={{ fontSize: '12.5px', color: '#475569', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                      <span className="d-inline-flex align-items-center gap-1">
-                        <MapPin size={13} className="text-slate-400" />
-                        {[shop.address, shop.ward, shop.city].filter(Boolean).join(', ') || 'Chưa cập nhật địa chỉ'}
-                      </span>
-                      <span className="d-inline-flex align-items-center gap-1">
-                        <Phone size={13} className="text-slate-400" />
-                        {shop.phone || 'Chưa có hotline'}
-                      </span>
-                      <span className="d-inline-flex align-items-center gap-1">
-                        <Clock size={13} className="text-slate-400" />
-                        {shop.openingHours || '09:00 - 21:30'}
+                    <div className="bd-meta-line">
+                      {shortLocation && <span className="bd-meta-item"><MapPin size={13} />{shortLocation}</span>}
+                      {hoursText && <><span className="bd-meta-sep">•</span><span className="bd-meta-item"><Clock size={13} />{hoursText}</span></>}
+                      {branch.phone && <><span className="bd-meta-sep">•</span><span className="bd-meta-item"><Phone size={13} />{branch.phone}</span></>}
+                      <span className="bd-meta-sep">•</span>
+                      <span>
+                        {report.storeLocation
+                          ? `Kho cửa hàng: ${report.storeLocation.name}${report.locationsCount > 1 ? ` (+${report.locationsCount - 1})` : ''}`
+                          : 'Chưa gắn kho cửa hàng'}
                       </span>
                     </div>
                   </div>
-                </div>
 
-                <button
-                  className="btn-primary d-inline-flex align-items-center gap-2"
-                  onClick={() => navigate('/branch/settings')}
-                  style={{ fontSize: '12.5px', padding: '8px 18px', borderRadius: '8px', fontWeight: 600 }}
-                >
-                  <Store size={14} />
-                  <span>Quản Lý Cửa Hàng Này</span>
-                  <ExternalLink size={13} />
-                </button>
-              </div>
-
-              {/* 4 Stat Cards */}
-              <div className="stats-grid-4">
-                <div className="stat-card-white" style={{ cursor: 'pointer' }} onClick={() => navigate('/branch/analytics')}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span className="stat-card-title">DOANH THU THUÊ & MUA</span>
-                      <span style={{ fontSize: '11px', color: '#059669', fontWeight: 600 }}>↗ +18.2%</span>
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <div className="taskbar-status-segmented" role="group" aria-label="Bộ lọc thời gian báo cáo">
+                      {TIME_RANGES.map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className={`taskbar-status-btn ${timeRange === item.key ? 'active' : ''}`}
+                          onClick={() => setTimeRange(item.key)}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
                     </div>
-                    <div className="stat-card-value">295.000.000 đ</div>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '12px' }}>
-                    Thuê: <strong>210.000.000đ</strong> | Mua: <strong>85.000.000đ</strong>
-                  </div>
-                </div>
-
-                <div className="stat-card-white" style={{ cursor: 'pointer' }} onClick={() => navigate('/branch/rental-orders')}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span className="stat-card-title">ĐƠN THUÊ ĐANG XỬ LÝ</span>
-                      <span style={{ fontSize: '10px', background: '#F3F4F6', padding: '2px 6px', borderRadius: '4px' }}>+12 đơn mới</span>
-                    </div>
-                    <div className="stat-card-value">48 đơn</div>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '12px' }}>
-                    Chờ duyệt: <strong style={{ color: '#D97706' }}>5</strong> | Đang giao: <strong>14</strong>
-                  </div>
-                </div>
-
-                <div className="stat-card-white" style={{ cursor: 'pointer' }} onClick={() => navigate('/branch/returns')}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span className="stat-card-title">TIỀN CỌC ĐANG TẠM GIỮ</span>
-                      <span style={{ fontSize: '10px', background: '#FEF3C7', color: '#D97706', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>AN TOÀN</span>
-                    </div>
-                    <div className="stat-card-value" style={{ color: 'var(--color-gold-deep)' }}>142.500.000 đ</div>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '12px' }}>
-                    Shop đang giữ cọc cho 34 đơn thuê
-                  </div>
-                </div>
-
-                <div className="stat-card-white">
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span className="stat-card-title">CẢNH BÁO TỒN KHO</span>
-                      <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#DC2626', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>CẦN BỔ SUNG</span>
-                    </div>
-                    <div className="stat-card-value" style={{ color: '#DC2626' }}>3 Sản Phẩm</div>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '12px' }}>
-                    Size S hết hàng ở 2 mẫu đầm hot
-                  </div>
-                </div>
-              </div>
-
-              {/* Table Section Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '32px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
-                  ⚡ CẦN XỬ LÝ GẤP TRONG NGÀY
-                </h2>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {['TẤT CẢ (08)', 'CHỜ DUYỆT (03)', 'ĐANG GIAO (02)', 'TRẢ HÀNG (02)', 'ĐƠN MUA (01)'].map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      style={{
-                        border: 'none',
-                        background: activeTab === tab ? '#171717' : '#F3F4F6',
-                        color: activeTab === tab ? '#FFF' : '#4B5563',
-                        padding: '6px 14px',
-                        borderRadius: '9999px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {tab}
+                    <button type="button" className="taskbar-refresh-btn" onClick={refresh} disabled={refreshing} aria-label="Làm mới số liệu" title="Làm mới số liệu">
+                      <RefreshCw size={15} className={refreshing ? 'bd-spin' : ''} />
                     </button>
-                  ))}
-                </div>
-              </div>
+                    <Link to="/branch/rental-orders" className="btn-tail-primary text-decoration-none">
+                      <Sparkles size={15} /> Đơn thuê
+                    </Link>
+                  </div>
+                </header>
 
-              {/* Orders Table */}
-              <div style={{ background: '#FFF', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', marginTop: '16px', overflow: 'hidden' }}>
-                <table className="shop-table">
-                  <thead>
-                    <tr>
-                      <th>MÃ ĐƠN & TRANG PHỤC</th>
-                      <th>KHÁCH HÀNG THUÊ</th>
-                      <th>THỜI GIAN THUÊ</th>
-                      <th>GIÁ THUÊ / CỌC</th>
-                      <th>TRẠNG THÁI</th>
-                      <th>THAO TÁC XỬ LÝ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((ord, i) => (
-                      <tr key={i}>
-                        <td>
-                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                            <img src={ord.image} alt="product" style={{ width: '40px', height: '52px', borderRadius: '6px', objectFit: 'cover' }} />
-                            <div>
-                              <div style={{ fontSize: '11px', color: 'var(--color-gold-deep)', fontWeight: 700 }}>{ord.id}</div>
-                              <div style={{ fontSize: '13px', fontWeight: 700 }}>{ord.product}</div>
-                              <div style={{ fontSize: '11px', color: '#6B7280' }}>{ord.detail}</div>
+                {report.notice && (
+                  <div className={`bd-notice-ribbon ${report.notice.severity === 'danger' ? 'danger' : ''}`} role="status">
+                    <div className="d-flex align-items-center gap-2">
+                      <AlertTriangle size={15} className="flex-shrink-0" />
+                      <strong>{report.notice.title}</strong>
+                    </div>
+                    <Link to={report.notice.actionPath} className="bd-notice-link">
+                      {report.notice.actionLabel} <ArrowRight size={14} />
+                    </Link>
+                  </div>
+                )}
+
+                <section className="admin-kpi-grid" aria-label="Chỉ số tổng quan chi nhánh">
+                  {kpiCards.map((card) => (
+                    <article key={card.title} className="admin-kpi-card">
+                      <div className="admin-kpi-header">
+                        <span className="admin-kpi-title">{card.title}</span>
+                        <span className={`admin-kpi-icon-pill ${card.iconClass || ''}`}>{card.icon}</span>
+                      </div>
+                      <div className="admin-kpi-value">{card.value}</div>
+                      <div className="bd-kpi-sub">{card.sub}</div>
+                    </article>
+                  ))}
+                </section>
+
+                <section className="bd-grid-main" aria-label="Biểu đồ doanh thu và vận hành chi nhánh">
+                  <article className="admin-card bd-card">
+                    <div className="bd-card-header">
+                      <div>
+                        <h2 className="bd-card-title"><BarChart3 size={16} /> Doanh thu Bán &amp; Thuê</h2>
+                        <p className="bd-card-subtitle">Biến động doanh thu thực theo từng mốc thời gian</p>
+                      </div>
+                      <div className="bd-chart-legend">
+                        <span><span className="bd-legend-dot rental" />Thuê</span>
+                        <span><span className="bd-legend-dot sale" />Bán</span>
+                      </div>
+                    </div>
+
+                    <div className="bd-chart-area" role="img" aria-label="Biểu đồ doanh thu theo thời gian">
+                      {revenueSeries.map((bucket) => {
+                        const total = Number(bucket.totalRevenue || 0);
+                        const totalPct = total > 0 ? Math.max(8, Math.round((total / maxBucketTotal) * 100)) : 0;
+                        const rentalRev = Number(bucket.rentalRevenue || 0);
+                        const salesRev = Number(bucket.salesRevenue || 0);
+                        const rentalSharePct = rentalRev > 0 && salesRev > 0 ? Math.min(96, Math.max(4, Math.round((rentalRev / total) * 100))) : rentalRev > 0 ? 100 : 0;
+                        const saleSharePct = salesRev > 0 ? 100 - rentalSharePct : 0;
+
+                        return (
+                          <div key={bucket.key} className="bd-chart-col">
+                            <div className="bd-chart-tooltip">
+                              <div className="fw-bold">{bucket.fullLabel}</div>
+                              <div>Tổng: {formatCurrency(total)}</div>
+                              <div>Thuê: {formatCurrency(rentalRev)} ({bucket.rentalCount})</div>
+                              <div>Bán: {formatCurrency(salesRev)} ({bucket.salesCount})</div>
                             </div>
+                            <div className="bd-chart-stack">
+                              {total === 0 ? <div className="bd-bar-seg empty" /> : (
+                                <div className="bd-chart-fill-column" style={{ height: `${totalPct}%` }}>
+                                  {rentalSharePct > 0 && <div className="bd-bar-seg rental" style={{ height: `${rentalSharePct}%` }} />}
+                                  {saleSharePct > 0 && <div className="bd-bar-seg sale" style={{ height: `${saleSharePct}%` }} />}
+                                </div>
+                              )}
+                            </div>
+                            <span className="chart-bar-label">{bucket.label}</span>
                           </div>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: '12px', color: '#171717', fontWeight: 600 }}>{ord.customer}</div>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: '12px', color: '#4B5563' }}>{ord.duration}</div>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: '13px', fontWeight: 700 }}>{ord.amount}</div>
-                          <div style={{ fontSize: '10px', color: '#059669', fontWeight: 600 }}>✔ {ord.depositNote}</div>
-                        </td>
-                        <td>
-                          <span className={`status-tag status-${ord.statusType}`}>
-                            {ord.status}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="btn-primary"
-                            style={{ fontSize: '11px', padding: '6px 14px' }}
-                            onClick={() => {
-                              if (ord.statusType === 'return') navigate('/branch/returns');
-                              else if (ord.statusType === 'pending') navigate('/branch/rental-orders');
-                              else navigate('/branch/rental-orders');
-                            }}
-                          >
-                            {ord.action}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="bd-chart-footer">
+                      <span>Tổng trong kỳ: <strong className="text-dark">{formatCurrency(kpis.totalRevenue || 0)}</strong></span>
+                      <span>Thuê <strong>{formatCurrency(kpis.rentalRevenue || 0)}</strong> • Bán <strong>{formatCurrency(kpis.salesRevenue || 0)}</strong></span>
+                    </div>
+                  </article>
+
+                  <article className="admin-card bd-card">
+                    <div className="bd-card-header mb-2">
+                      <div>
+                        <h2 className="bd-card-title">Kho cửa hàng &amp; Tác vụ</h2>
+                        <p className="bd-card-subtitle">Tồn kho tại cửa hàng của chi nhánh (không gồm kho tổng)</p>
+                      </div>
+                      {isBranchManagerRole && <Link to="/branch/inventory" className="bd-link-subtle">Kho hàng <ChevronRight size={14} /></Link>}
+                    </div>
+
+                    <div className="bd-stock-bar" aria-label="Tỷ trọng tồn kho">
+                      <div className="bd-stock-seg-avail" style={{ width: `${availPct}%` }} />
+                      <div className="bd-stock-seg-renting" style={{ width: `${rentingPct}%` }} />
+                      <div className="bd-stock-seg-reserved" style={{ width: `${reservedPct}%` }} />
+                      <div className="bd-stock-seg-unavail" style={{ width: `${unavailPct}%` }} />
+                    </div>
+                    <div className="bd-stock-inline-stats">
+                      <span>Sẵn sàng <strong>{stock.availableCount || 0}</strong></span>
+                      <span>Đang thuê <strong>{stock.rentingCount || 0}</strong></span>
+                      <span>Giữ chỗ/Bảo trì <strong>{(stock.reservedCount || 0) + (stock.unavailableCount || 0)}</strong></span>
+                    </div>
+
+                    <div className="bd-section-micro-label">Đầu việc vận hành</div>
+                    <div>
+                      {queueItems.map((item) => (
+                        <Link key={item.label} to={item.to} className="bd-flat-row">
+                          <span className="d-inline-flex align-items-center gap-2">{item.icon}<span>{item.label}</span></span>
+                          <span className={`bd-count-pill ${item.count > 0 ? item.tone : ''}`}>{item.count}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </article>
+                </section>
+
+                <section className="bd-grid-main" aria-label="Đơn hàng và sản phẩm nổi bật">
+                  <article className="admin-card bd-card">
+                    <div className="bd-card-header">
+                      <div className="taskbar-status-segmented" role="tablist">
+                        <button type="button" role="tab" aria-selected={activeTab === 'RECENT'} className={`taskbar-status-btn ${activeTab === 'RECENT' ? 'active' : ''}`} onClick={() => setActiveTab('RECENT')}>
+                          Đơn gần đây ({(report?.recentOrders || []).length})
+                        </button>
+                        <button type="button" role="tab" aria-selected={activeTab === 'RETURNS'} className={`taskbar-status-btn ${activeTab === 'RETURNS' ? 'active' : ''}`} onClick={() => setActiveTab('RETURNS')}>
+                          Sắp đến hạn trả
+                          {upcomingReturns.length > 0 && <span className="status-segment-count">{upcomingReturns.length}</span>}
+                        </button>
+                      </div>
+
+                      {activeTab === 'RECENT' && (
+                        <div className="taskbar-status-segmented">
+                          {ORDER_FILTERS.map((f) => (
+                            <button key={f.key} type="button" className={`taskbar-status-btn ${typeFilter === f.key ? 'active' : ''}`} onClick={() => setTypeFilter(f.key)}>
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {activeTab === 'RECENT' ? (
+                      <>
+                        <div className="bd-search-wrap">
+                          <Search size={13} className="bd-search-icon" />
+                          <input type="text" className="bd-search-input" placeholder="Tìm mã đơn, tên hoặc SĐT khách..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                        </div>
+                        {filteredOrders.length === 0 ? (
+                          <div className="bd-empty-panel"><ShoppingBag size={20} /><span>Chưa có đơn hàng phù hợp với bộ lọc.</span></div>
+                        ) : (
+                          <div className="order-table-responsive">
+                            <table className="order-table">
+                              <thead><tr><th>Đơn hàng</th><th>Khách hàng</th><th>Giá trị</th><th>Trạng thái</th><th className="text-end">Xem</th></tr></thead>
+                              <tbody>
+                                {filteredOrders.map((order) => {
+                                  const isRental = order.orderType === 'rental';
+                                  const statusDef = resolveOrderDisplayStatus(order, order.orderType, true);
+                                  return (
+                                    <tr key={`${order.orderType}-${order._id}`}>
+                                      <td>
+                                        <div className="order-code-title">{order.orderCode}</div>
+                                        <div className="order-code-date">{isRental ? 'Thuê' : 'Bán'} • {formatDate(order.createdAt)}</div>
+                                      </td>
+                                      <td>
+                                        <div className="order-customer-name">{order.customer?.fullName || 'Khách vãng lai'}</div>
+                                        <div className="order-customer-sub">{order.customer?.phone || 'Chưa có SĐT'}</div>
+                                      </td>
+                                      <td>
+                                        <div className="order-fee-primary">{formatCurrency(isRental ? order.rentalFee : order.totalAmount)}</div>
+                                        {isRental && order.depositAmount > 0 && <div className="order-code-date">Cọc {formatCurrency(order.depositAmount)}</div>}
+                                      </td>
+                                      <td><span className={`order-badge ${statusDef.chipClass}`}><span className="order-badge-dot" />{statusDef.text}</span></td>
+                                      <td className="text-end">
+                                        <button type="button" className="order-action-btn" onClick={() => openOrderModal(order)}><Eye size={14} /> Chi tiết</button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </>
+                    ) : upcomingReturns.length === 0 ? (
+                      <div className="bd-empty-panel"><CheckCircle2 size={22} className="text-success" /><span>Không có đơn thuê nào quá hạn hoặc đến hạn trả trong 48 giờ tới.</span></div>
+                    ) : (
+                      <div className="order-table-responsive">
+                        <table className="order-table">
+                          <thead><tr><th>Đơn thuê</th><th>Khách hàng</th><th>Hạn trả</th><th>Tình trạng</th><th className="text-end">Xem</th></tr></thead>
+                          <tbody>
+                            {upcomingReturns.map((order) => (
+                              <tr key={order._id}>
+                                <td><div className="order-code-title">{order.orderCode}</div><div className="order-code-date">{formatCurrency(order.rentalFee)}</div></td>
+                                <td><div className="order-customer-name">{order.customer?.fullName}</div><div className="order-customer-sub">{order.customer?.phone || 'Chưa có SĐT'}</div></td>
+                                <td><div className="order-period-text">{formatDate(order.dueDate)}</div></td>
+                                <td><span className={`order-badge ${order.isOverdue ? 'overdue' : 'renting'}`}><span className="order-badge-dot" />{formatCountdown(order)}</span></td>
+                                <td className="text-end">
+                                  <button type="button" className="order-action-btn" onClick={() => openOrderModal(order)}><Eye size={14} /> Chi tiết</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <div className="bd-card-footer-links">
+                      <Link to="/branch/rental-orders" className="bd-link-subtle">Tất cả đơn thuê <ChevronRight size={14} /></Link>
+                      <Link to="/branch/sale-orders" className="bd-link-subtle">Tất cả đơn bán <ChevronRight size={14} /></Link>
+                    </div>
+                  </article>
+
+                  <article className="admin-card bd-card">
+                    <div className="bd-card-header">
+                      <div>
+                        <h2 className="bd-card-title"><Award size={16} /> Sản phẩm nổi bật</h2>
+                        <p className="bd-card-subtitle">Doanh thu bán &amp; thuê cao nhất kỳ tại chi nhánh</p>
+                      </div>
+                      <Link to="/branch/analytics" className="bd-link-subtle">Phân tích <ChevronRight size={14} /></Link>
+                    </div>
+
+                    {topProducts.length === 0 ? (
+                      <div className="bd-empty-panel flex-grow-1"><Award size={20} /><span>Chưa phát sinh đơn sản phẩm nào trong kỳ này.</span></div>
+                    ) : (
+                      <div>
+                        {topProducts.map((item, idx) => (
+                          <div key={item.productId || idx} className="bd-product-row">
+                            <div className="d-flex align-items-center gap-2 min-w-0">
+                              {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="bd-product-thumb" /> : <div className="bd-product-thumb-fallback">#{idx + 1}</div>}
+                              <div className="min-w-0">
+                                <div className="bd-product-name" title={item.name}>{item.name}</div>
+                                <div className="order-code-date">Thuê {item.rentalCount || 0} • Bán {item.salesCount || 0} • {item.orderCount || 0} đơn</div>
+                              </div>
+                            </div>
+                            <div className="fw-bold text-nowrap small">{formatCurrency(item.revenue || 0)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                </section>
+              </>
+            )}
+          </div>
+        </main>
       </div>
 
-      {/* Image Lightbox Modal */}
-      <ImageLightboxModal
-        show={Boolean(lightboxImage)}
-        onHide={() => setLightboxImage(null)}
-        imageUrl={lightboxImage?.url || (typeof lightboxImage === 'string' ? lightboxImage : '')}
-        title={lightboxImage?.title || 'Xem Ảnh Kích Thước Thật'}
+      <RentalOrderDetailModal
+        isOpen={activeOrderModal?.type === 'rental'}
+        onClose={() => setActiveOrderModal(null)}
+        orderId={activeOrderModal?.type === 'rental' ? activeOrderModal?.order?._id : null}
+        initialOrder={activeOrderModal?.type === 'rental' ? activeOrderModal?.order : null}
+        isReadOnly={!isBranchManagerRole}
+        onAction={refresh}
+      />
+
+      <SaleOrderDetailModal
+        isOpen={activeOrderModal?.type === 'sale'}
+        onClose={() => setActiveOrderModal(null)}
+        orderId={activeOrderModal?.type === 'sale' ? activeOrderModal?.order?._id : null}
+        initialOrder={activeOrderModal?.type === 'sale' ? activeOrderModal?.order : null}
+        isReadOnly={!isBranchManagerRole}
+        onAction={refresh}
       />
     </div>
   );

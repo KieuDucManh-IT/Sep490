@@ -8,6 +8,7 @@ import {
   getShopById,
   getMyShop,
   getAssignedBranch,
+  getBranchPerformanceReport,
   updateShopAddress,
   updateShopInfo,
   reverseGeocodeAddress,
@@ -85,6 +86,12 @@ router.get(
   authMiddleware,
   requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
   getAssignedBranch
+);
+router.get(
+  '/reports/branch-performance',
+  authMiddleware,
+  requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
+  getBranchPerformanceReport
 );
 router.get('/reverse-geocode', reverseGeocodeAddress);
 

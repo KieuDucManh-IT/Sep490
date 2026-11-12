@@ -23,6 +23,7 @@ import {
 
 import { resolveReverseGeocode } from '../../services/shop/geoService.js';
 import { processAndUploadShopMedia } from '../../services/shop/shopMediaService.js';
+import { getBranchPerformanceReportData } from '../../services/shop/branchReportService.js';
 
 /**
  * Lấy danh sách hồ sơ chi nhánh có phân trang, bộ lọc và tìm kiếm
@@ -169,6 +170,23 @@ export const getMyShop = async (req, res) => {
     return res.status(status).json({
       success: false,
       message: error.message || 'Lỗi khi tải thông tin gian hàng.',
+    });
+  }
+};
+
+/**
+ * Lấy báo cáo tổng quan và hiệu suất vận hành theo chi nhánh
+ * GET /api/shops/reports/branch-performance
+ */
+export const getBranchPerformanceReport = async (req, res) => {
+  try {
+    const { branchId, timeRange } = req.query;
+    const report = await getBranchPerformanceReportData({ user: req.user, branchId, timeRange });
+    return res.json({ success: true, data: report });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.message || 'Lỗi máy chủ khi tải báo cáo chi nhánh.',
     });
   }
 };

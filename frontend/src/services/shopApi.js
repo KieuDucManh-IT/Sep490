@@ -52,13 +52,11 @@ export const getAssignedBranchApi = async (branchId) => {
   return fetchJson(`/api/shops/assigned-branch${query}`);
 };
 
-export const getBranchPerformanceReportApi = async ({ branchId, timeRange = 'MONTH', startDate, endDate } = {}) => {
+export const getBranchPerformanceReportApi = async ({ branchId, timeRange = 'MONTH' } = {}) => {
   const activeId = branchId || localStorage.getItem('vestora_active_branch_id') || '';
   const params = new URLSearchParams();
   if (activeId) params.append('branchId', activeId);
   if (timeRange) params.append('timeRange', timeRange);
-  if (startDate) params.append('startDate', startDate);
-  if (endDate) params.append('endDate', endDate);
   const qs = params.toString() ? `?${params.toString()}` : '';
   return fetchJson(`/api/shops/reports/branch-performance${qs}`);
 };

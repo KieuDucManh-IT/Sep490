@@ -2,8 +2,10 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { createDecartClient } from "@decartai/sdk";
 import { authMiddleware } from "../middlewares/errorMiddleware.js";
+import tryOnVideoRoutes from "./tryOnVideoRoutes.js";
 
 const router = express.Router();
+router.use("/videos", tryOnVideoRoutes);
 
 const limiter = rateLimit({
     windowMs: 60_000,

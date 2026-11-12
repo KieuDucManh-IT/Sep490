@@ -14,7 +14,6 @@ import apiRoutes from "./src/routes/apiRoutes.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
 import conversationRoutes from "./src/routes/conversationRoutes.js";
-import tryOnRoutes from "./src/routes/tryOnRoutes.js";
 import wardrobeRoutes from "./src/routes/wardrobeRoutes.js";
 import { wishlistRouter, collectionRouter } from "./src/routes/customer/collectionRoutes.js";
 import { initSocket } from "./src/socket/index.js";

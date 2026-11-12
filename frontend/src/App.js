@@ -21,13 +21,14 @@ import UserProfilePage from './pages/customer/UserProfilePage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
 import WebcamTryOnPage from './pages/customer/WebcamTryOnPage';
 import AboutPage from './pages/customer/AboutPage';
-import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
 import WardrobePage from './pages/customer/WardrobePage';
 import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
+import ChatPage from './pages/customer/ChatPage';
+import BranchChatPage from './pages/branch/BranchChatPage';
 import CustomerOrderTrackingPage from './pages/customer/CustomerOrderTrackingPage';
 import SharedLookbookPage from './pages/customer/SharedLookbookPage';
 import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
@@ -99,14 +100,13 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/try-on" element={<PhotoTryOnPage />} />
         <Route path="/try-on/photo" element={<PhotoTryOnPage />} />
         <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
         <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
         <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/blog" element={<BlogPage />} />
-        <Route path="/blog/:id" element={<BlogPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
         <Route path="/policy/:tab" element={<PolicyPage />} />
@@ -120,6 +120,8 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+        <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
         <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
         <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
@@ -133,6 +135,22 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <BranchDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/chat"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER']}>
+              <BranchChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/chat/:conversationId"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER']}>
+              <BranchChatPage />
             </ProtectedRoute>
           }
         />

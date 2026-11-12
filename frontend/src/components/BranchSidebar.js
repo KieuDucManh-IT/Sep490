@@ -11,6 +11,7 @@ import {
   Boxes,
   PackageCheck,
   Star,
+  MessageSquareText,
   Compass,
   LogOut,
   ChevronLeft,
@@ -18,6 +19,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getAssignedBranchApi } from '../services/shopApi';
+import chatApi from '../services/chatApi';
+import socketService from '../services/socket';
 import '../styles/ShopDashboard.css';
 
 export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle: externalOnToggle }) {
@@ -103,6 +106,42 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
+
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await chatApi.getUnreadCount();
+      const count = res?.data?.unreadCount ?? res?.unreadCount ?? 0;
+      setUnreadChatCount(Number(count) || 0);
+    } catch (_) {}
+  }, [user]);
+
+  useEffect(() => {
+    fetchUnreadCount();
+  }, [fetchUnreadCount, location.pathname]);
+
+  useEffect(() => {
+    if (!user) return;
+    const socket = socketService.getSocket();
+    const handleUpdate = () => fetchUnreadCount();
+
+    socket.on('conversation:updated', handleUpdate);
+    socket.on('unread:update', handleUpdate);
+    socket.on('message:new', handleUpdate);
+    window.addEventListener('vestora:chat:unread_changed', handleUpdate);
+
+    const interval = setInterval(fetchUnreadCount, 30000);
+
+    return () => {
+      socket.off('conversation:updated', handleUpdate);
+      socket.off('unread:update', handleUpdate);
+      socket.off('message:new', handleUpdate);
+      window.removeEventListener('vestora:chat:unread_changed', handleUpdate);
+      clearInterval(interval);
+    };
+  }, [user, fetchUnreadCount]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -206,6 +245,12 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
         title: 'KHÁCH HÀNG & ĐÁNH GIÁ',
         items: [
           {
+            path: '/branch/chat',
+            label: 'Tư Vấn Khách Hàng',
+            icon: MessageSquareText,
+            desc: 'Nhắn tin tư vấn trực tiếp',
+          },
+          {
             path: '/branch/reviews',
             label: 'Đánh Giá Khách Hàng',
             icon: Star,
@@ -305,8 +350,22 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
                     aria-current={active ? 'page' : undefined}
                   >
                     <div className="sidebar-nav-item-content">
-                      <span className="sidebar-nav-icon">
+                      <span className="sidebar-nav-icon" style={{ position: 'relative' }}>
                         <IconComponent size={17} strokeWidth={active ? 2.2 : 1.8} />
+                        {isCollapsed && item.path === '/branch/chat' && unreadChatCount > 0 && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: -2,
+                              right: -2,
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor: '#e11d48',
+                              border: '1.5px solid #1c1917',
+                            }}
+                          />
+                        )}
                       </span>
                       {!isCollapsed && (
                         <span className="sidebar-nav-label text-truncate">{item.label}</span>
@@ -314,7 +373,22 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
                     </div>
 
                     {!isCollapsed && (
-                      <div className="sidebar-nav-item-right">
+                      <div className="sidebar-nav-item-right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {item.path === '/branch/chat' && unreadChatCount > 0 && (
+                          <span
+                            style={{
+                              backgroundColor: '#e11d48',
+                              color: '#ffffff',
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: 999,
+                              lineHeight: '14px',
+                            }}
+                          >
+                            {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                          </span>
+                        )}
                         <ChevronRight
                           size={13}
                           className={`sidebar-nav-arrow ${active ? 'active' : ''}`}

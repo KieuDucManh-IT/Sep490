@@ -199,6 +199,12 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
             icon: PackageCheck,
             desc: 'Tạo và theo dõi yêu cầu chuyển hàng từ kho tổng',
           },
+          {
+            path: '/branch/stock-returns',
+            label: 'Trả Hàng Về Kho Tổng',
+            icon: RotateCcw,
+            desc: 'Tạo phiếu trả hàng và theo dõi trạng thái chuyển về kho tổng',
+          },
         ],
       },
       {

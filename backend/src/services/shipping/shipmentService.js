@@ -98,16 +98,10 @@ export const createOutboundShipment = async (user, payload = {}) => {
     if (['renting', 'returned'].includes(order.rentalStatus)) {
       throw fail(`Không thể tạo vận đơn giao cho đơn thuê đang ở trạng thái "${order.rentalStatus}".`, 400);
     }
-    if (order.rentalStatus === 'cancelled') {
-      throw fail('Đơn thuê đã bị hủy theo trạng thái vận đơn GHN, không thể tạo vận đơn mới.', 400);
-    }
   }
   if (orderType === 'sale') {
     if (['completed'].includes(order.orderStatus)) {
       throw fail(`Không thể tạo vận đơn giao cho đơn bán đang ở trạng thái "${order.orderStatus}".`, 400);
-    }
-    if (order.orderStatus === 'cancelled') {
-      throw fail('Đơn bán đã bị hủy theo trạng thái vận đơn GHN, không thể tạo vận đơn mới.', 400);
     }
   }
 
@@ -202,16 +196,24 @@ export const createOutboundShipment = async (user, payload = {}) => {
   });
 
   // Lưu ngược mã hành chính GHN vào đơn hàng để phục vụ tra cứu và retry
+  // Đồng thời khôi phục trạng thái đơn hàng sang active nếu trước đó bị hủy do hủy vận đơn
   const OrderModel = orderType === 'rental' ? RentalOrder : SalesOrder;
+  const updateFields = {
+    'shippingAddress.provinceId': Number(toProvinceId) || receiverInfo.provinceId,
+    'shippingAddress.districtId': Number(resolvedDistrictId),
+    'shippingAddress.wardCode': String(toWardCode || receiverInfo.wardCode),
+  };
+
+  if (orderType === 'rental') {
+    updateFields.rentalStatus = 'confirmed';
+  } else if (orderType === 'sale') {
+    updateFields.orderStatus = 'processing';
+    updateFields.cancelledAt = null;
+  }
+
   await OrderModel.updateOne(
     { _id: order._id },
-    {
-      $set: {
-        'shippingAddress.provinceId': Number(toProvinceId) || receiverInfo.provinceId,
-        'shippingAddress.districtId': Number(resolvedDistrictId),
-        'shippingAddress.wardCode': String(toWardCode || receiverInfo.wardCode),
-      },
-    }
+    { $set: updateFields }
   ).catch(() => {});
 
   return savedShipment;

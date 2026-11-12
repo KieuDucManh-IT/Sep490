@@ -27,8 +27,11 @@ export const resolvePrimaryShipment = (list = []) => {
   if (!Array.isArray(list) || !list.length) return null;
   const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
   if (active.length > 0) {
-    const withCode = active.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
-    return withCode || active[0];
+    const withCode = active.filter((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
+    if (withCode.length > 0) {
+      return withCode[withCode.length - 1];
+    }
+    return active[active.length - 1];
   }
   return null;
 };

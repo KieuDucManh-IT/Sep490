@@ -19,7 +19,9 @@ import { getRentalOrderDetailApi } from '../../services/orderApi';
 import {
   formatCurrency,
   formatDate,
+  formatDateOnly,
   DEPOSIT_STATUS_MAP,
+  PAYMENT_STATUS_MAP,
   resolveOrderDisplayStatus,
 } from './orderUtils';
 import {
@@ -116,11 +118,15 @@ export default function RentalOrderDetailModal({
     const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
     if (match) noteDeliveryAddress = match[3].trim();
   }
-  const customerAddress = order.shippingAddress?.street 
-    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
-    : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
+  const customerAddress = order.shippingAddress?.street
+    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.district, order.shippingAddress.city].filter(Boolean).join(', ')
+    : (order.shippingAddress?.address || noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
   const shipments = detailData?.shipments || order.shipments || [];
+
+  const rentalStart = order.startDate || order.rentalStartDate;
+  const rentalDue = order.dueDate || order.rentalEndDate;
+  const actualReturned = order.actualReturnedAt || order.actualReturnDate;
 
   const statusDef = resolveOrderDisplayStatus(
     { ...order, shipments, shipment: detailData?.shipment || order.shipment },
@@ -131,6 +137,11 @@ export default function RentalOrderDetailModal({
   const depositDef = DEPOSIT_STATUS_MAP[order.depositStatus] || {
     text: order.depositStatus || 'Chưa đặt cọc',
     chipClass: 'pending',
+  };
+
+  const paymentDef = PAYMENT_STATUS_MAP[order.paymentStatus] || {
+    text: order.paymentStatus || 'Chưa thanh toán',
+    chipClass: 'cancelled',
   };
 
   const branchName =
@@ -174,8 +185,13 @@ export default function RentalOrderDetailModal({
                 <span className="order-badge-dot" />
                 {statusDef.text}
               </span>
+              <span className={`order-badge ${depositDef.chipClass}`}>
+                <ShieldCheck size={12} className="me-1" />
+                {depositDef.text}
+              </span>
               {isReadOnly ? (
                 <span className="order-readonly-badge">
+                  <ShieldCheck size={12} />
                 </span>
               ) : (
                 <span className="order-active-branch-badge">
@@ -228,7 +244,7 @@ export default function RentalOrderDetailModal({
 
               <div className="row g-3">
                 <div className="col-12 col-md-6 border-end">
-                  <div className="small text-muted mb-1">Thông tin liên hệ</div>
+                  <div className="small text-muted mb-1">Người nhận</div>
                   <div className="fw-semibold text-dark fs-6">
                     {customerName}
                   </div>
@@ -242,37 +258,38 @@ export default function RentalOrderDetailModal({
                       <span>{customerEmail}</span>
                     </div>
                   )}
-                  {customerAddress && (
-                    <div className="small text-muted d-flex align-items-center gap-1 mt-1">
-                      <MapPin size={13} />
-                      <span className="text-truncate">{customerAddress}</span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="col-12 col-md-6 ps-md-3">
-                  <div className="small text-muted mb-1">Thời gian thuê trang phục</div>
-                  <div className="d-flex align-items-center gap-2">
-                    <Clock size={16} className="text-primary" />
+                  <div className="small text-muted mb-1">Địa chỉ giao nhận</div>
+                  <div className="d-flex align-items-start gap-2 mb-2">
+                    <MapPin size={16} className="text-primary mt-1 flex-shrink-0" />
+                    <div className="text-dark fw-medium small">
+                      {customerAddress}
+                    </div>
+                  </div>
+
+                  <div className="d-flex align-items-start gap-2 pt-2 border-top">
+                    <Clock size={15} className="text-primary mt-1 flex-shrink-0" />
                     <div>
                       <div className="small">
                         Bắt đầu:{' '}
                         <strong>
-                          {order.rentalStartDate ? formatDate(order.rentalStartDate) : 'Chưa giao đồ'}
+                          {rentalStart ? formatDateOnly(rentalStart) : 'Chưa giao đồ'}
                         </strong>
                       </div>
                       <div className="small mt-1">
                         Hạn trả:{' '}
                         <strong className="text-danger">
-                          {order.rentalEndDate ? formatDate(order.rentalEndDate) : 'Chưa ấn định'}
+                          {rentalDue ? formatDateOnly(rentalDue) : 'Chưa ấn định'}
                         </strong>
                       </div>
                     </div>
                   </div>
 
-                  {order.actualReturnDate && (
+                  {actualReturned && (
                     <div className="small text-success mt-2 pt-2 border-top">
-                      Đã trả ngày: {formatDate(order.actualReturnDate)}
+                      Đã trả ngày: {formatDate(actualReturned)}
                     </div>
                   )}
                 </div>
@@ -326,10 +343,20 @@ export default function RentalOrderDetailModal({
                             {it.quantity || 1}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                            {formatCurrency(it.rentalPrice || it.price || it.variantId?.productId?.rentalPricePerDay)}
+                            {formatCurrency(
+                              it.unitRentalFee ??
+                              it.rentalPrice ??
+                              it.price ??
+                              it.variantId?.productId?.rentalPricePerDay
+                            )}
                           </td>
                           <td style={{ textAlign: 'right', color: '#D97706', fontWeight: 600 }}>
-                            {formatCurrency(it.depositAmount || it.deposit || it.variantId?.productId?.deposit)}
+                            {formatCurrency(
+                              it.depositPerUnit ??
+                              it.depositAmount ??
+                              it.deposit ??
+                              it.variantId?.productId?.deposit
+                            )}
                           </td>
                         </tr>
                       ))
@@ -355,6 +382,20 @@ export default function RentalOrderDetailModal({
               <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
                   <div className="small text-muted">
+                    Phương thức thanh toán:{' '}
+                    <strong>
+                      {order.paymentMethod === 'wallet'
+                        ? 'Ví Vestora'
+                        : order.paymentMethod === 'bank_transfer'
+                        ? 'Chuyển khoản / PayOS'
+                        : order.paymentMethod || 'Ví Vestora'}
+                    </strong>
+                  </div>
+                  <div className="small text-muted mt-1">
+                    Trạng thái thanh toán:{' '}
+                    <strong className="text-dark">{paymentDef.text}</strong>
+                  </div>
+                  <div className="small text-muted mt-1">
                     Trạng thái tiền cọc: <strong>{depositDef.text}</strong>
                   </div>
                   {order.note && (

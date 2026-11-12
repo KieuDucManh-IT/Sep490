@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Inbox,
   CreditCard,
+  ShieldCheck,
 } from 'lucide-react';
 import OwnerSidebar from '../../components/OwnerSidebar';
 import BranchSidebar from '../../components/BranchSidebar';
@@ -68,7 +69,7 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
       const m = metrics || {};
       return [
         { key: 'all', label: 'Tất Cả', count: m.total },
-        { key: 'confirmed', label: 'Chờ Giao Đồ', count: m.confirmed },
+        { key: 'confirmed', label: 'Chờ Giao Hàng', count: m.confirmed },
         { key: 'renting', label: 'Đang Cho Thuê', count: m.renting },
         { key: 'overdue', label: 'Quá Hạn Trả', count: m.overdue },
         { key: 'partially_returned', label: 'Trả 1 Phần', count: m.partially_returned || m.partiallyReturned },
@@ -217,8 +218,8 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                         <th>TRANG PHỤC THUÊ</th>
                         <th>CHI NHÁNH</th>
                         <th>THỜI HẠN THUÊ</th>
-                        <th style={{ textAlign: 'right' }}>TIỀN THUÊ (VND)</th>
-                        <th style={{ textAlign: 'right' }}>TIỀN CỌC (VND)</th>
+                        <th style={{ textAlign: 'center' }}>TIỀN THUÊ & CỌC (VND)</th>
+                        <th style={{ textAlign: 'center' }}>TRẠNG THÁI CỌC</th>
                         <th style={{ textAlign: 'center' }}>TRẠNG THÁI</th>
                         <th style={{ textAlign: 'center' }}>{isBranch ? 'XỬ LÝ' : 'CHI TIẾT'}</th>
                       </tr>
@@ -280,8 +281,9 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                     ) : (
                       orders.map((o) => {
                         const cust = o.customerId || o.customerInfo || o.customer || {};
+                        const custInfo = Array.isArray(cust.Information) ? cust.Information[0] : (cust.Information || {});
                         const customerName = cust.FullName || cust.fullName || cust.name || 'Khách vãng lai';
-                        const customerPhone = cust.Information?.Phone || cust.phone || cust.Email || cust.email || '—';
+                        const customerPhone = custInfo?.Phone || cust.phone || cust.Email || cust.email || '—';
                         const branchName =
                           o.locationId?.shopId?.name ||
                           o.locationId?.name ||
@@ -370,20 +372,20 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                                 )}
                               </td>
 
-                              {/* 6. Tiền thuê */}
-                              <td style={{ textAlign: 'right' }}>
+                              {/* 6. Tiền thuê & tiền cọc */}
+                              <td style={{ textAlign: 'center' }}>
                                 <div className="order-fee-primary">
                                   {formatCurrency(o.rentalFee || o.totalRentalFee || o.totalAmount)}
                                 </div>
+                                <div className="order-deposit-sub">
+                                  Cọc: {formatCurrency(o.depositAmount)}
+                                </div>
                               </td>
 
-                              {/* 7. Tiền cọc */}
-                              <td style={{ textAlign: 'right' }}>
-                                <div className="order-deposit-amount">
-                                  {formatCurrency(o.depositAmount)}
-                                </div>
-                                <span className={`order-badge ${depositDef.chipClass}`} style={{ fontSize: '11px', padding: '2px 6px' }}>
-                                  <span className="order-badge-dot" />
+                              {/* 7. Trạng thái tiền cọc (đồng bộ cột Thanh toán của đơn mua) */}
+                              <td style={{ textAlign: 'center' }}>
+                                <span className={`order-badge ${depositDef.chipClass}`}>
+                                  <ShieldCheck size={12} />
                                   {depositDef.text}
                                 </span>
                               </td>

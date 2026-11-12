@@ -68,7 +68,6 @@ export default function ProductDetailPage() {
     d.setDate(d.getDate() + 2);
     return d.toISOString().split('T')[0];
   });
-  const [isFollowing, setIsFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState('desc'); // 'desc' | 'size' | 'policy' | 'reviews'
   const [showAiModal, setShowAiModal] = useState(false);
   const [toast, setToast] = useState(null);
@@ -462,7 +461,14 @@ export default function ProductDetailPage() {
       if (b.distanceKm == null) return -1;
       return a.distanceKm - b.distanceKm;
     });
-  }, [product?.branches, product?.branchAddress, product?.branchName, product?.quantity, userLoc]);
+  }, [
+    product?.branches,
+    product?.branchAddress,
+    product?.branchName,
+    product?.quantity,
+    product?.shopId,
+    userLoc,
+  ]);
 
   // Tự động chọn chi nhánh gần nhất khi danh sách chi nhánh sẵn sàng
   useEffect(() => {
@@ -527,10 +533,10 @@ export default function ProductDetailPage() {
         salePrice: !isRentalItem ? currentPrice : 0,
         selectedBranch: currentSelectedBranch
           ? {
-              locationId: currentSelectedBranch.locationId || currentSelectedBranch._id,
-              name: currentSelectedBranch.name,
-              address: currentSelectedBranch.address,
-            }
+            locationId: currentSelectedBranch.locationId || currentSelectedBranch._id,
+            name: currentSelectedBranch.name,
+            address: currentSelectedBranch.address,
+          }
           : null,
       };
 
@@ -716,8 +722,8 @@ export default function ProductDetailPage() {
                 {productTag === 'sale'
                   ? 'Mua sản phẩm'
                   : productTag === 'both'
-                  ? 'Thuê & Mua'
-                  : 'Cho thuê'}
+                    ? 'Thuê & Mua'
+                    : 'Cho thuê'}
               </span>
             </div>
 
@@ -1444,7 +1450,13 @@ export default function ProductDetailPage() {
 
             <button
               className="pdetail-btn-ai-tryon"
-              onClick={() => navigate(`/try-on/photo?product=${product._id || product.productCode}`)}
+              onClick={() =>
+                navigate(
+                  `/try-on/webcam?product=${encodeURIComponent(
+                    product._id || product.productCode
+                  )}`
+                )
+              }
             >
               <Camera size={16} />
               <span>Thử đồ AI</span>
@@ -1785,20 +1797,19 @@ export default function ProductDetailPage() {
                 >
                   <div className="card-media-box">
                     <span
-                      className={`product-type-badge ${
-                        item.tag === 'sale'
+                      className={`product-type-badge ${item.tag === 'sale'
                           ? 'badge-sale'
                           : item.tag === 'both'
-                          ? 'badge-both'
-                          : 'badge-rental'
-                      }`}
+                            ? 'badge-both'
+                            : 'badge-rental'
+                        }`}
                       style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
                     >
                       {item.tag === 'sale'
                         ? 'Mua sản phẩm'
                         : item.tag === 'both'
-                        ? 'Thuê & Mua'
-                        : 'Cho thuê'}
+                          ? 'Thuê & Mua'
+                          : 'Cho thuê'}
                     </span>
 
                     {itemImg ? (

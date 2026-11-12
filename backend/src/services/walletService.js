@@ -796,6 +796,7 @@ export async function syncWithdrawal(
         operation: error.operation,
         httpStatus: error.httpStatus,
         providerCode: error.providerCode,
+        providerMessage: error.message,
       });
     }
 

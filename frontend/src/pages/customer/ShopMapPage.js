@@ -138,6 +138,7 @@ export default function ShopMapPage() {
           selectedStore={selectedStore}
           userLocation={userLocation}
           onSelectStoreFromMarker={handleSelectStoreFromMarker}
+          onQuickGps={handleQuickGps}
         />
       </main>
 

@@ -271,9 +271,11 @@
   0% {
     box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.7);
   }
+
   70% {
     box-shadow: 0 0 0 8px rgba(39, 174, 96, 0);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(39, 174, 96, 0);
   }
@@ -669,6 +671,8 @@
   border: 1px solid #eae5dc;
   border-radius: 18px;
   padding: 22px;
+  display: flex;
+  flex-direction: column;
 }
 
 .column-head {
@@ -697,22 +701,29 @@
 
 /* Left Column: Showroom */
 .showroom-content-grid {
-  display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(0, 1.4fr);
-  gap: 14px;
-  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 180px;
 }
 
 .interactive-map-card {
   position: relative;
   background: #e8f0f2;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  min-height: 220px;
-  min-width: 190px;
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
   border: 1px solid #d9e5e7;
-  display: flex;
-  flex-direction: column;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.interactive-map-card:hover {
+  transform: translateY(-2px);
+  border-color: #C5A880;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .map-artistic-canvas {
@@ -724,11 +735,11 @@
 .map-river {
   position: absolute;
   top: 0;
-  right: 25%;
+  right: 28%;
   bottom: 0;
-  width: 42px;
+  width: 50px;
   background: #c3e2eb;
-  transform: rotate(25deg);
+  transform: rotate(20deg);
   border-radius: 20px;
 }
 
@@ -739,111 +750,167 @@
 }
 
 .road-1 {
-  top: 42%;
+  top: 45%;
   left: 0;
   right: 0;
-  height: 6px;
+  height: 7px;
 }
 
 .road-2 {
   left: 36%;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 7px;
 }
 
 .map-city-label {
   position: absolute;
-  top: 44%;
-  left: 20%;
-  font-size: 18px;
+  top: 48%;
+  left: 14%;
+  font-size: 19px;
   font-weight: 700;
   color: #334e58;
+  letter-spacing: -0.2px;
+  pointer-events: none;
 }
 
 .map-pin {
   position: absolute;
   cursor: pointer;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-  transition: transform 0.2s;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.25));
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .map-pin:hover {
-  transform: scale(1.25);
+  transform: scale(1.3) translateY(-3px);
 }
 
 .map-pin-icon {
-  color: #e11d48;
-  font-size: 20px;
+  display: block;
 }
 
-.pin-1 { top: 25%; left: 22%; }
-.pin-2 { top: 22%; left: 55%; }
-.pin-3 { top: 58%; left: 16%; }
-.pin-4 { top: 68%; left: 62%; }
+.pin-1 {
+  top: 20%;
+  left: 18%;
+}
+
+.pin-2 {
+  top: 16%;
+  left: 45%;
+}
+
+.pin-3 {
+  top: 58%;
+  left: 24%;
+}
+
+.pin-4 {
+  top: 32%;
+  left: 74%;
+}
+
+.pin-5 {
+  top: 62%;
+  left: 82%;
+}
+
+/* Customer Location on Map Preview */
+.map-user-pin {
+  position: absolute;
+  top: 50%;
+  left: 56%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.map-user-pulse {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.35);
+  animation: radar-wave 2s infinite ease-out;
+}
+
+.map-user-core {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 5px rgba(37, 99, 235, 0.6);
+  position: relative;
+  z-index: 2;
+}
 
 .map-overlay-controls {
   position: absolute;
-  bottom: 8px;
-  left: 8px;
-  right: 8px;
+  bottom: 12px;
+  left: 14px;
+  right: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  z-index: 2;
+  gap: 10px;
 }
 
 .btn-map-expand {
   background: #ffffff;
   border: 1px solid #d0d7de;
-  border-radius: 8px;
-  font-size: 11px;
+  border-radius: 999px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 5px 9px;
-  color: #333333;
+  padding: 7px 14px;
+  color: #1a1a1a;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
 }
 
 .btn-map-expand:hover {
-  background: #f8fafc;
-  border-color: #5b6e4e;
-  color: #5b6e4e;
+  background: #171717;
+  color: #ffffff;
+  border-color: #171717;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+
+.btn-map-expand:hover .map-btn-icon {
+  color: #C5A880;
 }
 
 .map-btn-icon {
-  font-size: 12px;
+  font-size: 14px;
   color: #555555;
+  transition: color 0.2s ease;
 }
 
 .btn-map-locate {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   background: #ffffff;
   border: 1px solid #d0d7de;
-  color: #333333;
-  font-size: 13px;
+  color: #2563eb;
+  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
 }
 
 .btn-map-locate:hover {
-  background: #f8fafc;
-  border-color: #5b6e4e;
-  color: #5b6e4e;
+  background: #eff6ff;
+  border-color: #2563eb;
+  transform: scale(1.08);
 }
 
 .showrooms-vertical-list {
@@ -1304,15 +1371,19 @@
   .products-carousel-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+
   .sustainability-card-container {
     grid-template-columns: 1fr 1fr;
   }
+
   .sustain-media-col {
     display: none;
   }
+
   .showroom-content-grid {
     grid-template-columns: 1fr;
   }
+
   .interactive-map-card {
     min-height: 150px;
     height: 150px;
@@ -1323,19 +1394,24 @@
   .hero-layout-grid {
     grid-template-columns: 1fr;
   }
+
   .hero-main-title {
     font-size: 38px;
   }
+
   .dual-split-section {
     grid-template-columns: 1fr;
   }
+
   .style-cards-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
   .steps-flow-container {
     flex-direction: column;
     gap: 14px;
   }
+
   .step-flow-arrow {
     transform: rotate(90deg);
   }
@@ -1345,15 +1421,19 @@
   .vestora-main-content {
     padding: 0 16px;
   }
+
   .hero-main-title {
     font-size: 30px;
   }
+
   .products-carousel-grid {
     grid-template-columns: 1fr;
   }
+
   .style-cards-grid {
     grid-template-columns: 1fr;
   }
+
   .showroom-content-grid {
     grid-template-columns: 1fr;
   }

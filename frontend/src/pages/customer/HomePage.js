@@ -24,14 +24,7 @@ import {
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
-import { getShopsListApi } from '../../services/shopApi';
 import { getUserLocation } from '../../utils/userLocation';
-import {
-  calculateHaversineDistanceKm,
-  estimateRoadDistanceKm,
-  formatDistanceLabel,
-  isValidCoordinate,
-} from '../../utils/geoUtils';
 import '../../styles/HomePage.css';
 
 // 5 Featured Products exactly matching the reference mockup
@@ -105,36 +98,7 @@ const FEATURED_PRODUCTS = [
   },
 ];
 
-// Showrooms near user
-const NEARBY_SHOWROOMS = [
-  {
-    id: 1,
-    name: 'The Velvet Store',
-    address: '123 Hoàng Hoa Thám, Ba Đình',
-    rating: '4.8',
-    reviews: '124',
-    distance: '1.2 km',
-    image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=300&q=80',
-  },
-  {
-    id: 2,
-    name: 'Lumière Fashion',
-    address: '45 Lý Thường Kiệt, Hoàn Kiếm',
-    rating: '4.7',
-    reviews: '98',
-    distance: '2.8 km',
-    image: 'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=300&q=80',
-  },
-  {
-    id: 3,
-    name: 'Maison de Style',
-    address: '88 Cầu Giấy, Cầu Giấy',
-    rating: '4.6',
-    reviews: '76',
-    distance: '4.5 km',
-    image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=300&q=80',
-  },
-];
+
 
 // Style suggestion categories
 const STYLE_CATEGORIES = [
@@ -170,11 +134,16 @@ export default function HomePage() {
   const [quickMode, setQuickMode] = useState('thue-do');
   const [carouselIndex, setCarouselIndex] = useState(0);
 
-  // Real backend products & showrooms state
+  // Real backend products state
   const [apiProducts, setApiProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [apiShowrooms, setApiShowrooms] = useState([]);
-  const [loadingShowrooms, setLoadingShowrooms] = useState(true);
+  const [userLoc, setUserLoc] = useState(getUserLocation);
+
+  useEffect(() => {
+    const handleLocUpdate = () => setUserLoc(getUserLocation());
+    window.addEventListener('userLocationChanged', handleLocUpdate);
+    return () => window.removeEventListener('userLocationChanged', handleLocUpdate);
+  }, []);
 
   // Sync favorites with localStorage
   const [favoriteIds, setFavoriteIds] = useState(() => {
@@ -290,80 +259,6 @@ export default function HomePage() {
     };
   }, []);
 
-  // 2. Fetch real showrooms from backend API (/api/shops)
-  useEffect(() => {
-    let isMounted = true;
-    async function loadRealShowrooms() {
-      try {
-        setLoadingShowrooms(true);
-        const res = await getShopsListApi({ limit: 20 });
-        if (isMounted && res?.success && Array.isArray(res.data) && res.data.length > 0) {
-          const userLoc = getUserLocation();
-          const hasUserGps = isValidCoordinate(userLoc?.latitude, userLoc?.longitude);
-
-          const activeShops = res.data.filter(
-            (s) => s.status !== 'SUSPENDED' && s.status !== 'REJECTED' && !s.isDeleted
-          );
-
-          const fallbackImgs = [
-            'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=300&q=80',
-            'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=300&q=80',
-            'https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=300&q=80',
-          ];
-
-          const mapped = activeShops.map((shop, index) => {
-            const hasShopCoords = isValidCoordinate(shop.latitude, shop.longitude);
-            let roadDistanceKm = null;
-            if (hasUserGps && hasShopCoords) {
-              const haversineKm = calculateHaversineDistanceKm(
-                userLoc.latitude,
-                userLoc.longitude,
-                parseFloat(shop.latitude),
-                parseFloat(shop.longitude)
-              );
-              roadDistanceKm = estimateRoadDistanceKm(haversineKm);
-            }
-
-            return {
-              id: shop._id || index + 1,
-              name: shop.name || `Showroom VESTORA #${index + 1}`,
-              address: [shop.address, shop.ward, shop.city].filter(Boolean).join(', ') || 'Hà Nội',
-              rating: shop.rating ? Number(shop.rating).toFixed(1) : (4.7 + (index % 3) * 0.1).toFixed(1),
-              reviews: shop.reviewsCount || (85 + index * 12),
-              distance: roadDistanceKm != null ? formatDistanceLabel(roadDistanceKm) : `${(1.2 + index * 1.4).toFixed(1)} km`,
-              roadDistanceKm,
-              image: shop.imageUrl || fallbackImgs[index % fallbackImgs.length],
-              latitude: hasShopCoords ? parseFloat(shop.latitude) : null,
-              longitude: hasShopCoords ? parseFloat(shop.longitude) : null,
-            };
-          });
-
-          // Sắp xếp showroom gần nhất trước nếu có tọa độ GPS
-          mapped.sort((a, b) => {
-            if (a.roadDistanceKm != null && b.roadDistanceKm != null) {
-              return a.roadDistanceKm - b.roadDistanceKm;
-            }
-            if (a.roadDistanceKm != null) return -1;
-            if (b.roadDistanceKm != null) return 1;
-            return 0;
-          });
-
-          if (mapped.length > 0) {
-            setApiShowrooms(mapped);
-          }
-        }
-      } catch (err) {
-        console.warn('Không thể kết nối API /api/shops, sử dụng showroom mẫu:', err);
-      } finally {
-        if (isMounted) setLoadingShowrooms(false);
-      }
-    }
-    loadRealShowrooms();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   // Filter products by mode (Tất cả / Cho thuê / Mua sản phẩm)
   const allFilteredProducts = useMemo(() => {
     const source = apiProducts.length > 0 ? apiProducts : FEATURED_PRODUCTS;
@@ -389,11 +284,6 @@ export default function HomePage() {
       navigate('/catalog');
     }
   };
-
-  // Top 3 Showrooms
-  const visibleShowrooms = useMemo(() => {
-    return apiShowrooms.length > 0 ? apiShowrooms.slice(0, 3) : NEARBY_SHOWROOMS;
-  }, [apiShowrooms]);
 
   return (
     <div className="vestora-home-wrapper">
@@ -722,32 +612,49 @@ export default function HomePage() {
               <div
                 className="interactive-map-card"
                 onClick={() => navigate('/map')}
-                style={{ cursor: 'pointer' }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate('/map');
+                  }
+                }}
                 title="Bấm để mở bản đồ showroom chi tiết"
               >
                 <div className="map-artistic-canvas">
                   <div className="map-river"></div>
                   <div className="map-road road-1"></div>
                   <div className="map-road road-2"></div>
-                  <div className="map-city-label">Hà Nội</div>
+                  <div className="map-city-label">{userLoc?.shortCity || userLoc?.city || 'Hà Nội'}</div>
 
                   {/* Location Pins */}
-                  <div className="map-pin pin-1" title="Showroom 1">
-                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
+                  <div className="map-pin pin-1" title="Showroom Vestora">
+                    <MapPin size={18} color="#EA580C" className="map-pin-icon" />
                   </div>
-                  <div className="map-pin pin-2" title="Showroom 2">
-                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
+                  <div className="map-pin pin-2" title="Showroom Vestora">
+                    <MapPin size={18} color="#EA580C" className="map-pin-icon" />
                   </div>
-                  <div className="map-pin pin-3" title="Showroom 3">
-                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
+                  <div className="map-pin pin-3" title="Showroom Vestora">
+                    <MapPin size={18} color="#EA580C" className="map-pin-icon" />
                   </div>
-                  <div className="map-pin pin-4" title="Showroom 4">
-                    <MapPin size={16} color="#C5A880" className="map-pin-icon" />
+                  <div className="map-pin pin-4" title="Showroom Vestora">
+                    <MapPin size={18} color="#EA580C" className="map-pin-icon" />
+                  </div>
+                  <div className="map-pin pin-5" title="Showroom Vestora">
+                    <MapPin size={18} color="#EA580C" className="map-pin-icon" />
+                  </div>
+
+                  {/* User Location Pulse on Map */}
+                  <div className="map-user-pin" title="Vị trí của bạn">
+                    <span className="map-user-pulse"></span>
+                    <span className="map-user-core"></span>
                   </div>
                 </div>
 
                 <div className="map-overlay-controls">
                   <button
+                    type="button"
                     className="btn-map-expand"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -755,9 +662,10 @@ export default function HomePage() {
                     }}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    <Map size={14} className="map-btn-icon" /> Xem bản đồ lớn
+                    <Map size={14} className="map-btn-icon" /> Mở bản đồ radar showroom
                   </button>
                   <button
+                    type="button"
                     className="btn-map-locate"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -766,41 +674,9 @@ export default function HomePage() {
                     title="Vị trí hiện tại"
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <Crosshair size={14} />
+                    <Crosshair size={14} color="#2563EB" />
                   </button>
                 </div>
-              </div>
-
-              {/* Showroom List */}
-              <div className="showrooms-vertical-list">
-                {visibleShowrooms.map((store) => (
-                  <div
-                    key={store.id}
-                    className="showroom-item-card"
-                    onClick={() => navigate('/map')}
-                    title="Xem chi tiết trên bản đồ Showroom"
-                  >
-                    <img
-                      src={store.image}
-                      alt={store.name}
-                      className="showroom-thumb"
-                      onError={(e) => {
-                        e.target.src = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=300&q=80';
-                      }}
-                    />
-                    <div className="showroom-details">
-                      <h4 className="showroom-name">{store.name}</h4>
-                      <p className="showroom-address">{store.address}</p>
-                      <div className="showroom-meta" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Star size={12} fill="#C5A880" color="#C5A880" className="star-icon" /> {store.rating} ({store.reviews})
-                      </div>
-                    </div>
-                    <div className="showroom-dist-col">
-                      <span className="showroom-distance">{store.distance}</span>
-                      <ChevronRight size={14} className="chevron-right" />
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </div>

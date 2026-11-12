@@ -1,9 +1,3 @@
-/* ==========================================================
-   VESTORA — Admin Accounts Management (Quản Lý Tài Khoản)
-   Tone nền background be ngà (#FBF9F5) + Form nguyên bản TailAdmin
-   ========================================================== */
-
-/* Main Page Container - Lấy màu nền background be ngà */
 .admin-acc-page {
   padding: 24px 32px 64px 32px;
   background-color: #FBF9F5;
@@ -11,7 +5,6 @@
   box-sizing: border-box;
 }
 
-/* Page Header */
 .admin-acc-header {
   margin-bottom: 24px;
 }
@@ -106,7 +99,6 @@
   color: #0F172A;
 }
 
-/* 4 KPI Stat Cards */
 .admin-acc-kpis {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -220,7 +212,6 @@
   color: #94A3B8;
 }
 
-/* Filters & Search Row */
 .admin-acc-filter-card {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
@@ -349,7 +340,6 @@
   border-color: #FECACA;
 }
 
-/* Bulk Actions Bar */
 .admin-acc-bulk-bar {
   background: #1E293B;
   color: #FFFFFF;
@@ -418,7 +408,6 @@
   color: #FFFFFF;
 }
 
-/* User Table */
 .admin-acc-table-card {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
@@ -462,7 +451,6 @@
   white-space: nowrap;
 }
 
-/* Cột VAI TRÒ cố định độ rộng để SHOP OWNER luôn trên 1 dòng */
 .admin-acc-table th:nth-child(3),
 .admin-acc-table td:nth-child(3) {
   min-width: 135px;
@@ -485,7 +473,6 @@
   background: #EFF6FF;
 }
 
-/* User Column */
 .admin-acc-user-cell {
   display: flex;
   align-items: center;
@@ -558,9 +545,6 @@
   white-space: nowrap;
 }
 
-/* ==========================================================
-   ROLE PILLS: CĂN CHỈNH TRÊN 1 HÀNG & MÀU SẮC HỢP LÝ, HIỆN ĐẠI
-   ========================================================== */
 .role-pill {
   display: inline-flex;
   align-items: center;
@@ -576,14 +560,12 @@
   box-sizing: border-box;
 }
 
-/* ADMIN: Tone xanh Indigo / Navy đậm quyền lực và trang nhã */
 .role-pill.admin {
   background: #EEF2FF;
   color: #4338CA;
   border: 1px solid #C7D2FE;
 }
 
-/* SHOP OWNER: Tone cam đất Terracotta ấm áp */
 .role-pill.shopOwner,
 .role-pill.shop-owner {
   background: #FFF7ED;
@@ -591,7 +573,6 @@
   border: 1px solid #FED7AA;
 }
 
-/* BRAND MANAGER: Tone tím Violet hiện đại, sang trọng */
 .role-pill.brandmanager,
 .role-pill.brand-manager {
   background: #FAF5FF;
@@ -599,7 +580,6 @@
   border: 1px solid #E9D5FF;
 }
 
-/* WAREHOUSE MANAGER: Tone xanh ngọc Cyan kỹ thuật, quản lý kho */
 .role-pill.warehouseManager,
 .role-pill.warehouse-manager {
   background: #ECFEFF;
@@ -607,7 +587,6 @@
   border: 1px solid #A5F3FC;
 }
 
-/* WAREHOUSE STAFF: Tone xanh lục Emerald thực thi kho */
 .role-pill.warehousestaff,
 .role-pill.warehouse-staff {
   background: #ECFDF5;
@@ -615,14 +594,12 @@
   border: 1px solid #A7F3D0;
 }
 
-/* CUSTOMER: Tone xanh dương Sky sạch sẽ, thanh lịch */
 .role-pill.customer {
   background: #F0F9FF;
   color: #0369A1;
   border: 1px solid #BAE6FD;
 }
 
-/* Verification Pills */
 .verify-pill {
   display: inline-flex;
   align-items: center;
@@ -649,7 +626,6 @@
   color: #0284C7;
 }
 
-/* Status Pills */
 .status-dot-pill {
   display: inline-flex;
   align-items: center;
@@ -685,7 +661,6 @@
   background: #EF4444;
 }
 
-/* Actions Column */
 .admin-acc-action-cell {
   display: flex;
   align-items: center;
@@ -712,7 +687,6 @@
   border-color: #CBD5E1;
 }
 
-/* Action Dropdown Menu */
 .admin-acc-action-dropdown {
   position: absolute;
   right: 0;
@@ -780,7 +754,6 @@
   color: #047857;
 }
 
-/* Pagination Row */
 .admin-acc-pagination-bar {
   padding: 16px 20px;
   display: flex;
@@ -835,9 +808,6 @@
   cursor: not-allowed;
 }
 
-/* ==========================================================
-   DRAWER: CHI TIẾT TÀI KHOẢN (Right Side Panel)
-   ========================================================== */
 .admin-acc-drawer-backdrop {
   position: fixed;
   inset: 0;
@@ -875,7 +845,6 @@
   to { transform: translateX(0); }
 }
 
-/* Drawer Header */
 .admin-acc-drawer-header {
   padding: 18px 24px;
   border-bottom: 1px solid #E2E8F0;
@@ -916,7 +885,6 @@
   color: #0F172A;
 }
 
-/* Drawer User Hero Card - Không bao giờ bị co rúm (flex-shrink: 0) */
 .admin-acc-drawer-hero {
   padding: 24px;
   display: flex;
@@ -984,7 +952,6 @@
   text-align: center;
 }
 
-/* Drawer Tabs */
 .admin-acc-drawer-tabs {
   display: flex;
   padding: 0 24px;
@@ -1017,7 +984,6 @@
   font-weight: 600;
 }
 
-/* Drawer Body */
 .admin-acc-drawer-body {
   padding: 24px;
   flex: 1 0 auto;
@@ -1027,7 +993,6 @@
   box-sizing: border-box;
 }
 
-/* Section Header with edit button */
 .admin-acc-sec-header {
   display: flex;
   align-items: center;
@@ -1063,7 +1028,6 @@
   border-color: #CBD5E1;
 }
 
-/* Key Value Grid */
 .admin-acc-kv-list {
   display: flex;
   flex-direction: column;
@@ -1105,7 +1069,6 @@
   flex-wrap: wrap;
 }
 
-/* Status & Verification Box */
 .admin-acc-status-box {
   background: #F8FAFC;
   border: 1px solid #E2E8F0;
@@ -1155,7 +1118,6 @@
   color: #FFFFFF;
 }
 
-/* Stats 3-Box Grid */
 .admin-acc-stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1206,7 +1168,6 @@
   color: #94A3B8;
 }
 
-/* Quick Actions Grid */
 .admin-acc-quick-actions {
   display: flex;
   flex-direction: column;
@@ -1287,7 +1248,6 @@
   border-color: #CBD5E1;
 }
 
-/* Modals */
 .admin-acc-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1383,9 +1343,6 @@
   background: #F8FAFC;
 }
 
-/* ==========================================================
-   RICH EDIT USER MODAL (Chuẩn theo giao diện thiết kế, cân đối khung nhìn)
-   ========================================================== */
 .admin-acc-modal-card.admin-acc-edit-card {
   max-width: 620px;
   width: 100%;
@@ -1445,7 +1402,6 @@
   margin: 0;
 }
 
-/* Edit Form Container with internal scroll */
 .admin-acc-edit-form {
   display: flex;
   flex-direction: column;
@@ -1465,7 +1421,6 @@
   box-sizing: border-box;
 }
 
-/* Avatar Upload & Edit Component */
 .admin-acc-edit-avatar-box {
   display: flex;
   align-items: center;
@@ -1588,7 +1543,6 @@
   color: #DC2626;
 }
 
-/* Input Icon Container */
 .admin-acc-input-wrap {
   position: relative;
   display: flex;
@@ -1677,7 +1631,6 @@
   display: block;
 }
 
-/* Info Banner Alert */
 .admin-acc-edit-info-alert {
   background: #EFF6FF;
   border: 1px solid #DBEAFE;
@@ -1696,7 +1649,6 @@
   flex-shrink: 0;
 }
 
-/* Rich Modal Footer */
 .admin-acc-modal-foot-rich {
   padding: 13px 24px;
   border-top: 1px solid #F1F5F9;
@@ -1749,9 +1701,6 @@
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
 }
 
-/* ==========================================================
-   ADD USER MODAL STYLES (MATCH DESIGN EXACTLY)
-   ========================================================== */
 .admin-acc-modal-card.admin-acc-add-user-modal {
   max-width: 800px;
   width: 95%;
@@ -1929,4 +1878,3 @@
   color: #2563EB;
   flex-shrink: 0;
 }
-

@@ -6,9 +6,15 @@
 .catalog-page-container {
   background-color: #ffffff;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: #2b2b2b;
-  padding-bottom: 64px;
+  padding-bottom: 0;
+}
+
+.catalog-page-container .vestora-footer {
+  margin-top: auto;
 }
 
 /* Header Hero Section */
@@ -443,6 +449,146 @@ input:checked + .catalog-slider:before {
 .catalog-checkbox-count {
   font-size: 11.5px;
   color: #888d99;
+}
+
+.catalog-checkbox-count.has-count {
+  color: #5b6e4e;
+  font-weight: 600;
+}
+
+.catalog-checkbox-text-active {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* Category Filter Modern Compact Styling */
+.catalog-category-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  background: #5b6e4e;
+  color: #ffffff;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.catalog-category-clear-btn {
+  background: none;
+  border: none;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+
+.catalog-category-clear-btn:hover {
+  color: #78350f;
+}
+
+.catalog-category-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.catalog-category-search-icon {
+  position: absolute;
+  left: 8px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.catalog-category-search-input {
+  width: 100%;
+  padding: 5px 24px 5px 26px;
+  font-size: 11.5px;
+  color: #374151;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.catalog-category-search-input:focus {
+  border-color: #5b6e4e;
+  box-shadow: 0 0 0 2px rgba(91, 110, 78, 0.15);
+}
+
+.catalog-category-search-clear {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+}
+
+.catalog-category-search-clear:hover {
+  color: #374151;
+}
+
+.catalog-checkbox-scrollable {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Custom Scrollbar for Category List */
+.catalog-checkbox-scrollable::-webkit-scrollbar {
+  width: 4px;
+}
+
+.catalog-checkbox-scrollable::-webkit-scrollbar-track {
+  background: #f1ede5;
+  border-radius: 4px;
+}
+
+.catalog-checkbox-scrollable::-webkit-scrollbar-thumb {
+  background: #d4ccbe;
+  border-radius: 4px;
+}
+
+.catalog-checkbox-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #b8ac9a;
+}
+
+.catalog-category-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: #5b6e4e;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0 0 0;
+  margin-top: 2px;
+  transition: color 0.15s;
+}
+
+.catalog-category-toggle-btn:hover {
+  color: #3b4733;
+  text-decoration: underline;
+}
+
+.catalog-category-no-result {
+  font-size: 11.5px;
+  color: #9ca3af;
+  font-style: italic;
+  padding: 6px 0;
 }
 
 /* Price Range Slider */

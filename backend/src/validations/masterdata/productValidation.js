@@ -1,9 +1,27 @@
 import { validateInput } from '../../generic/inputValidation.js';
 import mongoose from 'mongoose';
 
-const fields = ['productCode', 'name', 'description', 'tag', 'trackingType', 'brand', 'material', 
-  'rating', 'reviewsCount', 'rentalPricePerDay', 'salePrice', 'deposit', 'discount', 'aiTryOn', 
-  'gender', 'status', 'isDeleted'];
+const fields = [
+  'productCode',
+  'name',
+  'description',
+  'tag',
+  'trackingType',
+  'brand',
+  'material',
+  'rating',
+  'reviewsCount',
+  'rentalPricePerDay',
+  'salePrice',
+  'deposit',
+  'discount',
+  'aiTryOn',
+  'gender',
+  'status',
+  'isDeleted',
+  'shopId',
+];
+
 const rules = {
   productCode: { label: 'Mã sản phẩm', type: 'string', required: true, maxLength: 80 },
   name: { label: 'Tên sản phẩm', type: 'string', required: true, maxLength: 200 },
@@ -22,7 +40,9 @@ const rules = {
   gender: { label: 'Giới tính', type: 'string', maxLength: 80 },
   status: { label: 'Trạng thái', type: 'string', enum: ['active', 'inactive', 'discontinued'] },
   isDeleted: { label: 'Trạng thái xóa', type: 'boolean' },
+  shopId: { label: 'Gian hàng', type: 'objectId', nullable: true },
 };
+
 export const validateProduct = (payload, current) => {
   const { categoryId, ...productPayload } = payload || {};
   const { categoryId: currentCategoryIds, ...currentProduct } = current || {};

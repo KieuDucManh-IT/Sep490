@@ -274,9 +274,76 @@
 
 .navbar-bell-btn.active,
 .navbar-fav-btn.active,
+.navbar-chat-btn.active,
 .navbar-cart-btn.active {
   color: #5b6e4e;
   background-color: #eff2eb;
+}
+
+/* Consultation Chat Icon & Badge */
+.navbar-chat-btn {
+  position: relative;
+}
+
+.chat-badge-count {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  background: #e11d48;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(225, 29, 72, 0.45);
+  line-height: 1;
+  pointer-events: none;
+  animation: chatBadgePulse 2.4s infinite ease-in-out;
+}
+
+@keyframes chatBadgePulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 2px 6px rgba(225, 29, 72, 0.45);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 10px rgba(225, 29, 72, 0.65);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 2px 6px rgba(225, 29, 72, 0.45);
+  }
+}
+
+/* User Dropdown Chat Item */
+.menu-item-chat {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.menu-item-chat-left {
+  display: flex;
+  align-items: center;
+}
+
+.dropdown-chat-badge {
+  background: #e11d48;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-left: auto;
+  line-height: 1.4;
+  box-shadow: 0 1px 3px rgba(225, 29, 72, 0.35);
 }
 
 /* Shopping Cart Badge */

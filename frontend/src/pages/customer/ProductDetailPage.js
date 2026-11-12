@@ -29,6 +29,7 @@ import {
   Calculator,
   X,
   Package,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
@@ -1435,8 +1436,43 @@ export default function ProductDetailPage() {
             ) : null}
           </div>
 
-          {/* Action Buttons Row */}
-          <div className="pdetail-actions-row">
+          {/* AI Virtual Try-On Dual Buttons: Ảnh & Video */}
+          <div className="pdetail-tryon-dual-row">
+            <button
+              type="button"
+              className="pdetail-btn-tryon-photo"
+              onClick={() =>
+                navigate(
+                  `/try-on/photo?productId=${encodeURIComponent(
+                    product._id || product.productCode
+                  )}`
+                )
+              }
+              title="Ướm thử trang phục lên ảnh cá nhân hoặc người mẫu chuẩn"
+            >
+              <ImageIcon size={16} />
+              <span>Thử đồ bằng ảnh (AI)</span>
+            </button>
+
+            <button
+              type="button"
+              className="pdetail-btn-tryon-video"
+              onClick={() =>
+                navigate(
+                  `/try-on/webcam?product=${encodeURIComponent(
+                    product._id || product.productCode
+                  )}`
+                )
+              }
+              title="Thử đồ thời gian thực trực tiếp qua Webcam"
+            >
+              <Camera size={16} />
+              <span>Thử đồ qua video</span>
+            </button>
+          </div>
+
+          {/* Commercial Action Buttons Row: Thuê ngay & Giỏ hàng */}
+          <div className="pdetail-actions-row-dual">
             <button className="pdetail-btn-rent-now" onClick={handleRentNow}>
               {isRental ? <Sparkles size={16} /> : <ShoppingBag size={16} />}
               <span>{isRental ? 'Thuê ngay' : 'Mua ngay'}</span>
@@ -1446,20 +1482,6 @@ export default function ProductDetailPage() {
             <button className="pdetail-btn-add-cart" onClick={handleAddToCart}>
               <ShoppingCart size={16} />
               <span>Thêm vào giỏ hàng</span>
-            </button>
-
-            <button
-              className="pdetail-btn-ai-tryon"
-              onClick={() =>
-                navigate(
-                  `/try-on/webcam?product=${encodeURIComponent(
-                    product._id || product.productCode
-                  )}`
-                )
-              }
-            >
-              <Camera size={16} />
-              <span>Thử đồ AI</span>
             </button>
           </div>
 

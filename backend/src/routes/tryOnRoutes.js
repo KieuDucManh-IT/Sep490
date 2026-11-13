@@ -259,69 +259,147 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
         ? true
         : req.body.crop === "true" || req.body.crop === true;
 
-    // 3. Kiểm tra nếu có phối thêm chân váy / quần (Set cả bộ Áo + Váy/Quần)
-    let bottomGarmentImageUrl = req.body.bottomGarmentImageUrl;
-    let bottomGarmentDescription = req.body.bottomGarmentDescription || "";
+    // 3. Chuỗi các món trang phục phối thêm (Quần/Chân váy, Áo, Blazer)
+    const additionalClothing = [];
 
-    if (req.body.bottomProductId && !bottomGarmentImageUrl) {
+    // 3.1. Món trang phục phối kèm (Quần / Chân váy nếu chọn Áo, hoặc Áo / Blazer nếu chọn Quần)
+    let pairedGarmentImageUrl =
+      req.body.pairedGarmentImageUrl || req.body.bottomGarmentImageUrl;
+    let pairedGarmentDescription =
+      req.body.pairedGarmentDescription || req.body.bottomGarmentDescription || "";
+    let pairedGarmentCategory =
+      req.body.pairedGarmentCategory ||
+      (category === "upper_body" ? "lower_body" : category === "lower_body" ? "upper_body" : "upper_body");
+
+    const pairedId = req.body.pairedGarmentId || req.body.bottomProductId;
+    if (pairedId && !pairedGarmentImageUrl) {
       try {
-        let bottomProd = null;
-        if (mongoose.Types.ObjectId.isValid(req.body.bottomProductId)) {
-          bottomProd = await Product.findById(req.body.bottomProductId).lean();
+        let pairedProd = null;
+        if (mongoose.Types.ObjectId.isValid(pairedId)) {
+          pairedProd = await Product.findById(pairedId).lean();
         }
-        if (!bottomProd) {
-          bottomProd = await Product.findOne({ productCode: req.body.bottomProductId }).lean();
+        if (!pairedProd) {
+          pairedProd = await Product.findOne({ productCode: pairedId }).lean();
         }
-        if (bottomProd) {
-          bottomGarmentDescription = bottomGarmentDescription || bottomProd.name;
-          bottomGarmentImageUrl =
-            (Array.isArray(bottomProd.images) && bottomProd.images[0]) ||
-            bottomProd.image;
+        if (pairedProd) {
+          pairedGarmentDescription = pairedGarmentDescription || pairedProd.name;
+          pairedGarmentImageUrl =
+            (Array.isArray(pairedProd.images) && pairedProd.images[0]) ||
+            pairedProd.image;
         }
       } catch (err) {
-        console.warn("[TryOnRoutes] Lỗi tra cứu bottomProduct:", err.message);
+        console.warn("[TryOnRoutes] Lỗi tra cứu pairedGarment:", err.message);
       }
     }
 
-    if (bottomGarmentImageUrl && category === "upper_body") {
+    // Chỉ đưa vào AI IDM-VTON các món QUẦN ÁO thực sự (upper_body, lower_body, dresses)
+    if (pairedGarmentImageUrl && pairedGarmentCategory !== "accessories") {
+      additionalClothing.push({
+        garmentImageUrl: pairedGarmentImageUrl,
+        category: pairedGarmentCategory,
+        garmentDescription: pairedGarmentDescription || "trang phục phối cùng",
+      });
+    }
+
+    // 3.2. Món phụ kiện phối kèm (Túi xách, Trang sức, Kính mắt, Khăn...)
+    // CHÚ Ý KỸ THUẬT QUAN TRỌNG:
+    // Mô hình AI IDM-VTON chỉ học cấu trúc giải phẫu của QUẦN ÁO (upper_body, lower_body, dresses).
+    // Tuyệt đối KHÔNG đưa túi xách vào IDM-VTON vì AI sẽ coi túi xách là ÁO THÂN TRÊN và mặc lên ngực người mẫu!
+    // Phụ kiện được quản lý như một món Styling Accessories đi kèm trong Set Lookbook.
+    let accessoryGarmentImageUrl = req.body.accessoryGarmentImageUrl;
+    let accessoryGarmentDescription = req.body.accessoryGarmentDescription || "";
+
+    const accId = req.body.accessoryGarmentId;
+    if (accId && !accessoryGarmentImageUrl) {
+      try {
+        let accProd = null;
+        if (mongoose.Types.ObjectId.isValid(accId)) {
+          accProd = await Product.findById(accId).lean();
+        }
+        if (!accProd) {
+          accProd = await Product.findOne({ productCode: accId }).lean();
+        }
+        if (accProd) {
+          accessoryGarmentDescription = accessoryGarmentDescription || accProd.name;
+          accessoryGarmentImageUrl =
+            (Array.isArray(accProd.images) && accProd.images[0]) ||
+            accProd.image;
+        }
+      } catch (err) {
+        console.warn("[TryOnRoutes] Lỗi tra cứu accessoryGarment:", err.message);
+      }
+    }
+
+    // Nếu sản phẩm chính lại là Phụ kiện (túi xách/kính):
+    if (category === "accessories") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Túi xách và phụ kiện là món phối kèm theo set đồ (Complete The Look). Vui lòng chọn trang phục chính (Đầm, Áo, hoặc Chân váy/Quần) để AI ướm thử phom dáng lên người mẫu!",
+      });
+    }
+
+    // 4. Nếu có món trang phục phối thêm (Áo + Váy/Quần) -> Ghép tuần tự bằng AI IDM-VTON
+    if (additionalClothing.length > 0) {
       console.log(
-        `[TryOnRoutes] Thử set cả bộ 2 bước: Áo (${garmentDescription}) + Chân váy/Quần (${bottomGarmentDescription})`
+        `[TryOnRoutes] Ghép set trang phục 2 bước bằng IDM-VTON: Món chính (${garmentDescription}) + ${additionalClothing
+          .map((g) => g.garmentDescription)
+          .join(" + ")}`
       );
 
-      // Bước 1: Thử áo thân trên
-      const topResult = await generateTryOn({
+      // Bước 1: Ghép món chính đầu tiên
+      const step1Result = await generateTryOn({
         humanImageUrl,
         garmentImageUrl,
-        category: "upper_body",
+        category,
         garmentDescription,
         crop,
         steps: 30,
       });
 
-      const intermediateImage = topResult.resultImageUrl;
+      let currentModelImage = step1Result.resultImageUrl;
+      const intermediateImages = [step1Result.resultImageUrl];
 
-      // Bước 2: Thử tiếp chân váy/quần vào ảnh đã mặc áo
-      const fullSetResult = await generateTryOn({
-        humanImageUrl: intermediateImage,
-        garmentImageUrl: bottomGarmentImageUrl,
-        category: "lower_body",
-        garmentDescription: bottomGarmentDescription || "chân váy",
-        crop: false,
-        steps: 30,
-      });
+      // Bước 2: Ghép tiếp món trang phục phối kèm (quần/chân váy) vào người mẫu đã mặc món 1
+      for (let i = 0; i < additionalClothing.length; i++) {
+        const item = additionalClothing[i];
+        console.log(
+          `[TryOnRoutes] Đang ghép trang phục phối thứ ${i + 2}: ${item.garmentDescription} (${item.category})...`
+        );
+        const nextResult = await generateTryOn({
+          humanImageUrl: currentModelImage,
+          garmentImageUrl: item.garmentImageUrl,
+          category: item.category,
+          garmentDescription: item.garmentDescription,
+          crop: false,
+          steps: 30,
+        });
+
+        currentModelImage = nextResult.resultImageUrl;
+        intermediateImages.push(currentModelImage);
+      }
 
       return res.json({
         success: true,
         data: {
-          resultImageUrl: fullSetResult.resultImageUrl,
-          topImageUrl: intermediateImage,
+          resultImageUrl: currentModelImage,
+          intermediateImages,
           category: "combo_set",
-          message: "Ghép thành công cả set bộ Áo và Chân váy/Quần",
+          totalItems: 1 + additionalClothing.length + (accessoryGarmentImageUrl ? 1 : 0),
+          accessory: accessoryGarmentImageUrl
+            ? {
+                imageUrl: accessoryGarmentImageUrl,
+                name: accessoryGarmentDescription,
+              }
+            : null,
+          message: accessoryGarmentImageUrl
+            ? "Ghép thành công set trang phục hoàn chỉnh kèm phụ kiện túi xách trong Lookbook!"
+            : `Ghép thành công cả set bộ ${1 + additionalClothing.length} món!`,
         },
       });
     }
 
-    // 4. Trường hợp thông thường: Ghép 1 món (Áo, Đầm, Quần hoặc Phụ kiện)
+    // 5. Trường hợp ghép 1 món trang phục đơn lẻ thông thường
     const tryOnResult = await generateTryOn({
       humanImageUrl,
       garmentImageUrl,
@@ -333,7 +411,15 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
 
     return res.json({
       success: true,
-      data: tryOnResult,
+      data: {
+        ...tryOnResult,
+        accessory: accessoryGarmentImageUrl
+          ? {
+              imageUrl: accessoryGarmentImageUrl,
+              name: accessoryGarmentDescription,
+            }
+          : null,
+      },
     });
   } catch (err) {
     console.error("[TryOnRoutes] Lỗi generate try-on:", err);

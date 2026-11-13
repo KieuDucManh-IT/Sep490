@@ -65,6 +65,8 @@ export default function CatalogPage() {
   const [selectedCategories, setSelectedCategories] = useState(initialCategory ? [initialCategory] : []);
   const [minPrice, setMinPrice] = useState(100000);
   const [maxPrice, setMaxPrice] = useState(10000000);
+  const [debouncedMinPrice, setDebouncedMinPrice] = useState(100000);
+  const [debouncedMaxPrice, setDebouncedMaxPrice] = useState(10000000);
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
   const [selectedConditions, setSelectedConditions] = useState([]);
@@ -77,7 +79,8 @@ export default function CatalogPage() {
   const [products, setProducts] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1, limit: 8 });
   const [filterMeta, setFilterMeta] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
   // Favorites
@@ -97,6 +100,15 @@ export default function CatalogPage() {
     }, 350);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Debounce price filter để tránh bắn request dồn dập làm giật/load lại trang khi kéo thanh giá
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedMinPrice(minPrice);
+      setDebouncedMaxPrice(maxPrice);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [minPrice, maxPrice]);
 
   // Đồng bộ activeTab khi query param trên URL thay đổi (VD: bấm "Thuê trang phục" hoặc "Mua bán đồ cũ" từ Navbar)
   useEffect(() => {
@@ -124,8 +136,12 @@ export default function CatalogPage() {
   }, []);
 
   // Fetch products from GET /api/products with params
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
+  const fetchProducts = useCallback(async (isFirstLoad = false) => {
+    if (isFirstLoad) {
+      setInitialLoading(true);
+    } else {
+      setIsFiltering(true);
+    }
     setErrorMsg(null);
     try {
       const params = {
@@ -141,8 +157,8 @@ export default function CatalogPage() {
       if (selectedColors.length > 0) params.colors = selectedColors.join(',');
       if (selectedConditions.length > 0) params.condition = selectedConditions.join(',');
       if (aiTryOnOnly) params.aiTryOn = true;
-      if (minPrice > 100000) params.minPrice = minPrice;
-      if (maxPrice < 10000000) params.maxPrice = maxPrice;
+      if (debouncedMinPrice > 100000) params.minPrice = debouncedMinPrice;
+      if (debouncedMaxPrice < 10000000) params.maxPrice = debouncedMaxPrice;
 
       const res = await productService.getProducts(params);
       let list = [];
@@ -182,7 +198,8 @@ export default function CatalogPage() {
       setProducts([]);
       setPagination({ total: 0, page: 1, totalPages: 1, limit: 8 });
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setIsFiltering(false);
     }
   }, [
     currentPage,
@@ -193,13 +210,14 @@ export default function CatalogPage() {
     selectedColors,
     selectedConditions,
     aiTryOnOnly,
-    minPrice,
-    maxPrice,
+    debouncedMinPrice,
+    debouncedMaxPrice,
     sortOption,
   ]);
 
+  // Effect chạy lần đầu tiên khi vào trang
   useEffect(() => {
-    fetchProducts();
+    fetchProducts(products.length === 0);
   }, [fetchProducts]);
 
   // Toggle favorite
@@ -344,17 +362,12 @@ export default function CatalogPage() {
           <span>BỘ SƯU TẬP</span>
         </div>
 
-        <div className="catalog-header-row">
-          <div>
-            <h1 className="catalog-title">Thời trang dành riêng cho bạn</h1>
-            <p className="catalog-subtitle">
-              Khám phá các thiết kế đẹp mắt từ hệ thống cơ sở dữ liệu VESTORA, từ các set đồ cho thuê hiện đại
-              đến những món đồ secondhand chất lượng, giúp bạn luôn tự tin và thể hiện phong cách riêng.
-            </p>
-          </div>
-          <div className="catalog-result-count">
-            Hiển thị <strong>{pagination.total}</strong> sản phẩm từ máy chủ
-          </div>
+        <div className="catalog-header-content">
+          <h1 className="catalog-title">Thời trang dành riêng cho bạn</h1>
+          <p className="catalog-subtitle">
+            Khám phá các thiết kế đẹp mắt từ hệ thống cơ sở dữ liệu VESTORA, từ các set đồ cho thuê hiện đại
+            đến những món đồ secondhand chất lượng, giúp bạn luôn tự tin và thể hiện phong cách riêng.
+          </p>
         </div>
       </div>
 
@@ -362,7 +375,7 @@ export default function CatalogPage() {
       <div className="catalog-controls-container">
         <div className="catalog-search-sort-row">
           <div className="catalog-search-wrapper">
-            <Search size={16} className="catalog-search-icon" />
+            <Search size={18} className="catalog-search-icon" />
             <input
               type="text"
               className="catalog-search-input"
@@ -381,17 +394,22 @@ export default function CatalogPage() {
             )}
           </div>
 
-          <select
-            className="catalog-sort-select"
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value)}
-          >
-            <option value="newest">Sắp xếp: Mới nhất</option>
-            <option value="price_asc">Giá: Thấp đến Cao</option>
-            <option value="price_desc">Giá: Cao đến Thấp</option>
-            <option value="rating">Được yêu thích nhất</option>
-            <option value="popular">Phổ biến nhất</option>
-          </select>
+          <div className="catalog-toolbar-right">
+            <span className="catalog-result-counter">
+              Hiển thị <strong>{pagination.total}</strong> sản phẩm
+            </span>
+            <select
+              className="catalog-sort-select"
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+            >
+              <option value="newest">Sắp xếp: Mới nhất</option>
+              <option value="price_asc">Giá: Thấp đến Cao</option>
+              <option value="price_desc">Giá: Cao đến Thấp</option>
+              <option value="rating">Được yêu thích nhất</option>
+              <option value="popular">Phổ biến nhất</option>
+            </select>
+          </div>
         </div>
 
         {/* Mode Tabs */}
@@ -439,7 +457,7 @@ export default function CatalogPage() {
                   }}
                   aria-label="Xóa bộ lọc hình thức"
                 >
-                  <i className="fa-solid fa-xmark"></i>
+                  <X size={12} />
                 </button>
               </span>
             )}
@@ -760,8 +778,15 @@ export default function CatalogPage() {
         </aside>
 
         {/* Right Product Grid */}
-        <div className="catalog-products-column">
-          {loading ? (
+        <div className={`catalog-products-column ${isFiltering ? 'is-filtering' : ''}`}>
+          {isFiltering && (
+            <div className="catalog-filtering-bar">
+              <div className="catalog-filtering-spinner" />
+              <span>Đang cập nhật danh sách...</span>
+            </div>
+          )}
+
+          {initialLoading ? (
             <div className="catalog-grid-4cols">
               {Array.from({ length: 8 }).map((_, idx) => (
                 <div key={idx} className="product-card-skeleton">
@@ -777,7 +802,7 @@ export default function CatalogPage() {
               <AlertTriangle size={36} style={{ color: '#dc2626' }} className="catalog-empty-icon" />
               <div className="catalog-empty-title">Không thể tải dữ liệu từ máy chủ</div>
               <p className="catalog-empty-desc">{errorMsg}</p>
-              <button className="catalog-tab-btn active" onClick={fetchProducts} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button className="catalog-tab-btn active" onClick={() => fetchProducts(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <RotateCcw size={14} />
                 Thử lại
               </button>
@@ -872,10 +897,17 @@ export default function CatalogPage() {
                         {badgeText}
                       </span>
 
-                      {/* Favorite Button */}
-                      <button
+                      {/* Favorite Button (role button to prevent nested <a> issues) */}
+                      <div
+                        role="button"
+                        tabIndex={0}
                         className={`card-heart-btn ${isFavorited ? 'favorited' : ''}`}
                         onClick={(e) => toggleFavorite(e, item._id || item.productCode)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            toggleFavorite(e, item._id || item.productCode);
+                          }
+                        }}
                         title={isFavorited ? 'Bỏ thích' : 'Yêu thích'}
                         aria-label="Lưu vào yêu thích"
                       >
@@ -884,7 +916,7 @@ export default function CatalogPage() {
                           fill={isFavorited ? '#C5A880' : 'none'}
                           color={isFavorited ? '#C5A880' : '#71717A'}
                         />
-                      </button>
+                      </div>
 
                       {/* Product Image */}
                       {mainImage ? (
@@ -925,7 +957,7 @@ export default function CatalogPage() {
                         ) : null}
                         <span className="stock-indicator">
                           <span className="stock-dot"></span>
-                          <span>Còn hàng ({item.quantityAvailable || item.quantity || 1})</span>
+                          <span>Còn {item.quantityAvailable || item.quantity || 1} cái</span>
                         </span>
                       </div>
 
@@ -951,28 +983,23 @@ export default function CatalogPage() {
                         )}
                       </div>
 
-                      {/* Attributes */}
+                      {/* Attributes: 2 gọn gàng đồng nhất */}
                       <div className="card-attributes-list">
-                        <div className="card-attr-row card-quantity-row">
-                          <Package size={13} style={{ color: '#C5A880', marginRight: '5px' }} />
-                          <span>Số lượng: <strong>{typeof item.quantity === 'number' ? item.quantity : (item.quantityOnHand ?? 0)}</strong></span>
+                        <div className="card-attr-row card-branch-row" title={item.branchAddress || item.branchName || 'Toàn hệ thống Vestora'}>
+                          <MapPin size={12} style={{ color: '#e11d48', marginRight: '4px', flexShrink: 0 }} />
+                          <span className="card-branch-text">{item.branchName || item.branchAddress || 'Chi nhánh Vestora'}</span>
                         </div>
-
-                        <div className="card-attr-row card-branch-row" title={item.branchAddress || item.branchName || 'Chi nhánh toàn hệ thống'}>
-                          <MapPin size={13} style={{ color: '#e11d48', marginRight: '5px' }} />
-                          <span className="card-branch-text">{item.branchAddress || item.branchName || 'Chi nhánh toàn hệ thống'}</span>
+                        <div className="card-attr-row card-secondary-attr">
+                          {item.sizes && item.sizes.length > 0 ? (
+                            <span>Size: <strong>{item.sizes.slice(0, 4).join(', ')}</strong></span>
+                          ) : item.brand ? (
+                            <span>Thương hiệu: <strong>{item.brand}</strong></span>
+                          ) : conditionText ? (
+                            <span>Tình trạng: <strong>{conditionText}</strong></span>
+                          ) : (
+                            <span>Thời trang cao cấp</span>
+                          )}
                         </div>
-                        {item.sizes && item.sizes.length > 0 ? (
-                          <div className="card-attr-row">Size: {item.sizes.join(', ')}</div>
-                        ) : item.colors && item.colors.length > 0 ? (
-                          <div className="card-attr-row">Màu: {item.colors[0]}</div>
-                        ) : null}
-
-                        {item.brand ? (
-                          <div className="card-attr-row">Thương hiệu: {item.brand}</div>
-                        ) : conditionText ? (
-                          <div className="card-attr-row">Tình trạng: {conditionText}</div>
-                        ) : null}
                       </div>
 
                       {/* Action Button */}

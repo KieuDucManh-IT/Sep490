@@ -1,34 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, X, Sparkles, Download } from 'lucide-react';
 import '../../styles/PhotoTryOn.css';
 import tryOnApi from '../../services/tryOnApi';
 import productService from '../../services/productService';
 import wardrobeApi from '../../services/wardrobeApi';
-
-const DEFAULT_MODEL_IMAGE =
-  'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80';
-
-const PRODUCT_CATEGORY_TABS = [
-  { id: 'all', label: 'Tất cả' },
-  { id: 'dresses', label: 'Đầm / Váy dài' },
-  { id: 'upper_body', label: 'Áo / Vest' },
-  { id: 'lower_body', label: 'Quần / Chân váy' },
-  { id: 'accessories', label: 'Phụ kiện' },
-];
-
-const DEFAULT_PRODUCT = {
-  _id: 'sample-001',
-  productCode: 'VESTORA-DR-089',
-  name: 'Đầm Dạ Hội Lụa Satin Midnight Noir',
-  brand: 'Thanh Lịch Boutique',
-  rentalPricePerDay: 350000,
-  rentalPricePer3Days: 1050000,
-  salePrice: 3200000,
-  category: ['Đầm dạ hội', 'Thời trang nữ'],
-  image:
-    'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
-};
 
 export default function PhotoTryOnPage() {
   const navigate = useNavigate();
@@ -37,19 +13,43 @@ export default function PhotoTryOnPage() {
 
   const productParam = searchParams.get('product') || searchParams.get('productId');
 
-  // Product state
-  const [product, setProduct] = useState(DEFAULT_PRODUCT);
+  // Product state - khởi tạo null, tải sản phẩm thật 100% từ cơ sở dữ liệu
+  const [product, setProduct] = useState(null);
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [productCategoryTab, setProductCategoryTab] = useState('all');
 
-  // Bottom garment for 2-piece outfit combo (Áo + Chân váy / Quần)
-  const [bottomProduct, setBottomProduct] = useState(null);
-  const [bottomSelectedSize, setBottomSelectedSize] = useState('S');
+  // Paired outfit & accessories for full styling combo
+  const [pairedGarment, setPairedGarment] = useState(null); // Quần/Váy nếu đang chọn Áo; Áo/Vest nếu đang chọn Quần
+  const [pairedGarmentSize, setPairedGarmentSize] = useState('S');
+  const [pairedAccessory, setPairedAccessory] = useState(null); // Túi xách phối kèm (đã loại bỏ trang sức)
+  const [pairingTab, setPairingTab] = useState('outfit'); // 'outfit' | 'accessory'
 
-  // Model, User Photo & Consent state
+  const FALLBACK_GARMENT_IMAGE =
+    'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=600&q=80';
+
+  const isJewelry = (item) => {
+    if (!item) return false;
+    const text = `${item.name || ''} ${
+      Array.isArray(item.category) ? item.category.join(' ') : item.category || ''
+    }`.toLowerCase();
+    return /nhẫn|nhan|bông tai|bong tai|khuyên|khuyen|vòng|vong|dây chuyền|day chuyen|lắc|lac|trang sức|trang suc|jewelry|earring|necklace|ring|bracelet/.test(
+      text
+    );
+  };
+
+  const isTestItem = (item) => {
+    if (!item) return false;
+    const text = `${item.name || ''} ${item.description || ''} ${
+      Array.isArray(item.category) ? item.category.join(' ') : item.category || ''
+    }`.toLowerCase();
+    return text.includes('test') || text.includes('(test)');
+  };
+
+  // Sample Models & User Photo state
+  const [sampleModels, setSampleModels] = useState([]);
   const [userUploadedFile, setUserUploadedFile] = useState(null);
-  const [activeModelImage, setActiveModelImage] = useState(DEFAULT_MODEL_IMAGE);
+  const [activeModelImage, setActiveModelImage] = useState('');
   const [hasPhotoConsent, setHasPhotoConsent] = useState(false);
 
   // Options & Try-On State
@@ -75,7 +75,23 @@ export default function PhotoTryOnPage() {
     }
   }, [successMessage]);
 
-  // 1. Fetch catalog products to allow switching products inside the try-on room
+  // 0. Fetch danh sách người mẫu chuẩn từ API máy chủ backend
+  useEffect(() => {
+    tryOnApi
+      .getSampleModels()
+      .then((models) => {
+        if (Array.isArray(models) && models.length > 0) {
+          setSampleModels(models);
+          // Gán ảnh mẫu đầu tiên từ backend nếu người dùng chưa chọn ảnh
+          setActiveModelImage((prev) => prev || models[0].imageUrl);
+        }
+      })
+      .catch((err) => {
+        console.warn('Không thể tải danh sách mẫu chuẩn từ backend:', err.message);
+      });
+  }, []);
+
+  // 1. Fetch danh sách sản phẩm thật từ cơ sở dữ liệu
   useEffect(() => {
     setCatalogLoading(true);
     productService
@@ -89,7 +105,38 @@ export default function PhotoTryOnPage() {
         } else if (Array.isArray(res)) {
           list = res;
         }
+
+        // Lọc bỏ 100% trang sức (nhẫn, bông tai, vòng...) và các sản phẩm test / lỗi
+        list = list.filter((item) => !isJewelry(item) && !isTestItem(item));
         setCatalogProducts(list);
+
+        // Nếu trên URL không có param ?product/productId, tự động lấy sản phẩm thật đầu tiên từ database
+        if (!productParam && list.length > 0) {
+          const firstProd = list[0];
+          setProduct(firstProd);
+
+          const catStr = (
+            `${firstProd.name || ''} ` +
+            (Array.isArray(firstProd.category) ? firstProd.category.join(' ') : (firstProd.category || ''))
+          ).toLowerCase();
+
+          if (/túi|tui|bag|kính|kinh|glasses|khăn|khan|giày|giay|shoes|phụ kiện|nón|mũ|hat|clutch/.test(catStr)) {
+            setCategory('accessories');
+          } else if (/đầm|dam|váy|vay|áo dài|ao dai|dress|gown|jumpsuit|set|bộ|bo|suit|outfit/.test(catStr)) {
+            setCategory('dresses');
+          } else if (/quần|quan|chân váy|skirt|pants|trouser/.test(catStr)) {
+            setCategory('lower_body');
+          } else {
+            setCategory('upper_body');
+          }
+
+          const pSizes = (Array.isArray(firstProd.sizes) && firstProd.sizes.length > 0)
+            ? firstProd.sizes
+            : (Array.isArray(firstProd.availableSizes) && firstProd.availableSizes.length > 0)
+              ? firstProd.availableSizes
+              : ['S', 'M', 'L'];
+          setSelectedSize(pSizes[0] || 'S');
+        }
       })
       .catch((err) => {
         console.warn('Không thể tải danh sách sản phẩm phòng thử đồ:', err.message);
@@ -97,12 +144,12 @@ export default function PhotoTryOnPage() {
       .finally(() => {
         setCatalogLoading(false);
       });
-  }, []);
+  }, [productParam]);
 
-  // 2. Fetch product info if productParam is provided
+  // 2. Fetch chi tiết sản phẩm nếu có productParam trên URL
   useEffect(() => {
     if (!productParam) return;
-    if (product?._id === productParam && product._id !== 'sample-001') return;
+    if (product?._id === productParam) return;
 
     productService
       .getProductById(productParam)
@@ -116,7 +163,7 @@ export default function PhotoTryOnPage() {
             `${prodData.name} ` + (Array.isArray(prodData.category) ? prodData.category.join(' ') : '')
           ).toLowerCase();
 
-          if (/túi|tui|bag|kính|kinh|glasses|khuyên|vòng|khăn|khan|giày|giay|shoes|phụ kiện|nón|mũ|hat|clutch/.test(catStr)) {
+          if (/túi|tui|bag|kính|kinh|glasses|khăn|khan|giày|giay|shoes|phụ kiện|nón|mũ|hat|clutch/.test(catStr)) {
             setCategory('accessories');
           } else if (/đầm|dam|váy|vay|áo dài|ao dai|dress|gown|jumpsuit|set|bộ|bo|suit|outfit/.test(catStr)) {
             setCategory('dresses');
@@ -136,7 +183,7 @@ export default function PhotoTryOnPage() {
       .catch((err) => {
         console.warn('Không thể tải chi tiết sản phẩm:', err.message);
       });
-  }, [productParam]);
+  }, [productParam, product?._id]);
 
   // Handle local user photo selection
   const handleFileChange = (e) => {
@@ -160,10 +207,11 @@ export default function PhotoTryOnPage() {
     setResultImage(null); // Reset previous result
   };
 
-  // Reset user uploaded photo back to default
+  // Reset user uploaded photo back to default sample model
   const handleResetUserPhoto = () => {
     setUserUploadedFile(null);
-    setActiveModelImage(DEFAULT_MODEL_IMAGE);
+    const fallbackModel = sampleModels[0]?.imageUrl || '';
+    setActiveModelImage(fallbackModel);
     setResultImage(null);
     setErrorMessage('');
     if (fileInputRef.current) {
@@ -184,7 +232,7 @@ export default function PhotoTryOnPage() {
       (Array.isArray(selectedProd.category) ? selectedProd.category.join(' ') : (selectedProd.category || ''))
     ).toLowerCase();
 
-    if (/túi|tui|bag|kính|kinh|glasses|khuyên|vòng|khăn|khan|giày|giay|shoes|phụ kiện|nón|mũ|hat|clutch/.test(catStr)) {
+    if (/túi|tui|bag|kính|kinh|glasses|khăn|khan|giày|giay|shoes|phụ kiện|nón|mũ|hat|clutch/.test(catStr)) {
       setCategory('accessories');
     } else if (/đầm|dam|váy|vay|áo dài|ao dai|dress|gown|jumpsuit|set|bộ|bo|suit|outfit/.test(catStr)) {
       setCategory('dresses');
@@ -199,7 +247,7 @@ export default function PhotoTryOnPage() {
       ? selectedProd.sizes
       : (Array.isArray(selectedProd.availableSizes) && selectedProd.availableSizes.length > 0)
         ? selectedProd.availableSizes
-        : (/túi|kính|nón|mũ|khăn|vòng|phụ kiện/.test(catStr) ? ['Freesize', 'Tiêu chuẩn'] : ['S', 'M', 'L']);
+        : (/túi|kính|nón|mũ|khăn|phụ kiện/.test(catStr) ? ['Freesize', 'Tiêu chuẩn'] : ['S', 'M', 'L']);
     setSelectedSize(pSizes[0] || 'S');
 
     // Update query params in-place on current route (does not navigate away)
@@ -208,37 +256,106 @@ export default function PhotoTryOnPage() {
     }
   };
 
-  // Filter products by selected category tab
-  const displayedCatalogProducts = catalogProducts.filter((item) => {
-    if (productCategoryTab === 'all') return true;
-    const catStr = (
-      `${item.name || ''} ` +
-      (Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))
-    ).toLowerCase();
+  // Trích xuất danh mục động thực tế từ danh sách sản phẩm trong cơ sở dữ liệu (đã lọc sạch test & trang sức)
+  const productCategoryTabs = useMemo(() => {
+    const categoriesMap = new Map();
+    categoriesMap.set('all', 'Tất cả');
 
-    if (productCategoryTab === 'dresses') {
-      return /đầm|dam|váy|vay|áo dài|ao dai|dress|gown|jumpsuit|set|bộ|bo|suit|outfit/.test(catStr);
-    }
-    if (productCategoryTab === 'upper_body') {
+    catalogProducts.forEach((p) => {
+      const cats = Array.isArray(p.category) ? p.category : [p.category];
+      cats.forEach((c) => {
+        if (c && typeof c === 'string' && c.trim()) {
+          const trimmed = c.trim();
+          const lower = trimmed.toLowerCase();
+          // Bỏ qua các tab có chứa test hoặc danh mục trang sức
+          if (
+            !lower.includes('test') &&
+            !/nhẫn|nhan|bông tai|bong tai|khuyên|khuyen|vòng|vong|dây chuyền|day chuyen|lắc|lac|trang sức|trang suc|jewelry/.test(lower)
+          ) {
+            if (!categoriesMap.has(lower)) {
+              categoriesMap.set(lower, trimmed);
+            }
+          }
+        }
+      });
+    });
+
+    return Array.from(categoriesMap.entries()).map(([id, label]) => ({
+      id,
+      label,
+    }));
+  }, [catalogProducts]);
+
+  // Lọc sản phẩm hiển thị theo tab danh mục động
+  const displayedCatalogProducts = useMemo(() => {
+    if (productCategoryTab === 'all') return catalogProducts;
+    return catalogProducts.filter((item) => {
+      if (Array.isArray(item.category)) {
+        return item.category.some(
+          (c) => c && c.toLowerCase() === productCategoryTab.toLowerCase()
+        );
+      }
+      if (item.category && typeof item.category === 'string') {
+        return item.category.toLowerCase() === productCategoryTab.toLowerCase();
+      }
+      const catStr = `${item.name || ''}`.toLowerCase();
+      return catStr.includes(productCategoryTab.toLowerCase());
+    });
+  }, [catalogProducts, productCategoryTab]);
+
+  // Phân loại danh mục sản phẩm gợi ý thông minh từ cơ sở dữ liệu thật
+  const topCatalogProducts = useMemo(() => {
+    return catalogProducts.filter((item) => {
+      if (item._id === product?._id) return false;
+      const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
       return /áo|ao|vest|blazer|shirt|jacket|coat|hoodie|sweater/.test(catStr) && !/áo dài|ao dai/.test(catStr);
-    }
-    if (productCategoryTab === 'lower_body') {
-      return /quần|quan|chân váy|skirt|pants|trouser|short/.test(catStr);
-    }
-    if (productCategoryTab === 'accessories') {
-      return /túi|tui|bag|kính|kinh|glasses|khuyên|vòng|khăn|khan|giày|giay|shoes|phụ kiện/.test(catStr);
-    }
-    return true;
-  });
+    });
+  }, [catalogProducts, product?._id]);
 
-  // Skirts & Pants catalog for pairing when upper_body top is chosen
-  const bottomCatalogProducts = catalogProducts.filter((item) => {
-    const catStr = (
-      `${item.name || ''} ` +
-      (Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))
-    ).toLowerCase();
-    return /quần|quan|chân váy|skirt|pants|trouser|short/.test(catStr);
-  });
+  const bottomCatalogProducts = useMemo(() => {
+    return catalogProducts.filter((item) => {
+      if (item._id === product?._id) return false;
+      const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
+      return /quần|quan|chân váy|skirt|pants|trouser|short/.test(catStr);
+    });
+  }, [catalogProducts, product?._id]);
+
+  const accessoryCatalogProducts = useMemo(() => {
+    return catalogProducts.filter((item) => {
+      if (item._id === product?._id) return false;
+      if (isJewelry(item) || isTestItem(item)) return false;
+      const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
+      return /túi|tui|bag|kính|kinh|glasses|khăn|khan|giày|giay|shoes|phụ kiện|nón|mũ|hat|clutch|thắt lưng|that lung|belt/.test(catStr);
+    });
+  }, [catalogProducts, product?._id]);
+
+  const dressCatalogProducts = useMemo(() => {
+    return catalogProducts.filter((item) => {
+      if (item._id === product?._id) return false;
+      const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
+      return /đầm|dam|váy|vay|áo dài|ao dai|dress|gown|jumpsuit|set|bộ|bo|suit|outfit/.test(catStr);
+    });
+  }, [catalogProducts, product?._id]);
+
+  // Gợi ý trang phục chính phối cùng
+  const currentOutfitSuggestions = useMemo(() => {
+    let list = [];
+    if (category === 'upper_body') {
+      list = bottomCatalogProducts;
+    } else if (category === 'lower_body') {
+      list = topCatalogProducts;
+    } else if (category === 'dresses') {
+      list = topCatalogProducts;
+    } else {
+      list = dressCatalogProducts.length > 0 ? dressCatalogProducts : topCatalogProducts;
+    }
+    return list.length > 0 ? list : catalogProducts.filter((p) => p._id !== product?._id);
+  }, [category, bottomCatalogProducts, topCatalogProducts, dressCatalogProducts, catalogProducts, product?._id]);
+
+  // Gợi ý phụ kiện thật từ cơ sở dữ liệu
+  const currentAccessorySuggestions = useMemo(() => {
+    return accessoryCatalogProducts;
+  }, [accessoryCatalogProducts]);
 
   // Trigger AI IDM-VTON Try-On
   const handleGenerateTryOn = async () => {
@@ -249,25 +366,33 @@ export default function PhotoTryOnPage() {
     setErrorMessage('');
     setSuccessMessage('');
     setIsGenerating(true);
+
+    const pairedCount = (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0);
+    const totalSetItems = 1 + pairedCount;
+
     setGenerationStep(
-      bottomProduct
-        ? 'Đang chuẩn bị ghép set cả bộ 2 bước: Áo + Chân váy/Quần...'
-        : 'Đang chuẩn hoá tỷ lệ người mẫu và nhận diện trang phục...'
+      totalSetItems === 3
+        ? 'Đang chuẩn bị ghép set 3 món hoàn chỉnh: Món chính + Trang phục phối + Túi xách thời trang...'
+        : totalSetItems === 2
+          ? 'Đang chuẩn bị ghép set 2 món phối hoàn chỉnh...'
+          : 'Đang chuẩn hoá tỷ lệ người mẫu và nhận diện trang phục...'
     );
 
     const stepTimer1 = setTimeout(() => {
       setGenerationStep(
-        bottomProduct
-          ? 'Bước 1: AI IDM-VTON đang ghép phom áo thân trên...'
+        totalSetItems > 1
+          ? 'Bước 1: AI IDM-VTON đang tính toán phom dáng trang phục chính...'
           : 'AI IDM-VTON đang tính toán nếp gấp và độ rủ vải...'
       );
     }, 4500);
 
     const stepTimer2 = setTimeout(() => {
       setGenerationStep(
-        bottomProduct
-          ? 'Bước 2: Đang ghép tiếp chân váy/quần vào tổng thể trang phục...'
-          : 'Đang kết xuất ánh sáng và hoàn thiện phom dáng...'
+        totalSetItems === 3
+          ? 'Bước 2 & 3: Đang ghép tiếp trang phục phối và túi xách thời trang...'
+          : totalSetItems === 2
+            ? 'Bước 2: Đang ghép tiếp món phối vào tổng thể người mẫu...'
+            : 'Đang kết xuất ánh sáng và hoàn thiện phom dáng...'
       );
     }, 12000);
 
@@ -280,31 +405,53 @@ export default function PhotoTryOnPage() {
         formData.append('humanImageUrl', activeModelImage);
       }
 
-      if (product?._id && product._id !== 'sample-001') {
+      if (product?._id) {
         formData.append('productId', product._id);
       }
 
       const garmentImg =
         product?.image ||
         (Array.isArray(product?.images) && product.images[0]) ||
-        DEFAULT_PRODUCT.image;
+        '';
 
       formData.append('garmentImageUrl', garmentImg);
       formData.append('garmentDescription', product?.name || 'luxury clothing');
       formData.append('category', category);
       formData.append('crop', String(autoCrop));
 
-      // Append paired bottom garment if user selects outfit combo
-      if (category === 'upper_body' && bottomProduct) {
-        const bottomImg =
-          bottomProduct.image ||
-          (Array.isArray(bottomProduct.images) && bottomProduct.images[0]);
-        if (bottomImg) {
-          formData.append('bottomGarmentImageUrl', bottomImg);
-          formData.append('bottomGarmentDescription', bottomProduct.name || 'chân váy thời trang');
+      // 1. Trang phục phối kèm (Quần / Chân váy hoặc Áo / Blazer)
+      if (pairedGarment) {
+        const pairedImg =
+          pairedGarment.image ||
+          (Array.isArray(pairedGarment.images) && pairedGarment.images[0]);
+        if (pairedImg) {
+          const pairedCat =
+            category === 'upper_body' ? 'lower_body' : category === 'lower_body' ? 'upper_body' : 'upper_body';
+          formData.append('pairedGarmentImageUrl', pairedImg);
+          formData.append('pairedGarmentDescription', pairedGarment.name || 'trang phục phối');
+          formData.append('pairedGarmentCategory', pairedCat);
+          // Tương thích ngược
+          formData.append('bottomGarmentImageUrl', pairedImg);
+          formData.append('bottomGarmentDescription', pairedGarment.name || 'trang phục phối');
         }
-        if (bottomProduct._id) {
-          formData.append('bottomProductId', bottomProduct._id);
+        if (pairedGarment._id) {
+          formData.append('pairedGarmentId', pairedGarment._id);
+          formData.append('bottomProductId', pairedGarment._id);
+        }
+      }
+
+      // 2. Phụ kiện phối kèm (Túi xách, Kính mắt...)
+      if (pairedAccessory) {
+        const accImg =
+          pairedAccessory.image ||
+          (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]);
+        if (accImg) {
+          formData.append('accessoryGarmentImageUrl', accImg);
+          formData.append('accessoryGarmentDescription', pairedAccessory.name || 'phụ kiện túi xách thời trang');
+          formData.append('accessoryCategory', 'accessories');
+        }
+        if (pairedAccessory._id) {
+          formData.append('accessoryGarmentId', pairedAccessory._id);
         }
       }
 
@@ -316,9 +463,11 @@ export default function PhotoTryOnPage() {
         setLastSavedImageUrl(''); // Reset trạng thái lưu khi có ảnh ghép mới
         setShowOriginal(false);
         setSuccessMessage(
-          bottomProduct
-            ? 'Ghép thành công nguyên set cả bộ (Áo + Chân váy/Quần)!'
-            : 'Ghép trang phục AI thành công!'
+          totalSetItems === 3
+            ? 'Ghép thành công trọn bộ set 3 món (Trang phục + Túi xách thời trang)!'
+            : totalSetItems === 2
+              ? 'Ghép thành công set 2 món phối!'
+              : 'Ghép trang phục AI thành công!'
         );
       } else {
         throw new Error(response?.message || 'Mô hình không trả về ảnh kết quả');
@@ -350,25 +499,29 @@ export default function PhotoTryOnPage() {
 
     setIsSavingWardrobe(true);
     try {
+      const isCombo = Boolean(pairedGarment || pairedAccessory);
+      const totalItems = 1 + (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0);
+
+      const titleParts = [product?.name];
+      if (pairedGarment?.name) titleParts.push(pairedGarment.name);
+      if (pairedAccessory?.name) titleParts.push(pairedAccessory.name);
+
       const payload = {
-        productId: product?._id && product._id !== 'sample-001' ? product._id : null,
+        productId: product?._id || null,
         productCode: product?.productCode || '',
-        title: bottomProduct
-          ? `Set cả bộ: ${product?.name} + ${bottomProduct?.name}`
-          : (product?.name || 'Trang phục thử đồ AI'),
+        title: isCombo ? `Set đồ: ${titleParts.join(' + ')}` : (product?.name || 'Trang phục thử đồ AI'),
         image: garmentImageUrl,
         tryOnImageUrl: resultImage,
-        category: bottomProduct
-          ? 'Set cả bộ (Áo + Váy/Quần)'
-          : (Array.isArray(product?.category) ? product.category[0] : product?.category) ||
-            'Thời trang cao cấp',
-        price: (product?.rentalPricePerDay || 350000) + (bottomProduct?.rentalPricePerDay || 0),
+        category: isCombo
+          ? `Set phối ${totalItems} món`
+          : (Array.isArray(product?.category) ? product.category[0] : product?.category) || 'Thời trang cao cấp',
+        price: (product?.rentalPricePerDay || 0) + (pairedGarment?.rentalPricePerDay || 0) + (pairedAccessory?.rentalPricePerDay || 0),
         priceUnit: '/ ngày',
-        selectedSize: bottomProduct ? `Áo: ${selectedSize} • Váy: ${bottomSelectedSize}` : selectedSize,
-        aiNote: bottomProduct
-          ? `Set cả bộ (Áo ${selectedSize} + Váy/Quần ${bottomSelectedSize}) ghép bằng công nghệ AI 2 bước IDM-VTON.`
+        selectedSize: pairedGarment ? `Món chính: ${selectedSize} • Món phối: ${pairedGarmentSize}` : selectedSize,
+        aiNote: isCombo
+          ? `Set phối ${totalItems} món hoàn chỉnh được ghép bằng công nghệ AI IDM-VTON.`
           : `Đã thử bằng AI IDM-VTON cho vóc dáng Size ${selectedSize}. Trang phục vừa vặn và giữ phom dáng chuẩn.`,
-        tags: bottomProduct ? ['tryon-history', 'ai-combo', 'set-outfit'] : ['tryon-history', 'ai-suggested'],
+        tags: isCombo ? ['tryon-history', 'ai-combo', 'set-outfit'] : ['tryon-history', 'ai-suggested'],
       };
 
       const res = await wardrobeApi.addToWardrobe(payload);
@@ -385,7 +538,7 @@ export default function PhotoTryOnPage() {
   const garmentImageUrl =
     product?.image ||
     (Array.isArray(product?.images) && product.images[0]) ||
-    DEFAULT_PRODUCT.image;
+    '';
 
   const currentDisplayImage = showOriginal ? activeModelImage : resultImage || activeModelImage;
 
@@ -695,6 +848,69 @@ export default function PhotoTryOnPage() {
                     alt="AI Try-On Result"
                     className="stage-split-image"
                   />
+                  {pairedAccessory && (
+                    <div
+                      className="stage-accessory-card"
+                      style={{
+                        position: 'absolute',
+                        bottom: '10px',
+                        right: '10px',
+                        background: 'rgba(255, 255, 255, 0.95)',
+                        backdropFilter: 'blur(8px)',
+                        border: '1.5px solid var(--color-gold, #5b6e4e)',
+                        borderRadius: '9px',
+                        padding: '5px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '7px',
+                        boxShadow: '0 4px 12px rgba(31, 36, 33, 0.18)',
+                        zIndex: 10,
+                        maxWidth: '190px',
+                      }}
+                    >
+                      <img
+                        src={
+                          pairedAccessory.image ||
+                          (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
+                          FALLBACK_GARMENT_IMAGE
+                        }
+                        alt={pairedAccessory.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = FALLBACK_GARMENT_IMAGE;
+                        }}
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '5px',
+                          objectFit: 'cover',
+                          border: '1px solid #e2e6dc',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '8px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 700, textTransform: 'uppercase' }}>
+                          👜 Phụ kiện set
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '9.5px',
+                            fontWeight: 700,
+                            color: '#1f2421',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={pairedAccessory.name}
+                        >
+                          {pairedAccessory.name}
+                        </div>
+                        <div style={{ fontSize: '8.5px', color: '#6e7569', fontWeight: 600 }}>
+                          +{(pairedAccessory.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="stage-placeholder-pane">
@@ -733,10 +949,17 @@ export default function PhotoTryOnPage() {
           >
             <div>
               <span>Kích cỡ: <strong>Size {selectedSize}</strong></span>
-              {bottomProduct && (
-                <> &bull; <span>Chân váy: <strong>Size {bottomSelectedSize}</strong></span></>
+              {pairedGarment && (
+                <> &bull; <span>Món phối: <strong>Size {pairedGarmentSize}</strong></span></>
+              )}
+              {pairedAccessory && (
+                <> &bull; <span>Phụ kiện: <strong>{pairedAccessory.name}</strong></span></>
               )} &bull;{' '}
-              <span>Phân loại: <strong>{bottomProduct ? 'SET CẢ BỘ (ÁO + VÁY)' : category.toUpperCase()}</strong></span>
+              <span>Phân loại: <strong>
+                {(pairedGarment || pairedAccessory)
+                  ? `SET PHỐI (${1 + (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0)} MÓN)`
+                  : category.toUpperCase()}
+              </strong></span>
             </div>
 
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -820,7 +1043,7 @@ export default function PhotoTryOnPage() {
                 scrollbarWidth: 'none',
               }}
             >
-              {PRODUCT_CATEGORY_TABS.map((tab) => (
+              {productCategoryTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
@@ -855,7 +1078,7 @@ export default function PhotoTryOnPage() {
               ) : (
                 displayedCatalogProducts.map((p) => {
                   const isSelected = p._id === product?._id;
-                  const pImg = p.image || (Array.isArray(p.images) && p.images[0]) || DEFAULT_PRODUCT.image;
+                  const pImg = p.image || (Array.isArray(p.images) && p.images[0]) || '';
                   return (
                     <div
                       key={p._id || p.name}
@@ -873,8 +1096,12 @@ export default function PhotoTryOnPage() {
                       }}
                     >
                       <img
-                        src={pImg}
+                        src={pImg || FALLBACK_GARMENT_IMAGE}
                         alt={p.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = FALLBACK_GARMENT_IMAGE;
+                        }}
                         style={{
                           width: '100%',
                           height: '52px',
@@ -919,8 +1146,12 @@ export default function PhotoTryOnPage() {
             }}
           >
             <img
-              src={garmentImageUrl}
+              src={garmentImageUrl || FALLBACK_GARMENT_IMAGE}
               alt={product?.name}
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = FALLBACK_GARMENT_IMAGE;
+              }}
               style={{
                 width: '42px',
                 height: '54px',
@@ -1044,50 +1275,74 @@ export default function PhotoTryOnPage() {
             </div>
           </div>
 
-          {/* Outfit Combo Pairing: When Top (upper_body) is selected, allow picking Bottom (chân váy / quần) */}
-          {category === 'upper_body' && (
+          {/* Gợi Ý Phối Cả Set Linh Hoạt: Quần / Chân Váy, Áo, Túi Xách Thời Trang */}
+          <div
+            className="outfit-combo-box"
+            style={{
+              background: '#f8faf6',
+              border: '1.5px dashed var(--color-gold, #5b6e4e)',
+              borderRadius: '9px',
+              padding: '8px 10px',
+              marginTop: '2px',
+            }}
+          >
+            {/* Header của khối gợi ý */}
             <div
-              className="outfit-combo-box"
               style={{
-                background: '#f8faf6',
-                border: '1.5px dashed var(--color-gold, #5b6e4e)',
-                borderRadius: '8px',
-                padding: '7px 8px',
-                marginTop: '1px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '6px',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '4px',
-                }}
-              >
-                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--color-gold, #5b6e4e)', letterSpacing: '0.4px' }}>
-                  👗 PHỐI CẢ BỘ VỚI CHÂN VÁY / QUẦN
-                </div>
-                {bottomProduct && (
-                  <button
-                    type="button"
-                    onClick={() => setBottomProduct(null)}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Sparkles size={12} color="var(--color-gold, #5b6e4e)" />
+                <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--color-gold, #5b6e4e)', letterSpacing: '0.4px' }}>
+                  GỢI Ý PHỐI CẢ SET HOÀN CHỈNH
+                </span>
+                {(pairedGarment || pairedAccessory) && (
+                  <span
                     style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#b91c1c',
-                      fontSize: '9.5px',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      padding: 0,
+                      fontSize: '9px',
+                      background: 'var(--color-gold, #5b6e4e)',
+                      color: '#ffffff',
+                      padding: '1px 6px',
+                      borderRadius: '99px',
+                      fontWeight: 700,
                     }}
                   >
-                    ✕ Bỏ phối
-                  </button>
+                    {(pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0)} món phối
+                  </span>
                 )}
               </div>
 
-              {bottomProduct ? (
-                <div>
+              {(pairedGarment || pairedAccessory) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPairedGarment(null);
+                    setPairedAccessory(null);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#b91c1c',
+                    fontSize: '9.5px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    padding: 0,
+                  }}
+                >
+                  ✕ Bỏ tất cả phối
+                </button>
+              )}
+            </div>
+
+            {/* Các món ĐÃ ĐƯỢC CHỌN trong set */}
+            {(pairedGarment || pairedAccessory) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '8px' }}>
+                {/* 1. Món quần / chân váy hoặc áo phối kèm */}
+                {pairedGarment && (
                   <div
                     style={{
                       display: 'flex',
@@ -1096,19 +1351,24 @@ export default function PhotoTryOnPage() {
                       background: '#ffffff',
                       border: '1px solid var(--color-border, #e2e6dc)',
                       borderRadius: '6px',
-                      padding: '5px 7px',
+                      padding: '4px 6px',
+                      position: 'relative',
                     }}
                   >
                     <img
                       src={
-                        bottomProduct.image ||
-                        (Array.isArray(bottomProduct.images) && bottomProduct.images[0]) ||
-                        DEFAULT_PRODUCT.image
+                        pairedGarment.image ||
+                        (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
+                        FALLBACK_GARMENT_IMAGE
                       }
-                      alt={bottomProduct.name}
+                      alt={pairedGarment.name}
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = FALLBACK_GARMENT_IMAGE;
+                      }}
                       style={{
-                        width: '36px',
-                        height: '46px',
+                        width: '34px',
+                        height: '42px',
                         borderRadius: '4px',
                         objectFit: 'cover',
                         flexShrink: 0,
@@ -1117,7 +1377,7 @@ export default function PhotoTryOnPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
-                          fontSize: '10.5px',
+                          fontSize: '10px',
                           fontWeight: 700,
                           color: '#1f2421',
                           whiteSpace: 'nowrap',
@@ -1125,28 +1385,27 @@ export default function PhotoTryOnPage() {
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        {bottomProduct.name}
+                        {pairedGarment.name}
                       </div>
-                      <div style={{ fontSize: '10px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
-                        +{(bottomProduct.rentalPricePerDay || 200000).toLocaleString('vi-VN')} đ/ngày
+                      <div style={{ fontSize: '9.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
+                        +{(pairedGarment.rentalPricePerDay || 200000).toLocaleString('vi-VN')} đ/ngày
                       </div>
-                      {/* Bottom Size Picker */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
-                        <span style={{ fontSize: '9px', color: '#6e7569', fontWeight: 600 }}>Size váy:</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                        <span style={{ fontSize: '8.5px', color: '#6e7569', fontWeight: 600 }}>Size:</span>
                         {['XS', 'S', 'M', 'L'].map((bsz) => (
                           <button
                             key={bsz}
                             type="button"
-                            onClick={() => setBottomSelectedSize(bsz)}
+                            onClick={() => setPairedGarmentSize(bsz)}
                             style={{
-                              padding: '1px 5px',
-                              fontSize: '9px',
+                              padding: '1px 4px',
+                              fontSize: '8.5px',
                               borderRadius: '3px',
-                              border: bottomSelectedSize === bsz ? '1px solid var(--color-gold, #5b6e4e)' : '1px solid #dce1d5',
-                              background: bottomSelectedSize === bsz ? 'var(--color-gold, #5b6e4e)' : '#f4f6f1',
-                              color: bottomSelectedSize === bsz ? '#fff' : '#1f2421',
+                              border: pairedGarmentSize === bsz ? '1px solid var(--color-gold, #5b6e4e)' : '1px solid #dce1d5',
+                              background: pairedGarmentSize === bsz ? 'var(--color-gold, #5b6e4e)' : '#f4f6f1',
+                              color: pairedGarmentSize === bsz ? '#fff' : '#1f2421',
                               cursor: 'pointer',
-                              fontWeight: bottomSelectedSize === bsz ? 700 : 500,
+                              fontWeight: pairedGarmentSize === bsz ? 700 : 500,
                             }}
                           >
                             {bsz}
@@ -1154,83 +1413,260 @@ export default function PhotoTryOnPage() {
                         ))}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setPairedGarment(null)}
+                      title="Bỏ món này"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        padding: '2px 4px',
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
                   </div>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ fontSize: '9.5px', color: '#6e7569', marginBottom: '4px' }}>
-                    Bấm chọn 1 chân váy/quần dưới đây để AI ghép nguyên set cả bộ:
-                  </div>
+                )}
+
+                {/* 2. Món phụ kiện túi xách phối kèm */}
+                {pairedAccessory && (
                   <div
                     style={{
                       display: 'flex',
-                      gap: '5px',
-                      overflowX: 'auto',
-                      paddingBottom: '2px',
-                      scrollbarWidth: 'none',
+                      gap: '7px',
+                      alignItems: 'center',
+                      background: '#ffffff',
+                      border: '1px solid var(--color-border, #e2e6dc)',
+                      borderRadius: '6px',
+                      padding: '4px 6px',
+                      position: 'relative',
                     }}
                   >
-                    {bottomCatalogProducts.slice(0, 10).map((bp) => {
-                      const bpImg = bp.image || (Array.isArray(bp.images) && bp.images[0]) || DEFAULT_PRODUCT.image;
-                      return (
-                        <div
-                          key={bp._id || bp.name}
-                          onClick={() => {
-                            setBottomProduct(bp);
-                            setBottomSelectedSize('S');
-                          }}
-                          style={{
-                            flex: '0 0 62px',
-                            cursor: 'pointer',
-                            background: '#ffffff',
-                            border: '1px solid var(--color-border, #e2e6dc)',
-                            borderRadius: '5px',
-                            padding: '3px',
-                            textAlign: 'center',
-                            transition: 'all 0.15s ease',
-                          }}
-                          title={`Phối cùng ${bp.name}`}
-                        >
-                          <img
-                            src={bpImg}
-                            alt={bp.name}
-                            style={{
-                              width: '100%',
-                              height: '42px',
-                              objectFit: 'cover',
-                              borderRadius: '3px',
-                            }}
-                          />
-                          <div
-                            style={{
-                              fontSize: '8.5px',
-                              fontWeight: 600,
-                              color: '#1f2421',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              marginTop: '2px',
-                            }}
-                          >
-                            {bp.name}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: '8px',
-                              color: 'var(--color-gold, #5b6e4e)',
-                              fontWeight: 700,
-                            }}
-                          >
-                            + Phối váy
-                          </div>
-                        </div>
-                      );
-                    })}
+                    <img
+                      src={
+                        pairedAccessory.image ||
+                        (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
+                        FALLBACK_GARMENT_IMAGE
+                      }
+                      alt={pairedAccessory.name}
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = FALLBACK_GARMENT_IMAGE;
+                      }}
+                      style={{
+                        width: '34px',
+                        height: '42px',
+                        borderRadius: '4px',
+                        objectFit: 'cover',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          color: '#1f2421',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {pairedAccessory.name}
+                      </div>
+                      <div style={{ fontSize: '9.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
+                        +{(pairedAccessory.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ/ngày
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '8px',
+                          background: '#f0f5ec',
+                          color: 'var(--color-gold, #5b6e4e)',
+                          padding: '1px 5px',
+                          borderRadius: '3px',
+                          fontWeight: 600,
+                          display: 'inline-block',
+                          marginTop: '2px',
+                        }}
+                      >
+                        👜 Túi xách phối kèm
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPairedAccessory(null)}
+                      title="Bỏ món này"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        padding: '2px 4px',
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            )}
+
+            {/* Tabs chuyển đổi danh mục gợi ý */}
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setPairingTab('outfit')}
+                style={{
+                  flex: 1,
+                  padding: '4px 6px',
+                  fontSize: '9px',
+                  fontWeight: pairingTab === 'outfit' ? 700 : 500,
+                  borderRadius: '4px',
+                  border: pairingTab === 'outfit' ? '1px solid var(--color-gold, #5b6e4e)' : '1px solid #dce1d5',
+                  background: pairingTab === 'outfit' ? 'var(--color-gold, #5b6e4e)' : '#ffffff',
+                  color: pairingTab === 'outfit' ? '#ffffff' : '#4a5246',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '3px',
+                }}
+              >
+                {category === 'upper_body'
+                  ? '👗 Chân váy / Quần'
+                  : category === 'lower_body'
+                    ? '👚 Áo / Blazer'
+                    : '👗 Trang phục phối'}
+                {pairedGarment && (
+                  <CheckCircle2 size={10} color={pairingTab === 'outfit' ? '#fff' : 'var(--color-gold, #5b6e4e)'} />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPairingTab('accessory')}
+                style={{
+                  flex: 1,
+                  padding: '4px 6px',
+                  fontSize: '9px',
+                  fontWeight: pairingTab === 'accessory' ? 700 : 500,
+                  borderRadius: '4px',
+                  border: pairingTab === 'accessory' ? '1px solid var(--color-gold, #5b6e4e)' : '1px solid #dce1d5',
+                  background: pairingTab === 'accessory' ? 'var(--color-gold, #5b6e4e)' : '#ffffff',
+                  color: pairingTab === 'accessory' ? '#ffffff' : '#4a5246',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '3px',
+                }}
+              >
+                👜 Túi xách phối kèm
+                {pairedAccessory && (
+                  <CheckCircle2 size={10} color={pairingTab === 'accessory' ? '#fff' : 'var(--color-gold, #5b6e4e)'} />
+                )}
+              </button>
             </div>
-          )}
+
+            {/* Danh sách sản phẩm gợi ý cuộn ngang */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '5px',
+                overflowX: 'auto',
+                paddingBottom: '2px',
+                scrollbarWidth: 'none',
+              }}
+            >
+              {(pairingTab === 'outfit' ? currentOutfitSuggestions : currentAccessorySuggestions)
+                .slice(0, 15)
+                .map((item) => {
+                  const itemImg =
+                    item.image || (Array.isArray(item.images) && item.images[0]) || '';
+                  const isSelected = pairedGarment?._id === item._id || pairedAccessory?._id === item._id;
+
+                  return (
+                    <div
+                      key={item._id || item.name}
+                      onClick={() => {
+                        if (pairingTab === 'outfit') {
+                          if (pairedGarment?._id === item._id) {
+                            setPairedGarment(null);
+                          } else {
+                            setPairedGarment(item);
+                            setPairedGarmentSize('S');
+                          }
+                        } else {
+                          if (pairedAccessory?._id === item._id) {
+                            setPairedAccessory(null);
+                          } else {
+                            setPairedAccessory(item);
+                          }
+                        }
+                      }}
+                      style={{
+                        flex: '0 0 68px',
+                        cursor: 'pointer',
+                        background: isSelected ? '#edf3e9' : '#ffffff',
+                        border: isSelected
+                          ? '1.5px solid var(--color-gold, #5b6e4e)'
+                          : '1px solid var(--color-border, #e2e6dc)',
+                        borderRadius: '5px',
+                        padding: '3px',
+                        textAlign: 'center',
+                        position: 'relative',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isSelected ? '0 1px 4px rgba(91,110,78,0.2)' : 'none',
+                      }}
+                      title={`Bấm để ${isSelected ? 'bỏ chọn' : 'thêm vào set'}: ${item.name}`}
+                    >
+                      <img
+                        src={itemImg || FALLBACK_GARMENT_IMAGE}
+                        alt={item.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = FALLBACK_GARMENT_IMAGE;
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '44px',
+                          objectFit: 'cover',
+                          borderRadius: '3px',
+                        }}
+                      />
+                      <div
+                        style={{
+                          fontSize: '8.5px',
+                          fontWeight: 600,
+                          color: '#1f2421',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          marginTop: '2px',
+                        }}
+                      >
+                        {item.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '8px',
+                          color: isSelected ? 'var(--color-gold, #5b6e4e)' : '#6e7569',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {isSelected
+                          ? '✓ Đang phối'
+                          : `+ ${(item.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ`}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
 
           {/* Auto crop checkbox */}
           <div
@@ -1331,11 +1767,21 @@ export default function PhotoTryOnPage() {
       {/* Bottom Fixed Action Bar */}
       <footer className="bottom-action-bar">
         {(() => {
-          const topPrice3Days = product?.rentalPricePer3Days || (product?.rentalPricePerDay ? product.rentalPricePerDay * 3 : 1050000);
-          const bottomPrice3Days = bottomProduct
-            ? (bottomProduct.rentalPricePer3Days || (bottomProduct.rentalPricePerDay ? bottomProduct.rentalPricePerDay * 3 : 600000))
+          const mainPrice3Days =
+            product?.rentalPricePer3Days ||
+            (product?.rentalPricePerDay ? product.rentalPricePerDay * 3 : 1050000);
+          const pairedGarmentPrice3Days = pairedGarment
+            ? pairedGarment.rentalPricePer3Days ||
+            (pairedGarment.rentalPricePerDay ? pairedGarment.rentalPricePerDay * 3 : 600000)
             : 0;
-          const totalEstimatedRental = topPrice3Days + bottomPrice3Days;
+          const pairedAccessoryPrice3Days = pairedAccessory
+            ? pairedAccessory.rentalPricePer3Days ||
+            (pairedAccessory.rentalPricePerDay ? pairedAccessory.rentalPricePerDay * 3 : 300000)
+            : 0;
+
+          const totalEstimatedRental =
+            mainPrice3Days + pairedGarmentPrice3Days + pairedAccessoryPrice3Days;
+          const totalItems = 1 + (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0);
 
           return (
             <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
@@ -1345,24 +1791,24 @@ export default function PhotoTryOnPage() {
               </div>
               <div style={{ borderLeft: '1px solid var(--color-border, #e2e6dc)', paddingLeft: '20px' }}>
                 <span style={{ fontSize: '10px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
-                  {bottomProduct ? 'Giá thuê cả set (Áo + Váy): ' : 'Giá thuê dự kiến: '}
+                  {totalItems > 1 ? `Giá thuê cả set (${totalItems} món): ` : 'Giá thuê dự kiến: '}
                 </span>
                 <strong style={{ fontSize: '16px', color: 'var(--color-gold, #5b6e4e)' }}>
                   {totalEstimatedRental.toLocaleString('vi-VN')} đ
                 </strong>
-                {bottomProduct && (
+                {totalItems > 1 && (
                   <span
                     style={{
                       fontSize: '9.5px',
                       background: '#eaf2e6',
                       color: 'var(--color-gold, #5b6e4e)',
-                      padding: '1px 6px',
+                      padding: '2px 8px',
                       borderRadius: '4px',
                       fontWeight: 700,
                       marginLeft: '8px',
                     }}
                   >
-                    Set 2 món
+                    Set {totalItems} món hoàn chỉnh
                   </span>
                 )}
               </div>
@@ -1419,7 +1865,9 @@ export default function PhotoTryOnPage() {
               }
             }}
           >
-            {bottomProduct ? 'Đặt thuê cả set này \u2192' : 'Đặt thuê sản phẩm này \u2192'}
+            {(pairedGarment || pairedAccessory)
+              ? `Đặt thuê cả set (${1 + (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0)} món) \u2192`
+              : 'Đặt thuê sản phẩm này \u2192'}
           </button>
         </div>
       </footer>

@@ -148,7 +148,6 @@ export default function Navbar() {
               <Link to="/catalog" className="nav-sublink">Tất cả sản phẩm</Link>
               <Link to="/catalog?type=rental" className="nav-sublink">Thuê trang phục</Link>
               <Link to="/catalog?type=sale" className="nav-sublink">Mua bán đồ cũ</Link>
-              <Link to="/catalog?filter=new" className="nav-sublink">Sản phẩm mới về</Link>
             </div>
           </div>
 

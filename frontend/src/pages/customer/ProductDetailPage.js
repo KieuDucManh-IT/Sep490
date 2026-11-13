@@ -29,10 +29,13 @@ import {
   Calculator,
   X,
   Package,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import productService from '../../services/productService';
+import chatApi from '../../services/chatApi';
+import { useAuth } from '../../context/AuthContext';
 import { useCartStore } from '../../stores/useCartStore';
 import { ORDER_TYPES } from '../../services/cart/cartTypes';
 import { getUserLocation } from '../../utils/userLocation';
@@ -43,6 +46,7 @@ import '../../styles/ProductDetail.css';
 export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // State Management
   const [product, setProduct] = useState(null);
@@ -556,10 +560,54 @@ export default function ProductDetailPage() {
     navigate('/cart');
   };
 
-  // Handle Chat with Shop (Brand Manager - dự kiến phát triển sau)
-  const handleChatWithShop = () => {
-    const shopName = product?.shopId?.name || product?.brand || 'Shop';
-    showToast(`Tính năng nhắn tin trực tiếp với ${shopName} đang được phát triển!`);
+  // Handle Chat with Shop (Brand Manager)
+  const handleChatWithShop = async () => {
+    if (!user) {
+      showToast('Vui lòng đăng nhập để nhắn tin tư vấn với Shop!', 'info');
+      navigate(`/login?returnUrl=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+
+    try {
+      const branchLabel = currentSelectedBranch?.name
+        ? `cơ sở ${currentSelectedBranch.name}`
+        : 'Shop';
+      showToast(`Đang kết nối với ${branchLabel}...`, 'info');
+      let targetShopId = null;
+      if (currentSelectedBranch?.shopId) {
+        targetShopId =
+          typeof currentSelectedBranch.shopId === 'object'
+            ? currentSelectedBranch.shopId._id
+            : currentSelectedBranch.shopId;
+      }
+      if (!targetShopId && product?.shopId) {
+        if (typeof product.shopId === 'object' && product.shopId._id) {
+          targetShopId = product.shopId._id;
+        } else if (typeof product.shopId === 'string' && product.shopId.length === 24) {
+          targetShopId = product.shopId;
+        }
+      }
+      const res = await chatApi.getOrCreateConversation({
+        productId: product?._id,
+        shopId: targetShopId,
+        branchId: currentSelectedBranch?.locationId,
+        branchName: currentSelectedBranch?.name,
+      });
+
+      if (res?.conversation?._id) {
+        navigate(`/chat/${res.conversation._id}`);
+      } else {
+        showToast('Không thể tạo cuộc trò chuyện với Shop. Vui lòng thử lại sau!', 'error');
+      }
+    } catch (err) {
+      console.error('Lỗi mở chat tư vấn:', err);
+      if (err.response?.status === 401 || err.status === 401) {
+        showToast('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại!', 'error');
+        navigate(`/login?returnUrl=${encodeURIComponent(window.location.pathname)}`);
+        return;
+      }
+      showToast(err.message || 'Không thể kết nối tư vấn với Shop', 'error');
+    }
   };
 
   // AI Size Calculation
@@ -1388,8 +1436,43 @@ export default function ProductDetailPage() {
             ) : null}
           </div>
 
-          {/* Action Buttons Row */}
-          <div className="pdetail-actions-row">
+          {/* AI Virtual Try-On Dual Buttons: Ảnh & Video */}
+          <div className="pdetail-tryon-dual-row">
+            <button
+              type="button"
+              className="pdetail-btn-tryon-photo"
+              onClick={() =>
+                navigate(
+                  `/try-on/photo?productId=${encodeURIComponent(
+                    product._id || product.productCode
+                  )}`
+                )
+              }
+              title="Ướm thử trang phục lên ảnh cá nhân hoặc người mẫu chuẩn"
+            >
+              <ImageIcon size={16} />
+              <span>Thử đồ bằng ảnh (AI)</span>
+            </button>
+
+            <button
+              type="button"
+              className="pdetail-btn-tryon-video"
+              onClick={() =>
+                navigate(
+                  `/try-on/webcam?product=${encodeURIComponent(
+                    product._id || product.productCode
+                  )}`
+                )
+              }
+              title="Thử đồ thời gian thực trực tiếp qua Webcam"
+            >
+              <Camera size={16} />
+              <span>Thử đồ qua video</span>
+            </button>
+          </div>
+
+          {/* Commercial Action Buttons Row: Thuê ngay & Giỏ hàng */}
+          <div className="pdetail-actions-row-dual">
             <button className="pdetail-btn-rent-now" onClick={handleRentNow}>
               {isRental ? <Sparkles size={16} /> : <ShoppingBag size={16} />}
               <span>{isRental ? 'Thuê ngay' : 'Mua ngay'}</span>
@@ -1400,20 +1483,6 @@ export default function ProductDetailPage() {
               <ShoppingCart size={16} />
               <span>Thêm vào giỏ hàng</span>
             </button>
-
-            <button
-              className="pdetail-btn-ai-tryon"
-              onClick={() =>
-                navigate(
-                  `/try-on/webcam?product=${encodeURIComponent(
-                    product._id || product.productCode
-                  )}`
-                )
-              }
-            >
-              <Camera size={16} />
-              <span>Thử đồ AI</span>
-            </button>
           </div>
 
           {/* Full-width Chat with Shop Button */}
@@ -1421,9 +1490,18 @@ export default function ProductDetailPage() {
             type="button"
             className="pdetail-btn-chat-shop"
             onClick={handleChatWithShop}
+            title={
+              currentSelectedBranch?.name
+                ? `Nhắn tin tư vấn với cơ sở ${currentSelectedBranch.name}`
+                : 'Nhắn tin tư vấn với Shop'
+            }
           >
             <MessageCircle size={16} />
-            <span>Nhắn tin tư vấn với Shop</span>
+            <span>
+              {currentSelectedBranch?.name
+                ? `Nhắn tin tư vấn (${currentSelectedBranch.name})`
+                : 'Nhắn tin tư vấn với Shop'}
+            </span>
           </button>
         </div>
       </div>

@@ -193,7 +193,13 @@ export default function HomePage() {
           sort: 'newest',
         });
         if (isMounted && res?.data && Array.isArray(res.data) && res.data.length > 0) {
-          const mapped = res.data.map((p) => {
+          const availableList = res.data.filter((p) => {
+            if (p.inStock === false) return false;
+            if (p.quantityAvailable != null && p.quantityAvailable <= 0) return false;
+            if (p.quantity != null && p.quantity <= 0) return false;
+            return true;
+          });
+          const mapped = availableList.map((p) => {
             const isRental =
               p.tag === 'rental' ||
               (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -17,31 +17,27 @@ import {
   Wallet,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useCartStore } from "../stores/useCartStore";
+import { useWishlistStore } from "../stores/useWishlistStore";
 import NavbarLocationWidget from "./NavbarLocationWidget";
+import chatApi from "../services/chatApi";
+import socketService from "../services/socket";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading, authError, logout, refreshUser } = useAuth();
-  const [cartCount] = useState(() => {
-    try {
-      const raw = localStorage.getItem('vestora_cart');
-      return raw ? JSON.parse(raw).length : 0;
-    } catch {
-      return 0;
-    }
-  });
-  const [wishlistCount] = useState(() => {
-    try {
-      const raw = localStorage.getItem('vestora_favorites');
-      return raw ? JSON.parse(raw).length : 0;
-    } catch {
-      return 0;
-    }
-  });
+  const { totalItemCount, openCart } = useCartStore();
+  const wishlistCount = useWishlistStore((state) => state.itemCount);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const dropdownRef = useRef(null);
+
+  // Nạp danh sách yêu thích khi khởi động navbar
+  useEffect(() => {
+    useWishlistStore.getState().fetchWishlist();
+  }, []);
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/' ? 'active' : '';
@@ -50,6 +46,63 @@ export default function Navbar() {
   const avatarUrl = user?.avatar || "";
   const displayName = user?.fullName || "";
   const avatarInitial = displayName ? displayName.trim().charAt(0).toUpperCase() : "N";
+
+  // Lấy tổng số tin nhắn chưa đọc từ Backend
+  const fetchUnreadChatCount = useCallback(async () => {
+    if (!user) {
+      setUnreadChatCount(0);
+      return;
+    }
+    const r = String(user.Role || user.role || '').toLowerCase();
+    if (r.includes('admin')) {
+      setUnreadChatCount(0);
+      return;
+    }
+
+    try {
+      const res = await chatApi.getUnreadCount();
+      const count = res?.data?.unreadCount ?? res?.unreadCount ?? 0;
+      setUnreadChatCount(Number(count) || 0);
+    } catch (_) {
+      // Giữ nguyên badge nếu mạng gián đoạn
+    }
+  }, [user]);
+
+  // Cập nhật khi chuyển trang hoặc khi user đăng nhập/đăng xuất
+  useEffect(() => {
+    fetchUnreadChatCount();
+  }, [fetchUnreadChatCount, location.pathname]);
+
+  // Lắng nghe realtime từ Socket.IO và sự kiện trong tab
+  useEffect(() => {
+    if (!user) return;
+    const r = String(user.Role || user.role || '').toLowerCase();
+    if (r.includes('admin')) return;
+
+    const socket = socketService.getSocket();
+
+    const handleUpdate = () => {
+      fetchUnreadChatCount();
+    };
+
+    socket.on('conversation:updated', handleUpdate);
+    socket.on('unread:update', handleUpdate);
+    socket.on('message:new', handleUpdate);
+    socket.on('connect', handleUpdate);
+    window.addEventListener('vestora:chat:unread_changed', handleUpdate);
+
+    // Kiểm tra định kỳ 30 giây
+    const interval = setInterval(fetchUnreadChatCount, 30000);
+
+    return () => {
+      socket.off('conversation:updated', handleUpdate);
+      socket.off('unread:update', handleUpdate);
+      socket.off('message:new', handleUpdate);
+      socket.off('connect', handleUpdate);
+      window.removeEventListener('vestora:chat:unread_changed', handleUpdate);
+      clearInterval(interval);
+    };
+  }, [user, fetchUnreadChatCount]);
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -112,12 +165,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Blog VESTORA */}
-          <Link to="/blog" className={`navbar-link ${isActive("/blog")}`}>
-            Blog VESTORA
-          </Link>
-
-          {/* Liên Hệ (Gồm Liên hệ, Về VESTORA và Chính Sách) */}
+          {/* Liên Hệ & Về Chúng Tôi */}
           <div className="nav-dropdown-item">
             <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
               Liên Hệ <ChevronDown size={12} className="nav-arrow" />
@@ -126,8 +174,8 @@ export default function Navbar() {
               <Link to="/contact" className="nav-sublink">Liên hệ & Hỗ trợ</Link>
               <div className="nav-dropdown-divider"></div>
               <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
-              <Link to="/about" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
-              <Link to="/about" className="nav-sublink">Cam kết dịch vụ</Link>
+              <Link to="/about#mission" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
+              <Link to="/about#commitment" className="nav-sublink">Cam kết dịch vụ</Link>
               <div className="nav-dropdown-divider"></div>
               <Link to="/policy" className="nav-sublink">Chính sách VESTORA</Link>
             </div>
@@ -160,10 +208,60 @@ export default function Navbar() {
           {/* Quick Location Picker */}
           <NavbarLocationWidget />
 
-          {/* Search Icon */}
-          <Link to="/catalog" className="navbar-icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">
-            <Search size={18} />
+          {/* Favorites / Wardrobe Icon with reactive badge */}
+          <Link
+            to="/wardrobe"
+            className={`navbar-icon-btn navbar-fav-btn navbar-wishlist-btn ${isActive('/wardrobe') || isActive('/favorites') ? 'active' : ''}`}
+            title="Tủ đồ & Yêu thích"
+            aria-label="Tủ đồ & Yêu thích"
+            data-testid="navbar-wishlist-btn"
+          >
+            <Heart size={18} />
+            {wishlistCount > 0 && (
+              <span className="cart-badge-count" data-testid="navbar-wishlist-count">
+                {wishlistCount}
+              </span>
+            )}
           </Link>
+
+          {/* Notification Bell Icon */}
+          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
+            <Bell size={18} />
+          </Link>
+
+          {/* Consultation Chat Icon */}
+          {user && (
+            <Link
+              to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
+              className={`navbar-icon-btn navbar-chat-btn ${isActive('/chat') || isActive('/branch/chat') ? 'active' : ''}`}
+              title={unreadChatCount > 0 ? `Tin nhắn tư vấn (${unreadChatCount} tin chưa đọc)` : 'Tin nhắn tư vấn'}
+              aria-label={unreadChatCount > 0 ? `Tin nhắn tư vấn (${unreadChatCount} tin chưa đọc)` : 'Tin nhắn tư vấn'}
+            >
+              <i className="fa-regular fa-comment-dots"></i>
+              {unreadChatCount > 0 && (
+                <span className="chat-badge-count" aria-hidden="true">
+                  {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                </span>
+              )}
+            </Link>
+          )}
+
+          {/* Cart Icon with real-time reactive badge & drawer trigger */}
+          <button
+            type="button"
+            className={`navbar-icon-btn navbar-cart-btn ${isActive('/cart') ? 'active' : ''}`}
+            title="Giỏ hàng"
+            aria-label="Giỏ hàng"
+            data-testid="navbar-cart-btn"
+            onClick={openCart}
+          >
+            <ShoppingBag size={18} />
+            {totalItemCount > 0 && (
+              <span className="cart-badge-count" data-testid="navbar-cart-count">
+                {totalItemCount}
+              </span>
+            )}
+          </button>
 
           {/* User Account / Login Button */}
           {loading ? (
@@ -214,7 +312,21 @@ export default function Navbar() {
                     <ClipboardList size={15} className="menu-icon" /> Đơn thuê của tôi
                   </Link>
                   <Link
-                    to="/wallet"
+                    to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
+                    className="menu-item menu-item-chat"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    <span className="menu-item-chat-left">
+                      <i className="fa-regular fa-comment-dots menu-icon"></i> Tin nhắn tư vấn
+                    </span>
+                    {unreadChatCount > 0 && (
+                      <span className="dropdown-chat-badge">
+                        {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                      </span>
+                    )}
+                  </Link>
+                  <Link
+                    to="/favorites"
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
@@ -306,46 +418,9 @@ export default function Navbar() {
             </button>
           ) : (
             <Link to="/login" className="navbar-icon-btn" title="Đăng nhập tài khoản">
-            <User size={18} />
+              <User size={18} />
             </Link>
           )}
-
-          {/* Wishlist / Wardrobe Icon with reactive badge */}
-          <Link
-            to="/wardrobe"
-            className="navbar-icon-btn navbar-wishlist-btn"
-            title="Tủ đồ & Yêu thích"
-            aria-label="Tủ đồ & Yêu thích"
-            data-testid="navbar-wishlist-btn"
-          >
-            <Heart size={18} />
-            {wishlistCount > 0 && (
-              <span className="cart-badge-count" data-testid="navbar-wishlist-count">
-                {wishlistCount}
-              </span>
-            )}
-          </Link>
-
-          {/* Notification Bell Icon */}
-          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
-            <Bell size={18} />
-          </Link>
-
-          {/* Cart Icon with Link to /cart */}
-          <Link
-            to="/cart"
-            className="navbar-icon-btn navbar-cart-btn"
-            title="Giỏ hàng"
-            aria-label="Giỏ hàng"
-            data-testid="navbar-cart-btn"
-          >
-            <ShoppingBag size={18} />
-            {cartCount > 0 && (
-              <span className="cart-badge-count" data-testid="navbar-cart-count">
-                {cartCount}
-              </span>
-            )}
-          </Link>
         </div>
       </div>
     </header>

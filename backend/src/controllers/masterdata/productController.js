@@ -26,7 +26,7 @@ export const getProducts = async (req, res, next) => {
       aiTryOn,
       sort = 'newest',
       page = 1,
-      limit = 12,
+      limit = 8,
     } = req.query;
 
     const query = {
@@ -52,6 +52,7 @@ export const getProducts = async (req, res, next) => {
       query.$and = query.$and || [];
       if (type === 'rental') {
         query.$and.push({
+          tag: { $nin: ['sale', 'SALE'] },
           $or: [
             { tag: { $in: ['rental', 'both', 'RENTAL', 'BOTH'] } },
             { rentalPricePerDay: { $gt: 0 } },
@@ -60,6 +61,7 @@ export const getProducts = async (req, res, next) => {
         });
       } else if (type === 'sale') {
         query.$and.push({
+          tag: { $nin: ['rental', 'RENTAL'] },
           $or: [
             { tag: { $in: ['sale', 'both', 'SALE', 'BOTH'] } },
             { salePrice: { $gt: 0 } },
@@ -118,9 +120,16 @@ export const getProducts = async (req, res, next) => {
         return { [field]: cond };
       };
 
-      priceConditions.push(makeRange('rentalPricePer3Days'));
-      priceConditions.push(makeRange('rentalPricePerDay'));
-      priceConditions.push(makeRange('salePrice'));
+      if (type === 'sale') {
+        priceConditions.push(makeRange('salePrice'));
+      } else if (type === 'rental') {
+        priceConditions.push(makeRange('rentalPricePer3Days'));
+        priceConditions.push(makeRange('rentalPricePerDay'));
+      } else {
+        priceConditions.push(makeRange('rentalPricePer3Days'));
+        priceConditions.push(makeRange('rentalPricePerDay'));
+        priceConditions.push(makeRange('salePrice'));
+      }
 
       query.$and = query.$and || [];
       query.$and.push({ $or: priceConditions });
@@ -176,7 +185,7 @@ export const getProducts = async (req, res, next) => {
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit, 10) || 12);
+    const limitNum = Math.max(1, parseInt(limit, 10) || 8);
     const skip = (pageNum - 1) * limitNum;
 
     let products = [];
@@ -318,19 +327,28 @@ export const getProducts = async (req, res, next) => {
         branches,
         rating: typeof p.rating === 'number' ? p.rating : null,
         reviewsCount: typeof p.reviewsCount === 'number' ? p.reviewsCount : 0,
-        inStock: inv.inStock != null ? inv.inStock : (quantity > 0),
-          // inStock
-          // pVariants
+        inStock: inv.inStock != null ? inv.inStock : (quantityAvailable > 0),
       };
     });
 
+    // Lọc theo trạng thái khả dụng: Mặc định ẩn sản phẩm hết hàng (quantityAvailable <= 0) khỏi Cổng Khách Hàng / Trang Shop
+    let finalProducts = enrichedProducts;
+    if (req.query.includeOutOfStock !== 'true') {
+      finalProducts = enrichedProducts.filter((p) => {
+        if (p.inStock === false) return false;
+        if (p.quantityAvailable != null && p.quantityAvailable <= 0) return false;
+        if (p.quantity != null && p.quantity <= 0) return false;
+        return true;
+      });
+    }
+
     res.json({
       success: true,
-      data: enrichedProducts,
+      data: finalProducts,
       pagination: {
-        total,
+        total: req.query.includeOutOfStock === 'true' ? total : finalProducts.length,
         page: pageNum,
-        totalPages: Math.ceil(total / limitNum) || 1,
+        totalPages: Math.ceil((req.query.includeOutOfStock === 'true' ? total : finalProducts.length) / limitNum) || 1,
         limit: limitNum,
       },
     });
@@ -344,7 +362,7 @@ export const getProducts = async (req, res, next) => {
         total: 0,
         page: 1,
         totalPages: 1,
-        limit: 12,
+        limit: 8,
       },
     });
   }

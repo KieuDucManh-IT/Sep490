@@ -13,13 +13,17 @@ import userRoutes from "./src/routes/userRoutes.js";
 import apiRoutes from "./src/routes/apiRoutes.js";
 import productRoutes from "./src/routes/productRoutes.js";
 import chatRoutes from "./src/routes/chatRoutes.js";
+import conversationRoutes from "./src/routes/conversationRoutes.js";
+import tryOnRoutes from "./src/routes/tryOnRoutes.js";
+import wardrobeRoutes from "./src/routes/wardrobeRoutes.js";
 import { wishlistRouter, collectionRouter } from "./src/routes/customer/collectionRoutes.js";
+import { initSocket } from "./src/socket/index.js";
+import http from "http";
 import User from "./src/models/system/User.js";
 import { notFound, errorHandler } from "./src/middlewares/errorMiddleware.js";
 import walletRoutes, {
   asyncRoute,
 } from "./src/routes/walletRoutes.js";
-import tryOnRoutes from "./src/routes/tryOnRoutes.js";
 import {
   payosWebhook,
 } from "./src/controllers/walletController.js";
@@ -101,12 +105,14 @@ app.use("/api/admin/shops", shopRoutes);
 app.use("/api/ops/shops", shopRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/conversations", conversationRoutes);
+app.use("/api/try-on", tryOnRoutes);
+app.use("/api/wardrobe", wardrobeRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/v1/wishlist", wishlistRouter);
 app.use("/api/wishlist", wishlistRouter);
 app.use("/api/v1/collections", collectionRouter);
 app.use("/api/collections", collectionRouter);
-app.use("/api/try-on", tryOnRoutes);
 app.use("/api", apiRoutes);
 
 app.use(notFound);
@@ -161,7 +167,10 @@ async function startServer() {
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);
 
-    app.listen(PORT, () => {
+    const httpServer = http.createServer(app);
+    initSocket(httpServer, allowedOrigins);
+
+    httpServer.listen(PORT, () => {
       console.log(`Backend đang chạy tại http://localhost:${PORT}`);
     });
   } catch (error) {

@@ -7,7 +7,7 @@ const stockMovementSchema = new mongoose.Schema({
   storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
   movementType: { type: String, required: true, enum: ['inbound', 'outbound', 'transfer_out', 'transfer_in', 'sale', 'rental_out', 'rental_return', 'sales_return', 'adjustment', 'disposal'] },
   quantityChange: { type: Number, required: true },
-  referenceType: { type: String, enum: ['inbound_receipt', 'stock_transfer', 'sales_order', 'rental_order', 'rental_return', 'sales_return', 'stock_adjustment', 'item_disposal'], default: null },
+  referenceType: { type: String, enum: ['inbound_receipt', 'stock_transfer', 'stock_relocation', 'sales_order', 'rental_order', 'rental_return', 'sales_return', 'stock_adjustment', 'item_disposal'], default: null },
   referenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 }, { timestamps: true });

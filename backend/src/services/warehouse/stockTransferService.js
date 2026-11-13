@@ -87,14 +87,14 @@ const canAccessTransfer = async (transfer, user) => {
 
 const getTransfer = async (transferId, user = null) => {
   if (!validId(transferId)) throw fail('Mã phiếu điều chuyển không hợp lệ.');
-  const transfer = await StockTransfer.findById(transferId).populate(transferPopulation);
+  const transfer = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' } }).populate(transferPopulation);
   if (!transfer) throw fail('Không tìm thấy yêu cầu điều chuyển.', 404);
   if (user) await canAccessTransfer(transfer, user);
   return { ...transfer.toObject(), items: await loadDetails(transferId) };
 };
 
 export const listStockTransfers = async (user, { status = '' } = {}) => {
-  const filter = {};
+  const filter = { direction: { $ne: 'branch_to_central' } };
   if (status && ['requested', 'approved', 'rejected', 'preparing', 'shipped', 'partially_received', 'received', 'cancelled'].includes(status)) filter.status = status;
   if (roleOf(user) === 'warehouse_staff') {
     filter.assignedStaffId = user._id;
@@ -147,7 +147,7 @@ export const decideTransferRequest = async (transferId, payload, user) => {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await StockTransfer.findOne({ _id: transferId, status: 'requested' }).session(session);
+      const transfer = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' }, status: 'requested' }).session(session);
       if (!transfer) throw fail('Yêu cầu không còn ở trạng thái chờ duyệt.', 409);
       if (decision.decision === 'reject') {
         transfer.status = 'rejected';
@@ -196,7 +196,7 @@ export const decideTransferRequest = async (transferId, payload, user) => {
 
 export const getTransferPickCandidates = async (transferId, detailId, storageId, user) => {
   if (!['warehouse_staff', 'warehouse_manager', 'admin'].includes(roleOf(user))) throw fail('Bạn không có quyền soạn hàng.', 403);
-  const transfer = await StockTransfer.findById(transferId);
+  const transfer = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' } });
   if (!transfer) throw fail('Không tìm thấy phiếu điều chuyển.', 404);
   if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
   if (transfer.status !== 'approved') throw fail('Phiếu chưa ở trạng thái chờ soạn hàng.', 409);
@@ -215,7 +215,7 @@ export const saveTransferPick = async (transferId, payload, user) => {
   const data = validateTransferPick(payload);
   const session = await mongoose.startSession();
   try { await session.withTransaction(async () => {
-    const transfer = await StockTransfer.findOne({ _id: transferId, status: 'approved' }).session(session);
+    const transfer = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' }, status: 'approved' }).session(session);
     if (!transfer) throw fail('Phiếu chưa ở trạng thái chờ soạn hàng.', 409);
     if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
     const details = await StockTransferDetail.find({ transferId }).session(session);
@@ -253,7 +253,7 @@ export const shipTransfer = async (transferId, user) => {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await StockTransfer.findOne({ _id: transferId, status: 'preparing' }).session(session);
+      const transfer = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' }, status: 'preparing' }).session(session);
       if (!transfer) throw fail('Phiếu chưa được phân bổ vị trí hoặc đã xuất hàng.', 409);
       if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
       const details = await StockTransferDetail.find({ transferId }).session(session);
@@ -319,7 +319,7 @@ export const receiveTransfer = async (transferId, payload, user) => {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await StockTransfer.findOne({ _id: transferId, status: { $in: ['shipped', 'partially_received'] } }).session(session);
+      const transfer = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' }, status: { $in: ['shipped', 'partially_received'] } }).session(session);
       if (!transfer) throw fail('Phiếu chưa được xuất từ kho tổng hoặc đã hoàn tất nhận hàng.', 409);
       const destination = await assertBranchOwnsLocation(transfer.toLocationId, user);
       const details = await StockTransferDetail.find({ transferId }).session(session);

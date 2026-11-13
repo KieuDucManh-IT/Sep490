@@ -12,16 +12,16 @@ export const validateCreateStocktakeInput = (payload) => {
   if (!isObject(payload)) throw invalid('Dữ liệu tạo phiếu kiểm kê không hợp lệ.');
   const locationId = String(payload.locationId || '');
   if (!/^[a-f\d]{24}$/i.test(locationId)) throw invalid('Chọn kho/cửa hàng hợp lệ.');
-  if (!['full', 'product', 'storage_location'].includes(payload.scopeType)) throw invalid('Phạm vi kiểm kê không hợp lệ.');
+  if (!['full', 'product', 'storage_location', 'custom'].includes(payload.scopeType)) throw invalid('Phạm vi kiểm kê không hợp lệ.');
+  const productIds = idList(payload.productIds, 'Danh sách sản phẩm');
   const variantIds = idList(payload.variantIds, 'Danh sách biến thể');
   const storageIds = idList(payload.storageIds, 'Danh sách vị trí');
-  if (payload.scopeType === 'product' && variantIds.length === 0) throw invalid('Chọn ít nhất một biến thể cần kiểm kê.');
-  if (payload.scopeType !== 'product' && variantIds.length) throw invalid('Chỉ phạm vi theo sản phẩm mới nhận biến thể.');
-  if (payload.scopeType === 'storage_location' && storageIds.length === 0) throw invalid('Chọn ít nhất một vị trí lưu trữ.');
-  if (payload.scopeType !== 'storage_location' && storageIds.length) throw invalid('Chỉ phạm vi theo vị trí mới nhận vị trí lưu trữ.');
+  if (payload.scopeType === 'product' && (variantIds.length === 0 || productIds.length || storageIds.length)) throw invalid('Phạm vi theo biến thể yêu cầu ít nhất một biến thể.');
+  if (payload.scopeType === 'storage_location' && (storageIds.length === 0 || productIds.length || variantIds.length)) throw invalid('Phạm vi theo vị trí yêu cầu ít nhất một vị trí lưu trữ.');
+  if (payload.scopeType === 'full' && (productIds.length || variantIds.length || storageIds.length)) throw invalid('Phạm vi toàn kho không nhận bộ lọc sản phẩm hoặc vị trí.');
   const assignedStaffId = payload.assignedStaffId ? String(payload.assignedStaffId) : null;
   if (assignedStaffId && !/^[a-f\d]{24}$/i.test(assignedStaffId)) throw invalid('Nhân viên được giao không hợp lệ.');
-  return { locationId, scopeType: payload.scopeType, variantIds, storageIds, assignedStaffId };
+  return { locationId, scopeType: payload.scopeType, productIds, variantIds, storageIds, assignedStaffId };
 };
 
 export const validateStocktakeCountInput = (payload) => {

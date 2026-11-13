@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import '../styles/WarehouseManager.css';
+import WarehouseWorkflowProgress from './WarehouseWorkflowProgress';
+import '../styles/WarehouseUx.css';
 
 const statusLabels = {
   awaiting_receiving: 'Chờ nhân viên tiếp nhận',
@@ -60,6 +62,8 @@ export default function InboundReceiptModal({ mode, role, receipt, centralLocati
   const submitCreate = async (event) => {
     event.preventDefault(); setSaving(true); setError('');
     if (!centralLocation?._id) { setError('Cần cấu hình duy nhất một kho tổng đang hoạt động.'); setSaving(false); return; }
+    const invalidLine = lines.some((line) => !line.productId || !line.variantId || !Number.isInteger(Number(line.quantityExpected)) || Number(line.quantityExpected) < 1 || !Number.isFinite(Number(line.unitCost)) || Number(line.unitCost) < 0);
+    if (!supplierId || !assignedStaffId || invalidLine) { setError('Hãy chọn nhà cung cấp, nhân viên và nhập đầy đủ số lượng / giá hợp lệ cho từng dòng.'); setSaving(false); return; }
     const payload = {
       locationId: centralLocation._id, supplierId, assignedStaffId, note,
       items: lines.map((line) => ({ variantId: line.variantId, quantityExpected: Number(line.quantityExpected), unitCost: Number(line.unitCost) })),
@@ -73,6 +77,8 @@ export default function InboundReceiptModal({ mode, role, receipt, centralLocati
 
   const submitReceive = async (event) => {
     event.preventDefault(); setSaving(true); setError('');
+    const invalidLine = received.some((line) => line.quantityReceived === '' || line.quantityReceived == null || !Number.isInteger(Number(line.quantityReceived)) || Number(line.quantityReceived) < 0 || !Number.isInteger(Number(line.quantityDamaged)) || Number(line.quantityDamaged) < 0 || Number(line.quantityDamaged) > Number(line.quantityReceived));
+    if (invalidLine) { setError('Số lượng nhận và hỏng phải là số nguyên không âm; số hỏng không được lớn hơn số nhận.'); setSaving(false); return; }
     try {
       await onReceive({ items: received.map((line) => ({ ...line, quantityReceived: Number(line.quantityReceived), quantityDamaged: Number(line.quantityDamaged) })) });
       onClose();
@@ -101,6 +107,7 @@ export default function InboundReceiptModal({ mode, role, receipt, centralLocati
     <section className="wm-crud-modal wm-inbound-modal" role="dialog" aria-modal="true" aria-labelledby="inbound-modal-title">
       <header><div><span>QUY TRÌNH NHẬP KHO</span><h2 id="inbound-modal-title">{title}</h2></div><button type="button" className="wm-modal-close" onClick={onClose} aria-label="Đóng"><X size={20} /></button></header>
       {error && <div className="wm-error">{error}</div>}
+      {receipt && activeMode !== 'create' && <WarehouseWorkflowProgress flow="inbound" status={receipt.status} />}
       {activeMode === 'create' && <form className="wm-form" onSubmit={submitCreate}>
         <div className="wm-central-warehouse"><small>Kho nhận hàng (kho tổng)</small><strong>{centralLocation ? `${centralLocation.code} — ${centralLocation.name}` : 'Chưa xác định duy nhất kho tổng'}</strong></div>
         <label>Nhà cung cấp<select required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Chọn nhà cung cấp</option>{suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.supplierCode} — {supplier.name}</option>)}</select></label>
@@ -120,7 +127,7 @@ export default function InboundReceiptModal({ mode, role, receipt, centralLocati
       </form>}
       {activeMode === 'view' && receipt && <div className="wm-inbound-detail">
         <div className="wm-detail-grid">
-          <div><small>Trạng thái</small><strong>{statusLabels[receipt.status] || receipt.status}</strong></div>
+          <div><small>Trạng thái</small><span className={`wm-status-badge status-${receipt.status}`}>{statusLabels[receipt.status] || receipt.status}</span></div>
           <div><small>Kho / cửa hàng</small><strong>{receipt.locationId?.code} — {receipt.locationId?.name}</strong></div>
           <div><small>Nhà cung cấp</small><strong>{receipt.supplierId?.supplierCode} — {receipt.supplierId?.name}</strong></div>
           <div><small>Người tạo</small><strong>{receipt.createdBy?.FullName || '—'}</strong></div>

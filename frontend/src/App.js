@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import './styles/WarehouseUx.css';
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -54,6 +55,8 @@ import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 import WarehouseStocktakePage from './pages/warehouse/WarehouseStocktakePage';
 import WarehouseAdjustmentPage from './pages/warehouse/WarehouseAdjustmentPage';
 import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
+import WarehouseBranchReturnsPage from './pages/warehouse/BranchReturnsPage';
+import WarehouseRelocationsPage from './pages/warehouse/WarehouseRelocationsPage';
 import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
 import ProductManagementPage from './pages/warehouse/ProductManagementPage';
 import SupplierManagementPage from './pages/warehouse/SupplierManagementPage';
@@ -203,6 +206,7 @@ function App() {
           }
         />
         <Route path="/branch/stock-requests" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><WarehouseTransfersPage mode="branch" /></ProtectedRoute>} />
+        <Route path="/branch/stock-returns" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><WarehouseBranchReturnsPage mode="branch" /></ProtectedRoute>} />
         <Route path="/branch/inventory" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><BranchInventoryPage /></ProtectedRoute>} />
         <Route
           path="/branch/showroom"
@@ -240,6 +244,9 @@ function App() {
         <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseAdjustmentPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/transfers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/relocations/split" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="split" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/relocations/merge" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="merge" /></ProtectedRoute>} />
         <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/products" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><ProductManagementPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/suppliers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}><SupplierManagementPage /></ProtectedRoute>} />
@@ -291,6 +298,8 @@ function App() {
         <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStocktakePage /></ProtectedRoute>} />
         <Route path="/warehousestaff/reports/inventory" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><InventoryReportPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehousestaff/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="staff" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="staff" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/relocations" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'ADMIN']}><WarehouseRelocationsPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/inventory" element={<Navigate to="/branch/inventory" replace />} />

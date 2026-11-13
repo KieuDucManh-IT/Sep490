@@ -46,6 +46,7 @@ export default function RentalOrderDetailModal({
   const [error, setError] = useState('');
   const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
   const [isReturnShipmentOpen, setIsReturnShipmentOpen] = useState(false);
+  const [retryShipment, setRetryShipment] = useState(null);
 
   const refetchOrder = () => {
     if (orderId) {
@@ -122,7 +123,14 @@ export default function RentalOrderDetailModal({
     ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.district, order.shippingAddress.city].filter(Boolean).join(', ')
     : (order.shippingAddress?.address || noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
-  const shipments = detailData?.shipments || order.shipments || [];
+  const rawShipments = detailData?.shipments || order.shipments || [];
+  const shipments = Array.isArray(rawShipments)
+    ? [...rawShipments].sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+        const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+        return timeB - timeA; // Vận đơn mới nhất lên trên đầu
+      })
+    : [];
 
   const rentalStart = order.startDate || order.rentalStartDate;
   const rentalDue = order.dueDate || order.rentalEndDate;
@@ -458,7 +466,10 @@ export default function RentalOrderDetailModal({
                         <button
                           type="button"
                           className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                          onClick={() => setIsCreateShipmentOpen(true)}
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsCreateShipmentOpen(true);
+                          }}
                         >
                           <Truck size={14} />
                           <span>+ Tạo vận đơn GHN</span>
@@ -468,7 +479,10 @@ export default function RentalOrderDetailModal({
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
-                          onClick={() => setIsReturnShipmentOpen(true)}
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsReturnShipmentOpen(true);
+                          }}
                         >
                           <Truck size={14} />
                           <span>+ Thu hồi đồ thuê</span>
@@ -479,21 +493,30 @@ export default function RentalOrderDetailModal({
 
                   {shipments.length > 0 ? (
                     <div className="mt-3">
-                      {shipments.map((s) => (
-                        <ShipmentTrackingTimeline
-                          key={s._id}
-                          shipment={s}
-                          onCancel={handleCancelShipment}
-                          onRetry={(targetShipment) => {
-                            if ((targetShipment || s)?.shipmentType === 'return') {
-                              setIsReturnShipmentOpen(true);
-                            } else {
-                              setIsCreateShipmentOpen(true);
+                      {shipments.map((s) => {
+                        const canRetryThis = s.shipmentType === 'return' ? !hasActiveReturn : !hasActiveOutbound;
+                        return (
+                          <ShipmentTrackingTimeline
+                            key={s._id}
+                            shipment={s}
+                            onCancel={handleCancelShipment}
+                            onRetry={
+                              canRetryThis
+                                ? (targetShipment) => {
+                                    const target = targetShipment || s;
+                                    setRetryShipment(target);
+                                    if (target?.shipmentType === 'return') {
+                                      setIsReturnShipmentOpen(true);
+                                    } else {
+                                      setIsCreateShipmentOpen(true);
+                                    }
+                                  }
+                                : null
                             }
-                          }}
-                          isBranchManager={!isReadOnly}
-                        />
-                      ))}
+                            isBranchManager={!isReadOnly}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="small text-muted py-2 fst-italic">
@@ -569,8 +592,12 @@ export default function RentalOrderDetailModal({
       {/* Shipment Create Modal */}
       <ShipmentCreateModal
         show={isCreateShipmentOpen}
-        onClose={() => setIsCreateShipmentOpen(false)}
+        onClose={() => {
+          setIsCreateShipmentOpen(false);
+          setRetryShipment(null);
+        }}
         order={order}
+        initialShipment={retryShipment}
         orderType="rental"
         onSuccess={() => refetchOrder()}
       />
@@ -578,8 +605,12 @@ export default function RentalOrderDetailModal({
       {/* Shipment Return Modal */}
       <ShipmentReturnModal
         show={isReturnShipmentOpen}
-        onClose={() => setIsReturnShipmentOpen(false)}
+        onClose={() => {
+          setIsReturnShipmentOpen(false);
+          setRetryShipment(null);
+        }}
         order={order}
+        initialShipment={retryShipment}
         onSuccess={() => refetchOrder()}
       />
     </Modal>

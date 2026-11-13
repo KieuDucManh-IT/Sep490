@@ -21,6 +21,7 @@ export default function ShipmentReturnModal({
   show,
   onClose,
   order,
+  initialShipment = null,
   onSuccess,
 }) {
   const {
@@ -44,7 +45,7 @@ export default function ShipmentReturnModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng
+  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment
   useEffect(() => {
     if (!show || !order) return;
 
@@ -59,23 +60,32 @@ export default function ShipmentReturnModal({
       fullAddr,
     } = extractOrderAddressInfo(order);
 
-    setFromName(receiverName);
-    setFromPhone(receiverPhone);
-    setFromAddress(detailedAddress);
+    const prevSender = initialShipment?.senderInfo || initialShipment?.receiverInfo || {};
+    const finalName = prevSender.name || receiverName;
+    const finalPhone = prevSender.phone || receiverPhone;
+    const finalAddress = prevSender.address || detailedAddress;
+    const finalProvId = prevSender.provinceId || provinceIdHint;
+    const finalWardCode = prevSender.wardCode || wardCodeHint;
+
+    setFromName(finalName);
+    setFromPhone(finalPhone);
+    setFromAddress(finalAddress);
+    if (initialShipment?.weight) setWeight(Number(initialShipment.weight));
+    if (initialShipment?.note) setNote(initialShipment.note);
     setErrorMsg('');
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã cho điểm lấy đồ
     if (provinces.length > 0) {
-      if (provinceIdHint) {
-        handleProvinceChange(String(provinceIdHint), wardHint, wardCodeHint, fullAddr);
+      if (finalProvId) {
+        handleProvinceChange(String(finalProvId), wardHint, finalWardCode, fullAddr);
       } else {
         const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
         if (matchedProv) {
-          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, wardCodeHint, fullAddr);
+          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, finalWardCode, fullAddr);
         }
       }
     }
-  }, [show, order, provinces, handleProvinceChange]);
+  }, [show, order, initialShipment, provinces, handleProvinceChange]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

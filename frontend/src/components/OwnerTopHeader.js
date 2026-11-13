@@ -1,21 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import {
   Menu,
   Store,
   Building2,
   ChevronDown,
   Bell,
-  LayoutDashboard,
-  BadgePercent,
-  Compass,
-  LogOut,
   CheckCircle2,
   Check,
-  CalendarRange,
-  ShoppingBag,
-  RotateCcw,
-  BarChart3,
   Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -27,21 +19,17 @@ export default function OwnerTopHeader({
   isSidebarCollapsed,
   breadcrumb,
 }) {
-  const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
-  const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [showBranchSwitcher, setShowBranchSwitcher] = useState(false);
 
-  const profileRef = useRef(null);
   const notifRef = useRef(null);
   const branchSwitcherRef = useRef(null);
 
   // Auto dismiss popovers on route change
   useEffect(() => {
-    setShowProfile(false);
     setShowNotif(false);
     setShowBranchSwitcher(false);
   }, [location.pathname]);
@@ -50,15 +38,11 @@ export default function OwnerTopHeader({
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        setShowProfile(false);
         setShowNotif(false);
         setShowBranchSwitcher(false);
       }
     };
     const handleClickOutside = (e) => {
-      if (profileRef.current && !profileRef.current.contains(e.target)) {
-        setShowProfile(false);
-      }
       if (notifRef.current && !notifRef.current.contains(e.target)) {
         setShowNotif(false);
       }
@@ -74,27 +58,6 @@ export default function OwnerTopHeader({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const ownerName = useMemo(() => {
-    return user?.fullName || user?.FullName || user?.name || 'Chủ Chuỗi VESTORA';
-  }, [user]);
-
-  const ownerInitial = useMemo(() => {
-    return ownerName.charAt(0).toUpperCase();
-  }, [ownerName]);
-
-  // Derived owner/manager role label (completely dynamic, not hardcoded)
-  const ownerRole = useMemo(() => {
-    const raw = user?.roleName || user?.Role || user?.role;
-    if (!raw) return 'SHOP OWNER';
-    const upper = String(raw).trim().toUpperCase();
-    if (upper === 'SHOP_OWNER' || upper === 'OWNER') return 'SHOP OWNER';
-    if (upper === 'BRANCH_MANAGER') return 'BRANCH MANAGER';
-    if (upper === 'OPERATION_STAFF') return 'OPERATION STAFF';
-    if (upper === 'ADMIN') return 'ADMIN';
-    if (upper === 'CUSTOMER') return 'CUSTOMER';
-    return String(raw).replace(/_/g, ' ').toUpperCase();
-  }, [user]);
 
   const isBranchManager = useMemo(() => {
     const raw = user?.roleName || user?.Role || user?.role;
@@ -276,23 +239,6 @@ export default function OwnerTopHeader({
     return isBranchManager ? 'Bảng Điều Khiển Chi Nhánh' : 'Bảng Điều Khiển Chuỗi';
   }, [breadcrumb, location.pathname, isBranchManager]);
 
-  const handleLogout = useCallback(async () => {
-    try {
-      localStorage.removeItem('vestora_active_branch_id');
-      localStorage.removeItem('vestora_branch_cache');
-      localStorage.removeItem('vestora_managed_branches_cache');
-      if (logout) {
-        await logout();
-      } else {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
-      navigate('/login');
-    } catch {
-      navigate('/login');
-    }
-  }, [logout, navigate]);
-
   return (
     <header className="owner-topbar" role="banner">
       {/* Left: Sidebar Collapse Toggle & Route Breadcrumbs */}
@@ -314,7 +260,7 @@ export default function OwnerTopHeader({
         </div>
       </div>
 
-      {/* Right: Operational Status, Notifications & Profile Card */}
+      {/* Right: Operational Status & Notifications */}
       <div className="owner-topbar-right">
         {/* Branch Switcher (Exclusively for Branch Manager) */}
         {isBranchManager && (
@@ -324,7 +270,6 @@ export default function OwnerTopHeader({
               className="owner-branch-switcher-pill"
               onClick={() => {
                 setShowBranchSwitcher((prev) => !prev);
-                setShowProfile(false);
                 setShowNotif(false);
               }}
               aria-expanded={showBranchSwitcher}
@@ -344,6 +289,15 @@ export default function OwnerTopHeader({
                       ? sortedBranches[0].name
                       : 'Chưa phân công')}
                 </span>
+                {assignedBranch?.isHQ && (
+                  <span
+                    className="owner-branch-hq-tag"
+                    title="Trụ sở chính (HQ)"
+                    style={{ marginLeft: 4, padding: '1px 4px', fontSize: 9 }}
+                  >
+                    <Star size={9} fill="#D4AF37" color="#D4AF37" />
+                  </span>
+                )}
               </div>
               {sortedBranches.length > 1 && (
                 <span
@@ -405,6 +359,14 @@ export default function OwnerTopHeader({
                                 <span className="owner-branch-item-name">
                                   {branch.name}
                                 </span>
+                                {branch.isHQ && (
+                                  <span
+                                    className="owner-branch-hq-tag"
+                                    title="Trụ sở chính (HQ)"
+                                  >
+                                    <Star size={11} fill="#D4AF37" color="#D4AF37" />
+                                  </span>
+                                )}
                               </div>
                               <span className="owner-branch-item-sub">
                                 {[branch.ward, branch.city]
@@ -481,7 +443,6 @@ export default function OwnerTopHeader({
             className="owner-topbar-icon-btn"
             onClick={() => {
               setShowNotif((prev) => !prev);
-              setShowProfile(false);
             }}
             title="Thông báo vận hành chuỗi"
             aria-expanded={showNotif}
@@ -521,192 +482,6 @@ export default function OwnerTopHeader({
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* User Profile Pill & Dropdown */}
-        <div style={{ position: 'relative' }} ref={profileRef}>
-          <button
-            type="button"
-            className="owner-topbar-user-pill"
-            onClick={() => {
-              setShowProfile((prev) => !prev);
-              setShowNotif(false);
-            }}
-            aria-expanded={showProfile}
-            aria-haspopup="menu"
-            title={`Tài khoản: ${ownerName}`}
-          >
-            <div className="owner-topbar-avatar">
-              {user?.avatar ? (
-                <img
-                  src={user.avatar}
-                  alt={ownerName}
-                  className="owner-topbar-avatar-img"
-                />
-              ) : (
-                <span>{ownerInitial}</span>
-              )}
-            </div>
-            <div className="owner-topbar-user-info">
-              <span className="owner-topbar-user-name" title={ownerName}>
-                {ownerName}
-              </span>
-              <span className="owner-topbar-user-role">{ownerRole}</span>
-            </div>
-            <ChevronDown
-              size={13}
-              className={`owner-topbar-chevron ${showProfile ? 'open' : ''}`}
-            />
-          </button>
-
-          {showProfile && (
-            <div className="owner-topbar-dropdown" role="menu">
-              <div className="owner-dropdown-header">
-                <div className="owner-dropdown-title" title={ownerName}>
-                  {ownerName}
-                </div>
-                <div className="owner-dropdown-subtitle">
-                  {ownerRole}
-                </div>
-              </div>
-
-              {isBranchManager ? (
-                <>
-                  <Link
-                    to="/branch/dashboard"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <LayoutDashboard size={15} color="#D4AF37" />
-                    <span>Tổng Quan Chi Nhánh</span>
-                  </Link>
-
-                  <Link
-                    to="/branch/settings"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <Store size={15} color="#D4AF37" />
-                    <span>Cửa Hàng & Ghim Map</span>
-                  </Link>
-
-                  <Link
-                    to="/branch/rental-orders"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <CalendarRange size={15} color="#D4AF37" />
-                    <span>Đơn Thuê Trang Phục</span>
-                  </Link>
-
-                  <Link
-                    to="/branch/sale-orders"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <ShoppingBag size={15} color="#D4AF37" />
-                    <span>Đơn Bán Đứt</span>
-                  </Link>
-
-                  <Link
-                    to="/branch/returns"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <RotateCcw size={15} color="#D4AF37" />
-                    <span>Kiểm Định Nhận Trả</span>
-                  </Link>
-
-                  <Link
-                    to="/branch/analytics"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <BarChart3 size={15} color="#D4AF37" />
-                    <span>Doanh Thu Chi Nhánh</span>
-                  </Link>
-
-                  <Link
-                    to="/branch/reviews"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <Star size={15} color="#D4AF37" />
-                    <span>Đánh Giá Khách Hàng</span>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link
-                    to="/owner/dashboard"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <LayoutDashboard size={15} color="#D4AF37" />
-                    <span>Tổng Quan Chuỗi</span>
-                  </Link>
-
-                  <Link
-                    to="/owner/branches"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <Store size={15} color="#D4AF37" />
-                    <span>Quản Lý Chi Nhánh</span>
-                  </Link>
-
-                  <Link
-                    to="/owner/pricing"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <BadgePercent size={15} color="#D4AF37" />
-                    <span>Bảng Giá & Tiền Cọc</span>
-                  </Link>
-
-                  <Link
-                    to="/owner/settings"
-                    className="owner-dropdown-item"
-                    role="menuitem"
-                    onClick={() => setShowProfile(false)}
-                  >
-                    <Store size={15} color="#D4AF37" />
-                    <span>Hồ Sơ Cửa Hàng & Ghim Map</span>
-                  </Link>
-                </>
-              )}
-
-              <Link
-                to="/"
-                className="owner-dropdown-item"
-                role="menuitem"
-                onClick={() => setShowProfile(false)}
-              >
-                <Compass size={15} color="#64748B" />
-                <span>Xem Cổng Khách Hàng</span>
-              </Link>
-
-              <button
-                type="button"
-                className="owner-dropdown-item logout"
-                role="menuitem"
-                onClick={handleLogout}
-              >
-                <LogOut size={15} strokeWidth={2} />
-                <span>Đăng Xuất Khỏi Hệ Thống</span>
-              </button>
             </div>
           )}
         </div>

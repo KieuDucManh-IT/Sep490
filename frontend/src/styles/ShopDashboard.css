@@ -1110,6 +1110,21 @@
   gap: 6px;
 }
 
+.owner-branch-hq-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(212, 175, 55, 0.12);
+  color: #B45309;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .owner-branch-item-name {
   font-size: 12.5px;
   font-weight: 600;

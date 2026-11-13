@@ -105,7 +105,7 @@ app.use("/api/ops/shops", shopRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/conversations", conversationRoutes);
-app.use("/api/try-on", tryOnRoutes);
+// app.use("/api/try-on", tryOnRoutes);
 app.use("/api/wardrobe", wardrobeRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/v1/wishlist", wishlistRouter);

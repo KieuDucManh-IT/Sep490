@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, ClipboardList, FileBarChart2, Layers3, LogOut, MapPin, Package, RotateCcw, Tags } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../styles/WarehouseManager.css';
+import '../styles/WarehouseUx.css';
 
 export default function WarehouseSidebar({ mode = 'manager' }) {
   const { pathname } = useLocation();

@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import './styles/WarehouseUx.css';
 
 import ProtectedRoute from "./components/ProtectedRoute";
 

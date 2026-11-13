@@ -59,10 +59,10 @@ export default function WarehouseRelocationsPage({
     try {
       setError('');
 
-      // Lấy danh sách phiếu tách/gộp
-      setRows(
-        await stockRelocationService.list(operationType)
-      );
+      const relocationRows =
+        await stockRelocationService.list(operationType);
+
+      setRows(relocationRows || []);
 
       if (manager) {
         const [ls, ss, st] = await Promise.all([
@@ -71,7 +71,6 @@ export default function WarehouseRelocationsPage({
           stockRelocationService.listStaff()
         ]);
 
-        // Xác định kho tổng đang hoạt động
         const w = ls.filter(
           x =>
             x.type === 'warehouse' &&
@@ -80,11 +79,10 @@ export default function WarehouseRelocationsPage({
 
         const central = w.length === 1 ? w[0] : null;
 
-        setLocations(ls);
+        setLocations(ls || []);
 
-        // Lấy danh sách kệ thuộc kho tổng
         setStorages(
-          ss.filter(
+          (ss || []).filter(
             x =>
               x.type === 'shelf' &&
               x.status === 'active' &&
@@ -92,9 +90,8 @@ export default function WarehouseRelocationsPage({
           )
         );
 
-        setStaff(st);
+        setStaff(st || []);
 
-        // Lấy tồn kho theo kệ và biến thể
         if (central) {
           const result = await inventoryReportService.get({
             locationId: central._id,
@@ -145,7 +142,10 @@ export default function WarehouseRelocationsPage({
       });
   }, [inventory, query]);
 
-  // Phân trang: 10 sản phẩm/trang
+  // =========================
+  // PAGINATION
+  // =========================
+
   const visible = available.slice(
     (page - 1) * 10,
     page * 10
@@ -197,15 +197,16 @@ export default function WarehouseRelocationsPage({
       }));
 
       selected.forEach(r => {
-        let g = next.find(
-          x => id(x.variantId) === id(r.variantId)
-        );
-
-        // -------------------------
-        // SPLIT INVENTORY
-        // -------------------------
+        let g;
 
         if (operationType === 'split') {
+          // Tách riêng theo biến thể và kệ nguồn
+          g = next.find(
+            x =>
+              id(x.variantId) === id(r.variantId) &&
+              id(x.fromStorageId) === id(r.storageId)
+          );
+
           if (!g) {
             next.push({
               variantId: r.variantId,
@@ -221,7 +222,7 @@ export default function WarehouseRelocationsPage({
 
               fromStorageId: r.storageId,
 
-              available: r.quantityAvailable,
+              available: Number(r.quantityAvailable),
 
               places: [
                 empty(),
@@ -229,27 +230,24 @@ export default function WarehouseRelocationsPage({
               ]
             });
           }
-        }
+        } else {
+          // Gộp theo biến thể
+          g = next.find(
+            x => id(x.variantId) === id(r.variantId)
+          );
 
-        // -------------------------
-        // MERGE INVENTORY
-        // -------------------------
-
-        else {
           const source = {
             storageId: r.storageId,
-            quantity: r.quantityAvailable,
-            available: r.quantityAvailable
+            quantity: Number(r.quantityAvailable),
+            available: Number(r.quantityAvailable)
           };
 
           if (g) {
-            // Tránh thêm trùng kệ nguồn
-            if (
-              !g.places.some(
-                p =>
-                  id(p.storageId) === id(r.storageId)
-              )
-            ) {
+            const existed = g.places.some(
+              p => id(p.storageId) === id(r.storageId)
+            );
+
+            if (!existed) {
               g.places.push(source);
             }
           } else {
@@ -281,6 +279,169 @@ export default function WarehouseRelocationsPage({
   };
 
   // =========================
+  // ADD SHELF
+  // =========================
+
+  const addShelf = (gi) => {
+    setGroups(prev =>
+      prev.map((g, i) =>
+        i === gi
+          ? {
+              ...g,
+              places: [
+                ...g.places,
+                empty()
+              ]
+            }
+          : g
+      )
+    );
+  };
+
+  // =========================
+  // REMOVE SHELF
+  // =========================
+
+  const removeShelf = (gi, pi) => {
+    setGroups(prev =>
+      prev.map((g, i) =>
+        i === gi
+          ? {
+              ...g,
+              places: g.places.filter(
+                (_, index) => index !== pi
+              )
+            }
+          : g
+      )
+    );
+  };
+
+  // =========================
+  // REMOVE GOODS
+  // =========================
+
+  const removeGoods = (gi) => {
+    setGroups(prev =>
+      prev.filter((_, i) => i !== gi)
+    );
+  };
+
+  // =========================
+  // UPDATE PLACE
+  // =========================
+
+  const setPlace = (gi, pi, patch) => {
+    setGroups(all =>
+      all.map((g, i) =>
+        i === gi
+          ? {
+              ...g,
+              places: g.places.map((p, j) =>
+                j === pi
+                  ? { ...p, ...patch }
+                  : p
+              )
+            }
+          : g
+      )
+    );
+  };
+
+  // =========================
+  // UPDATE MERGE DESTINATION
+  // =========================
+
+  const setDestination = (gi, value) => {
+    setGroups(prev =>
+      prev.map((g, i) =>
+        i === gi
+          ? {
+              ...g,
+              toStorageId: value
+            }
+          : g
+      )
+    );
+  };
+
+  // =========================
+  // VALIDATE FORM
+  // =========================
+
+  const validateGroups = () => {
+    if (!groups.length) {
+      return 'Vui lòng thêm ít nhất một mặt hàng.';
+    }
+
+    for (const g of groups) {
+      if (!g.places.length) {
+        return `Mặt hàng ${g.label} chưa có kệ được chọn.`;
+      }
+
+      if (operationType === 'split') {
+        let totalQuantity = 0;
+
+        const selectedShelves = [];
+
+        for (const p of g.places) {
+          if (!p.storageId) {
+            return `Vui lòng chọn kệ đích cho ${g.label}.`;
+          }
+
+          if (id(p.storageId) === id(g.fromStorageId)) {
+            return `Kệ đích không được trùng kệ nguồn của ${g.label}.`;
+          }
+
+          const quantity = Number(p.quantity);
+
+          if (!Number.isInteger(quantity) || quantity <= 0) {
+            return `Số lượng phân bổ của ${g.label} phải là số nguyên lớn hơn 0.`;
+          }
+
+          if (selectedShelves.includes(id(p.storageId))) {
+            return `Không được chọn trùng kệ đích cho ${g.label}.`;
+          }
+
+          selectedShelves.push(id(p.storageId));
+
+          totalQuantity += quantity;
+        }
+
+        if (totalQuantity > Number(g.available)) {
+          return `Tổng số lượng phân bổ của ${g.label} vượt quá số lượng khả dụng (${g.available}).`;
+        }
+      } else {
+        if (!g.toStorageId) {
+          return `Vui lòng chọn kệ đích cho ${g.label}.`;
+        }
+
+        const sourceIds = g.places.map(
+          p => id(p.storageId)
+        );
+
+        if (sourceIds.includes(id(g.toStorageId))) {
+          return `Kệ đích không được trùng với kệ nguồn của ${g.label}.`;
+        }
+
+        for (const p of g.places) {
+          const quantity = Number(p.quantity);
+
+          if (!Number.isInteger(quantity) || quantity <= 0) {
+            return `Số lượng gộp của ${g.label} phải là số nguyên lớn hơn 0.`;
+          }
+
+          if (quantity > Number(p.available)) {
+            return `Số lượng lấy từ kệ nguồn của ${g.label} vượt quá tồn khả dụng.`;
+          }
+        }
+      }
+    }
+
+    return '';
+  };
+
+  // =========================
   // CREATE RELOCATION
   // =========================
 
@@ -289,6 +450,18 @@ export default function WarehouseRelocationsPage({
 
     try {
       setError('');
+
+      if (!assigned) {
+        setError('Vui lòng chọn nhân viên kho.');
+        return;
+      }
+
+      const validationError = validateGroups();
+
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
 
       const items = groups.flatMap(g =>
         g.places.map(p =>
@@ -317,6 +490,7 @@ export default function WarehouseRelocationsPage({
       setShow(false);
       setGroups([]);
       setAssigned('');
+      setChosen([]);
 
       await load();
     } catch (e2) {
@@ -325,32 +499,16 @@ export default function WarehouseRelocationsPage({
   };
 
   // =========================
-  // UPDATE PLACE
-  // =========================
-
-  const setPlace = (gi, pi, patch) => {
-    setGroups(all =>
-      all.map((g, i) =>
-        i === gi
-          ? {
-              ...g,
-              places: g.places.map((p, j) =>
-                j === pi
-                  ? { ...p, ...patch }
-                  : p
-              )
-            }
-          : g
-      )
-    );
-  };
-
-  // =========================
   // STORAGE NAME
   // =========================
 
   const storageName = s =>
     `${s.code} · ${s.name}`;
+
+  const getStorageCode = storageId =>
+    storages.find(
+      s => id(s) === id(storageId)
+    )?.code || 'Không xác định';
 
   // =========================
   // RENDER
@@ -376,7 +534,13 @@ export default function WarehouseRelocationsPage({
           </div>
 
           {manager && (
-            <button onClick={() => setShow(true)}>
+            <button
+              type="button"
+              onClick={() => {
+                setError('');
+                setShow(true);
+              }}
+            >
               Tạo phiếu
             </button>
           )}
@@ -418,6 +582,14 @@ export default function WarehouseRelocationsPage({
                     <td />
                   </tr>
                 ))}
+
+                {!rows.length && (
+                  <tr>
+                    <td colSpan="4">
+                      Chưa có phiếu tách/gộp tồn kho.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -453,7 +625,9 @@ export default function WarehouseRelocationsPage({
                   <select
                     required
                     value={assigned}
-                    onChange={e => setAssigned(e.target.value)}
+                    onChange={e =>
+                      setAssigned(e.target.value)
+                    }
                   >
                     <option value="">
                       Chọn nhân viên
@@ -475,7 +649,10 @@ export default function WarehouseRelocationsPage({
                 <button
                   className="secondary"
                   type="button"
-                  onClick={() => setPicker(true)}
+                  onClick={() => {
+                    setError('');
+                    setPicker(true);
+                  }}
                 >
                   + Thêm hàng hóa
                 </button>
@@ -485,28 +662,38 @@ export default function WarehouseRelocationsPage({
                 {groups.map((g, gi) => (
                   <section
                     className="wm-relocation-group"
-                    key={id(g.variantId)}
+                    key={
+                      operationType === 'split'
+                        ? `${id(g.variantId)}-${id(g.fromStorageId)}`
+                        : id(g.variantId)
+                    }
                   >
-                    <strong>{g.label}</strong>
+
+                    {/* GROUP HEADER */}
+
+                    <div className="wm-relocation-group-header">
+                      <strong>{g.label}</strong>
+
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => removeGoods(gi)}
+                      >
+                        Xóa hàng
+                      </button>
+                    </div>
 
                     {/* SPLIT SOURCE */}
 
                     {operationType === 'split' ? (
                       <small>
-                        Nguồn:{' '}
-                        {
-                          storages.find(
-                            s =>
-                              id(s) === id(g.fromStorageId)
-                          )?.code
-                        }
-
+                        Nguồn: {getStorageCode(g.fromStorageId)}
                         {' · '}
-
                         Khả dụng: {g.available}
                       </small>
                     ) : (
-                      // MERGE DESTINATION
+                      /* MERGE DESTINATION */
+
                       <label>
                         Kệ đích
 
@@ -514,15 +701,9 @@ export default function WarehouseRelocationsPage({
                           required
                           value={g.toStorageId}
                           onChange={e =>
-                            setGroups(a =>
-                              a.map((x, i) =>
-                                i === gi
-                                  ? {
-                                      ...x,
-                                      toStorageId: e.target.value
-                                    }
-                                  : x
-                              )
+                            setDestination(
+                              gi,
+                              e.target.value
                             )
                           }
                         >
@@ -530,45 +711,67 @@ export default function WarehouseRelocationsPage({
                             Chọn kệ đích
                           </option>
 
-                          {storages.map(s => (
-                            <option
-                              key={s._id}
-                              value={s._id}
-                            >
-                              {storageName(s)}
-                            </option>
-                          ))}
+                          {storages
+                            .filter(
+                              s =>
+                                !g.places.some(
+                                  p =>
+                                    id(p.storageId) === id(s._id)
+                                )
+                            )
+                            .map(s => (
+                              <option
+                                key={s._id}
+                                value={s._id}
+                              >
+                                {storageName(s)}
+                              </option>
+                            ))}
                         </select>
                       </label>
                     )}
 
-                    {/* SOURCE / DESTINATION PLACES */}
+                    {/* SHELF ROWS */}
 
                     <div className="wm-relocation-places">
 
                       {g.places.map((p, pi) => (
-                        <div key={pi}>
+                        <div
+                          className="wm-relocation-place-row"
+                          key={pi}
+                        >
 
-                          <select
-                            required
-                            value={p.storageId}
-                            onChange={e =>
-                              setPlace(
-                                gi,
-                                pi,
-                                {
-                                  storageId: e.target.value
-                                }
-                              )
-                            }
-                          >
-                            {operationType === 'split' ? (
-                              <>
-                                <option value="">
-                                  Chọn kệ đích
-                                </option>
+                          {/* SHELF */}
 
-                                {storages.map(s => (
+                          {operationType === 'split' ? (
+                            <select
+                              required
+                              value={p.storageId}
+                              onChange={e =>
+                                setPlace(
+                                  gi,
+                                  pi,
+                                  {
+                                    storageId: e.target.value
+                                  }
+                                )
+                              }
+                            >
+                              <option value="">
+                                Chọn kệ đích
+                              </option>
+
+                              {storages
+                                .filter(
+                                  s =>
+                                    id(s._id) !== id(g.fromStorageId) &&
+                                    !g.places.some(
+                                      (other, index) =>
+                                        index !== pi &&
+                                        id(other.storageId) === id(s._id)
+                                    )
+                                )
+                                .map(s => (
                                   <option
                                     key={s._id}
                                     value={s._id}
@@ -576,18 +779,20 @@ export default function WarehouseRelocationsPage({
                                     {storageName(s)}
                                   </option>
                                 ))}
-                              </>
-                            ) : (
+                            </select>
+                          ) : (
+                            <select
+                              required
+                              value={p.storageId}
+                              disabled
+                            >
                               <option value={p.storageId}>
-                                {
-                                  storages.find(
-                                    s =>
-                                      id(s) === id(p.storageId)
-                                  )?.code
-                                }
+                                {getStorageCode(p.storageId)}
                               </option>
-                            )}
-                          </select>
+                            </select>
+                          )}
+
+                          {/* QUANTITY */}
 
                           <input
                             required
@@ -610,10 +815,54 @@ export default function WarehouseRelocationsPage({
                             }
                           />
 
+                          {/* REMOVE SHELF */}
+
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              removeShelf(gi, pi)
+                            }
+                          >
+                            Xóa kệ
+                          </button>
+
                         </div>
                       ))}
 
                     </div>
+
+                    {/* ADD SHELF BUTTON */}
+
+                    {operationType === 'split' && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => addShelf(gi)}
+                      >
+                        + Thêm kệ
+                      </button>
+                    )}
+
+                    {/* SPLIT QUANTITY SUMMARY */}
+
+                    {operationType === 'split' && (
+                      <small>
+                        Tổng phân bổ:{' '}
+                        {g.places.reduce(
+                          (sum, p) =>
+                            sum + (
+                              Number(p.quantity) > 0
+                                ? Number(p.quantity)
+                                : 0
+                            ),
+                          0
+                        )}
+                        {' / '}
+                        {g.available}
+                      </small>
+                    )}
+
                   </section>
                 ))}
 
@@ -621,6 +870,7 @@ export default function WarehouseRelocationsPage({
 
                 <footer>
                   <button
+                    type="submit"
                     disabled={!groups.length}
                   >
                     Tạo và giao nhân viên
@@ -730,6 +980,14 @@ export default function WarehouseRelocationsPage({
 
                       </tr>
                     ))}
+
+                    {!visible.length && (
+                      <tr>
+                        <td colSpan="4">
+                          Không tìm thấy hàng hóa phù hợp.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
 
                 </table>
@@ -742,7 +1000,9 @@ export default function WarehouseRelocationsPage({
                 <button
                   type="button"
                   disabled={page === 1}
-                  onClick={() => setPage(page - 1)}
+                  onClick={() =>
+                    setPage(p => Math.max(1, p - 1))
+                  }
                 >
                   Trước
                 </button>
@@ -754,7 +1014,9 @@ export default function WarehouseRelocationsPage({
                 <button
                   type="button"
                   disabled={page === pages}
-                  onClick={() => setPage(page + 1)}
+                  onClick={() =>
+                    setPage(p => Math.min(pages, p + 1))
+                  }
                 >
                   Sau
                 </button>

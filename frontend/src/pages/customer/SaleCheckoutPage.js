@@ -21,6 +21,7 @@ import {
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import HauteCoutureModal from '../../components/HauteCoutureModal';
+import GhnAddressSelector from '../../components/common/GhnAddressSelector';
 import { useCartStore } from '../../stores/useCartStore';
 import { ORDER_TYPES } from '../../services/cart/cartTypes';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
@@ -44,7 +45,7 @@ export default function SaleCheckoutPage() {
 
   // Lấy chi nhánh mặc định từ các sản phẩm mua
   const [resolvedLocationId, setResolvedLocationId] = useState('');
-  const [resolvingBranch, setResolvingBranch] = useState(false);
+  const [, setResolvingBranch] = useState(false);
 
   // Thông tin ví người dùng
   const [walletBalance, setWalletBalance] = useState(null);
@@ -57,8 +58,23 @@ export default function SaleCheckoutPage() {
     street: '',
     ward: '',
     district: '',
-    city: 'Hồ Chí Minh',
+    city: '',
+    provinceId: null,
+    districtId: null,
+    wardCode: '',
   });
+
+  const handleDivisionsChange = useCallback((divisionData) => {
+    setShippingAddress((prev) => ({
+      ...prev,
+      provinceId: divisionData.provinceId,
+      city: divisionData.city,
+      districtId: divisionData.districtId,
+      district: divisionData.district,
+      wardCode: divisionData.wardCode,
+      ward: divisionData.ward,
+    }));
+  }, []);
   const [note, setNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cod'); // 'wallet' | 'cod'
 
@@ -172,6 +188,24 @@ export default function SaleCheckoutPage() {
     walletBalance !== null &&
     walletBalance < grandTotal;
 
+  // Xác thực tính hợp lệ của từng sản phẩm và chi nhánh
+  const validateItems = useCallback(() => {
+    for (const item of saleItems) {
+      if (!item.variantId || !/^[0-9a-fA-F]{24}$/.test(String(item.variantId))) {
+        return `Biến thể của sản phẩm "${item.name}" chưa hợp lệ. Vui lòng chọn lại sản phẩm vào giỏ hàng.`;
+      }
+      const locId = item.selectedBranch?.locationId || resolvedLocationId;
+      if (!locId || !/^[0-9a-fA-F]{24}$/.test(String(locId))) {
+        return `Sản phẩm "${item.name}" chưa xác định được chi nhánh khả dụng. Vui lòng thử lại sau giây lát.`;
+      }
+      const qty = Number(item.quantity);
+      if (Number.isNaN(qty) || qty < 1) {
+        return `Số lượng mua của sản phẩm "${item.name}" không hợp lệ.`;
+      }
+    }
+    return '';
+  }, [saleItems, resolvedLocationId]);
+
   // Xử lý gửi đơn mua hàng
   const handleSubmitOrder = async (e) => {
     e.preventDefault();
@@ -179,6 +213,12 @@ export default function SaleCheckoutPage() {
     setSubmitError('');
 
     if (!hasSaleItems) return;
+
+    const itemError = validateItems();
+    if (itemError) {
+      setValidationError(itemError);
+      return;
+    }
 
     if (!shippingAddress.receiverName.trim()) {
       setValidationError('Vui lòng nhập họ và tên người nhận hàng');
@@ -188,17 +228,20 @@ export default function SaleCheckoutPage() {
       setValidationError('Vui lòng nhập số điện thoại người nhận');
       return;
     }
+    if (!shippingAddress.provinceId) {
+      setValidationError('Vui lòng chọn Tỉnh / Thành phố nhận hàng');
+      return;
+    }
+    if (!shippingAddress.districtId) {
+      setValidationError('Vui lòng chọn Quận / Huyện nhận hàng');
+      return;
+    }
+    if (!shippingAddress.wardCode) {
+      setValidationError('Vui lòng chọn Phường / Xã nhận hàng');
+      return;
+    }
     if (!shippingAddress.street.trim()) {
-      setValidationError('Vui lòng nhập địa chỉ nhà, tên đường');
-      return;
-    }
-    if (!shippingAddress.city.trim()) {
-      setValidationError('Vui lòng chọn Tỉnh / Thành phố');
-      return;
-    }
-
-    if (!resolvedLocationId) {
-      setValidationError('Hệ thống chưa tìm thấy chi nhánh khả dụng để xuất kho. Vui lòng thử lại sau giây lát.');
+      setValidationError('Vui lòng nhập địa chỉ nhà, tên đường chi tiết');
       return;
     }
 
@@ -210,28 +253,59 @@ export default function SaleCheckoutPage() {
     setSubmitting(true);
 
     try {
-      const payload = {
-        locationId: resolvedLocationId,
-        items: saleItems.map((it) => ({
-          variantId: String(it.variantId),
-          quantity: Math.max(1, Number(it.quantity) || 1),
-          note: it.note || '',
-        })),
-        paymentMethod,
-        shippingAddress,
-        note,
-      };
-
-      const res = await createSalesOrder(payload);
-
-      if (res?.success && res.data) {
-        // Loại bỏ các sản phẩm đã mua khỏi giỏ hàng
-        const purchasedCartIds = saleItems.map((it) => it.cartItemId);
-        removeItems(purchasedCartIds);
-        setSuccessOrder(res.data);
-      } else {
-        throw new Error(res?.message || 'Không thể tạo đơn mua hàng');
+      // Gom nhóm sản phẩm theo chi nhánh xuất kho (mỗi chi nhánh = 1 đơn hàng)
+      const groupMap = new Map();
+      for (const it of saleItems) {
+        const locId = String(it.selectedBranch?.locationId || resolvedLocationId || '');
+        if (!groupMap.has(locId)) {
+          groupMap.set(locId, {
+            locationId: locId,
+            items: [],
+          });
+        }
+        groupMap.get(locId).items.push(it);
       }
+
+      let lastCreatedOrder = null;
+      const purchasedCartIds = [];
+
+      for (const group of groupMap.values()) {
+        const payload = {
+          locationId: String(group.locationId),
+          items: group.items.map((it) => ({
+            variantId: String(it.variantId),
+            quantity: Math.max(1, Number(it.quantity) || 1),
+            ...(it.note ? { note: it.note } : {}),
+          })),
+          paymentMethod,
+          shippingAddress: {
+            receiverName: shippingAddress.receiverName.trim(),
+            phone: shippingAddress.phone.trim(),
+            street: shippingAddress.street.trim(),
+            ward: shippingAddress.ward.trim(),
+            district: shippingAddress.district.trim(),
+            city: shippingAddress.city.trim(),
+            provinceId: shippingAddress.provinceId ? Number(shippingAddress.provinceId) : null,
+            districtId: shippingAddress.districtId ? Number(shippingAddress.districtId) : null,
+            wardCode: shippingAddress.wardCode ? String(shippingAddress.wardCode).trim() : null,
+          },
+          ...(note.trim() ? { note: note.trim() } : {}),
+        };
+
+        const res = await createSalesOrder(payload);
+
+        if (res?.success && res.data) {
+          lastCreatedOrder = res.data;
+          group.items.forEach((it) => purchasedCartIds.push(it.cartItemId));
+        } else {
+          throw new Error(res?.message || 'Không thể tạo đơn mua hàng cho chi nhánh đã chọn');
+        }
+      }
+
+      if (purchasedCartIds.length > 0) {
+        removeItems(purchasedCartIds);
+      }
+      setSuccessOrder(lastCreatedOrder);
     } catch (err) {
       setSubmitError(err.message || 'Đặt mua thất bại. Vui lòng thử lại.');
     } finally {
@@ -443,63 +517,14 @@ export default function SaleCheckoutPage() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      <div>
-                        <label
-                          style={{
-                            display: 'block',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            color: '#27272A',
-                            marginBottom: '6px',
-                          }}
-                        >
-                          Tỉnh / Thành phố *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={shippingAddress.city}
-                          onChange={(e) => handleInputChange('city', e.target.value)}
-                          placeholder="TP. Hồ Chí Minh"
-                          style={{
-                            width: '100%',
-                            padding: '10px 14px',
-                            borderRadius: '8px',
-                            border: '1px solid #D4D4D8',
-                            fontSize: '14px',
-                            outline: 'none',
-                          }}
-                        />
-                      </div>
-
-                      <div>
-                        <label
-                          style={{
-                            display: 'block',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            color: '#27272A',
-                            marginBottom: '6px',
-                          }}
-                        >
-                          Quận / Huyện
-                        </label>
-                        <input
-                          type="text"
-                          value={shippingAddress.district}
-                          onChange={(e) => handleInputChange('district', e.target.value)}
-                          placeholder="Quận 1"
-                          style={{
-                            width: '100%',
-                            padding: '10px 14px',
-                            borderRadius: '8px',
-                            border: '1px solid #D4D4D8',
-                            fontSize: '14px',
-                            outline: 'none',
-                          }}
-                        />
-                      </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <GhnAddressSelector
+                        provinceId={shippingAddress.provinceId}
+                        districtId={shippingAddress.districtId}
+                        wardCode={shippingAddress.wardCode}
+                        onChange={handleDivisionsChange}
+                        required
+                      />
                     </div>
 
                     <div>
@@ -512,14 +537,14 @@ export default function SaleCheckoutPage() {
                           marginBottom: '6px',
                         }}
                       >
-                        Địa chỉ đường / số nhà cụ thể *
+                        Số nhà, tên đường chi tiết *
                       </label>
                       <input
                         type="text"
                         required
                         value={shippingAddress.street}
                         onChange={(e) => handleInputChange('street', e.target.value)}
-                        placeholder="Số 72 Lê Thánh Tôn, Phường Bến Nghé"
+                        placeholder="Số 72 Lê Thánh Tôn"
                         style={{
                           width: '100%',
                           padding: '10px 14px',

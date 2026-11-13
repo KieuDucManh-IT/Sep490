@@ -33,6 +33,14 @@ import {
 } from '../services/cart/cartCalculations';
 
 /**
+ * Check whether a string is a valid 24-character hexadecimal MongoDB ObjectId
+ */
+export function isValidObjectId(id) {
+  if (!id) return false;
+  return /^[0-9a-fA-F]{24}$/.test(String(id).trim());
+}
+
+/**
  * Recalculate line totals for a single cart item
  */
 function refreshItemTotals(item) {
@@ -112,7 +120,7 @@ export const useCartStore = create(
        * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-006
        */
       addItem: (inputItem) => {
-        if (!inputItem || !inputItem.variantId) {
+        if (!inputItem || !inputItem.variantId || !isValidObjectId(inputItem.variantId)) {
           return {
             success: false,
             errorCode: 'ERR_INVALID_VARIANT',
@@ -120,15 +128,26 @@ export const useCartStore = create(
           };
         }
 
-        const quantityToAdd =
-          inputItem.quantity !== undefined ? Number(inputItem.quantity) : 1;
-        if (Number.isNaN(quantityToAdd) || quantityToAdd <= 0) {
+        if (
+          inputItem.selectedBranch?.locationId &&
+          !isValidObjectId(inputItem.selectedBranch.locationId)
+        ) {
+          return {
+            success: false,
+            errorCode: 'ERR_INVALID_LOCATION',
+            errorMessage: 'Thông tin chi nhánh không hợp lệ.',
+          };
+        }
+
+        const rawQuantity = Number(inputItem.quantity !== undefined ? inputItem.quantity : 1);
+        if (Number.isNaN(rawQuantity) || rawQuantity <= 0) {
           return {
             success: false,
             errorCode: CART_ERROR_CODES.ERR_INVALID_QUANTITY,
             errorMessage: CART_ERROR_MESSAGES[CART_ERROR_CODES.ERR_INVALID_QUANTITY],
           };
         }
+        const quantityToAdd = Math.min(99, Math.floor(rawQuantity));
 
         const state = get();
         const currentItems = [...state.items];
@@ -459,7 +478,11 @@ export const useCartStore = create(
           if (!Array.isArray(state.items)) {
             state.items = [];
           }
-          const refreshed = state.items.map(refreshItemTotals);
+          // Lọc bỏ các sản phẩm rác hoặc có variantId không hợp lệ
+          const validItems = state.items.filter(
+            (it) => it && it.variantId && isValidObjectId(it.variantId)
+          );
+          const refreshed = validItems.map(refreshItemTotals);
           const subtotals = calculateCartSubtotals(refreshed);
           state.items = refreshed;
           Object.assign(state, subtotals);

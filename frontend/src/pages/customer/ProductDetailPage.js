@@ -36,7 +36,7 @@ import Footer from '../../components/Footer';
 import productService from '../../services/productService';
 import chatApi from '../../services/chatApi';
 import { useAuth } from '../../context/AuthContext';
-import { useCartStore } from '../../stores/useCartStore';
+import { useCartStore, isValidObjectId } from '../../stores/useCartStore';
 import { ORDER_TYPES } from '../../services/cart/cartTypes';
 import { getUserLocation } from '../../utils/userLocation';
 import { calculateHaversineDistanceKm, formatDistanceLabel } from '../../utils/geoUtils';
@@ -384,11 +384,15 @@ export default function ProductDetailPage() {
         !product.branchName?.toLowerCase().includes('kho tổng') &&
         !product.branchName?.toLowerCase().includes('kho tong')
       ) {
-        // Dùng shopId thực nếu có, tránh chuỗi giả 'single-branch'
+        // Dùng shopId thực nếu có và là ObjectId hợp lệ
         const fallbackLocationId =
           product.shopId?._id || product.shopId || null;
+        const validLocId =
+          fallbackLocationId && isValidObjectId(fallbackLocationId)
+            ? String(fallbackLocationId)
+            : null;
         return [{
-          locationId: fallbackLocationId,
+          locationId: validLocId,
           name: product.branchName || 'Chi nhánh',
           address: product.branchAddress,
           quantity: product.quantity || 1,
@@ -486,10 +490,58 @@ export default function ProductDetailPage() {
     );
   }, [sortedBranches, selectedBranchId]);
 
+  // Tìm variant thực từ DB khớp size + color đã chọn
+  const matchedVariant = useMemo(() => {
+    if (!product) return null;
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const selectedColor = (Array.isArray(product.colors) && product.colors[0]) || 'Mặc định';
+    return (
+      variants.find(
+        (v) =>
+          String(v.size || '').toLowerCase() === String(selectedSize || '').toLowerCase() &&
+          String(v.color || '').toLowerCase() === String(selectedColor).toLowerCase()
+      ) ||
+      variants.find(
+        (v) => String(v.size || '').toLowerCase() === String(selectedSize || '').toLowerCase()
+      ) ||
+      (variants.length > 0 ? variants[0] : null)
+    );
+  }, [product, selectedSize]);
+
+  // Tồn kho khả dụng của chi nhánh đã chọn hoặc sản phẩm
+  const availableStock = useMemo(() => {
+    if (!product || product.inStock === false) return 0;
+    if (currentSelectedBranch && typeof currentSelectedBranch.quantity === 'number') {
+      return Math.max(0, currentSelectedBranch.quantity);
+    }
+    if (typeof product.quantity === 'number') {
+      return Math.max(0, product.quantity);
+    }
+    return 99;
+  }, [product, currentSelectedBranch]);
+
+  const isOutOfStock = availableStock <= 0 || product?.inStock === false;
+
   // Handle Add to Cart
   const handleAddToCart = () => {
-    if (!product) return;
+    if (!product) return false;
     try {
+      if (isOutOfStock) {
+        showToast('Sản phẩm hiện đang tạm hết hàng tại chi nhánh này.', 'warning');
+        return false;
+      }
+
+      if (!matchedVariant || !matchedVariant._id || !isValidObjectId(matchedVariant._id)) {
+        showToast('Vui lòng chọn đầy đủ kích thước và màu sắc khả dụng.', 'warning');
+        return false;
+      }
+
+      const qtyToAdd = Math.max(1, Number(quantity) || 1);
+      if (qtyToAdd > availableStock) {
+        showToast(`Số lượng chọn vượt quá số lượng còn lại trong kho (${availableStock} sản phẩm).`, 'warning');
+        return false;
+      }
+
       const isRentalItem = Boolean(isRental);
       let calculatedDueDate = '';
       if (isRentalItem && startDate) {
@@ -498,23 +550,15 @@ export default function ProductDetailPage() {
         calculatedDueDate = d.toISOString().split('T')[0];
       }
 
-      // Tìm variant thực từ DB khớp size + color đã chọn
-      const variants = Array.isArray(product.variants) ? product.variants : [];
-      const selectedColor = (Array.isArray(product.colors) && product.colors[0]) || 'Mặc định';
-      const matchedVariant =
-        variants.find(
-          (v) =>
-            String(v.size || '').toLowerCase() === String(selectedSize || '').toLowerCase() &&
-            String(v.color || '').toLowerCase() === String(selectedColor).toLowerCase()
-        ) ||
-        variants.find(
-          (v) => String(v.size || '').toLowerCase() === String(selectedSize || '').toLowerCase()
-        ) ||
-        variants[0] ||
-        null;
-
-      const resolvedVariantId = matchedVariant ? String(matchedVariant._id) : String(product._id || '');
+      const resolvedVariantId = String(matchedVariant._id);
       const resolvedSku = matchedVariant?.sku || product.productCode || product.sku || '';
+
+      const validBranchLocationId =
+        currentSelectedBranch?.locationId && isValidObjectId(currentSelectedBranch.locationId)
+          ? String(currentSelectedBranch.locationId)
+          : currentSelectedBranch?._id && isValidObjectId(currentSelectedBranch._id)
+          ? String(currentSelectedBranch._id)
+          : null;
 
       const cartItem = {
         productId: String(product._id || product.productCode || 'prod-default'),
@@ -522,42 +566,46 @@ export default function ProductDetailPage() {
         sku: resolvedSku,
         name: String(product.name || 'Sản phẩm thời trang'),
         size: matchedVariant?.size || selectedSize || 'F',
-        color: matchedVariant?.color || selectedColor,
+        color: matchedVariant?.color || (Array.isArray(product.colors) && product.colors[0]) || 'Mặc định',
         thumbnailImage: images[0] || product.image || '',
         orderType: isRentalItem ? ORDER_TYPES.RENTAL : ORDER_TYPES.SALE,
-        quantity: Math.max(1, Number(quantity) || 1),
+        quantity: qtyToAdd,
         rentalPricePerDay: isRentalItem ? rentalPricePerDay : 0,
         depositAmount: isRentalItem ? depositAmount : 0,
         startDate: isRentalItem ? startDate : '',
         dueDate: isRentalItem ? (dueDate || calculatedDueDate) : '',
         rentalDays: isRentalItem ? (rentalDuration || 1) : 0,
         salePrice: !isRentalItem ? currentPrice : 0,
-        selectedBranch: currentSelectedBranch
+        selectedBranch: validBranchLocationId
           ? {
-            locationId: currentSelectedBranch.locationId || currentSelectedBranch._id,
-            name: currentSelectedBranch.name,
-            address: currentSelectedBranch.address,
+            locationId: validBranchLocationId,
+            name: currentSelectedBranch?.name || 'Chi nhánh',
+            address: currentSelectedBranch?.address || '',
           }
           : null,
       };
 
       const result = useCartStore.getState().addItem(cartItem);
       if (result && !result.success) {
-        showToast(result.error || 'Không thể thêm sản phẩm vào giỏ hàng.');
-        return;
+        showToast(result.errorMessage || result.error || 'Không thể thêm sản phẩm vào giỏ hàng.', 'error');
+        return false;
       }
 
       useCartStore.getState().openCart();
-      showToast('Đã thêm sản phẩm vào giỏ hàng thành công!');
+      showToast('Đã thêm sản phẩm vào giỏ hàng thành công!', 'success');
+      return true;
     } catch {
-      showToast('Đã xảy ra lỗi khi thêm vào giỏ hàng!');
+      showToast('Đã xảy ra lỗi khi thêm vào giỏ hàng!', 'error');
+      return false;
     }
   };
 
   // Handle Rent / Buy Now
   const handleRentNow = () => {
-    handleAddToCart();
-    navigate('/cart');
+    const success = handleAddToCart();
+    if (success) {
+      navigate('/cart');
+    }
   };
 
   // Handle Chat with Shop (Brand Manager)
@@ -944,16 +992,17 @@ export default function ProductDetailPage() {
               <div className="pdetail-stepper">
                 <button
                   className="pdetail-stepper-btn"
-                  disabled={quantity <= 1}
+                  disabled={quantity <= 1 || isOutOfStock}
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                   aria-label="Giảm số lượng"
                 >
                   -
                 </button>
-                <span className="pdetail-stepper-value">{quantity}</span>
+                <span className="pdetail-stepper-value">{isOutOfStock ? 0 : quantity}</span>
                 <button
                   className="pdetail-stepper-btn"
-                  onClick={() => setQuantity((q) => q + 1)}
+                  disabled={quantity >= availableStock || isOutOfStock}
+                  onClick={() => setQuantity((q) => Math.min(availableStock, q + 1))}
                   aria-label="Tăng số lượng"
                 >
                   +
@@ -975,10 +1024,10 @@ export default function ProductDetailPage() {
 
               {/* Stock Indicator */}
               <div className="pdetail-stock-indicator">
-                <span className={`pdetail-stock-dot ${product.inStock === false || (typeof product.quantity === 'number' && product.quantity <= 0) ? 'out-of-stock' : ''}`}></span>
+                <span className={`pdetail-stock-dot ${isOutOfStock ? 'out-of-stock' : ''}`}></span>
                 <span>
-                  {product.inStock !== false && (product.quantity == null || product.quantity > 0)
-                    ? `Còn hàng (${product.quantity ?? 1} sản phẩm)`
+                  {!isOutOfStock
+                    ? `Còn hàng (${availableStock} sản phẩm)`
                     : 'Hết hàng'}
                 </span>
               </div>
@@ -1473,13 +1522,43 @@ export default function ProductDetailPage() {
 
           {/* Commercial Action Buttons Row: Thuê ngay & Giỏ hàng */}
           <div className="pdetail-actions-row-dual">
-            <button className="pdetail-btn-rent-now" onClick={handleRentNow}>
+            <button
+              className="pdetail-btn-rent-now"
+              onClick={handleRentNow}
+              disabled={isOutOfStock || !matchedVariant}
+              style={{
+                opacity: isOutOfStock || !matchedVariant ? 0.55 : 1,
+                cursor: isOutOfStock || !matchedVariant ? 'not-allowed' : 'pointer',
+              }}
+              title={
+                isOutOfStock
+                  ? 'Sản phẩm hiện đang tạm hết hàng tại chi nhánh này'
+                  : !matchedVariant
+                  ? 'Vui lòng chọn kích thước và màu sắc khả dụng'
+                  : ''
+              }
+            >
               {isRental ? <Sparkles size={16} /> : <ShoppingBag size={16} />}
-              <span>{isRental ? 'Thuê ngay' : 'Mua ngay'}</span>
+              <span>{isOutOfStock ? 'Hết hàng' : isRental ? 'Thuê ngay' : 'Mua ngay'}</span>
               <ArrowRight size={14} />
             </button>
 
-            <button className="pdetail-btn-add-cart" onClick={handleAddToCart}>
+            <button
+              className="pdetail-btn-add-cart"
+              onClick={handleAddToCart}
+              disabled={isOutOfStock || !matchedVariant}
+              style={{
+                opacity: isOutOfStock || !matchedVariant ? 0.55 : 1,
+                cursor: isOutOfStock || !matchedVariant ? 'not-allowed' : 'pointer',
+              }}
+              title={
+                isOutOfStock
+                  ? 'Sản phẩm hiện đang tạm hết hàng tại chi nhánh này'
+                  : !matchedVariant
+                  ? 'Vui lòng chọn kích thước và màu sắc khả dụng'
+                  : ''
+              }
+            >
               <ShoppingCart size={16} />
               <span>Thêm vào giỏ hàng</span>
             </button>

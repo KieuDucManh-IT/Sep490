@@ -24,6 +24,9 @@ async function fetchJson(endpoint, options = {}) {
       headers,
     });
   } catch (netErr) {
+    if (netErr?.name === 'AbortError' || options?.signal?.aborted) {
+      throw netErr;
+    }
     throw new Error(
       netErr.message === 'Failed to fetch'
         ? 'Không thể kết nối đến máy chủ backend (ERR_CONNECTION_REFUSED).'
@@ -52,7 +55,10 @@ export const getAssignedBranchApi = async (branchId) => {
   return fetchJson(`/api/shops/assigned-branch${query}`);
 };
 
-export const getBranchPerformanceReportApi = async ({ branchId, timeRange = 'MONTH', startDate, endDate } = {}) => {
+export const getBranchPerformanceReportApi = async (
+  { branchId, timeRange = 'MONTH', startDate, endDate } = {},
+  options = {}
+) => {
   const activeId = branchId || localStorage.getItem('vestora_active_branch_id') || '';
   const params = new URLSearchParams();
   if (activeId) params.append('branchId', activeId);
@@ -60,7 +66,10 @@ export const getBranchPerformanceReportApi = async ({ branchId, timeRange = 'MON
   if (startDate) params.append('startDate', startDate);
   if (endDate) params.append('endDate', endDate);
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return fetchJson(`/api/shops/reports/branch-performance${qs}`);
+  return fetchJson(
+    `/api/shops/reports/branch-performance${qs}`,
+    options.signal ? { signal: options.signal } : {}
+  );
 };
 
 export const updateShopAddressApi = async (shopId, addressData) => {

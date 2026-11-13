@@ -171,7 +171,7 @@ function App() {
         <Route
           path="/branch/analytics"
           element={
-            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER']}>
               <BranchAnalyticsPage />
             </ProtectedRoute>
           }

@@ -13,9 +13,10 @@ import User from '../../models/system/User.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
-const roleOf = (user) => String(user?.Role || '').toLowerCase();
-const isManager = (user) => ['warehouse_manager', 'admin'].includes(roleOf(user));
-const isBranchManager = (user) => ['branch_manager', 'admin'].includes(roleOf(user));
+const roleOf = (user) => String(user?.Role || user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
+const isManager = (user) => ['warehousemanager', 'admin'].includes(roleOf(user));
+const isBranchManager = (user) => ['branchmanager', 'admin'].includes(roleOf(user));
+const isWarehouseStaff = (user) => roleOf(user) === 'warehousestaff';
 const validId = (id) => mongoose.isValidObjectId(id);
 const isRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const makeCode = () => `TH-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${new mongoose.Types.ObjectId().toString().slice(-6).toUpperCase()}`;
@@ -56,7 +57,7 @@ const branchLocationFor = async (branchId, user) => {
 };
 const assertBranchAccess = async (transfer, user) => {
   if (isManager(user)) return;
-  if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) === String(user._id)) return;
+  if (isWarehouseStaff(user) && String(transfer.assignedStaffId?._id || transfer.assignedStaffId) === String(user._id)) return;
   if (!isBranchManager(user)) throw fail('Bạn không có quyền xem phiếu trả hàng.', 403);
   const branch = await InventoryLocation.findById(transfer.fromLocationId).populate('shopId', 'managerId status isDeleted').lean();
   if (!branch?.shopId || branch.shopId.status !== 'ACTIVE' || branch.shopId.isDeleted || String(branch.shopId.managerId) !== String(user._id)) throw fail('Phiếu không thuộc chi nhánh bạn quản lý.', 403);
@@ -71,7 +72,7 @@ const loadReturn = async (id, user) => {
 
 export const listBranchReturns = async (user) => {
   const filter = { direction: 'branch_to_central' };
-  if (roleOf(user) === 'warehouse_staff') filter.assignedStaffId = user._id;
+  if (isWarehouseStaff(user)) filter.assignedStaffId = user._id;
   else if (!isManager(user)) {
     if (!isBranchManager(user)) throw fail('Bạn không có quyền xem phiếu trả hàng.', 403);
     const shops = await Shop.find({ managerId: user._id, status: 'ACTIVE', isDeleted: { $ne: true } }).distinct('_id');
@@ -82,7 +83,7 @@ export const listBranchReturns = async (user) => {
 };
 
 export const getBranchReturn = loadReturn;
-export const listBranchReturnStaff = () => User.find({ Role: /^warehouse_staff$/i, Status: /^active$/i }).select('FullName Email').sort({ FullName: 1 }).lean();
+export const listBranchReturnStaff = () => User.find({ Role: /^warehouse[\s_-]?staff$/i, Status: /^active$/i }).select('FullName Email').sort({ FullName: 1 }).lean();
 
 export const createBranchReturn = async (payload, user) => {
   if (!isBranchManager(user)) throw fail('Chỉ quản lý chi nhánh mới được tạo phiếu trả hàng.', 403);
@@ -129,7 +130,7 @@ export const decideBranchReturn = async (id, payload, user) => {
         await transfer.save({ session }); return;
       }
       if (!validId(payload.assignedStaffId)) throw fail('Chọn nhân viên kho tổng phụ trách nhận hàng.');
-      const staff = await User.findOne({ _id: payload.assignedStaffId, Role: /^warehouse_staff$/i, Status: /^active$/i }).session(session);
+      const staff = await User.findOne({ _id: payload.assignedStaffId, Role: /^warehouse[\s_-]?staff$/i, Status: /^active$/i }).session(session);
       if (!staff) throw fail('Nhân viên kho không tồn tại hoặc đã ngừng hoạt động.');
       const details = await StockTransferDetail.find({ transferId: id }).session(session);
       const variants = await ProductVariant.find({ _id: { $in: details.map((row) => row.variantId) } }).select('productId').populate('productId', 'trackingType').session(session).lean();
@@ -228,12 +229,12 @@ export const cancelBranchReturn = async (id, user) => {
 
 export const submitBranchReturnReceipt = async (id, payload, user) => {
   if (!validId(id)) throw fail('Mã phiếu trả hàng không hợp lệ.');
-  if (!['warehouse_staff', 'warehouse_manager', 'admin'].includes(roleOf(user))) throw fail('Chỉ nhân viên kho tổng mới ghi nhận hàng trả. ', 403);
+  if (!(isWarehouseStaff(user) || isManager(user))) throw fail('Chỉ nhân viên kho tổng mới ghi nhận hàng trả. ', 403);
   const session = await mongoose.startSession();
   try { await session.withTransaction(async () => {
     const transfer = await StockTransfer.findOne({ _id: id, direction: 'branch_to_central', status: 'shipped' }).session(session);
     if (!transfer) throw fail('Phiếu chưa được gửi từ chi nhánh hoặc đã ghi nhận.', 409);
-    if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+    if (isWarehouseStaff(user) && String(transfer.assignedStaffId?._id || transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
     const details = await StockTransferDetail.find({ transferId: id }).session(session);
     const lines = Array.isArray(payload?.items) ? payload.items : [];
     if (lines.some((line) => !isRecord(line) || !validId(line.detailId))) throw fail('Dòng nhận hàng không hợp lệ.');
@@ -345,12 +346,12 @@ const capacitySnapshot = async (locationId, session, excludeTransferId) => {
 
 export const putawayBranchReturn = async (id, payload, user) => {
   if (!validId(id)) throw fail('Mã phiếu trả hàng không hợp lệ.');
-  if (!['warehouse_staff', 'warehouse_manager', 'admin'].includes(roleOf(user))) throw fail('Bạn không có quyền xếp hàng trả vào kho.', 403);
+  if (!(isWarehouseStaff(user) || isManager(user))) throw fail('Bạn không có quyền xếp hàng trả vào kho.', 403);
   const session = await mongoose.startSession();
   try { await session.withTransaction(async () => {
     const transfer = await StockTransfer.findOne({ _id: id, direction: 'branch_to_central', status: 'receipt_approved' }).session(session);
     if (!transfer) throw fail('Kết quả nhận hàng chưa được quản lý kho duyệt.', 409);
-    if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+    if (isWarehouseStaff(user) && String(transfer.assignedStaffId?._id || transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
     const details = await StockTransferDetail.find({ transferId: id }).session(session);
     const putawayLines = Array.isArray(payload?.items) ? payload.items : [];
     if (putawayLines.some((line) => !isRecord(line) || !validId(line.detailId))) throw fail('Dòng phân bổ vị trí không hợp lệ.');

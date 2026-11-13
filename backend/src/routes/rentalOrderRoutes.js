@@ -7,11 +7,38 @@
 import express from 'express';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
 import * as rentalOrderController from '../controllers/sale&rental/rentalOrderController.js';
+import {
+  authorizeEvidenceUpload,
+  listEvidence,
+  uploadEvidence,
+} from '../controllers/sale&rental/rentalEvidenceController.js';
+
+import {
+  evidenceUploadRateLimit,
+  parseEvidenceVideo,
+} from '../middlewares/rentalEvidenceUpload.js';
 
 const router = express.Router();
 
 // Tất cả endpoints đơn thuê đều yêu cầu đăng nhập
 router.use(authMiddleware);
+
+// Xem video đóng hàng và nhận hàng của đơn.
+router.get(
+  '/:id/evidence',
+  listEvidence
+);
+
+// Tải video:
+// packing: video đóng hàng của chi nhánh.
+// receiving: video nhận hàng của khách.
+router.post(
+  '/:id/evidence/:kind',
+  authorizeEvidenceUpload,
+  evidenceUploadRateLimit,
+  parseEvidenceVideo,
+  uploadEvidence
+);
 
 // 1. Tạo đơn thuê mới (Khách hàng)
 router.post('/', rentalOrderController.createOrder);

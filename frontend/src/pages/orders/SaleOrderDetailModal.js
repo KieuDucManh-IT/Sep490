@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from 'react-bootstrap';
+import RentalEvidenceSection from '../../components/orders/RentalEvidenceSection';
 import {
   User,
   Truck,
@@ -37,7 +38,7 @@ export default function SaleOrderDetailModal({
   orderId,
   initialOrder = null,
   isReadOnly = false,
-  onAction = () => {},
+  onAction = () => { },
 }) {
   const [loading, setLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
@@ -52,7 +53,7 @@ export default function SaleOrderDetailModal({
             setDetailData(res.data);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   };
 
@@ -115,7 +116,7 @@ export default function SaleOrderDetailModal({
     const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
     if (match) noteDeliveryAddress = match[3].trim();
   }
-  const customerAddress = order.shippingAddress?.street 
+  const customerAddress = order.shippingAddress?.street
     ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
     : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
@@ -431,6 +432,15 @@ export default function SaleOrderDetailModal({
                 </div>
               );
             })()}
+
+            {/* 5. Video bằng chứng giao nhận đơn mua */}
+            {(orderId || order._id) && (
+              <RentalEvidenceSection
+                key={`sale-${orderId || order._id}`}
+                orderId={orderId || order._id}
+                orderType="sale"
+              />
+            )}
           </>
         )}
       </div>

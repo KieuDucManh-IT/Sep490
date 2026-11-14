@@ -45,11 +45,28 @@ export const trackPublicShipmentApi = async (trackingCode, options = {}) => {
   return await api.get(`/public/shipping/track/${encodeURIComponent(trackingCode)}`, { params });
 };
 
+export const updateManualShipmentStatusApi = async (id, payload) => {
+  return await api.put(`/shipping/${id}/manual-status`, payload);
+};
+
+export const uploadShipmentProofApi = async (file) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  return await api.post('/shipping/upload-proof', formData);
+};
+
+export const simulateGhnApi = async (payload) => {
+  return await api.post('/shipping/dev/simulate-ghn', payload);
+};
+
 const shippingApi = {
   calculateShippingFeeApi,
   createOutboundShipmentApi,
   createReturnShipmentApi,
   cancelShipmentApi,
+  updateManualShipmentStatusApi,
+  simulateGhnApi,
+  uploadShipmentProofApi,
   getShipmentsByOrderApi,
   getPrintTokenApi,
   getGHNProvincesApi,

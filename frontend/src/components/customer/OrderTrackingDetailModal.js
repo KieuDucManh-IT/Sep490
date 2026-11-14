@@ -19,20 +19,10 @@ import {
   XCircle,
   RotateCcw,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
+import { sanitizeTimelineText } from '../../pages/shipping/shippingUtils';
 import '../../styles/CustomerOrderTracking.css';
-
-const sanitizeTimelineText = (text) => {
-  if (!text) return 'Cập nhật tiến trình';
-  return String(text)
-    .replace(/\s*\(Cập nhật trạng thái vận chuyển qua Sandbox\)/gi, '')
-    .replace(/\s*\(Sandbox\)/gi, '')
-    .replace(/trên Shop ID \d+/gi, 'tại cửa hàng')
-    .replace(/trên Shop \d+/gi, 'tại cửa hàng')
-    .replace(/sang Shop ID \d+/gi, 'sang thông tin mới')
-    .replace(/sang Shop \d+/gi, 'sang thông tin mới')
-    .trim();
-};
 
 const getStepIndex = (status, displayStatusText = '') => {
   if (String(displayStatusText).toLowerCase().includes('chuẩn bị lại')) {
@@ -92,6 +82,7 @@ export default function OrderTrackingDetailModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
+  const [selectedEvidenceImage, setSelectedEvidenceImage] = useState(null);
 
   // Nạp dữ liệu vận chuyển thời gian thực từ GHN
   const fetchTracking = useCallback(async (code, force = false) => {
@@ -531,6 +522,44 @@ export default function OrderTrackingDetailModal({
                     </div>
                   </div>
 
+                  {/* Hiển thị Bằng Chứng Giao Hàng Thành Công nếu có */}
+                  {trackingData.deliveryProofImage && (
+                    <div style={{ margin: '0 0 16px 0', padding: '10px 14px', background: '#F0FDF4', borderRadius: '8px', border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <img
+                          src={trackingData.deliveryProofImage}
+                          alt="Ảnh xác nhận nhận hàng"
+                          style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '6px', cursor: 'pointer', border: '1px solid #86EFAC' }}
+                          onClick={() => setSelectedEvidenceImage(trackingData.deliveryProofImage)}
+                          title="Bấm để xem ảnh phóng to"
+                        />
+                        <div>
+                          <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#166534' }}>
+                            ✓ Ảnh chụp khi giao hàng thành công
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#15803D' }}>
+                            Ảnh do shipper chụp khi giao kiện hàng cho bạn.
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        style={{ padding: '4px 10px', fontSize: '11.5px', background: '#FFFFFF', color: '#166534', border: '1px solid #86EFAC', borderRadius: '4px', cursor: 'pointer', fontWeight: 500 }}
+                        onClick={() => setSelectedEvidenceImage(trackingData.deliveryProofImage)}
+                      >
+                        Xem ảnh
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Hiển thị Lý Do Giao Thất Bại nếu có */}
+                  {trackingData.failureReason && (
+                    <div style={{ margin: '0 0 16px 0', padding: '10px 14px', background: '#FEF2F2', borderRadius: '8px', border: '1px solid #FECACA', display: 'flex', alignItems: 'center', gap: '8px', color: '#B91C1C', fontSize: '12.5px' }}>
+                      <AlertCircle size={16} />
+                      <span><strong>Lý do chưa giao được:</strong> {trackingData.failureReason}</span>
+                    </div>
+                  )}
+
                   {/* Timeline Hành Trình Chi Tiết */}
                   <div className="tracking-timeline-section" style={{ margin: 0, padding: '16px' }}>
                     <h3 className="timeline-heading" style={{ fontSize: '13px', marginBottom: '12px' }}>
@@ -556,6 +585,23 @@ export default function OrderTrackingDetailModal({
                                   {formatDate(item.timestamp)}
                                   {item.location && <span>• {item.location}</span>}
                                 </div>
+
+                                {item.evidenceImage && (
+                                  <div style={{ marginTop: '6px' }}>
+                                    <img
+                                      src={item.evidenceImage}
+                                      alt="Ảnh khi nhận hàng"
+                                      style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer', border: '1px solid #D1D5DB' }}
+                                      onClick={() => setSelectedEvidenceImage(item.evidenceImage)}
+                                      title="Bấm để xem ảnh phóng to"
+                                    />
+                                  </div>
+                                )}
+                                {item.failReason && (
+                                  <div style={{ marginTop: '4px', fontSize: '11.5px', color: '#DC2626' }}>
+                                    Lý do chưa giao được: <em>{item.failReason}</em>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -711,6 +757,68 @@ export default function OrderTrackingDetailModal({
               </div>
             </>
           )}
+        </div>
+      )}
+      {/* Lightbox xem ảnh bằng chứng giao hàng full size */}
+      {selectedEvidenceImage && (
+        <div
+          role="dialog"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={() => setSelectedEvidenceImage(null)}
+        >
+          <div
+            style={{
+              position: 'relative',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              background: '#FFFFFF',
+              padding: '8px',
+              borderRadius: '12px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', borderBottom: '1px solid #E5E7EB', marginBottom: '8px' }}>
+              <strong style={{ fontSize: '13px', color: '#166534' }}>
+                Ảnh chụp khi giao hàng thành công
+              </strong>
+              <button
+                type="button"
+                onClick={() => setSelectedEvidenceImage(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  lineHeight: 1,
+                  color: '#6B7280',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <img
+              src={selectedEvidenceImage}
+              alt="Ảnh xác nhận khi nhận hàng"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '75vh',
+                objectFit: 'contain',
+                borderRadius: '8px',
+                display: 'block',
+              }}
+            />
+          </div>
         </div>
       )}
     </HauteCoutureModal>

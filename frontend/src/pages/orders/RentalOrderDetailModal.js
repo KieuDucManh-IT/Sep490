@@ -493,13 +493,15 @@ export default function RentalOrderDetailModal({
 
                   {shipments.length > 0 ? (
                     <div className="mt-3">
-                      {shipments.map((s) => {
+                      {shipments.map((s, idx) => {
                         const canRetryThis = s.shipmentType === 'return' ? !hasActiveReturn : !hasActiveOutbound;
                         return (
                           <ShipmentTrackingTimeline
                             key={s._id}
                             shipment={s}
+                            isLatest={idx === 0}
                             onCancel={handleCancelShipment}
+                            onStatusUpdated={refetchOrder}
                             onRetry={
                               canRetryThis
                                 ? (targetShipment) => {

@@ -424,11 +424,13 @@ export default function SaleOrderDetailModal({
 
                   {shipments.length > 0 ? (
                     <div className="mt-3">
-                      {shipments.map((s) => (
+                      {shipments.map((s, idx) => (
                         <ShipmentTrackingTimeline
                           key={s._id}
                           shipment={s}
+                          isLatest={idx === 0}
                           onCancel={handleCancelShipment}
+                          onStatusUpdated={refetchOrder}
                           onRetry={
                             !hasActiveOutbound
                               ? (targetShipment) => {

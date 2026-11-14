@@ -462,16 +462,18 @@ const updateOrderStatusOnCancelled = async (shipment, actionTime) => {
 /**
  * 6. Xử lý tín hiệu Webhook từ GHN
  */
-export const processGHNWebhook = async (payload = {}, secretKey = '') => {
+export const processGHNWebhook = async (payload = {}, secretKey = '', options = {}) => {
+  const isSimulated = Boolean(options.skipVerifyBack || payload.isSimulated);
+
   const expectedSecret = getWebhookSecret();
-  if (expectedSecret && secretKey !== expectedSecret) {
+  if (!isSimulated && expectedSecret && secretKey !== expectedSecret) {
     return {
       success: false,
       message: 'Xác thực Webhook thất bại: Secret Key không hợp lệ hoặc bị thiếu',
     };
   }
 
-  const { order_code, status, time, reason, fee } = payload;
+  const { order_code, status, time, reason, fee, evidenceImage, failReason } = payload;
 
   if (!order_code) {
     return { success: false, message: 'Thiếu mã order_code trong payload' };
@@ -479,15 +481,38 @@ export const processGHNWebhook = async (payload = {}, secretKey = '') => {
 
   const shipment = await OrderShipment.findOne({ trackingCode: order_code });
   if (!shipment) {
-    return { success: true, message: 'Không tìm thấy vận đơn, bỏ qua an toàn' };
+    return { success: false, message: 'Không tìm thấy vận đơn để cập nhật' };
   }
 
   const mapped = mapGhnStatus(status);
   const actionTime = time ? new Date(time) : new Date();
 
-  // State Machine Rule: Không cho phép chuyển từ 'preparing' thẳng lên 'delivered'
-  // mà không qua xác minh ngược trực tiếp với GHN API
-  if (shipment.shipmentStatus === 'preparing' && mapped.internalStatus === 'delivered') {
+  // 1. Rollback Guard & Terminal Guard (chỉ áp dụng đối với Webhook GHN thực tế, không chặn mô phỏng Dev)
+  const STATUS_RANK = { preparing: 1, shipped: 2, failed: 2, delivered: 3, cancelled: 3 };
+  const TERMINAL_STATUSES = new Set(['delivered', 'cancelled']);
+
+  const currentRank = STATUS_RANK[shipment.shipmentStatus] ?? 0;
+  const incomingRank = STATUS_RANK[mapped.internalStatus] ?? 0;
+
+  if (!isSimulated) {
+    if (TERMINAL_STATUSES.has(shipment.shipmentStatus)) {
+      return {
+        success: true,
+        message: `Bỏ qua webhook: đơn đã ở trạng thái cuối [${shipment.shipmentStatus}]`,
+      };
+    }
+
+    if (incomingRank < currentRank) {
+      return {
+        success: true,
+        message: `Bỏ qua webhook: trạng thái hiện tại [${shipment.shipmentStatus}] cao hơn trạng thái mới [${mapped.internalStatus}]`,
+      };
+    }
+  }
+
+  // 2. State Machine Rule: Không cho phép chuyển từ 'preparing' thẳng lên 'delivered'
+  // mà không qua xác minh ngược trực tiếp với GHN API (bỏ qua nếu là sự kiện mô phỏng)
+  if (!isSimulated && shipment.shipmentStatus === 'preparing' && mapped.internalStatus === 'delivered') {
     try {
       const ghnDetail = await ghnService.getGHNOrderDetail(order_code);
       if (!ghnDetail || !['delivered'].includes(ghnDetail.status)) {
@@ -504,12 +529,14 @@ export const processGHNWebhook = async (payload = {}, secretKey = '') => {
     }
   }
 
-  // Idempotency: tránh ghi nhận trùng cùng trạng thái trong 2 phút
-  const isDuplicate = shipment.statusHistory.some(
-    (entry) =>
-      entry.ghnStatus === status &&
-      Math.abs(new Date(entry.timestamp).getTime() - actionTime.getTime()) < 120000
-  );
+  // Idempotency: tránh ghi nhận trùng cùng trạng thái trong 2 phút (chỉ áp dụng Webhook thực tế)
+  const isDuplicate =
+    !isSimulated &&
+    shipment.statusHistory.some(
+      (entry) =>
+        entry.ghnStatus === status &&
+        Math.abs(new Date(entry.timestamp).getTime() - actionTime.getTime()) < 120000
+    );
 
   if (isDuplicate) {
     return { success: true, message: 'Sự kiện trùng lặp đã được ghi nhận trước đó' };
@@ -523,15 +550,28 @@ export const processGHNWebhook = async (payload = {}, secretKey = '') => {
   if (mapped.internalStatus === 'shipped' && !shipment.shippedAt) {
     shipment.shippedAt = actionTime;
   }
-  if (mapped.internalStatus === 'delivered' && !shipment.deliveredAt) {
-    shipment.deliveredAt = actionTime;
+  if (mapped.internalStatus === 'delivered') {
+    if (!shipment.deliveredAt) shipment.deliveredAt = actionTime;
+    if (evidenceImage) shipment.deliveryProofImage = evidenceImage;
+  }
+  if (mapped.internalStatus === 'failed') {
+    if (failReason || reason) shipment.failureReason = failReason || reason;
+  }
+
+  let finalDescription = mapped.description;
+  if (mapped.internalStatus === 'failed' && (failReason || reason)) {
+    finalDescription = `Giao hàng thất bại: ${failReason || reason}`;
+  } else if (reason) {
+    finalDescription = `${mapped.description} (${reason})`;
   }
 
   shipment.statusHistory.push({
     status: mapped.internalStatus,
     ghnStatus: status,
-    description: reason ? `${mapped.description} (${reason})` : mapped.description,
+    description: finalDescription,
     timestamp: actionTime,
+    evidenceImage: evidenceImage || null,
+    failReason: failReason || (mapped.internalStatus === 'failed' ? reason : null),
   });
 
   shipment.lastSyncedAt = new Date();
@@ -561,5 +601,69 @@ export const processGHNWebhook = async (payload = {}, secretKey = '') => {
   }
 
   return { success: true, message: 'Webhook đã được xử lý thành công', shipment };
+};
+
+/**
+ * 7. Branch Manager cập nhật trạng thái vận đơn thủ công (FSM & Enum Safe)
+ */
+export const updateManualShipmentStatus = async (user, shipmentId, newStatus, reason = '') => {
+  const VALID_MANUAL_TRANSITIONS = {
+    preparing: ['shipped', 'failed', 'cancelled'],
+    shipped: ['delivered', 'failed'],
+    failed: ['shipped', 'cancelled'],
+    delivered: [],
+    cancelled: [],
+  };
+
+  const shipment = await OrderShipment.findById(shipmentId);
+  if (!shipment) {
+    throw fail('Không tìm thấy thông tin vận đơn', 404);
+  }
+
+  // 1. Phân quyền chi nhánh (BOLA protection)
+  await fetchOrderAndValidateScope(user, shipment.orderType, shipment.orderId);
+
+  // 2. Kiểm tra quy tắc chuyển dịch FSM
+  const allowedTransitions = VALID_MANUAL_TRANSITIONS[shipment.shipmentStatus] || [];
+  if (!allowedTransitions.includes(newStatus)) {
+    throw fail(`Không thể chuyển trạng thái từ [${shipment.shipmentStatus}] sang [${newStatus}]`, 400);
+  }
+
+  const actionTime = new Date();
+  shipment.shipmentStatus = newStatus;
+  if (newStatus === 'shipped' && !shipment.shippedAt) {
+    shipment.shippedAt = actionTime;
+  }
+  if (newStatus === 'delivered' && !shipment.deliveredAt) {
+    shipment.deliveredAt = actionTime;
+  }
+
+  const managerName = user?.FullName || user?.name || 'Quản lý chi nhánh';
+  shipment.statusHistory.push({
+    status: newStatus,
+    ghnStatus: `MANUAL_${newStatus.toUpperCase()}`,
+    description: reason ? `Cập nhật thủ công: ${reason}` : `Cập nhật thủ công bởi ${managerName}`,
+    timestamp: actionTime,
+  });
+
+  shipment.lastSyncedAt = actionTime;
+  await shipment.save();
+
+  // 3. Đồng bộ trạng thái đơn hàng an toàn (Enum Safety Guard)
+  if (newStatus === 'shipped') {
+    if (shipment.orderType === 'sale') {
+      await SalesOrder.findOneAndUpdate(
+        { _id: shipment.orderId, orderStatus: { $nin: ['cancelled'] } },
+        { orderStatus: 'shipped' }
+      );
+    }
+    // RentalOrder giữ 'confirmed' (không có enum 'shipped')
+  } else if (newStatus === 'delivered') {
+    await updateOrderStatusOnDelivered(shipment, actionTime);
+  } else if (newStatus === 'cancelled') {
+    await updateOrderStatusOnCancelled(shipment, actionTime);
+  }
+
+  return shipment;
 };
 

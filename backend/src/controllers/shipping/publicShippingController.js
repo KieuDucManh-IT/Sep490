@@ -182,7 +182,11 @@ export const trackPublicShipmentHandler = async (req, res, next) => {
           description: cleanUserFriendlyDescription(h.description),
           location: h.location,
           timestamp: h.timestamp,
+          evidenceImage: h.evidenceImage || null,
+          failReason: h.failReason || null,
         })),
+        deliveryProofImage: shipment.deliveryProofImage || null,
+        failureReason: shipment.failureReason || null,
         createdAt: shipment.createdAt,
       };
 

@@ -28,9 +28,11 @@ import {
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
 
 export class ServiceError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code = null, details = null) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.details = details;
     this.name = 'ServiceError';
   }
 }
@@ -80,10 +82,21 @@ export const calculateSalesOrderPrice = async (items) => {
       throw new ServiceError(404, `Không tìm thấy biến thể sản phẩm: ${item.variantId}`);
     }
     if (variant.status === 'inactive') {
-      throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`);
+      throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`, 'ERR_ITEM_INACTIVE');
     }
 
     const product = variant.productId || {};
+
+    if (product.status === 'discontinued') {
+      throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] đã ngừng kinh doanh`, 'ERR_ITEM_INACTIVE');
+    }
+
+    // Kiểm tra type mismatch: sản phẩm chỉ dành cho thuê không thể mua
+    // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
+    if (product.tag === 'rental') {
+      throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chỉ dành cho thuê, không thể mua`, 'ERR_ITEM_TYPE_MISMATCH');
+    }
+
     const rawPrice =
       variant.attributes?.salePrice ??
       variant.attributes?.price ??
@@ -91,6 +104,12 @@ export const calculateSalesOrderPrice = async (items) => {
       product.price ??
       0;
     const unitPrice = Number(rawPrice);
+
+    // Kiểm tra giá bán hợp lệ
+    // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
+    if (unitPrice <= 0) {
+      throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chưa được thiết lập giá bán hợp lệ`, 'ERR_INVALID_PRICE');
+    }
 
     const qty = Math.max(1, Number(item.quantity) || 1);
     const lineTotal = unitPrice * qty;
@@ -166,7 +185,19 @@ export const createSalesOrder = async ({
   const priceCalc = await calculateSalesOrderPrice(items);
 
   // 3. Kiểm tra khả dụng tồn kho tại chi nhánh chỉ định
+  // Aggregate duplicate variantIds trước khi kiểm tra kho — REQ-CART-021 / REQ-CART-023
+  const aggregatedItems = new Map();
   for (const it of priceCalc.itemsDetail) {
+    const key = String(it.variantId);
+    if (aggregatedItems.has(key)) {
+      aggregatedItems.get(key).quantity += it.quantity;
+    } else {
+      aggregatedItems.set(key, { ...it });
+    }
+  }
+  const itemsToCheck = [...aggregatedItems.values()];
+
+  for (const it of itemsToCheck) {
     const stockCheck = await stockChecker(
       it.variantId,
       locationId,
@@ -175,7 +206,9 @@ export const createSalesOrder = async ({
     if (!stockCheck.available) {
       throw new ServiceError(
         409,
-        `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`
+        `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`,
+        stockCheck.code || 'ERR_INSUFFICIENT_STOCK',
+        { requestedQuantity: it.quantity, availableQuantity: stockCheck.availableQty ?? 0 }
       );
     }
   }
@@ -202,7 +235,8 @@ export const createSalesOrder = async ({
       if (availableBalance < requiredAmount) {
         throw new ServiceError(
           409,
-          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán đơn mua (${priceCalc.totalAmount.toLocaleString('vi-VN')} đ)`
+          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán đơn mua (${priceCalc.totalAmount.toLocaleString('vi-VN')} đ)`,
+          'ERR_INSUFFICIENT_WALLET_BALANCE'
         );
       }
 
@@ -287,7 +321,7 @@ export const createSalesOrder = async ({
     await InventoryReservation.insertMany(reservationDocs, { session });
 
     // Cập nhật quantityReserved trong InventoryBalance
-    for (const it of priceCalc.itemsDetail) {
+    for (const it of itemsToCheck) {
       await InventoryBalance.updateOne(
         { locationId, variantId: it.variantId },
         { $inc: { quantityReserved: it.quantity } },

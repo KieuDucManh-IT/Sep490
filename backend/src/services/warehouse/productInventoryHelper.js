@@ -172,7 +172,7 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
           longitude: entry.longitude,
           quantityOnHand: locOnHand,
           quantityAvailable: locAvailable,
-          quantity: locAvailable > 0 ? locAvailable : locOnHand,
+          quantity: locAvailable,
         });
 
         totalOnHand += locOnHand;
@@ -211,8 +211,8 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
       branchAddress = 'Chưa có hàng tại chi nhánh';
     }
 
-    const quantity = totalAvailable > 0 ? totalAvailable : totalOnHand;
-    const inStock = quantity > 0;
+    const quantity = totalAvailable;
+    const inStock = totalAvailable > 0;
 
     return {
       ...product,
@@ -263,8 +263,8 @@ export const checkRentalAvailability = async (
     const avail = Math.max(
       0,
       (b.quantityOnHand || 0) -
-        (b.quantityReserved || 0) -
-        (b.quantityUnavailable || 0)
+      (b.quantityReserved || 0) -
+      (b.quantityUnavailable || 0)
     );
     totalAvailable += avail;
   }
@@ -321,8 +321,8 @@ export const checkSalesAvailability = async (
     const avail = Math.max(
       0,
       (b.quantityOnHand || 0) -
-        (b.quantityReserved || 0) -
-        (b.quantityUnavailable || 0)
+      (b.quantityReserved || 0) -
+      (b.quantityUnavailable || 0)
     );
     totalAvailable += avail;
   }

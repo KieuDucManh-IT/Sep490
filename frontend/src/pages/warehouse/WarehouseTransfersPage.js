@@ -9,7 +9,10 @@ import storageLocationService from '../../services/warehouse/storageLocationServ
 import productVariantService from '../../services/masterdata/productVariantService';
 import stockTransferService from '../../services/warehouse/stockTransferService';
 import inventoryReportService from '../../services/warehouse/inventoryReportService';
+import WarehouseWorkflowProgress from '../../components/WarehouseWorkflowProgress';
+import WarehouseItemChecklist from '../../components/WarehouseItemChecklist';
 import '../../styles/WarehouseManager.css';
+import '../../styles/WarehouseUx.css';
 
 const statusLabels = {
   requested: 'Chờ kho tổng duyệt', approved: 'Đã duyệt, chờ nhân viên soạn', rejected: 'Bị từ chối',
@@ -46,6 +49,10 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
   const [pickAllocations, setPickAllocations] = useState({});
   const [pickCandidates, setPickCandidates] = useState({});
   const [pickPicker, setPickPicker] = useState(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +84,16 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
   }, [isWarehouse, isStaff]);
 
   useEffect(() => { load(); }, [load]);
+
+  const filteredRows = useMemo(() => rows.filter((row) => {
+    if (statusFilter && row.status !== statusFilter) return false;
+    const text = [row.transferCode, row.fromLocationId?.name, row.fromLocationId?.code, row.toLocationId?.name, row.toLocationId?.code, row.createdBy?.FullName, row.assignedStaffId?.FullName].join(' ').toLowerCase();
+    return !search || text.includes(search.toLowerCase());
+  }), [rows, statusFilter, search]);
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const visibleRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { setPage(1); }, [search, statusFilter, pageSize, mode]);
+  useEffect(() => { if (page > pageCount) setPage(pageCount); }, [page, pageCount]);
 
   const refreshSelected = async (id) => {
     if (!id) return;
@@ -110,7 +127,10 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
 
   const createRequest = async (event) => {
     event.preventDefault();
-    const validLines = requestLines.filter((line) => line.variantId && Number(line.quantityRequested) > 0);
+    const validLines = requestLines.filter((line) => line.variantId && Number.isInteger(Number(line.quantityRequested)) && Number(line.quantityRequested) > 0);
+    if (!branchId || validLines.length !== requestLines.length) { setError('H\u00e3y ch\u1ecdn \u0111\u1ea7y \u0111\u1ee7 bi\u1ebfn th\u1ec3 v\u00e0 nh\u1eadp s\u1ed1 l\u01b0\u1ee3ng nguy\u00ean l\u1edbn h\u01a1n 0 cho t\u1eebng d\u00f2ng.'); return; }
+    const variantIds = validLines.map((line) => line.variantId);
+    if (new Set(variantIds).size !== variantIds.length) { setError('M\u1ed7i bi\u1ebfn th\u1ec3 ch\u1ec9 n\u00ean xu\u1ea5t hi\u1ec7n m\u1ed9t l\u1ea7n trong y\u00eau c\u1ea7u.'); return; }
     await act(async () => {
       const result = await stockTransferService.createRequest({
         branchId,
@@ -125,6 +145,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
   const decide = (decision) => {
     if (decision === 'reject') return act(() => stockTransferService.decide(selected._id, { decision, note: approval.note || '' }), 'Đã từ chối yêu cầu.');
     const items = (selected.items || []).map((item) => ({ detailId: item._id, quantityApproved: Number(approval[item._id]?.quantityApproved ?? item.quantityRequested) }));
+    if (items.some((item, index) => !Number.isInteger(item.quantityApproved) || item.quantityApproved < 0 || item.quantityApproved > Number(selected.items[index].quantityRequested)) || !items.some((item) => item.quantityApproved > 0)) { setError('S\u1ed1 l\u01b0\u1ee3ng duy\u1ec7t ph\u1ea3i l\u00e0 s\u1ed1 nguy\u00ean t\u1eeb 0 \u0111\u1ebfn s\u1ed1 y\u00eau c\u1ea7u v\u00e0 c\u1ea7n duy\u1ec7t \u00edt nh\u1ea5t m\u1ed9t m\u1eb7t h\u00e0ng.'); return; }
     if (!assignedStaffId) { setError('Chọn nhân viên kho phụ trách soạn hàng và xuất hàng.'); return; }
     return act(() => stockTransferService.decide(selected._id, { decision, assignedStaffId, note: approval.note || '', items }), 'Đã duyệt và giao việc xuất kho.');
   };
@@ -151,9 +172,8 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
     } catch (loadError) { setError(loadError.message); }
   };
 
-  const confirmReceipt = (complete) => act(() => stockTransferService.receive(selected._id, {
-    complete,
-    items: (selected.items || []).map((item) => {
+  const confirmReceipt = (complete) => {
+    const items = (selected.items || []).map((item) => {
       const entry = receipt[item._id] || {};
       const individual = item.variantId?.productId?.trackingType === 'individual';
       const receivedItemIds = individual ? (entry.receivedItemIds || []) : [];
@@ -164,12 +184,21 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
         quantityDamaged: individual ? damagedItemIds.length : Number(entry.quantityDamaged || 0),
         receivedItemIds, damagedItemIds,
       };
-    }),
-  }), complete ? 'Đã xác nhận hoàn tất nhận hàng.' : 'Đã ghi nhận số hàng nhận đợt này.');
+    });
+    if (items.some((line, index) => !Number.isInteger(line.quantityReceived) || line.quantityReceived < Number(selected.items[index].quantityReceived || 0) || line.quantityReceived > Number(selected.items[index].quantityShipped || 0) || !Number.isInteger(line.quantityDamaged) || line.quantityDamaged < 0 || line.quantityDamaged > line.quantityReceived)) {
+      setError('S\u1ed1 nh\u1eadn ph\u1ea3i l\u00e0 s\u1ed1 nguy\u00ean trong ph\u1ea1m vi \u0111\u00e3 xu\u1ea5t; s\u1ed1 h\u1ecfng kh\u00f4ng \u0111\u01b0\u1ee3c v\u01b0\u1ee3t qu\u00e1 s\u1ed1 nh\u1eadn.');
+      return;
+    }
+    return act(() => stockTransferService.receive(selected._id, { complete, items }), complete ? '\u0110\u00e3 x\u00e1c nh\u1eadn ho\u00e0n t\u1ea5t nh\u1eadn h\u00e0ng.' : '\u0110\u00e3 ghi nh\u1eadn s\u1ed1 h\u00e0ng nh\u1eadn \u0111\u1ee3t n\u00e0y.');
+  };
 
   const detailVariantOptions = useMemo(() => variants, [variants]);
   const sourceStorages = (locationId) => storages.filter((storage) => idOf(storage.locationId) === idOf(locationId));
   const branchName = (location) => `${location?.code || ''} · ${location?.name || ''}`;
+  const guidance = selected?.status === 'requested' && isWarehouse ? 'Kiểm tra số lượng khả dụng, chọn nhân viên phụ trách rồi duyệt phiếu.'
+    : selected?.status === 'approved' && isStaff ? 'Chọn vị trí lấy hàng và tick đúng InventoryItem nếu sản phẩm theo dõi cá thể.'
+      : selected?.status === 'preparing' && isStaff ? 'Rà soát phân bổ trước khi xác nhận xuất hàng khỏi kho tổng.'
+        : ['shipped', 'partially_received'].includes(selected?.status) && !isWarehouse && !isStaff ? 'Chi nhánh kiểm đếm số thực nhận, đánh dấu item hỏng nếu có, rồi xác nhận.' : '';
 
   return <div className={isWarehouse || isStaff ? 'wm-layout' : 'shop-dashboard-layout'}>
     {isWarehouse || isStaff ? <WarehouseSidebar mode={isStaff ? 'staff' : 'manager'} /> : <BranchSidebar />}
@@ -181,24 +210,38 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
       {error && <div className="wm-error">{error}</div>}{notice && <div className="wm-success">{notice}</div>}
 
       {showCreate && !isWarehouse && <form className="wm-panel wm-form wm-stock-create" onSubmit={createRequest}>
-        <div className="wm-transfer-request-lines"><strong>Mặt hàng cần bổ sung</strong>{requestLines.map((line, index) => <div className="wm-new-item-row" key={index}>
-          <select required value={line.productId} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, productId: event.target.value, variantId: '' } : row))}><option value="">Chọn sản phẩm</option>{products.map((product) => <option key={product._id} value={product._id}>{product.name}</option>)}</select>
-          <select required disabled={!line.productId} value={line.variantId} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, variantId: event.target.value } : row))}><option value="">Chọn biến thể</option>{detailVariantOptions.filter((variant) => idOf(variant.productId) === line.productId).map((variant) => <option key={variant._id} value={variant._id}>{variant.sku} · {variant.size} · {variant.color}</option>)}</select>
-          <input required type="number" min="1" step="1" value={line.quantityRequested} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, quantityRequested: event.target.value } : row))} aria-label="Số lượng yêu cầu" />
-          <button type="button" className="danger" disabled={requestLines.length === 1} onClick={() => setRequestLines(requestLines.filter((_, i) => i !== index))}>Xóa</button>
-        </div>)}<button className="secondary" type="button" onClick={() => setRequestLines([...requestLines, { productId: '', variantId: '', quantityRequested: 1 }])}>+ Thêm mặt hàng</button></div>
+        <div className="wm-transfer-request-lines">
+          <div className="wm-transfer-request-heading"><strong>Mặt hàng cần bổ sung</strong><small>Chi nhánh hiện tại: {branchId ? 'Hàng được yêu cầu từ kho tổng về đây' : 'Chưa xác định kho cửa hàng'}</small></div>
+          {requestLines.map((line, index) => <div className="wm-transfer-request-item" key={index}>
+            <div className="wm-scope-dropdown-row wm-scope-product-row">
+              <label>Sản phẩm<select required value={line.productId} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, productId: event.target.value, variantId: '' } : row))}><option value="">Chọn sản phẩm</option>{products.map((product) => <option key={product._id} value={product._id}>{product.productCode || product.code} · {product.name}</option>)}</select></label>
+              <label>Biến thể<select required disabled={!line.productId} value={line.variantId} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, variantId: event.target.value } : row))}><option value="">Chọn biến thể</option>{detailVariantOptions.filter((variant) => idOf(variant.productId) === line.productId).map((variant) => <option key={variant._id} value={variant._id}>{variant.sku} · {variant.size || '—'} · {variant.color || '—'}</option>)}</select></label>
+            </div>
+            <div className="wm-transfer-request-quantity"><label>Số lượng cần bổ sung<input required type="number" min="1" step="1" value={line.quantityRequested} onChange={(event) => setRequestLines(requestLines.map((row, i) => i === index ? { ...row, quantityRequested: event.target.value } : row))} aria-label="Số lượng yêu cầu" /></label><button type="button" className="danger" disabled={requestLines.length === 1} onClick={() => setRequestLines(requestLines.filter((_, i) => i !== index))}>Xóa dòng</button></div>
+          </div>)}
+          <button className="secondary" type="button" onClick={() => setRequestLines([...requestLines, { productId: '', variantId: '', quantityRequested: 1 }])}>+ Thêm mặt hàng</button>
+        </div>
         <footer><button className="secondary" type="button" onClick={() => setShowCreate(false)}>Hủy</button><button disabled={busy || !branchId}>Gửi yêu cầu</button></footer>
       </form>}
 
-      <section className="wm-panel wm-list-panel"><div className="wm-table-wrap"><table><thead><tr><th>Mã phiếu</th><th>{isWarehouse ? 'Chi nhánh yêu cầu' : 'Kho tổng'}</th><th>Mặt hàng</th><th>Trạng thái</th><th>Ngày tạo</th><th /></tr></thead><tbody>
-        {loading ? <tr><td colSpan="6">Đang tải...</td></tr> : rows.length ? rows.map((row) => <tr key={row._id}>
-          <td><strong>{row.transferCode}</strong></td><td>{isWarehouse || isStaff ? branchName(row.toLocationId) : branchName(row.fromLocationId)}</td><td>{row.items?.length || 0}</td><td>{statusLabels[row.status] || row.status}</td><td>{new Date(row.createdAt).toLocaleString('vi-VN')}</td><td><button type="button" className="secondary" onClick={() => { setShowCreate(false); refreshSelected(row._id).catch((e) => setError(e.message)); }}>Chi tiết</button></td>
+      <section className="wm-panel wm-list-panel">
+        <div className="wm-list-toolbar"><label className="wm-search-field">Tìm mã phiếu, chi nhánh hoặc người phụ trách<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập từ khóa..." /></label>
+          <label>Trạng thái<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Tất cả</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="wm-page-size">Số dòng<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select></label>
+        </div>
+        <div className="wm-table-wrap"><table><thead><tr><th>Mã phiếu</th><th>{isWarehouse ? 'Chi nhánh yêu cầu' : 'Kho tổng'}</th><th>Mặt hàng</th><th>Trạng thái</th><th>Ngày tạo</th><th /></tr></thead><tbody>
+        {loading ? <tr><td colSpan="6" className="wm-loading-row">Đang tải phiếu điều chuyển...</td></tr> : visibleRows.length ? visibleRows.map((row) => <tr key={row._id}>
+          <td><strong>{row.transferCode}</strong><small className="wm-row-summary">{row.createdBy?.FullName || 'Người tạo chưa rõ'}</small></td><td>{isWarehouse || isStaff ? branchName(row.toLocationId) : branchName(row.fromLocationId)}</td><td>{row.items?.length || 0} dòng</td><td><span className={`wm-status-badge status-${row.status}`}>{statusLabels[row.status] || row.status}</span></td><td>{new Date(row.createdAt).toLocaleString('vi-VN')}</td><td><button type="button" className="secondary" onClick={() => { setShowCreate(false); refreshSelected(row._id).catch((e) => setError(e.message)); }}>Mở phiếu</button></td>
         </tr>) : <tr><td colSpan="6">Chưa có yêu cầu điều chuyển.</td></tr>}
-      </tbody></table></div></section>
+      </tbody></table></div>
+        <div className="wm-pagination"><span>{filteredRows.length ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredRows.length)} / ${filteredRows.length}` : '0 kết quả'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</button><span>Trang {page} / {pageCount}</span><button type="button" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>Sau</button></div></div>
+      </section>
 
       {selected && <div className="wm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setItemPickerId(''); setSelected(null); } }}>
         <section className="wm-crud-modal wm-transfer-modal wm-stock-detail">
         <div className="wm-stock-detail-heading"><div><small>{selected.transferCode} · {statusLabels[selected.status]}</small><h2>{branchName(selected.toLocationId)}</h2><p>Kho xuất: {branchName(selected.fromLocationId)} · Người tạo: {selected.createdBy?.FullName || '—'}</p></div><button type="button" className="secondary" onClick={() => { setItemPickerId(''); setSelected(null); }}>Đóng</button></div>
+        <WarehouseWorkflowProgress flow="transfer" status={selected.status} />
+        {guidance && <div className="wm-action-guidance"><PackageCheck size={17} /><div><strong>Bước tiếp theo</strong>{guidance}</div></div>}
         {isWarehouse && selected.status === 'requested' && <label className="wm-staff-assign">Nhân viên kho phụ trách<select value={assignedStaffId} onChange={(event) => setAssignedStaffId(event.target.value)}><option value="">Chọn nhân viên</option>{staff.map((member) => <option key={member._id} value={member._id}>{member.FullName} · {member.Email}</option>)}</select></label>}
         <div className="wm-table-wrap"><table className={isStaff && selected.status === 'approved' ? 'wm-transfer-picking-table' : ''}><thead><tr><th>Sản phẩm / SKU</th><th>Yêu cầu</th><th>Được duyệt</th><th>Đã xuất</th><th>{!isWarehouse && !isStaff && ['shipped', 'partially_received'].includes(selected.status) ? 'Xác nhận nhận' : 'Đã nhận'}</th><th>Hỏng{selected.status === 'received' ? ' / thiếu' : ''}</th>{isStaff && selected.status === 'approved' && <th>Vị trí lấy hàng</th>}</tr></thead><tbody>
           {(selected.items || []).map((item) => {
@@ -229,11 +272,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
         return <div className="wm-modal-backdrop wm-transfer-picker-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPickPicker(null); }}>
           <section className="wm-crud-modal wm-transfer-picker" role="dialog" aria-modal="true" aria-labelledby="pick-item-picker-title">
             <header><div><span>CHỌN ITEM ĐỂ XUẤT</span><h2 id="pick-item-picker-title">{variantLabel(item)}</h2><p>Đã chọn {allocation.itemIds.length}/{allocation.quantity}</p></div><button type="button" className="wm-modal-close" onClick={() => setPickPicker(null)} aria-label="Đóng">×</button></header>
-            <div className="wm-transfer-picker-list">{candidates.length ? candidates.map((candidate) => {
-              const candidateId = idOf(candidate);
-              const chosen = allocation.itemIds.includes(candidateId);
-              return <label key={candidateId}><input type="checkbox" checked={chosen} disabled={!chosen && allocation.itemIds.length >= Number(allocation.quantity)} onChange={(event) => updateAllocation(pickPicker.detailId, pickPicker.index, { itemIds: event.target.checked ? [...allocation.itemIds, candidateId] : allocation.itemIds.filter((id) => id !== candidateId) })} /><span><strong>{candidate.itemCode}</strong><small>{candidate.serialNumber || 'Chưa có serial'} · {candidate.condition}</small></span></label>;
-            }) : <p>Không có item khả dụng ở vị trí đã chọn.</p>}</div>
+            <WarehouseItemChecklist items={candidates} selectedIds={allocation.itemIds} maxSelectable={Number(allocation.quantity)} onToggle={(candidateId, checked) => updateAllocation(pickPicker.detailId, pickPicker.index, { itemIds: checked ? [...allocation.itemIds, candidateId] : allocation.itemIds.filter((id) => id !== candidateId) })} emptyMessage="Không có item khả dụng ở vị trí đã chọn." />
             <footer className="wm-modal-footer"><button type="button" className="secondary" onClick={() => setPickPicker(null)}>Xong ({allocation.itemIds.length}/{allocation.quantity})</button></footer>
           </section>
         </div>;
@@ -247,7 +286,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
         return <div className="wm-modal-backdrop wm-transfer-picker-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setItemPickerId(''); }}>
           <section className="wm-crud-modal wm-transfer-picker" role="dialog" aria-modal="true" aria-labelledby="transfer-item-picker-title">
             <header><div><span>CHỌN HÀNG CÁ THỂ</span><h2 id="transfer-item-picker-title">{variantLabel(item)}</h2><p>Đã chọn {chosen.length}/{target}</p></div><button type="button" className="wm-modal-close" onClick={() => setItemPickerId('')} aria-label="Đóng">×</button></header>
-            <div className="wm-transfer-picker-list">{candidates.length ? candidates.map((inventoryItem) => { const inventoryItemId = idOf(inventoryItem); return <label key={inventoryItemId}><input type="checkbox" checked={chosen.includes(inventoryItemId)} disabled={!chosen.includes(inventoryItemId) && chosen.length >= target} onChange={(event) => setApproval((old) => ({ ...old, [item._id]: { ...old[item._id], itemIds: event.target.checked ? [...chosen, inventoryItemId] : chosen.filter((id) => id !== inventoryItemId) } }))} /><span><strong>{inventoryItem.itemCode}</strong><small>{inventoryItem.serialNumber || 'Chưa có serial'} · {inventoryItem.condition} · {inventoryItem.status}</small></span></label>; }) : <p>Không có InventoryItem khả dụng ở vị trí đã chọn.</p>}</div>
+            <WarehouseItemChecklist items={candidates} selectedIds={chosen} maxSelectable={target} onToggle={(inventoryItemId, checked) => setApproval((old) => ({ ...old, [item._id]: { ...old[item._id], itemIds: checked ? [...chosen, inventoryItemId] : chosen.filter((id) => id !== inventoryItemId) } }))} emptyMessage="Không có InventoryItem khả dụng ở vị trí đã chọn." />
             <footer className="wm-modal-footer"><button type="button" className="secondary" onClick={() => setItemPickerId('')}>Xong ({chosen.length}/{target})</button></footer>
           </section>
         </div>;
@@ -261,11 +300,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
         return <div className="wm-modal-backdrop wm-transfer-picker-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setReceiptPickerId(''); }}>
           <section className="wm-crud-modal wm-transfer-picker" role="dialog" aria-modal="true" aria-labelledby="transfer-receipt-picker-title">
             <header><div><span>XÁC NHẬN HÀNG ĐÃ NHẬN</span><h2 id="transfer-receipt-picker-title">{variantLabel(item)}</h2><p>Đã nhận {received.length}/{item.quantityShipped || 0} · Hỏng {damaged.length}</p></div><button type="button" className="wm-modal-close" onClick={() => setReceiptPickerId('')} aria-label="Đóng">×</button></header>
-            <div className="wm-transfer-picker-list">{(item.itemIds || []).length ? item.itemIds.map((inventoryItem) => {
-              const inventoryItemId = idOf(inventoryItem);
-              const isReceived = received.includes(inventoryItemId);
-              return <label key={inventoryItemId} className="wm-receipt-item-row"><input type="checkbox" checked={isReceived} onChange={(event) => setReceipt((old) => ({ ...old, [item._id]: { ...entry, receivedItemIds: event.target.checked ? [...received, inventoryItemId] : received.filter((id) => id !== inventoryItemId), damagedItemIds: event.target.checked ? damaged : damaged.filter((id) => id !== inventoryItemId) } }))} /><span><strong>{inventoryItem.itemCode || inventoryItem.serialNumber || inventoryItemId.slice(-6)}</strong><small>{inventoryItem.serialNumber || 'Chưa có serial'} · {inventoryItem.condition || '—'}</small></span><span className="wm-receipt-damaged"><input type="checkbox" aria-label="Đánh dấu hàng hỏng" disabled={!isReceived} checked={damaged.includes(inventoryItemId)} onChange={(event) => setReceipt((old) => ({ ...old, [item._id]: { ...entry, damagedItemIds: event.target.checked ? [...damaged, inventoryItemId] : damaged.filter((id) => id !== inventoryItemId) } }))} /> Hỏng</span></label>;
-            }) : <p>Phiếu chưa có InventoryItem được xuất.</p>}</div>
+            <WarehouseItemChecklist items={item.itemIds || []} selectedIds={received} maxSelectable={Number(item.quantityShipped || 0)} onToggle={(inventoryItemId, checked) => setReceipt((old) => ({ ...old, [item._id]: { ...entry, receivedItemIds: checked ? [...received, inventoryItemId] : received.filter((id) => id !== inventoryItemId), damagedItemIds: checked ? damaged : damaged.filter((id) => id !== inventoryItemId) } }))} emptyMessage="Phiếu chưa có InventoryItem được xuất." renderExtra={(inventoryItem, inventoryItemId, isReceived) => <span className="wm-receipt-damaged" onClick={(event) => event.stopPropagation()}><input type="checkbox" aria-label="Đánh dấu hàng hỏng" disabled={!isReceived} checked={damaged.includes(inventoryItemId)} onChange={(event) => setReceipt((old) => ({ ...old, [item._id]: { ...entry, damagedItemIds: event.target.checked ? [...damaged, inventoryItemId] : damaged.filter((id) => id !== inventoryItemId) } }))} /> Hỏng</span>} />
             <footer className="wm-modal-footer"><button type="button" className="secondary" onClick={() => setReceiptPickerId('')}>Xong ({received.length}/{item.quantityShipped || 0})</button></footer>
           </section>
         </div>;

@@ -5,6 +5,7 @@ import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
+import { Product } from '../../models/masterdata/Product.js';
 import User from '../../models/system/User.js';
 import { Stocktake } from '../../models/warehouse/stocktake/Stocktake.js';
 import { StocktakeDetail } from '../../models/warehouse/stocktake/StocktakeDetail.js';
@@ -25,7 +26,7 @@ const isStorageInScope = (storageId, scopedStorageIds) => !scopedStorageIds || s
 
 const storageScope = async (locationId, requestedIds) => {
   if (!requestedIds?.length) throw fail('Chọn ít nhất một vị trí lưu trữ để kiểm kê.');
-  const all = await StorageLocation.find({ locationId }).select('_id parentStorageId status').lean();
+  const all = await StorageLocation.find({ locationId, status: 'active' }).select('_id parentStorageId status').lean();
   const allById = new Map(all.map((item) => [String(item._id), item]));
   const requested = cleanIds(requestedIds);
   if (requested.some((id) => !idValid(id) || !allById.has(id) || allById.get(id).status !== 'active')) throw fail('Vị trí kiểm kê không thuộc kho hoặc không hoạt động.');
@@ -47,6 +48,9 @@ const storageScope = async (locationId, requestedIds) => {
 
 const stocktakePopulation = [
   { path: 'locationId', select: 'code name type' },
+  { path: 'storageIds', select: 'code name type parentStorageId' },
+  { path: 'productIds', select: 'productCode name' },
+  { path: 'variantIds', select: 'sku size color productId', populate: { path: 'productId', select: 'productCode name' } },
   { path: 'createdBy', select: 'FullName Email' },
   { path: 'assignedStaffId', select: 'FullName Email' },
   { path: 'approvedBy', select: 'FullName Email' },
@@ -80,22 +84,28 @@ const loadStocktake = async (id, requester) => {
 export const listWarehouseStaffForStocktake = () => User.find({ Role: /^warehouse_staff$/i, Status: /^active$/i }).select('FullName Email').sort({ FullName: 1 }).lean();
 
 export const createStocktake = async (payload, user) => {
-  const { locationId, scopeType, variantIds, storageIds, assignedStaffId } = validateCreateStocktakeInput(payload);
+  const { locationId, scopeType, productIds, variantIds, storageIds, assignedStaffId } = validateCreateStocktakeInput(payload);
   const location = await InventoryLocation.findOne({ _id: locationId, status: 'active' }).lean();
   if (!location) throw fail('Kho/cửa hàng không tồn tại hoặc không hoạt động.');
   await assertCentralWarehouse(location._id);
-  if (scopeType === 'storage_location') await storageScope(locationId, storageIds);
+  if (storageIds.length) await storageScope(locationId, storageIds);
+  if (productIds.length) {
+    const count = await Product.countDocuments({ _id: { $in: productIds }, status: 'active', isDeleted: { $ne: true } });
+    if (count !== productIds.length) throw fail('Một hoặc nhiều sản phẩm không tồn tại hoặc đã ngừng hoạt động.');
+  }
   if (variantIds.length) {
-    const count = await ProductVariant.countDocuments({ _id: { $in: variantIds }, status: 'active' });
-    if (count !== variantIds.length) throw fail('Một hoặc nhiều biến thể không tồn tại hoặc đã ngừng hoạt động.');
+    const selectedVariantRows = await ProductVariant.find({ _id: { $in: variantIds }, status: 'active', isDeleted: { $ne: true } }).select('productId').lean();
+    if (selectedVariantRows.length !== variantIds.length) throw fail('Một hoặc nhiều biến thể không tồn tại hoặc đã ngừng hoạt động.');
+    const variantProductIds = [...new Set(selectedVariantRows.map((variant) => String(variant.productId)))];
+    const activeProductCount = await Product.countDocuments({ _id: { $in: variantProductIds }, status: 'active', isDeleted: { $ne: true } });
+    if (activeProductCount !== variantProductIds.length) throw fail('Một hoặc nhiều sản phẩm chứa biến thể đã ngừng hoạt động.');
   }
   if (assignedStaffId) {
     if (!await User.exists({ _id: assignedStaffId, Role: /^warehouse_staff$/i, Status: /^active$/i })) throw fail('Nhân viên được giao không hợp lệ.');
   }
   const stocktake = await Stocktake.create({
     stocktakeCode: makeCode('KK'), locationId, scopeType,
-    variantIds: scopeType === 'product' ? variantIds : [],
-    storageIds: scopeType === 'storage_location' ? storageIds : [],
+    productIds, variantIds, storageIds,
     createdBy: user._id, assignedStaffId, status: 'draft',
   });
   return loadStocktake(stocktake._id, user);
@@ -120,10 +130,23 @@ export const startStocktake = async (stocktakeId, user) => {
       const stocktake = await Stocktake.findOne({ _id: stocktakeId, status: 'draft' }).session(session);
       if (!stocktake) throw fail('Phiếu không ở trạng thái nháp.', 409);
       const startedAt = new Date();
-      const { expanded } = stocktake.scopeType === 'storage_location'
+      const { expanded } = stocktake.storageIds?.length
         ? await storageScope(stocktake.locationId, stocktake.storageIds.map(String))
         : { expanded: null };
-      const variantFilter = stocktake.scopeType === 'product' ? { variantId: { $in: stocktake.variantIds } } : {};
+      const selectedVariants = new Set((stocktake.variantIds || []).map(String));
+      if (stocktake.productIds?.length) {
+        const activeProductCount = await Product.countDocuments({ _id: { $in: stocktake.productIds }, status: 'active', isDeleted: { $ne: true } }).session(session);
+        if (activeProductCount !== stocktake.productIds.length) throw fail('Một hoặc nhiều sản phẩm trong phạm vi đã ngừng hoạt động; hãy tạo lại phiếu với phạm vi mới.');
+        const productVariants = await ProductVariant.find({ productId: { $in: stocktake.productIds }, status: 'active', isDeleted: { $ne: true } }).distinct('_id').session(session);
+        productVariants.forEach((id) => selectedVariants.add(String(id)));
+      }
+      const hasProductScope = stocktake.productIds?.length || stocktake.variantIds?.length;
+      if (hasProductScope && selectedVariants.size === 0) throw fail('Không tìm thấy biến thể đang hoạt động trong phạm vi sản phẩm đã chọn.');
+      if (hasProductScope) {
+        const activeCount = await ProductVariant.countDocuments({ _id: { $in: [...selectedVariants] }, status: 'active', isDeleted: { $ne: true } }).session(session);
+        if (activeCount !== selectedVariants.size) throw fail('Một hoặc nhiều biến thể trong phạm vi đã ngừng hoạt động; hãy tạo lại phiếu với phạm vi mới.');
+      }
+      const variantFilter = hasProductScope ? { variantId: { $in: [...selectedVariants] } } : {};
       const storageFilter = expanded ? { storageId: { $in: [...expanded] } } : {};
       const [balances, items] = await Promise.all([
         InventoryBalance.find({ locationId: stocktake.locationId, ...variantFilter, ...storageFilter }).session(session).lean(),
@@ -199,10 +222,16 @@ export const recordStocktakeCounts = async (stocktakeId, payload, user) => {
     if (!storageId) throw fail('Cần chọn vị trí cho mã hàng cá thể mới.');
     const variant = variants.find((row) => String(row._id) === variantId);
     if (!variant || variant.status !== 'active') throw fail('Biến thể kiểm kê không hợp lệ hoặc đã ngừng hoạt động.');
-    if (stocktake.scopeType === 'product' && !stocktake.variantIds.some((id) => String(id) === variantId)) throw fail('Biến thể mới nằm ngoài phạm vi kiểm kê.');
+    const hasProductScope = stocktake.productIds?.length || stocktake.variantIds?.length;
+    if (hasProductScope) {
+      const allowedByVariant = (stocktake.variantIds || []).some((id) => String(id) === variantId);
+      const variantProduct = variant.productId?._id ? String(variant.productId._id) : String(variant.productId);
+      const allowedByProduct = (stocktake.productIds || []).some((id) => String(id) === variantProduct);
+      if (!allowedByVariant && !allowedByProduct) throw fail('Biến thể mới nằm ngoài phạm vi kiểm kê.');
+    }
     if (storageId && !idValid(storageId)) throw fail('Vị trí lưu trữ không hợp lệ.');
     if (storageId && !await StorageLocation.exists({ _id: storageId, locationId: stocktake.locationId, status: 'active' })) throw fail('Vị trí lưu trữ không thuộc kho hoặc không hoạt động.');
-    if (stocktake.scopeType === 'storage_location') {
+    if (stocktake.storageIds?.length) {
       const { expanded } = await storageScope(stocktake.locationId, stocktake.storageIds.map(String));
       if (!isStorageInScope(storageId, expanded)) throw fail('Vị trí của mã hàng nằm ngoài phạm vi kiểm kê.');
     }

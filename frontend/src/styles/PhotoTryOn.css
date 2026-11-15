@@ -483,3 +483,336 @@
   z-index: 25;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
 }
+
+/* ==========================================================================
+   PHOTO GUIDE PILL & MODAL POPUP
+   ========================================================================== */
+.btn-photo-guide-pill {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1px dashed var(--color-gold, #5b6e4e);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1f2421;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.btn-photo-guide-pill:hover {
+  background: #f2f6ee;
+  border-color: #4a5c3e;
+  transform: translateY(-1px);
+}
+
+.guide-pill-badge {
+  background: rgba(91, 110, 78, 0.15);
+  color: var(--color-gold, #5b6e4e);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 99px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+/* Backdrop */
+.tryon-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(18, 22, 19, 0.65);
+  backdrop-filter: blur(6px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal Card */
+.tryon-modal-card {
+  background: #ffffff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e2e6dc;
+  animation: cardSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cardSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header */
+.tryon-modal-header {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid #ecefe8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tryon-modal-icon-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(91, 110, 78, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tryon-modal-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #1f2421;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.tryon-modal-subtitle {
+  font-size: 11px;
+  color: #63705b;
+  margin: 2px 0 0;
+}
+
+.tryon-modal-close-btn {
+  background: #f4f6f1;
+  border: none;
+  color: #6e7569;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tryon-modal-close-btn:hover {
+  background: #e2e6dc;
+  color: #1f2421;
+}
+
+/* Columns */
+.tryon-guide-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+@media (max-width: 600px) {
+  .tryon-guide-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tryon-guide-col {
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-col-do {
+  background: #f5f8f2;
+  border: 1.5px solid #d4e0ce;
+}
+
+.guide-col-dont {
+  background: #fdf5f5;
+  border: 1.5px solid #fad2d2;
+}
+
+.guide-col-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.header-do {
+  color: #3b5030;
+}
+
+.header-dont {
+  color: #b91c1c;
+}
+
+/* Visual Card */
+.guide-visual-card {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 12px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  border: 1px solid #e5e8e0;
+}
+
+.visual-do {
+  border-color: #d1dfcb;
+}
+
+.visual-dont {
+  border-color: #f7cece;
+}
+
+.guide-visual-badge {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+}
+
+.badge-do {
+  background: #e2edd9;
+  color: #3b5030;
+}
+
+.badge-dont {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.guide-stickman {
+  margin: 6px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-visual-desc {
+  font-size: 10px;
+  font-weight: 600;
+  color: #4a5445;
+  text-align: center;
+  margin-top: 2px;
+}
+
+/* Points list */
+.guide-points-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 11px;
+  color: #384233;
+  line-height: 1.4;
+}
+
+.guide-points-list li {
+  position: relative;
+  padding-left: 12px;
+}
+
+.guide-points-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  font-weight: bold;
+}
+
+.guide-col-do .guide-points-list li::before {
+  color: #5b6e4e;
+}
+
+.guide-col-dont .guide-points-list li::before {
+  color: #dc2626;
+}
+
+/* Footer */
+.tryon-modal-footer {
+  padding: 12px 20px;
+  background: #fafbf9;
+  border-top: 1px solid #ecefe8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 0 0 14px 14px;
+}
+
+@media (max-width: 600px) {
+  .tryon-modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.tryon-modal-tip {
+  font-size: 10.5px;
+  color: #5d6855;
+  line-height: 1.35;
+  flex: 1;
+}
+
+.btn-modal-upload-now {
+  background: #5b6e4e;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  box-shadow: 0 2px 6px rgba(91, 110, 78, 0.2);
+}
+
+.btn-modal-upload-now:hover {
+  background: #46563c;
+  transform: translateY(-1px);
+}
+
+.btn-modal-dismiss {
+  background: #ffffff;
+  color: #4a5445;
+  border: 1px solid #d4d8cc;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-modal-dismiss:hover {
+  background: #eef1ea;
+}

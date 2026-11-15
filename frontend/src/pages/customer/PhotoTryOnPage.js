@@ -10,8 +10,12 @@ export default function PhotoTryOnPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const fileInputRef = useRef(null);
+  const handledPairedParamRef = useRef('');
+  const handledAccessoryParamRef = useRef('');
 
   const productParam = searchParams.get('product') || searchParams.get('productId');
+  const pairedParam = searchParams.get('paired') || searchParams.get('pairedId') || searchParams.get('bottomId');
+  const accessoryParam = searchParams.get('accessory') || searchParams.get('accessoryId');
 
   // Product state - khởi tạo null, tải sản phẩm thật 100% từ cơ sở dữ liệu
   const [product, setProduct] = useState(null);
@@ -66,6 +70,7 @@ export default function PhotoTryOnPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [isSavingWardrobe, setIsSavingWardrobe] = useState(false);
   const [lastSavedImageUrl, setLastSavedImageUrl] = useState('');
+  const [showPhotoGuideModal, setShowPhotoGuideModal] = useState(false);
 
   // Auto-dismiss notification
   useEffect(() => {
@@ -184,6 +189,113 @@ export default function PhotoTryOnPage() {
         console.warn('Không thể tải chi tiết sản phẩm:', err.message);
       });
   }, [productParam, product?._id]);
+
+  // 2.1. Fetch chi tiết món phối kèm nếu có pairedParam trên URL (từ AI Stylist chuyển sang)
+  useEffect(() => {
+    if (!pairedParam) {
+      handledPairedParamRef.current = '';
+      return;
+    }
+    // Chỉ nạp 1 lần cho mỗi URL param, không tự nạp lại khi người dùng đã chủ động bỏ chọn
+    if (handledPairedParamRef.current === pairedParam) return;
+    handledPairedParamRef.current = pairedParam;
+
+    productService
+      .getProductById(pairedParam)
+      .then((res) => {
+        const prodData = res?.data || res;
+        if (prodData && prodData.name) {
+          // Bỏ qua trang sức và sản phẩm test lỗi
+          if (isJewelry(prodData) || isTestItem(prodData)) {
+            console.warn('Bỏ qua món phối không hợp lệ (trang sức hoặc test):', prodData.name);
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete('paired');
+              next.delete('pairedId');
+              next.delete('bottomId');
+              return next;
+            }, { replace: true });
+            return;
+          }
+          setPairedGarment(prodData);
+          const pSizes = Array.isArray(prodData.sizes) && prodData.sizes.length > 0 ? prodData.sizes : ['S', 'M', 'L'];
+          setPairedGarmentSize(pSizes[0] || 'S');
+        }
+      })
+      .catch((err) => {
+        console.warn('Không thể tải món phối kèm từ URL:', err.message);
+      });
+  }, [pairedParam, setSearchParams]);
+
+  // 2.2. Fetch chi tiết phụ kiện nếu có accessoryParam trên URL (từ AI Stylist chuyển sang)
+  useEffect(() => {
+    if (!accessoryParam) {
+      handledAccessoryParamRef.current = '';
+      return;
+    }
+    // Chỉ nạp 1 lần cho mỗi URL param, không tự nạp lại khi người dùng đã chủ động bỏ chọn
+    if (handledAccessoryParamRef.current === accessoryParam) return;
+    handledAccessoryParamRef.current = accessoryParam;
+
+    productService
+      .getProductById(accessoryParam)
+      .then((res) => {
+        const prodData = res?.data || res;
+        if (prodData && prodData.name) {
+          // Bỏ qua trang sức và sản phẩm test lỗi
+          if (isJewelry(prodData) || isTestItem(prodData)) {
+            console.warn('Bỏ qua phụ kiện không hợp lệ (trang sức hoặc test):', prodData.name);
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete('accessory');
+              next.delete('accessoryId');
+              return next;
+            }, { replace: true });
+            return;
+          }
+          setPairedAccessory(prodData);
+        }
+      })
+      .catch((err) => {
+        console.warn('Không thể tải phụ kiện phối kèm từ URL:', err.message);
+      });
+  }, [accessoryParam, setSearchParams]);
+
+  // Các hàm gỡ bỏ món phối - xóa sạch cả state lẫn URL param để không bị load lại
+  const handleRemovePairedGarment = () => {
+    setPairedGarment(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('paired');
+      next.delete('pairedId');
+      next.delete('bottomId');
+      return next;
+    }, { replace: true });
+  };
+
+  const handleRemovePairedAccessory = () => {
+    setPairedAccessory(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('accessory');
+      next.delete('accessoryId');
+      return next;
+    }, { replace: true });
+  };
+
+  const handleClearAllPaired = () => {
+    setPairedGarment(null);
+    setPairedAccessory(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('paired');
+      next.delete('pairedId');
+      next.delete('bottomId');
+      next.delete('accessory');
+      next.delete('accessoryId');
+      return next;
+    }, { replace: true });
+  };
 
   // Handle local user photo selection
   const handleFileChange = (e) => {
@@ -789,24 +901,48 @@ export default function PhotoTryOnPage() {
             )}
           </div>
 
-          {/* Quy chuẩn chụp ảnh */}
+          {/* Nút mở Popup Hướng dẫn ảnh chuẩn */}
           <div
             style={{
-              fontSize: '10px',
-              color: '#4a5246',
-              lineHeight: 1.45,
               background: '#f4f6f1',
               padding: '8px 10px',
               borderRadius: '8px',
               border: '1px solid var(--color-border, #e2e6dc)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
             }}
           >
-            <strong style={{ color: '#1f2421', display: 'block', marginBottom: '2px' }}>
-              Mẹo chụp ảnh đẹp nhất:
-            </strong>
-            • Đứng thẳng người, tay không che ngực hay eo.<br />
-            • Nền tường trơn, không có vật cản phía sau.<br />
-            • Đảm bảo đủ ánh sáng tự nhiên rõ nét.
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: '#1f2421', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Sparkles size={11} color="var(--color-gold, #5b6e4e)" /> Mẹo ảnh chuẩn
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPhotoGuideModal(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-gold, #5b6e4e)',
+                  fontSize: '9.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline',
+                }}
+              >
+                Chi tiết &rarr;
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPhotoGuideModal(true)}
+              className="btn-photo-guide-pill"
+              title="Xem ảnh ví dụ trực quan NÊN vs KHÔNG NÊN"
+            >
+              <span>Xem mẹo chọn ảnh chuẩn để AI ghép đẹp nhất</span>
+              <span className="guide-pill-badge">Nên xem</span>
+            </button>
           </div>
         </div>
 
@@ -1319,10 +1455,7 @@ export default function PhotoTryOnPage() {
               {(pairedGarment || pairedAccessory) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setPairedGarment(null);
-                    setPairedAccessory(null);
-                  }}
+                  onClick={handleClearAllPaired}
                   style={{
                     background: 'none',
                     border: 'none',
@@ -1415,7 +1548,7 @@ export default function PhotoTryOnPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setPairedGarment(null)}
+                      onClick={handleRemovePairedGarment}
                       title="Bỏ món này"
                       style={{
                         background: 'none',
@@ -1497,7 +1630,7 @@ export default function PhotoTryOnPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setPairedAccessory(null)}
+                      onClick={handleRemovePairedAccessory}
                       title="Bỏ món này"
                       style={{
                         background: 'none',
@@ -1595,14 +1728,14 @@ export default function PhotoTryOnPage() {
                       onClick={() => {
                         if (pairingTab === 'outfit') {
                           if (pairedGarment?._id === item._id) {
-                            setPairedGarment(null);
+                            handleRemovePairedGarment();
                           } else {
                             setPairedGarment(item);
                             setPairedGarmentSize('S');
                           }
                         } else {
                           if (pairedAccessory?._id === item._id) {
-                            setPairedAccessory(null);
+                            handleRemovePairedAccessory();
                           } else {
                             setPairedAccessory(item);
                           }
@@ -1871,6 +2004,133 @@ export default function PhotoTryOnPage() {
           </button>
         </div>
       </footer>
+
+      {/* POPUP MODAL: Mẹo chọn ảnh chuẩn để AI ghép đẹp nhất */}
+      {showPhotoGuideModal && (
+        <div
+          className="tryon-modal-backdrop"
+          onClick={() => setShowPhotoGuideModal(false)}
+        >
+          <div
+            className="tryon-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="tryon-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="tryon-modal-icon-wrap">
+                  <Sparkles size={18} color="#5b6e4e" />
+                </div>
+                <div>
+                  <h3 className="tryon-modal-title">
+                    Mẹo chọn ảnh chuẩn để AI ghép đẹp nhất
+                  </h3>
+                  <p className="tryon-modal-subtitle">
+                    Công nghệ AI IDM-VTON cần nhận diện rõ phom dáng người để tạo nếp vải ôm sát tự nhiên
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="tryon-modal-close-btn"
+                onClick={() => setShowPhotoGuideModal(false)}
+                title="Đóng bảng hướng dẫn"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body: 2 Cột So Sánh Trực Quan */}
+            <div className="tryon-guide-columns">
+              {/* Cột 1: NÊN DÙNG (DO) */}
+              <div className="tryon-guide-col guide-col-do">
+                <div className="guide-col-header header-do">
+                  <CheckCircle2 size={16} />
+                  <span>ẢNH NÊN DÙNG (KẾT QUẢ ĐẸP 98%)</span>
+                </div>
+                <div className="guide-visual-card visual-do">
+                  <div className="guide-visual-badge badge-do">✓ Chuẩn phom</div>
+                  <div className="guide-stickman stickman-do">
+                    <svg viewBox="0 0 100 130" width="70" height="90">
+                      <circle cx="50" cy="18" r="9" fill="#5b6e4e" />
+                      <line x1="50" y1="28" x2="50" y2="75" stroke="#5b6e4e" strokeWidth="5.5" strokeLinecap="round" />
+                      <line x1="50" y1="38" x2="26" y2="70" stroke="#5b6e4e" strokeWidth="4.5" strokeLinecap="round" />
+                      <line x1="50" y1="38" x2="74" y2="70" stroke="#5b6e4e" strokeWidth="4.5" strokeLinecap="round" />
+                      <line x1="50" y1="75" x2="36" y2="120" stroke="#5b6e4e" strokeWidth="5" strokeLinecap="round" />
+                      <line x1="50" y1="75" x2="64" y2="120" stroke="#5b6e4e" strokeWidth="5" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <span className="guide-visual-desc">Đứng thẳng trực diện, 2 tay buông nhẹ</span>
+                </div>
+                <ul className="guide-points-list">
+                  <li><strong>Đứng thẳng trực diện:</strong> Hai vai cân đối, nhìn thẳng camera, chụp toàn thân hoặc 3/4 người.</li>
+                  <li><strong>Hai tay để thoáng:</strong> Buông tự nhiên hoặc chống nhẹ eo, không bắt chéo qua ngực hay đùi.</li>
+                  <li><strong>Lộ rõ phom trang phục:</strong> Mặc đồ ôm vừa vặn (áo thun, quần jean/ôm) giúp AI nhận diện chuẩn.</li>
+                  <li><strong>Ánh sáng & Phông nền:</strong> Đủ sáng tự nhiên, nền tường trơn đơn giản, không bị ngược sáng.</li>
+                </ul>
+              </div>
+
+              {/* Cột 2: KHÔNG NÊN DÙNG (DON'T) */}
+              <div className="tryon-guide-col guide-col-dont">
+                <div className="guide-col-header header-dont">
+                  <X size={16} />
+                  <span>ẢNH DỄ BỊ LỖI KHI GHÉP</span>
+                </div>
+                <div className="guide-visual-card visual-dont">
+                  <div className="guide-visual-badge badge-dont">✕ Dễ bị méo/lem</div>
+                  <div className="guide-stickman stickman-dont">
+                    <svg viewBox="0 0 100 130" width="70" height="90">
+                      <circle cx="50" cy="18" r="9" fill="#dc2626" />
+                      <line x1="50" y1="28" x2="50" y2="75" stroke="#dc2626" strokeWidth="5.5" strokeLinecap="round" />
+                      {/* Tay giơ lên trán */}
+                      <line x1="50" y1="38" x2="32" y2="20" stroke="#dc2626" strokeWidth="4.5" strokeLinecap="round" />
+                      <line x1="32" y1="20" x2="45" y2="14" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" />
+                      {/* Vật cản che hông (ván trượt, túi xách) */}
+                      <rect x="22" y="60" width="56" height="22" rx="6" fill="#b91c1c" opacity="0.85" />
+                      <text x="50" y="74" fontSize="7.5" fill="#ffffff" textAnchor="middle" fontWeight="bold">VẬT CẢN (VÁN/TÚI)</text>
+                      <line x1="50" y1="75" x2="38" y2="120" stroke="#dc2626" strokeWidth="5" strokeLinecap="round" />
+                      <line x1="50" y1="75" x2="62" y2="120" stroke="#dc2626" strokeWidth="5" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <span className="guide-visual-desc">Cầm vật cản che hông, tay chạm đầu/trán</span>
+                </div>
+                <ul className="guide-points-list">
+                  <li><strong>Có vật cản che người:</strong> Cầm ván trượt, túi to, gấu bông, điện thoại che gương (làm váy bị cắt đôi).</li>
+                  <li><strong>Tay giơ lên trán/tóc:</strong> Tay vắt chéo che ngực hoặc chạm tóc (làm lem màu áo mới lên tóc và nền).</li>
+                  <li><strong>Tư thế vặn người/nghiêng:</strong> Đứng xoay góc quá lớn hoặc cúi người làm lệch đường may của áo.</li>
+                  <li><strong>Nền quá rối rắm/ngược sáng:</strong> Chụp trong bóng tối hoặc có nhiều người đứng lẫn phía sau.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="tryon-modal-footer">
+              <div className="tryon-modal-tip">
+                💡 <strong>Mẹo tiết kiệm thời gian:</strong> Nếu chưa có ảnh cá nhân phù hợp, bạn có thể chọn sẵn một trong các người mẫu chuẩn ở Bước 1 để AI ướm thử ngay lập tức!
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-modal-upload-now"
+                  onClick={() => {
+                    setShowPhotoGuideModal(false);
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Tải ảnh toàn thân của bạn ngay &rarr;
+                </button>
+                <button
+                  type="button"
+                  className="btn-modal-dismiss"
+                  onClick={() => setShowPhotoGuideModal(false)}
+                >
+                  Đã hiểu
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

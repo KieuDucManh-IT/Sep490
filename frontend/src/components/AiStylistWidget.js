@@ -16,6 +16,67 @@ import '../styles/AiStylistWidget.css';
 
 const currency = new Intl.NumberFormat('vi-VN');
 
+const isJewelry = (item) => {
+  if (!item) return false;
+  const text = `${item.name || ''} ${item.category || ''}`.toLowerCase();
+  return /nhẫn|nhan|bông tai|bong tai|khuyên|khuyen|vòng|vong|dây chuyền|day chuyen|lắc|lac|trang sức|trang suc|jewelry|earring|necklace|ring|bracelet/.test(text);
+};
+
+const isTestItem = (item) => {
+  if (!item) return false;
+  const text = `${item.name || ''} ${item.category || ''}`.toLowerCase();
+  return text.includes('test') || text.includes('(test)');
+};
+
+// Helper phân loại và tạo link chuyển cả set đồ sang phòng thử đồ ảo AI IDM-VTON (đã lọc sạch trang sức & test)
+const buildTryOnUrl = (products) => {
+  if (!Array.isArray(products) || products.length === 0) return '/try-on/photo';
+
+  // Lọc sạch trang sức và hàng test lỗi
+  const validProducts = products.filter((p) => !isJewelry(p) && !isTestItem(p));
+  if (validProducts.length === 0) return '/try-on/photo';
+  if (validProducts.length === 1) return `/try-on/photo?productId=${validProducts[0].id}`;
+
+  let mainItem = null;
+  let pairedItem = null;
+  let accessoryItem = null;
+
+  for (const p of validProducts) {
+    const catStr = `${p.name || ''} ${p.category || ''}`.toLowerCase();
+    // Phụ kiện chỉ nhận túi xách, kính, khăn, mũ... (không nhận trang sức)
+    if (/túi|tui|bag|kính|kinh|glasses|khăn|clutch|nón|mũ|hat|giày|shoes/.test(catStr) && !accessoryItem) {
+      accessoryItem = p;
+    } else if (/quần|quan|chân váy|skirt|pants|trouser|short/.test(catStr) && !pairedItem) {
+      pairedItem = p;
+    } else if (/đầm|dam|váy|vay|áo dài|ao dai|dress|suit|blazer|áo|ao/.test(catStr) && !mainItem) {
+      mainItem = p;
+    }
+  }
+
+  // Phân bổ các món còn lại đảm bảo không trùng nhau
+  for (const p of validProducts) {
+    if (mainItem?.id === p.id || pairedItem?.id === p.id || accessoryItem?.id === p.id) continue;
+    if (!mainItem) {
+      mainItem = p;
+    } else if (!pairedItem) {
+      pairedItem = p;
+    } else if (!accessoryItem) {
+      accessoryItem = p;
+    }
+  }
+
+  if (!mainItem) mainItem = validProducts[0];
+
+  const params = new URLSearchParams();
+  if (mainItem?.id) params.set('productId', mainItem.id);
+  if (pairedItem?.id && pairedItem.id !== mainItem.id) params.set('pairedId', pairedItem.id);
+  if (accessoryItem?.id && accessoryItem.id !== mainItem.id && accessoryItem.id !== pairedItem?.id) {
+    params.set('accessoryId', accessoryItem.id);
+  }
+
+  return `/try-on/photo?${params.toString()}`;
+};
+
 const INITIAL_MSG = {
   role: 'model',
   text: 'Xin chào! Mình là AI Stylist của VESTORA. Bạn cần tư vấn chọn trang phục cho sự kiện nào không?',
@@ -199,13 +260,16 @@ export default function AiStylistWidget() {
                     {!m.pending && m.products && m.products.length > 0 && (
                       <div className="stylist-wrec-list">
                         {m.products.map((p) => (
-                          <Link
+                          <div
                             key={p.id}
-                            to={`/product/${p.id}`}
                             className="stylist-wrec-card"
-                            onClick={() => setIsOpen(false)}
                           >
-                            <div className="stylist-wrec-thumb">
+                            <Link
+                              to={`/product/${p.id}`}
+                              className="stylist-wrec-thumb"
+                              onClick={() => setIsOpen(false)}
+                              title="Xem chi tiết sản phẩm"
+                            >
                               {p.imageUrl ? (
                                 <img src={p.imageUrl} alt={p.name} loading="lazy" />
                               ) : (
@@ -213,16 +277,54 @@ export default function AiStylistWidget() {
                                   <Sparkles size={14} color="#C5A880" />
                                 </span>
                               )}
-                            </div>
+                            </Link>
                             <div className="stylist-wrec-details">
-                              <h6 className="stylist-wrec-title">{p.name}</h6>
+                              <h6 className="stylist-wrec-title">
+                                <Link
+                                  to={`/product/${p.id}`}
+                                  onClick={() => setIsOpen(false)}
+                                  className="stylist-wrec-title-link"
+                                >
+                                  {p.name}
+                                </Link>
+                              </h6>
                               <span className="stylist-wrec-cat">{p.category}</span>
                               <span className="stylist-wrec-price">
                                 {currency.format(p.rentalPricePerDayVnd || p.rentalPricePerDay || 0)}đ/ngày
                               </span>
+                              <div className="stylist-wrec-actions">
+                                <Link
+                                  to={`/try-on/photo?productId=${p.id}`}
+                                  className="stylist-wrec-btn-tryon"
+                                  onClick={() => setIsOpen(false)}
+                                  title="Thử đồ bằng AI IDM-VTON"
+                                >
+                                  <Sparkles size={11} /> Thử đồ AI
+                                </Link>
+                                <Link
+                                  to={`/product/${p.id}`}
+                                  className="stylist-wrec-btn-view"
+                                  onClick={() => setIsOpen(false)}
+                                  title="Xem chi tiết"
+                                >
+                                  Chi tiết
+                                </Link>
+                              </div>
                             </div>
-                          </Link>
+                          </div>
                         ))}
+
+                        {/* Nút chuyển cả set đồ vào phòng thử đồ */}
+                        {m.products.length >= 2 && (
+                          <Link
+                            to={buildTryOnUrl(m.products)}
+                            className="stylist-wrec-combo-btn"
+                            onClick={() => setIsOpen(false)}
+                            title="Chuyển toàn bộ set đồ này vào phòng thử đồ AI"
+                          >
+                            <Sparkles size={12} /> Chuyển cả set vào phòng thử đồ
+                          </Link>
+                        )}
                       </div>
                     )}
                   </div>

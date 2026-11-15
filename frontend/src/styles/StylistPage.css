@@ -475,6 +475,133 @@
   margin-top: 4px;
 }
 
+.stylist-rec-name-link {
+  color: var(--stylist-ink);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.stylist-rec-name-link:hover {
+  color: var(--stylist-olive);
+}
+
+.stylist-rec-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #f0f2eb;
+}
+
+.stylist-rec-btn-tryon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--stylist-olive, #5b6e4e);
+  color: #ffffff;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+  box-shadow: 0 1px 4px rgba(91, 110, 78, 0.2);
+}
+
+.stylist-rec-btn-tryon:hover {
+  background: #47573d;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.stylist-rec-btn-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f4f6f1;
+  color: #4a5445;
+  border: 1px solid #dce0d6;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.stylist-rec-btn-view:hover {
+  background: #e9ede3;
+  color: #1a2016;
+}
+
+/* Banner chuyển cả set đồ vào phòng thử đồ */
+.stylist-combo-tryon-banner {
+  background: linear-gradient(135deg, #f4f7f1 0%, #edf2e8 100%);
+  border: 1.5px solid #c7d4bf;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(91, 110, 78, 0.08);
+}
+
+.stylist-combo-tryon-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stylist-combo-icon-wrap {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(91, 110, 78, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stylist-combo-tryon-info strong {
+  display: block;
+  font-size: 12px;
+  color: #2b3823;
+  font-weight: 700;
+}
+
+.stylist-combo-tryon-info span {
+  display: block;
+  font-size: 10.5px;
+  color: #63705b;
+}
+
+.stylist-combo-tryon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #5b6e4e;
+  color: #ffffff;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.2s;
+  box-shadow: 0 2px 6px rgba(91, 110, 78, 0.25);
+  flex-shrink: 0;
+}
+
+.stylist-combo-tryon-btn:hover {
+  background: #435339;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
 .stylist-tag-micro {
   font-size: 9px;
   padding: 2px 6px;

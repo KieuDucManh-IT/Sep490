@@ -11,6 +11,7 @@ import {
   Search,
   Trash2,
   CheckCircle2,
+  ExternalLink,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
@@ -19,6 +20,67 @@ import productService from '../../services/productService';
 import '../../styles/StylistPage.css';
 
 const currency = new Intl.NumberFormat('vi-VN');
+
+const isJewelry = (item) => {
+  if (!item) return false;
+  const text = `${item.name || ''} ${item.category || ''}`.toLowerCase();
+  return /nhẫn|nhan|bông tai|bong tai|khuyên|khuyen|vòng|vong|dây chuyền|day chuyen|lắc|lac|trang sức|trang suc|jewelry|earring|necklace|ring|bracelet/.test(text);
+};
+
+const isTestItem = (item) => {
+  if (!item) return false;
+  const text = `${item.name || ''} ${item.category || ''}`.toLowerCase();
+  return text.includes('test') || text.includes('(test)');
+};
+
+// Helper phân loại và tạo link chuyển cả set đồ sang phòng thử đồ ảo AI IDM-VTON (đã lọc sạch trang sức & test)
+const buildTryOnUrl = (products) => {
+  if (!Array.isArray(products) || products.length === 0) return '/try-on/photo';
+
+  // Lọc sạch trang sức và hàng test lỗi
+  const validProducts = products.filter((p) => !isJewelry(p) && !isTestItem(p));
+  if (validProducts.length === 0) return '/try-on/photo';
+  if (validProducts.length === 1) return `/try-on/photo?productId=${validProducts[0].id}`;
+
+  let mainItem = null;
+  let pairedItem = null;
+  let accessoryItem = null;
+
+  for (const p of validProducts) {
+    const catStr = `${p.name || ''} ${p.category || ''}`.toLowerCase();
+    // Phụ kiện chỉ nhận túi xách, kính, khăn, mũ... (không nhận trang sức)
+    if (/túi|tui|bag|kính|kinh|glasses|khăn|clutch|nón|mũ|hat|giày|shoes/.test(catStr) && !accessoryItem) {
+      accessoryItem = p;
+    } else if (/quần|quan|chân váy|skirt|pants|trouser|short/.test(catStr) && !pairedItem) {
+      pairedItem = p;
+    } else if (/đầm|dam|váy|vay|áo dài|ao dai|dress|suit|blazer|áo|ao/.test(catStr) && !mainItem) {
+      mainItem = p;
+    }
+  }
+
+  // Phân bổ các món còn lại đảm bảo không trùng nhau
+  for (const p of validProducts) {
+    if (mainItem?.id === p.id || pairedItem?.id === p.id || accessoryItem?.id === p.id) continue;
+    if (!mainItem) {
+      mainItem = p;
+    } else if (!pairedItem) {
+      pairedItem = p;
+    } else if (!accessoryItem) {
+      accessoryItem = p;
+    }
+  }
+
+  if (!mainItem) mainItem = validProducts[0];
+
+  const params = new URLSearchParams();
+  if (mainItem?.id) params.set('productId', mainItem.id);
+  if (pairedItem?.id && pairedItem.id !== mainItem.id) params.set('pairedId', pairedItem.id);
+  if (accessoryItem?.id && accessoryItem.id !== mainItem.id && accessoryItem.id !== pairedItem?.id) {
+    params.set('accessoryId', accessoryItem.id);
+  }
+
+  return `/try-on/photo?${params.toString()}`;
+};
 
 const INITIAL_MESSAGE = {
   role: 'model',
@@ -290,21 +352,28 @@ export default function StylistPage() {
                             <Sparkles size={14} color="#C5A880" /> Gợi ý trang phục cho bạn
                           </span>
                           {msg.products.map((prod) => (
-                            <Link
+                            <div
                               key={prod.id}
-                              to={`/product/${prod.id}`}
                               className="stylist-rec-card"
                             >
-                              <div className="stylist-rec-img-wrap">
+                              <Link
+                                to={`/product/${prod.id}`}
+                                className="stylist-rec-img-wrap"
+                                title="Xem chi tiết sản phẩm"
+                              >
                                 {prod.imageUrl ? (
                                   <img src={prod.imageUrl} alt={prod.name} loading="lazy" />
                                 ) : (
                                   <span className="stylist-rec-img-fallback">V</span>
                                 )}
-                              </div>
+                              </Link>
                               <div className="stylist-rec-content">
                                 <div>
-                                  <h4 className="stylist-rec-name">{prod.name}</h4>
+                                  <h4 className="stylist-rec-name">
+                                    <Link to={`/product/${prod.id}`} className="stylist-rec-name-link">
+                                      {prod.name}
+                                    </Link>
+                                  </h4>
                                   <div className="stylist-rec-cat">
                                     {prod.category} · {prod.code || prod.sku}
                                   </div>
@@ -332,9 +401,51 @@ export default function StylistPage() {
                                     </span>
                                   )}
                                 </div>
+                                <div className="stylist-rec-actions">
+                                  <Link
+                                    to={`/try-on/photo?productId=${prod.id}`}
+                                    className="stylist-rec-btn-tryon"
+                                    title="Ướm thử trang phục này bằng AI IDM-VTON"
+                                  >
+                                    <Sparkles size={12} />
+                                    <span>Thử đồ AI</span>
+                                  </Link>
+                                  <Link
+                                    to={`/product/${prod.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="stylist-rec-btn-view"
+                                    title="Xem trang chi tiết sản phẩm"
+                                  >
+                                    <ExternalLink size={12} />
+                                    <span>Chi tiết</span>
+                                  </Link>
+                                </div>
                               </div>
-                            </Link>
+                            </div>
                           ))}
+
+                          {/* Option chuyển cả bộ trang phục vào phòng thử đồ bằng ghép ảnh */}
+                          {msg.products.length >= 2 && (
+                            <div className="stylist-combo-tryon-banner">
+                              <div className="stylist-combo-tryon-info">
+                                <span className="stylist-combo-icon-wrap">
+                                  <Sparkles size={15} color="#5b6e4e" />
+                                </span>
+                                <div>
+                                  <strong>Thử nguyên set phối này ({msg.products.length} món)</strong>
+                                  <span>Chuyển cả bộ trang phục vào phòng thử đồ AI ghép ảnh</span>
+                                </div>
+                              </div>
+                              <Link
+                                to={buildTryOnUrl(msg.products)}
+                                className="stylist-combo-tryon-btn"
+                                title="Đưa toàn bộ set trang phục này vào phòng thử đồ ảo"
+                              >
+                                <Sparkles size={13} /> Chuyển vào phòng thử đồ
+                              </Link>
+                            </div>
+                          )}
                         </div>
                       )}
 

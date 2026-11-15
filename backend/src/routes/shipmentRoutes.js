@@ -16,6 +16,7 @@ import {
   updateManualStatusHandler,
   simulateGhnHandler,
   uploadProofHandler,
+  trackShipmentHandler,
 } from '../controllers/shipping/shipmentController.js';
 
 const router = express.Router();
@@ -29,7 +30,10 @@ const proofUpload = multer({
 router.post('/webhook/ghn/:secretKey', ghnWebhookHandler);
 router.post('/webhook/ghn', ghnWebhookHandler);
 
-// 2. Các API nghiệp vụ nội bộ bảo vệ bởi auth
+// 2. Tra cứu tiến trình vận chuyển cho người dùng đã xác thực (Customer chính chủ hoặc Quản lý)
+router.get('/track/:trackingCode', authMiddleware, trackShipmentHandler);
+
+// 3. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role
 router.use(authMiddleware);
 router.use(requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'));
 

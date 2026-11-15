@@ -149,6 +149,23 @@ export default function RentalOrdersHistoryPage() {
     }
   }, [category, fetchRentalOrders, fetchSaleOrders]);
 
+  // Tự động mở modal chi tiết đơn nếu có param code / orderCode / trackingCode trên URL
+  const targetCode = searchParams.get('code') || searchParams.get('orderCode') || searchParams.get('trackingCode');
+  useEffect(() => {
+    if (!targetCode) return;
+    if (category === 'rentals' && rentalOrders.length > 0) {
+      const match = rentalOrders.find(
+        (o) => o.orderCode === targetCode || o.shipment?.trackingCode === targetCode || o._id === targetCode
+      );
+      if (match) setSelectedRentalOrder(match);
+    } else if (category === 'sales' && saleOrders.length > 0) {
+      const match = saleOrders.find(
+        (o) => o.orderCode === targetCode || o.shipment?.trackingCode === targetCode || o._id === targetCode
+      );
+      if (match) setSelectedSaleOrder(match);
+    }
+  }, [targetCode, category, rentalOrders, saleOrders]);
+
   return (
     <div className="rental-history-page">
       <Navbar />
@@ -166,33 +183,11 @@ export default function RentalOrdersHistoryPage() {
           </p>
 
           {/* ── Bộ chuyển đổi Danh mục chính (Rentals vs Sales) ── */}
-          <div
-            style={{
-              display: 'inline-flex',
-              background: '#F4F4F5',
-              padding: '4px',
-              borderRadius: '10px',
-              border: '1px solid #E5E0D8',
-              marginTop: '20px',
-            }}
-          >
+          <div className="rental-category-switcher">
             <button
               type="button"
               onClick={() => handleCategoryChange('rentals')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: category === 'rentals' ? '#171717' : 'transparent',
-                color: category === 'rentals' ? '#FAF9F6' : '#52525B',
-                transition: 'all 0.2s',
-              }}
+              className={`rental-category-tab ${category === 'rentals' ? 'rental-category-tab--active' : ''}`}
             >
               <Calendar size={16} />
               <span>Đơn Thuê Trang Phục</span>
@@ -201,20 +196,7 @@ export default function RentalOrdersHistoryPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('sales')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: category === 'sales' ? '#171717' : 'transparent',
-                color: category === 'sales' ? '#FAF9F6' : '#52525B',
-                transition: 'all 0.2s',
-              }}
+              className={`rental-category-tab ${category === 'sales' ? 'rental-category-tab--active' : ''}`}
             >
               <ShoppingBag size={16} />
               <span>Đơn Mua Sắm</span>
@@ -257,22 +239,10 @@ export default function RentalOrdersHistoryPage() {
               </div>
             ) : rentalOrders.length === 0 ? (
               <div className="rental-history-empty">
-                <Package size={42} style={{ color: '#D6D3D1', margin: '0 auto 16px auto', display: 'block' }} />
+                <Package size={42} className="rental-history-empty__icon" />
                 <h3>Chưa có đơn thuê nào</h3>
                 <p>Khám phá bộ sưu tập đầm dạ hội và áo dài Haute Couture để trải nghiệm ngay hôm nay.</p>
-                <Link
-                  to="/catalog"
-                  style={{
-                    display: 'inline-block',
-                    padding: '10px 24px',
-                    backgroundColor: '#171717',
-                    color: '#F8F7F4',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    textDecoration: 'none',
-                  }}
-                >
+                <Link to="/catalog" className="rental-history-empty__link">
                   Khám Phá Bộ Sưu Tập Thuê
                 </Link>
               </div>
@@ -319,7 +289,7 @@ export default function RentalOrdersHistoryPage() {
                           <span>{formatDate(o.startDate)} → {formatDate(o.dueDate)}</span>
                         </div>
                         {o.shipment?.trackingCode && (
-                          <div className="rental-order-card__meta-item" style={{ color: '#B45309', fontWeight: 600 }}>
+                          <div className="rental-order-card__meta-item rental-order-card__meta-item--tracking">
                             <Truck size={14} color="#D97706" />
                             <span>Vận đơn: {o.shipment.trackingCode}</span>
                           </div>
@@ -384,22 +354,10 @@ export default function RentalOrdersHistoryPage() {
               </div>
             ) : saleOrders.length === 0 ? (
               <div className="rental-history-empty">
-                <ShoppingBag size={42} style={{ color: '#D6D3D1', margin: '0 auto 16px auto', display: 'block' }} />
+                <ShoppingBag size={42} className="rental-history-empty__icon" />
                 <h3>Chưa có đơn mua sắm nào</h3>
                 <p>Khám phá các thiết kế thanh lý & mua đứt độc quyền từ Vestora để bổ sung vào tủ đồ của bạn.</p>
-                <Link
-                  to="/catalog"
-                  style={{
-                    display: 'inline-block',
-                    padding: '10px 24px',
-                    backgroundColor: '#171717',
-                    color: '#F8F7F4',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    textDecoration: 'none',
-                  }}
-                >
+                <Link to="/catalog" className="rental-history-empty__link">
                   Khám Phá Bộ Sưu Tập Mua
                 </Link>
               </div>
@@ -445,19 +403,17 @@ export default function RentalOrdersHistoryPage() {
                           {o.paymentMethod === 'wallet' ? (
                             <>
                               <Wallet size={14} color="#15803D" />
-                              <span style={{ color: '#15803D', fontWeight: 600 }}>Ví Vestora (Đã trừ ví)</span>
+                              <span className="rental-order-card__payment--wallet">Ví Vestora (Đã trừ ví)</span>
                             </>
                           ) : (
                             <>
                               <Banknote size={14} color="#B45309" />
-                              <span style={{ color: '#B45309', fontWeight: 600 }}>
-                                Thanh toán khi nhận hàng (COD)
-                              </span>
+                              <span className="rental-order-card__payment--cod">Thanh toán khi nhận hàng (COD)</span>
                             </>
                           )}
                         </div>
                         {o.shipment?.trackingCode && (
-                          <div className="rental-order-card__meta-item" style={{ color: '#B45309', fontWeight: 600 }}>
+                          <div className="rental-order-card__meta-item rental-order-card__meta-item--tracking">
                             <Truck size={14} color="#D97706" />
                             <span>Vận đơn: {o.shipment.trackingCode}</span>
                           </div>
@@ -467,10 +423,10 @@ export default function RentalOrdersHistoryPage() {
                       <div className="rental-order-card__footer">
                         <div className="rental-order-card__price-block">
                           <span className="rental-order-card__price-label">Tổng thanh toán</span>
-                          <span className="rental-order-card__price-value" style={{ color: '#96723D' }}>
+                          <span className="rental-order-card__price-value rental-order-card__price-value--gold">
                             {formatCurrencyVND(o.totalAmount)}
                           </span>
-                          <span className="rental-order-card__price-deposit" style={{ color: '#16A34A' }}>
+                          <span className="rental-order-card__price-deposit rental-order-card__price-deposit--free">
                             Miễn phí giao hàng
                           </span>
                         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import './styles/WarehouseUx.css';
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -30,7 +30,6 @@ import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
 import ChatPage from './pages/customer/ChatPage';
 import BranchChatPage from './pages/branch/BranchChatPage';
-import CustomerOrderTrackingPage from './pages/customer/CustomerOrderTrackingPage';
 import SharedLookbookPage from './pages/customer/SharedLookbookPage';
 import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
 
@@ -76,6 +75,12 @@ import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
+
+function TrackingRedirect() {
+  const { trackingCode } = useParams();
+  const target = trackingCode ? `/rental-orders?code=${encodeURIComponent(trackingCode)}` : '/rental-orders';
+  return <Navigate to={target} replace />;
+}
 
 function App() {
   return (
@@ -126,7 +131,7 @@ function App() {
         <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
-        <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
+        <Route path="/tracking/:trackingCode" element={<TrackingRedirect />} />
         <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
         <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
 

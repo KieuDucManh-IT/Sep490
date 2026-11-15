@@ -220,6 +220,8 @@
   background: #ffffff;
   color: #1a1a1a;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tracking-status-badge.status-preparing {
@@ -654,6 +656,8 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .tracking-sync-btn {
@@ -666,7 +670,15 @@
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  justify-content: center;
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px;
+  height: 30px;
+  box-sizing: border-box;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.2s ease;
 }
 

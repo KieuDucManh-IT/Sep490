@@ -42,9 +42,11 @@ import {
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
 
 export class ServiceError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code = null, details = null) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.details = details;
     this.name = 'ServiceError';
   }
 }
@@ -78,8 +80,9 @@ export const calculateRentalPriceAndDeposit = async (items, startDate, dueDate) 
 
   const start = new Date(startDate).getTime();
   const due = new Date(dueDate).getTime();
-  if (isNaN(start) || isNaN(due) || due <= start) {
-    throw new ServiceError(400, 'Ngày trả đồ (dueDate) phải sau ngày nhận đồ (startDate)');
+  // Cho phép same-day (dueDate === startDate) tính là 1 ngày thuê — REQ-CART-022
+  if (isNaN(start) || isNaN(due) || due < start) {
+    throw new ServiceError(400, 'Ngày trả đồ (dueDate) phải sau hoặc bằng ngày nhận đồ (startDate)');
   }
 
   // Số ngày thuê tối thiểu 1 ngày
@@ -105,10 +108,20 @@ export const calculateRentalPriceAndDeposit = async (items, startDate, dueDate) 
       throw new ServiceError(404, `Không tìm thấy biến thể sản phẩm: ${item.variantId}`);
     }
     if (variant.status === 'inactive') {
-      throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`);
+      throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`, 'ERR_ITEM_INACTIVE');
     }
 
     const product = variant.productId || {};
+
+    if (product.status === 'discontinued') {
+      throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] đã ngừng kinh doanh`, 'ERR_ITEM_INACTIVE');
+    }
+
+    // Kiểm tra type mismatch: sản phẩm chỉ dành để bán không thể thuê
+    // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
+    if (product.tag === 'sale') {
+      throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chỉ dành để mua, không thể thuê`, 'ERR_ITEM_TYPE_MISMATCH');
+    }
 
     // Đơn vị giá thuê theo ngày lấy từ variant hoặc product gốc
     const dailyPrice = Number(
@@ -116,6 +129,12 @@ export const calculateRentalPriceAndDeposit = async (items, startDate, dueDate) 
         ? variant.attributes.rentalPricePerDay
         : product.rentalPricePerDay || 0
     );
+
+    // Kiểm tra giá thuê hợp lệ
+    // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
+    if (dailyPrice <= 0) {
+      throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chưa được thiết lập giá thuê hợp lệ`, 'ERR_INVALID_PRICE');
+    }
 
     // Tiền cọc lấy từ variant hoặc product gốc
     const unitDeposit = Number(
@@ -207,7 +226,19 @@ export const createRentalOrder = async ({
   const priceCalc = await calculateRentalPriceAndDeposit(items, startDate, dueDate);
 
   // 3. Kiểm tra khả dụng tồn kho tại chi nhánh chỉ định
+  // Aggregate duplicate variantIds trước khi kiểm tra kho — REQ-CART-021 / REQ-CART-023
+  const aggregatedItems = new Map();
   for (const it of priceCalc.itemsDetail) {
+    const key = String(it.variantId);
+    if (aggregatedItems.has(key)) {
+      aggregatedItems.get(key).quantity += it.quantity;
+    } else {
+      aggregatedItems.set(key, { ...it });
+    }
+  }
+  const itemsToCheck = [...aggregatedItems.values()];
+
+  for (const it of itemsToCheck) {
     const stockCheck = await stockChecker(
       it.variantId,
       locationId,
@@ -218,7 +249,9 @@ export const createRentalOrder = async ({
     if (!stockCheck.available) {
       throw new ServiceError(
         409,
-        `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`
+        `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`,
+        stockCheck.code || 'ERR_INSUFFICIENT_STOCK',
+        { requestedQuantity: it.quantity, availableQuantity: stockCheck.availableQty ?? 0 }
       );
     }
   }
@@ -245,7 +278,8 @@ export const createRentalOrder = async ({
       if (availableBalance < requiredAmount) {
         throw new ServiceError(
           409,
-          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán tiền thuê (${priceCalc.totalRentalFee.toLocaleString('vi-VN')} đ) và cọc (${priceCalc.totalDeposit.toLocaleString('vi-VN')} đ)`
+          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán tiền thuê (${priceCalc.totalRentalFee.toLocaleString('vi-VN')} đ) và cọc (${priceCalc.totalDeposit.toLocaleString('vi-VN')} đ)`,
+          'ERR_INSUFFICIENT_WALLET_BALANCE'
         );
       }
 
@@ -336,7 +370,7 @@ export const createRentalOrder = async ({
     await InventoryReservation.insertMany(reservationDocs, { session });
 
     // 8. Tăng quantityReserved trong InventoryBalance
-    for (const it of priceCalc.itemsDetail) {
+    for (const it of itemsToCheck) {
       await InventoryBalance.updateOne(
         { locationId: order.locationId, variantId: it.variantId },
         { $inc: { quantityReserved: it.quantity } },

@@ -97,3 +97,14 @@ export const cancelRentalOrderSchema = z.object({
     .min(3, 'Lý do hủy đơn tối thiểu 3 ký tự')
     .max(500, 'Lý do hủy đơn tối đa 500 ký tự'),
 });
+
+/**
+ * Format date sang chuỗi YYYY-MM-DD theo lịch địa phương
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-022
+ * @param {Date|string|number} date
+ * @returns {string} YYYY-MM-DD
+ */
+export const formatLocalDateString = (date) => {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};

@@ -30,18 +30,18 @@ const proofUpload = multer({
 router.post('/webhook/ghn/:secretKey', ghnWebhookHandler);
 router.post('/webhook/ghn', ghnWebhookHandler);
 
-// 2. Tra cứu tiến trình vận chuyển cho người dùng đã xác thực (Customer chính chủ hoặc Quản lý)
-router.get('/track/:trackingCode', authMiddleware, trackShipmentHandler);
-
-// 3. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role
-router.use(authMiddleware);
-router.use(requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'));
-
-// Tra cứu địa giới hành chính GHN
+// 2. Tra cứu địa giới hành chính GHN (công khai / phục vụ khách hàng checkout tra cứu địa chỉ)
 router.get('/master-data/provinces', getProvincesHandler);
 router.get('/master-data/districts/:provinceId', getDistrictsHandler);
 router.get('/master-data/wards/:districtId', getWardsHandler);
 router.get('/master-data/wards-by-province/:provinceId', getWardsByProvinceHandler);
+
+// 3. Tra cứu tiến trình vận chuyển cho người dùng đã xác thực (Customer chính chủ hoặc Quản lý)
+router.get('/track/:trackingCode', authMiddleware, trackShipmentHandler);
+
+// 4. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role nhân viên / quản lý
+router.use(authMiddleware);
+router.use(requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'));
 
 // Nghiệp vụ vận đơn
 router.post('/calculate-fee', calculateFeeHandler);

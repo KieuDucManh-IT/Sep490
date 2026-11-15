@@ -4,7 +4,10 @@ import {
   validateUpdateShopInfoInput,
   validateOperatingStatus,
   validateReverseGeocodeQuery,
+  validateBranchPerformanceQuery,
 } from '../../validations/shop/shopValidation.js';
+
+import { getBranchPerformanceReportData } from '../../services/shop/branchReportService.js';
 
 import {
   listShopApplications,
@@ -23,7 +26,6 @@ import {
 
 import { resolveReverseGeocode } from '../../services/shop/geoService.js';
 import { processAndUploadShopMedia } from '../../services/shop/shopMediaService.js';
-import { getBranchPerformanceReportData } from '../../services/shop/branchReportService.js';
 
 /**
  * Lấy danh sách hồ sơ chi nhánh có phân trang, bộ lọc và tìm kiếm
@@ -174,22 +176,6 @@ export const getMyShop = async (req, res) => {
   }
 };
 
-/**
- * Lấy báo cáo tổng quan và hiệu suất vận hành theo chi nhánh
- * GET /api/shops/reports/branch-performance
- */
-export const getBranchPerformanceReport = async (req, res) => {
-  try {
-    const { branchId, timeRange } = req.query;
-    const report = await getBranchPerformanceReportData({ user: req.user, branchId, timeRange });
-    return res.json({ success: true, data: report });
-  } catch (err) {
-    return res.status(err.statusCode || 500).json({
-      success: false,
-      message: err.message || 'Lỗi máy chủ khi tải báo cáo chi nhánh.',
-    });
-  }
-};
 
 /**
  * Lấy chi nhánh được chỉ định cho tài khoản đã xác thực
@@ -401,3 +387,47 @@ export const uploadShopImage = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Lấy báo cáo hiệu suất và vận hành dành riêng cho Quản lý chi nhánh
+ * GET /api/shops/reports/branch-performance
+ * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-001
+ * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-002
+ */
+export const getBranchPerformanceReport = async (req, res) => {
+  try {
+    const normalizedRole = String(req.user?.Role || req.user?.role || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]/g, '')
+      .replace('brandmanager', 'branchmanager');
+
+    if (!['branchmanager', 'admin', 'shopowner', 'owner'].includes(normalizedRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Chức năng báo cáo hiệu suất chi nhánh chỉ dành cho Quản lý chi nhánh hoặc Ban quản trị.',
+      });
+    }
+
+    const validatedQuery = validateBranchPerformanceQuery(req.query);
+    const report = await getBranchPerformanceReportData({
+      user: req.user,
+      branchId: validatedQuery.branchId,
+      timeRange: validatedQuery.timeRange,
+      startDate: validatedQuery.startDate,
+      endDate: validatedQuery.endDate,
+    });
+
+    return res.json({
+      success: true,
+      data: report,
+    });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || 'Không thể tải báo cáo hiệu suất chi nhánh.',
+    });
+  }
+};
+

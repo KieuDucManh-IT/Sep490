@@ -12,15 +12,16 @@ import { Shop } from '../../models/shop/Shop.js';
 export const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
 /**
- * Chuẩn hóa đối tượng người gửi / người nhận (Chỉ còn cấp Tỉnh và cấp Xã/Phường)
+ * Chuẩn hóa đối tượng người gửi / người nhận (Tỉnh/Thành, Quận/Huyện, Phường/Xã)
  */
-export const formatPartyInfo = ({ name, phone, address, provinceId, wardCode, latitude, longitude }) => ({
+export const formatPartyInfo = ({ name, phone, address, provinceId, districtId, wardCode, latitude, longitude }) => ({
   name: name || '',
   phone: phone || '',
   address: address || '',
   latitude: latitude ? Number(latitude) : null,
   longitude: longitude ? Number(longitude) : null,
   provinceId: provinceId ? Number(provinceId) : undefined,
+  districtId: districtId ? Number(districtId) : undefined,
   wardCode: wardCode ? String(wardCode) : undefined,
 });
 

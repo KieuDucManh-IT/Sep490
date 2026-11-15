@@ -26,6 +26,7 @@ import { ORDER_TYPES } from '../../services/cart/cartTypes';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
 import { createRentalOrder } from '../../services/rentalOrderApi';
 import productService from '../../services/productService';
+import GhnAddressSelector from '../../components/common/GhnAddressSelector';
 import { getUserLocation } from '../../utils/userLocation';
 import { calculateHaversineDistanceKm } from '../../utils/geoUtils';
 import '../../styles/Cart.css';
@@ -229,11 +230,26 @@ export default function CheckoutPage() {
     ward: '',
     district: '',
     city: '',
+    provinceId: null,
+    districtId: null,
+    wardCode: '',
   });
 
   const handleAddressChange = (field, value) => {
     setShippingAddress((prev) => ({ ...prev, [field]: value }));
   };
+
+  const handleDivisionsChange = useCallback((divisionData) => {
+    setShippingAddress((prev) => ({
+      ...prev,
+      provinceId: divisionData.provinceId,
+      city: divisionData.city,
+      districtId: divisionData.districtId,
+      district: divisionData.district,
+      wardCode: divisionData.wardCode,
+      ward: divisionData.ward,
+    }));
+  }, []);
 
   // Lấy chi nhánh từ các selected items
   const branchesInCart = useMemo(() => {
@@ -303,12 +319,20 @@ export default function CheckoutPage() {
       setValidationError('Vui lòng nhập số điện thoại người nhận hợp lệ.');
       return;
     }
-    if (!shippingAddress.street.trim()) {
-      setValidationError('Vui lòng nhập địa chỉ cụ thể nhận trang phục.');
+    if (!shippingAddress.provinceId) {
+      setValidationError('Vui lòng chọn Tỉnh/Thành phố nhận trang phục.');
       return;
     }
-    if (!shippingAddress.city.trim()) {
-      setValidationError('Vui lòng nhập tỉnh/thành phố nhận trang phục.');
+    if (!shippingAddress.districtId) {
+      setValidationError('Vui lòng chọn Quận/Huyện nhận trang phục.');
+      return;
+    }
+    if (!shippingAddress.wardCode) {
+      setValidationError('Vui lòng chọn Phường/Xã nhận trang phục.');
+      return;
+    }
+    if (!shippingAddress.street.trim()) {
+      setValidationError('Vui lòng nhập số nhà, tên đường chi tiết nhận trang phục.');
       return;
     }
 
@@ -350,6 +374,9 @@ export default function CheckoutPage() {
             ward: shippingAddress.ward.trim(),
             district: shippingAddress.district.trim(),
             city: shippingAddress.city.trim(),
+            provinceId: shippingAddress.provinceId ? Number(shippingAddress.provinceId) : null,
+            districtId: shippingAddress.districtId ? Number(shippingAddress.districtId) : null,
+            wardCode: shippingAddress.wardCode ? String(shippingAddress.wardCode).trim() : null,
           },
           ...(note.trim() ? { note: note.trim() } : {}),
         };
@@ -854,38 +881,22 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div>
-                  <label style={styles.label}>Tỉnh / Thành phố *</label>
-                  <input
-                    type="text"
-                    required
-                    value={shippingAddress.city}
-                    onChange={(e) => handleAddressChange('city', e.target.value)}
-                    placeholder="TP. Hồ Chí Minh"
-                    style={styles.input}
-                  />
-                </div>
-                <div>
-                  <label style={styles.label}>Quận / Huyện</label>
-                  <input
-                    type="text"
-                    value={shippingAddress.district}
-                    onChange={(e) => handleAddressChange('district', e.target.value)}
-                    placeholder="Quận 1"
-                    style={styles.input}
-                  />
-                </div>
-              </div>
+              <GhnAddressSelector
+                provinceId={shippingAddress.provinceId}
+                districtId={shippingAddress.districtId}
+                wardCode={shippingAddress.wardCode}
+                onChange={handleDivisionsChange}
+                required
+              />
 
               <div>
-                <label style={styles.label}>Địa chỉ đường / số nhà cụ thể *</label>
+                <label style={styles.label}>Số nhà, tên đường chi tiết *</label>
                 <input
                   type="text"
                   required
                   value={shippingAddress.street}
                   onChange={(e) => handleAddressChange('street', e.target.value)}
-                  placeholder="Số 72 Lê Thánh Tôn, Phường Bến Nghé"
+                  placeholder="Ví dụ: Số 72 Lê Thánh Tôn"
                   style={styles.input}
                 />
               </div>

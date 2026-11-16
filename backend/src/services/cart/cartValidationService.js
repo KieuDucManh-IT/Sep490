@@ -48,6 +48,7 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
       : activeLocations.reduce((sum, loc) => sum + stock(String(it.variantId), idOf(loc)), 0);
     if (!variant || !product?._id) fail('ERR_ITEM_NOT_FOUND', 'Sản phẩm không còn tồn tại.');
     else if (!isActiveVariant(variant) || !isActiveProduct(product)) fail('ERR_ITEM_INACTIVE', 'Sản phẩm đã ngừng kinh doanh.');
+    else if (product.isSetPrice !== true) fail('ERR_ITEM_NOT_PRICED', `Sản phẩm [${product.name || variant.sku}] chưa được mở bán.`);
     if (product && (it.orderType === 'sale' ? String(product.tag).toLowerCase() === 'rental' : String(product.tag).toLowerCase() === 'sale')) fail('ERR_ITEM_TYPE_MISMATCH', 'Sản phẩm không hỗ trợ hình thức giao dịch này.');
     if (location && !location.active) fail('ERR_BRANCH_UNAVAILABLE', 'Chi nhánh không khả dụng.');
     if (availableQty < total) fail('ERR_INSUFFICIENT_STOCK', `Chỉ còn ${availableQty} sản phẩm, giỏ đang yêu cầu ${total}.`);

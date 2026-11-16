@@ -11,7 +11,7 @@ import { Stocktake } from '../../models/warehouse/stocktake/Stocktake.js';
 import { StocktakeDetail } from '../../models/warehouse/stocktake/StocktakeDetail.js';
 import { StockAdjustment } from '../../models/warehouse/adjustment/StockAdjustment.js';
 import { StockAdjustmentDetail } from '../../models/warehouse/adjustment/StockAdjustmentDetail.js';
-import { validateCreateStocktakeInput, validateStocktakeCountInput } from '../../validations/warehouse/stockControlValidation.js';
+import { validateCancelReason, validateCreateStocktakeInput, validateStocktakeCountInput } from '../../validations/warehouse/stockControlValidation.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
 
@@ -54,6 +54,7 @@ const stocktakePopulation = [
   { path: 'createdBy', select: 'FullName Email' },
   { path: 'assignedStaffId', select: 'FullName Email' },
   { path: 'approvedBy', select: 'FullName Email' },
+  { path: 'cancelledBy', select: 'FullName Email' },
 ];
 
 const detailsForStocktake = (stocktakeId) => StocktakeDetail.find({ stocktakeId }).sort({ createdAt: 1 })
@@ -269,9 +270,36 @@ export const submitStocktake = async (stocktakeId, user) => {
   if (!isStaff(user) && !isManager(user)) throw fail('Bạn không có quyền gửi kết quả kiểm kê.', 403);
   const uncounted = await StocktakeDetail.countDocuments({ stocktakeId, isCounted: false });
   if (uncounted) throw fail(`Còn ${uncounted} dòng chưa được kiểm đếm.`);
-  stocktake.status = 'counted';
-  stocktake.completedAt = new Date();
-  await stocktake.save();
+  // Chuyển trạng thái có điều kiện để không ghi đè phiếu vừa bị hủy.
+  const updated = await Stocktake.findOneAndUpdate(
+    { _id: stocktakeId, status: 'in_progress' },
+    { $set: { status: 'counted', completedAt: new Date() } },
+    { new: true },
+  );
+  if (!updated) throw fail('Phiếu kiểm kê không ở trạng thái đang kiểm.', 409);
+  return loadStocktake(stocktakeId, user);
+};
+
+export const cancelStocktake = async (stocktakeId, payload, user) => {
+  if (!isManager(user)) throw fail('Chỉ quản lý kho mới được hủy phiếu kiểm kê.', 403);
+  if (!idValid(stocktakeId)) throw fail('Mã phiếu kiểm kê không hợp lệ.');
+  const { reason } = validateCancelReason(payload);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // startStocktake chỉ chụp số hệ thống vào StocktakeDetail, không khóa tồn, nên hủy không cần nhả gì.
+      const cancelled = await Stocktake.findOneAndUpdate(
+        { _id: stocktakeId, status: { $in: ['draft', 'in_progress', 'counted'] } },
+        { $set: { status: 'cancelled', cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
+        { new: true, session },
+      );
+      if (!cancelled) {
+        const exists = await Stocktake.exists({ _id: stocktakeId }).session(session);
+        if (!exists) throw fail('Không tìm thấy phiếu kiểm kê.', 404);
+        throw fail('Chỉ hủy được phiếu kiểm kê ở trạng thái nháp, đang kiểm hoặc đã đếm xong.', 409);
+      }
+    });
+  } finally { await session.endSession(); }
   return loadStocktake(stocktakeId, user);
 };
 
@@ -362,8 +390,13 @@ export const approveStocktake = async (stocktakeId, user) => {
   let result;
   try {
     await session.withTransaction(async () => {
-      const stocktake = await Stocktake.findOne({ _id: stocktakeId, status: 'counted' }).session(session);
-      if (!stocktake) throw fail('Phiếu kiểm kê chưa gửi kết quả hoặc đã được xử lý.', 409);
+      // Giành trạng thái ngay đầu transaction để duyệt và hủy loại trừ nhau.
+      const stocktake = await Stocktake.findOneAndUpdate(
+        { _id: stocktakeId, status: 'counted' },
+        { $set: { status: 'approved', approvedBy: user._id } },
+        { new: true, session },
+      );
+      if (!stocktake) throw fail('Phiếu kiểm kê chưa gửi kết quả, đã được xử lý hoặc đã bị hủy.', 409);
       const details = await StocktakeDetail.find({ stocktakeId }).session(session);
       if (details.some((detail) => !detail.isCounted)) throw fail('Tất cả dòng phải được kiểm đếm trước khi duyệt.');
       const variantRows = await ProductVariant.find({ _id: { $in: details.map((detail) => detail.variantId) } }).select('productId').populate('productId', 'trackingType').lean();
@@ -413,9 +446,6 @@ export const approveStocktake = async (stocktakeId, user) => {
           });
         }
       }
-      stocktake.status = 'approved';
-      stocktake.approvedBy = user._id;
-      await stocktake.save({ session });
       let adjustment = null;
       if (adjustmentLines.length) {
         adjustment = await StockAdjustment.create([{

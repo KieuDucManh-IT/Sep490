@@ -9,6 +9,8 @@ import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
 import { enrichProductsWithInventory } from '../warehouse/productInventoryHelper.js';
+import { normalizeColorKey } from './productImageHelper.js';
+import { hasRequiredPrices } from './productPricing.js';
 
 const imageError = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const populateProduct = (query) => query.populate('categoryId').lean();
@@ -28,23 +30,28 @@ const normalizeImages = (images, productId) => {
     if (!imageUrl || imageUrl.length > 500 || !/^https?:\/\//i.test(imageUrl)) throw imageError(`Đường dẫn ảnh thứ ${index + 1} không hợp lệ.`);
     const imageType = String(image.imageType || 'GALLERY').trim().toUpperCase();
     if (!['MAIN', 'GALLERY', 'DETAIL'].includes(imageType)) throw imageError(`Loại ảnh thứ ${index + 1} không hợp lệ.`);
-    const variantId = image.variantId || null;
-    if (variantId && !mongoose.Types.ObjectId.isValid(variantId)) throw imageError(`Biến thể của ảnh thứ ${index + 1} không hợp lệ.`);
+    // Payload cũ có thể còn variantId: bỏ qua (TASK-007), ảnh gắn theo màu.
+    if (image.color != null && typeof image.color !== 'string') throw imageError(`Màu của ảnh thứ ${index + 1} không hợp lệ.`);
+    const color = typeof image.color === 'string' && image.color.trim() ? image.color.trim() : null;
+    if (color && color.length > 80) throw imageError(`Màu của ảnh thứ ${index + 1} quá dài.`);
     const displayOrder = image.displayOrder == null ? index : Number(image.displayOrder);
     if (!Number.isInteger(displayOrder) || displayOrder < 0) throw imageError(`Thứ tự ảnh thứ ${index + 1} phải là số nguyên không âm.`);
     const isPrimary = image.isPrimary === true;
-    const primaryScope = String(variantId || 'product');
-    if (isPrimary && seenPrimary.has(primaryScope)) throw imageError('Mỗi sản phẩm hoặc biến thể chỉ được có một ảnh chính.');
+    const primaryScope = color ? `color:${normalizeColorKey(color)}` : 'product';
+    if (isPrimary && seenPrimary.has(primaryScope)) {
+      throw imageError(color ? `Màu "${color}" chỉ được có một ảnh chính.` : 'Ảnh chung của sản phẩm chỉ được có một ảnh chính.');
+    }
     if (isPrimary) seenPrimary.add(primaryScope);
     if (image._id && !mongoose.Types.ObjectId.isValid(image._id)) throw imageError(`Mã ảnh thứ ${index + 1} không hợp lệ.`);
     return {
       _id: image._id || undefined,
       productId,
-      variantId,
+      color,
       imageUrl,
       imageType,
       isPrimary,
       displayOrder,
+      position: index + 1,
     };
   });
 };
@@ -52,19 +59,31 @@ const normalizeImages = (images, productId) => {
 const saveImages = async (productId, inputImages) => {
   if (inputImages === undefined) return;
   const images = normalizeImages(inputImages, productId);
-  const ids = images.filter((image) => image._id).map((image) => image._id);
-  const ownedImages = ids.length ? await ProductImage.countDocuments({ productId, _id: { $in: ids } }) : 0;
-  if (ownedImages !== ids.length) throw imageError('Có ảnh không thuộc sản phẩm này hoặc đã bị xóa.');
-  const variantIds = [...new Set(images.map((image) => image.variantId).filter(Boolean).map(String))];
-  if (variantIds.length) {
-    const ownedVariants = await ProductVariant.countDocuments({ productId, _id: { $in: variantIds } });
-    if (ownedVariants !== variantIds.length) throw imageError('Biến thể gắn với ảnh không thuộc sản phẩm này.');
+  const ids = images.filter((image) => image._id).map((image) => String(image._id));
+  const ownedImages = ids.length ? await ProductImage.find({ productId, _id: { $in: ids } }).select('_id color').lean() : [];
+  if (ownedImages.length !== new Set(ids).size) throw imageError('Có ảnh không thuộc sản phẩm này hoặc đã bị xóa.');
+  const storedColorById = new Map(ownedImages.map((image) => [String(image._id), normalizeColorKey(image.color)]));
+  if (images.some((image) => image.color)) {
+    // Màu hợp lệ = màu của biến thể chưa xóa; lưu theo cách viết của biến thể đầu tiên có màu đó.
+    const variants = await ProductVariant.find({ productId, isDeleted: { $ne: true } }).select('color').sort({ createdAt: 1, _id: 1 }).lean();
+    const canonicalColor = new Map();
+    for (const variant of variants) {
+      const key = normalizeColorKey(variant.color);
+      if (key && !canonicalColor.has(key)) canonicalColor.set(key, String(variant.color).trim());
+    }
+    for (const image of images) {
+      if (!image.color) continue;
+      const key = normalizeColorKey(image.color);
+      if (canonicalColor.has(key)) { image.color = canonicalColor.get(key); continue; }
+      // Ảnh cũ giữ nguyên màu đã lưu (màu không còn biến thể) vẫn được lưu lại, chỉ ẩn với khách.
+      if (image._id && storedColorById.get(String(image._id)) === key) continue;
+      throw imageError(`Màu của ảnh thứ ${image.position} không thuộc sản phẩm này.`);
+    }
   }
-  const keptIds = images.filter((image) => image._id).map((image) => image._id);
-  await ProductImage.deleteMany({ productId, _id: { $nin: keptIds } });
-  // Clear primary flags first to maintain the one-primary-per-product/variant rule.
+  await ProductImage.deleteMany({ productId, _id: { $nin: ids } });
+  // Clear primary flags first to maintain the one-primary-per-scope (product/color) rule.
   await ProductImage.updateMany({ productId }, { $set: { isPrimary: false } });
-  for (const image of images) {
+  for (const { position, ...image } of images) {
     if (image._id) {
       const existing = await ProductImage.findOne({ _id: image._id, productId });
       Object.assign(existing, image);
@@ -84,7 +103,7 @@ const withImages = async (product) => {
       imageType: index === 0 ? 'MAIN' : 'GALLERY',
       isPrimary: index === 0,
       displayOrder: index,
-      variantId: null,
+      color: null,
     }));
   }
   return { ...product, images };
@@ -125,7 +144,7 @@ const syncProductVariants = async (productId, productCode, incoming) => {
   for (const variant of removedVariants) {
     const referenced = await Promise.all([
       InventoryItem.exists({ variantId: variant._id }), InventoryBalance.exists({ variantId: variant._id }),
-      InboundReceiptDetail.exists({ variantId: variant._id }), ProductImage.exists({ variantId: variant._id }),
+      InboundReceiptDetail.exists({ variantId: variant._id }),
     ]);
     if (referenced.some(Boolean)) throw imageError(`Không thể xóa biến thể ${variant.sku} vì đã phát sinh tồn kho hoặc phiếu nhập.`);
     variant.isDeleted = true;
@@ -150,7 +169,7 @@ export const productService = {
     const mapped = products.map((product) => {
       const images = byProduct.get(String(product._id));
       if (images?.length) return { ...product, images, variants: variantsByProduct.get(String(product._id)) || [] };
-      const legacyImages = Array.isArray(product.images) ? product.images.filter((image) => typeof image === 'string' && image.trim()).map((imageUrl, index) => ({ imageUrl, imageType: index === 0 ? 'MAIN' : 'GALLERY', isPrimary: index === 0, displayOrder: index, variantId: null })) : [];
+      const legacyImages = Array.isArray(product.images) ? product.images.filter((image) => typeof image === 'string' && image.trim()).map((imageUrl, index) => ({ imageUrl, imageType: index === 0 ? 'MAIN' : 'GALLERY', isPrimary: index === 0, displayOrder: index, color: null })) : [];
       return { ...product, images: legacyImages, variants: variantsByProduct.get(String(product._id)) || [] };
     });
     return enrichProductsWithInventory(mapped, variants);
@@ -161,8 +180,9 @@ export const productService = {
     await assertActiveCategories(normalized.categoryId);
     const product = await Product.create(normalized);
     try {
-      await saveImages(product._id, images || []);
+      // Biến thể trước, ảnh sau: màu của ảnh được kiểm tra theo biến thể vừa lưu.
       await syncProductVariants(product._id, product.productCode, variants || []);
+      await saveImages(product._id, images || []);
     } catch (error) {
       await Promise.all([
         ProductImage.deleteMany({ productId: product._id }),
@@ -183,9 +203,12 @@ export const productService = {
     await assertActiveCategories(changes.categoryId || product.categoryId);
     Object.assign(product, changes);
     product.set('productType', undefined);
+    // TASK-008: WM đổi tag của sản phẩm đã định giá mà giá không còn đủ → tạm ẩn với khách tới khi Owner bổ sung.
+    // Không tự bật lại isSetPrice: chỉ Shop Owner mở bán qua API định giá.
+    if (product.isSetPrice === true && !hasRequiredPrices(product)) product.isSetPrice = false;
     await product.save();
-    await saveImages(product._id, images);
     await syncProductVariants(product._id, product.productCode, variants);
+    await saveImages(product._id, images);
     if (current.productCode !== product.productCode) {
       const productVariants = await ProductVariant.find({ productId: product._id, isDeleted: { $ne: true } });
       for (const variant of productVariants) {

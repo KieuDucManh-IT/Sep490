@@ -12,6 +12,7 @@ import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { StockTransfer } from '../../models/warehouse/transfer/StockTransfer.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { ProductImage } from '../../models/masterdata/ProductImages.js';
+import { representativeUrlByProduct } from '../masterdata/productImageHelper.js';
 import '../../models/masterdata/Product.js';
 import '../../models/system/User.js';
 import { getInventoryReport } from '../warehouse/inventoryReportService.js';
@@ -816,14 +817,9 @@ export async function getBranchPerformanceReportData({
   if (rankedProducts.length > 0) {
     const images = await ProductImage.find({
       productId: { $in: rankedProducts.map((p) => p.productId) },
-    })
-      .sort({ isPrimary: -1, displayOrder: 1 })
-      .lean();
-    const imageMap = new Map();
-    for (const img of images) {
-      const pid = String(img.productId);
-      if (!imageMap.has(pid)) imageMap.set(pid, img.imageUrl);
-    }
+    }).lean();
+    // Ảnh chính chung → ảnh chính của màu đầu tiên → ảnh đầu tiên (TASK-007)
+    const imageMap = representativeUrlByProduct(images);
     rankedProducts.forEach((p) => {
       p.imageUrl = imageMap.get(String(p.productId)) || '';
     });

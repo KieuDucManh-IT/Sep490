@@ -9,6 +9,7 @@ import productService from '../../services/masterdata/productService';
 import stocktakeService from '../../services/warehouse/stocktakeService';
 import WarehouseWorkflowProgress from '../../components/WarehouseWorkflowProgress';
 import StocktakeScopeSelector from '../../components/StocktakeScopeSelector';
+import WarehouseCancelSlipModal, { WarehouseCancelledNote } from '../../components/WarehouseCancelSlipModal';
 import '../../styles/WarehouseManager.css';
 import '../../styles/WarehouseUx.css';
 
@@ -54,6 +55,7 @@ export default function WarehouseStocktakePage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [showCancel, setShowCancel] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -172,6 +174,25 @@ export default function WarehouseStocktakePage() {
     await runAction(() => stocktakeService.submit(selected._id), 'Đã gửi kết quả kiểm kê.');
   };
 
+  const confirmCancel = async (reason) => {
+    const id = selected._id;
+    try {
+      await stocktakeService.cancel(id, reason);
+    } catch (cancelError) {
+      if (cancelError.status === 409) {
+        // Phiếu vừa đổi trạng thái ở nơi khác: tải lại để hiện trạng thái mới, giữ thông báo lỗi trong hộp thoại.
+        await load();
+        await refreshSelected(id).catch(() => {});
+      }
+      throw cancelError;
+    }
+    setShowCancel(false);
+    setError('');
+    await load();
+    await refreshSelected(id).catch((refreshError) => setError(refreshError.message));
+    setNotice('Đã hủy phiếu kiểm kê.');
+  };
+
   const heading = 'Kiểm kê kho';
   const countSummary = (selected?.items || []).reduce((summary, item) => {
     const individual = Boolean(item.itemId);
@@ -212,6 +233,7 @@ export default function WarehouseStocktakePage() {
       <section className="wm-crud-modal wm-stocktake-modal wm-stock-detail">
         <div className="wm-stock-detail-heading"><div><small>{selected.stocktakeCode} · {statusLabel[selected.status]}</small><h2>{selected.locationId?.code} · {selected.locationId?.name}</h2><p>Phạm vi: {scopeLabel(selected)} · Giao cho: {selected.assignedStaffId?.FullName || 'Chưa giao'}</p></div><button type="button" className="secondary" onClick={() => setSelected(null)}>Đóng</button></div>
         <WarehouseWorkflowProgress flow="stocktake" status={selected.status} />
+        <WarehouseCancelledNote slip={selected} />
         <div className="wm-report-cards wm-stocktake-summary"><article className="wm-report-card"><span>Tồn sổ</span><strong>{countSummary.expected}</strong></article><article className="wm-report-card"><span>Thực tế dự kiến</span><strong>{countSummary.counted}</strong></article><article className="wm-report-card"><span>Thiếu / mất</span><strong>{countSummary.missing}</strong></article><article className="wm-report-card"><span>Hỏng / không sửa được</span><strong>{countSummary.damaged}</strong></article></div>
         <div className="wm-table-wrap"><table><thead><tr><th>Mặt hàng / InventoryItem</th><th>Vị trí</th><th>Tồn sổ</th><th>Condition thực tế</th><th>SL thực tế</th><th>Chênh lệch</th><th>Ghi nhận</th></tr></thead><tbody>
           {(selected.items || []).map((item) => { const condition = itemConditions[item._id] || item.countedCondition || item.itemId?.condition || 'good'; const individual = Boolean(item.itemId); const actual = individual ? (condition === 'missing' ? 0 : 1) : Number(counts[item._id] || 0); return <tr key={item._id}><td>{itemLabel(item)}<small className="wm-stock-subline">{individual ? 'Kiểm từng itemCode' : 'Nhập tổng số lượng'}</small>{item.itemId && <small className="wm-stock-subline">{item.itemId.itemCode}{item.itemId.serialNumber ? ` · ${item.itemId.serialNumber}` : ''}</small>}{item.countedItemCode && <small className="wm-stock-subline">Mã mới: {item.countedItemCode}</small>}</td><td>{item.storageId?.code || 'Chưa gán'}</td><td>{item.systemQuantity}</td><td>{selected.status === 'in_progress' && individual ? <select aria-label="Condition thực tế của InventoryItem" value={condition} onChange={(event) => { const next = event.target.value; setItemConditions({ ...itemConditions, [item._id]: next }); setCounts({ ...counts, [item._id]: next === 'missing' ? '0' : '1' }); }}><option value="new">Mới</option><option value="good">Tốt</option><option value="worn">Đã qua sử dụng</option><option value="damaged">Hỏng</option><option value="unrepairable">Không thể sửa</option><option value="missing">Mất / không tìm thấy</option></select> : individual ? (item.countedCondition || item.itemId.condition || 'good') : '—'}</td><td>{selected.status === 'in_progress' && !individual ? <input className="wm-count-input" type="number" min="0" step="1" value={counts[item._id] ?? ''} onChange={(event) => setCounts({ ...counts, [item._id]: event.target.value })} /> : actual}</td><td>{individual ? actual - Number(item.systemQuantity || 0) : detailVariance({ ...item, countedQuantity: actual })}</td><td>{item.isCounted ? item.countedBy?.FullName || 'Đã kiểm' : 'Chưa kiểm'}</td></tr>; })}
@@ -226,14 +248,14 @@ export default function WarehouseStocktakePage() {
           <button type="button" className="danger" onClick={() => setNewItems(newItems.filter((_, i) => i !== index))}>Xóa</button>
         </div>})}<button type="button" className="secondary" onClick={() => setNewItems([...newItems, { variantId: '', storageId: '', itemCode: '', countedQuantity: 1 }])}>+ Thêm mặt hàng thực tế</button></div>}
         <div className="wm-stock-actions">
+          {isManager && ['draft', 'in_progress', 'counted'].includes(selected.status) && <button className="danger" type="button" disabled={busy} onClick={() => setShowCancel(true)}>Hủy phiếu</button>}
           {selected.status === 'draft' && isManager && <button disabled={busy} onClick={() => runAction(() => stocktakeService.start(selected._id), 'Đã bắt đầu kiểm kê và chụp tồn sổ.')}>Bắt đầu kiểm kê</button>}
           {selected.status === 'in_progress' && <><button className="secondary" disabled={busy} onClick={saveCounts}>Lưu số đếm</button><button disabled={busy} onClick={submitCounts}>Gửi kết quả</button></>}
           {selected.status === 'counted' && isManager && <button disabled={busy} onClick={() => runAction(async () => { const result = await stocktakeService.approve(selected._id); if (result?.adjustment?._id) setNotice(`Đã duyệt kiểm kê, tạo phiếu điều chỉnh ${result.adjustment.adjustmentCode}.`); return result.stocktake; }, 'Đã duyệt kiểm kê.')}>Duyệt và tạo điều chỉnh</button>}
           {selected.status === 'approved' && isManager && <Link className="wm-primary-button" to="/warehousemanager/adjustments">Mở phiếu điều chỉnh</Link>}
         </div>
       </section></div>}
-
-
+      <WarehouseCancelSlipModal show={showCancel && Boolean(selected)} slipLabel="phiếu kiểm kê" slipCode={selected?.stocktakeCode} onHide={() => setShowCancel(false)} onConfirm={confirmCancel} />
     </main>
   </div>;
 }

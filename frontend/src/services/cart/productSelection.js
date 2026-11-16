@@ -1,13 +1,16 @@
 const norm = value => String(value || '').trim().toLowerCase();
+const byPrimaryThenOrder = (a, b) => Number(Boolean(b.isPrimary)) - Number(Boolean(a.isPrimary))
+  || (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0);
+/**
+ * Ảnh theo màu (TASK-007): ảnh của màu đang chọn → ảnh chung (color null) → product.images/product.image.
+ * `size` giữ lại để không phải sửa nơi gọi; ảnh dùng chung cho mọi size của một màu.
+ */
 export const selectionImages = (product, size, color) => {
   const records = product?.imageRecords || [];
-  const variant = matchVariant(product, size, color);
-  const colorIds = new Set(activeVariants(product).filter(v => norm(v.color) === norm(color)).map(v => String(v._id)));
-  const exact = variant ? records.filter(r => r.variantId && String(r.variantId?._id || r.variantId) === String(variant._id)) : [];
-  const byColor = records.filter(r => r.variantId && colorIds.has(String(r.variantId?._id || r.variantId)));
-  const common = records.filter(r => !r.variantId);
-  const chosen = exact.length ? exact : byColor.length ? byColor : common;
-  const urls = chosen.length ? chosen.map(r => r.imageUrl) : records.length ? [] : [...(product?.images || []), product?.image];
+  const byColor = norm(color) ? records.filter(r => r.color && norm(r.color) === norm(color)) : [];
+  const common = records.filter(r => !r.color);
+  const chosen = (byColor.length ? byColor : common).slice().sort(byPrimaryThenOrder);
+  const urls = chosen.length ? chosen.map(r => r.imageUrl) : [...(product?.images || []), product?.image];
   return [...new Set(urls.filter(u => typeof u === 'string' && u.trim()))];
 };
 export const activeVariants = product => (product?.variants || []).filter(v => !v.isDeleted && norm(v.status) !== 'inactive');

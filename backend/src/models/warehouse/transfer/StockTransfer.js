@@ -18,6 +18,9 @@ const stockTransferSchema = new mongoose.Schema({
   putawayAt: { type: Date, default: null },
   receiptApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   receiptApprovedAt: { type: Date, default: null },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  cancelledAt: { type: Date, default: null },
+  cancelReason: { type: String, trim: true, maxlength: 500, default: '' },
   note: { type: String, trim: true },
 }, { timestamps: true });
 

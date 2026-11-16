@@ -202,6 +202,11 @@ export default function ProductDetailPage() {
     return selectionImages(product, selectedSize, selectedColor);
   }, [product, selectedSize, selectedColor]);
 
+  // Thư viện ảnh đổi theo màu: không để chỉ số ảnh vượt độ dài thư viện mới (TASK-007).
+  useEffect(() => {
+    if (selectedImgIndex >= images.length && selectedImgIndex !== 0) setSelectedImgIndex(0);
+  }, [images, selectedImgIndex]);
+
   // Phân loại tag sản phẩm: 'sale' | 'rental' | 'both'
   const productTag = useMemo(() => {
     if (!product) return 'rental';

@@ -11,6 +11,9 @@ export function usePricingData() {
   const [errorMsg, setErrorMsg] = useState('');
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
+  // TASK-008: lọc theo trạng thái định giá: 'unset' | 'set' | 'all'
+  const [pricingFilter, setPricingFilter] = useState('all');
+  const [pricingFilterTouched, setPricingFilterTouched] = useState(false);
 
   // Deferred search value để giao diện luôn mượt mà khi lọc danh sách
   const deferredSearch = useDeferredValue(search);
@@ -33,7 +36,8 @@ export function usePricingData() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await productService.getProducts({ limit: 100 });
+      // TASK-008: API riêng cho Owner, gồm cả sản phẩm chưa định giá (API public đã ẩn chúng).
+      const res = await productService.getOwnerPricingProducts({ pricingStatus: 'all', limit: 200 });
       let rawList = [];
       if (res && res.data) {
         if (Array.isArray(res.data.data)) {
@@ -56,6 +60,7 @@ export function usePricingData() {
         const image = (Array.isArray(p.images) && p.images[0]) || p.image || null;
         const variantsCount = Array.isArray(p.variants) ? p.variants.length : 0;
         const updatedAt = p.updatedAt;
+        const isSetPrice = p.isSetPrice === true;
 
         return {
           id,
@@ -69,21 +74,39 @@ export function usePricingData() {
           variantsCount,
           updatedAt,
           brand: p.brand || '',
+          tag: p.tag || '',
+          isSetPrice,
+          priceSetAt: p.priceSetAt || null,
+          missingPrices: Array.isArray(p.missingPrices) ? p.missingPrices : [],
         };
       });
 
       setItems(mapped);
+      // Mặc định "Chưa định giá" nếu còn sản phẩm chưa định giá (trừ khi Owner đã tự chọn bộ lọc).
+      if (!pricingFilterTouched) setPricingFilter(mapped.some((it) => !it.isSetPrice) ? 'unset' : 'all');
     } catch (err) {
       console.error('Lỗi tải danh sách sản phẩm:', err);
       setErrorMsg('Không thể kết nối đến máy chủ để tải bảng giá. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pricingFilterTouched]);
 
   useEffect(() => {
     fetchProducts();
-  }, [fetchProducts]);
+    // Chỉ tải khi mở trang; nút "Làm mới" gọi fetchProducts trực tiếp.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const changePricingFilter = useCallback((value) => {
+    setPricingFilterTouched(true);
+    setPricingFilter(value);
+  }, []);
+
+  const pricingCounts = useMemo(() => {
+    const unset = items.filter((it) => !it.isSetPrice).length;
+    return { unset, set: items.length - unset, all: items.length };
+  }, [items]);
 
   // Danh mục lấy từ dữ liệu thực kèm số lượng sản phẩm mỗi danh mục
   const categoryOptions = useMemo(() => {
@@ -112,9 +135,11 @@ export function usePricingData() {
         it.brand.toLowerCase().includes(query);
       const matchCategory =
         selectedCategory === 'ALL' || it.category === selectedCategory;
-      return matchSearch && matchCategory;
+      const matchPricing =
+        pricingFilter === 'all' || (pricingFilter === 'unset' ? !it.isSetPrice : it.isSetPrice);
+      return matchSearch && matchCategory && matchPricing;
     });
-  }, [items, deferredSearch, selectedCategory]);
+  }, [items, deferredSearch, selectedCategory, pricingFilter]);
 
   // Tính toán KPI động
   const kpiStats = useMemo(() => {
@@ -260,6 +285,9 @@ export function usePricingData() {
               rentalPricePerDay: rent,
               deposit: dep,
               updatedAt: new Date().toISOString(),
+              isSetPrice: true,
+              priceSetAt: new Date().toISOString(),
+              missingPrices: [],
             };
           }
           return it;
@@ -293,6 +321,9 @@ export function usePricingData() {
     categoryOptions,
     filteredItems,
     kpiStats,
+    pricingFilter,
+    setPricingFilter: changePricingFilter,
+    pricingCounts,
     fetchProducts,
     // Modal
     editingItem,

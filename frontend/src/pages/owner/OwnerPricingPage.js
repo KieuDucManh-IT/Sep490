@@ -50,6 +50,9 @@ export default function OwnerPricingPage() {
     categoryOptions,
     filteredItems,
     kpiStats,
+    pricingFilter,
+    setPricingFilter,
+    pricingCounts,
     fetchProducts,
     editingItem,
     editForm,
@@ -168,6 +171,33 @@ export default function OwnerPricingPage() {
               </div>
             ) : null}
 
+            {/* TASK-008: Lọc theo trạng thái định giá */}
+            {pricingCounts.unset > 0 ? (
+              <div role="status" className="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3">
+                <AlertCircle size={16} aria-hidden="true" />
+                <span>
+                  Có <strong>{pricingCounts.unset}</strong> sản phẩm chưa định giá. Khách hàng chưa nhìn thấy các sản phẩm này cho tới khi bạn lưu bảng giá.
+                </span>
+              </div>
+            ) : null}
+            <div className="btn-group mb-3" role="group" aria-label="Lọc theo trạng thái định giá">
+              {[
+                ['unset', 'Chưa định giá', pricingCounts.unset],
+                ['set', 'Đã định giá', pricingCounts.set],
+                ['all', 'Tất cả', pricingCounts.all],
+              ].map(([value, label, count]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`btn btn-sm ${pricingFilter === value ? (value === 'unset' ? 'btn-warning' : 'btn-dark') : 'btn-outline-secondary'}`}
+                  aria-pressed={pricingFilter === value}
+                  onClick={() => setPricingFilter(value)}
+                >
+                  {label} ({count})
+                </button>
+              ))}
+            </div>
+
             {/* Thanh Công Cụ Tìm Kiếm & Lọc Danh Mục */}
             <PricingFilterBar
               search={search}
@@ -188,8 +218,9 @@ export default function OwnerPricingPage() {
               onResetFilters={() => {
                 setSearch('');
                 setSelectedCategory('ALL');
+                setPricingFilter('all');
               }}
-              hasActiveFilters={Boolean(search || selectedCategory !== 'ALL')}
+              hasActiveFilters={Boolean(search || selectedCategory !== 'ALL' || pricingFilter !== 'all')}
             />
           </div>
         </main>

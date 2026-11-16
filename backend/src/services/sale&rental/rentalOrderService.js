@@ -118,6 +118,10 @@ export const calculateRentalPriceAndDeposit = async (items, startDate, dueDate) 
     if (!isActiveProduct(variant.productId)) {
       throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] đã ngừng kinh doanh`, 'ERR_ITEM_INACTIVE');
     }
+    // TASK-008: sản phẩm chưa được Shop Owner định giá thì chưa mở bán.
+    if (product.isSetPrice !== true) {
+      throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] chưa được mở bán`, 'ERR_ITEM_NOT_PRICED');
+    }
 
     // Kiểm tra type mismatch: sản phẩm chỉ dành để bán không thể thuê
     // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020

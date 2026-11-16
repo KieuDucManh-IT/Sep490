@@ -1,4 +1,4 @@
-import { resolveProductPricing, isActiveProduct } from '../../services/masterdata/productPricing.js';
+import { resolveProductPricing, isCustomerVisibleProduct, customerVisibleProductFilter } from '../../services/masterdata/productPricing.js';
 
 import mongoose from 'mongoose';
 import { Product } from '../../models/masterdata/Product.js';
@@ -8,6 +8,13 @@ import { ProductImage } from '../../models/masterdata/ProductImages.js';
 import { productService } from '../../services/masterdata/productService.js';
 import { createCrudController } from '../../generic/crudController.js';
 import { enrichProductsWithInventory } from '../../services/warehouse/productInventoryHelper.js';
+import { visibleImageRecords, orderedImageUrls, colorImageMap } from '../../services/masterdata/productImageHelper.js';
+
+// Ảnh gửi cho khách: bỏ trường variantId cũ (dữ liệu chưa migrate) và ẩn ảnh của màu không còn biến thể đang bán.
+const customerImageRecords = (records, variants) => visibleImageRecords(
+  records.map(({ variantId, variant_id, ...record }) => record),
+  variants.map((variant) => variant.color).filter(Boolean),
+);
 
 /**
  * Lấy danh sách sản phẩm theo bộ lọc, tìm kiếm, phân trang và sắp xếp
@@ -30,10 +37,8 @@ export const getProducts = async (req, res, next) => {
       limit = 8,
     } = req.query;
 
-    const query = {
-      isDeleted: { $ne: true },
-      status: { $nin: ['inactive', 'INACTIVE', 'discontinued', 'DISCONTINUED'] },
-    };
+    // Khách chỉ thấy sản phẩm đang bán và đã được Shop Owner định giá (TASK-008).
+    const query = customerVisibleProductFilter();
 
     // Tìm kiếm theo từ khóa
     if (search && search.trim()) {
@@ -288,8 +293,8 @@ export const getProducts = async (req, res, next) => {
       let deposit = p.deposit || 0;
 
       // Hình ảnh thực tế từ database
-      const imageRecords = imagesByProduct[String(p._id)] || [];
-      let images = imageRecords.length ? imageRecords.map((image) => image.imageUrl) : Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+      const imageRecords = customerImageRecords(imagesByProduct[String(p._id)] || [], pVariants);
+      let images = imageRecords.length ? orderedImageUrls(imageRecords) : Array.isArray(p.images) ? p.images.filter(Boolean) : [];
       if (images.length === 0 && p.image) {
         images = [p.image];
       }
@@ -320,6 +325,7 @@ export const getProducts = async (req, res, next) => {
         image: images[0] || p.image || '',
         images,
         imageRecords,
+        colorImages: colorImageMap(imageRecords),
         shopId: p.shopId || { name: p.brand || 'Vestora Fashion Store' },
         categoryName,
         quantity,
@@ -401,7 +407,8 @@ export const getProductById = async (req, res, next) => {
       }
     }
 
-    if (!isActiveProduct(product)) {
+    // Chưa định giá → 404 như sản phẩm không tồn tại (TASK-008).
+    if (!isCustomerVisibleProduct(product)) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm.' });
     }
 
@@ -439,8 +446,9 @@ export const getProductById = async (req, res, next) => {
       console.warn('Lỗi lấy imageRecords:', e.message);
     }
 
+    imageRecords = customerImageRecords(imageRecords, variants);
     const images = imageRecords.length
-      ? imageRecords.map((img) => img.imageUrl)
+      ? orderedImageUrls(imageRecords)
       : Array.isArray(product.images) && product.images.length
       ? product.images.filter(Boolean)
       : product.image
@@ -512,6 +520,7 @@ export const getProductById = async (req, res, next) => {
         image: images[0] || product.image || '',
         images,
         imageRecords,
+        colorImages: colorImageMap(imageRecords),
         categoryName,
         quantity,
         quantityOnHand,
@@ -541,11 +550,14 @@ export const getFilterMeta = async (req, res, next) => {
   try {
     const [categories, products, variants] = await Promise.all([
       Category.find({ status: { $nin: ['inactive', 'INACTIVE'] }, isDeleted: { $ne: true } }).lean(),
-      Product.find({ isDeleted: { $ne: true }, status: { $nin: ['inactive', 'INACTIVE'] } })
+      Product.find(customerVisibleProductFilter())
         .populate('categoryId')
         .lean(),
       ProductVariant.find({ status: { $nin: ['inactive', 'INACTIVE'] }, isDeleted: { $ne: true } }).select('-variantName').lean(),
     ]);
+    // Chỉ đếm biến thể của sản phẩm khách nhìn thấy (TASK-008).
+    const visibleProductIds = new Set(products.map((p) => String(p._id)));
+    const visibleVariants = variants.filter((v) => visibleProductIds.has(String(v.productId)));
 
     const categoryCounts = {};
     categories.forEach((cat) => {
@@ -597,7 +609,7 @@ export const getFilterMeta = async (req, res, next) => {
     });
 
     // Bổ sung kích cỡ và màu sắc từ bảng ProductVariant
-    variants.forEach((v) => {
+    visibleVariants.forEach((v) => {
       if (v.size) {
         const sz = String(v.size).toUpperCase();
         sizeCounts[sz] = (sizeCounts[sz] || 0) + 1;

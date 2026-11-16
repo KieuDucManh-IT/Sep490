@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import '../styles/WarehouseManager.css';
 import WarehouseWorkflowProgress from './WarehouseWorkflowProgress';
+import { WarehouseCancelledNote } from './WarehouseCancelSlipModal';
 import '../styles/WarehouseUx.css';
 
 const statusLabels = {
@@ -18,7 +19,7 @@ const productName = (line) => {
   return [product?.name, variant?.sku, variant?.color, variant?.size].filter(Boolean).join(' · ') || 'Mặt hàng';
 };
 
-export default function InboundReceiptModal({ mode, role, receipt, centralLocation, suppliers, products, variants, staff, shelves, onClose, onCreate, onReceive, onApprove, onPutaway }) {
+export default function InboundReceiptModal({ mode, role, receipt, centralLocation, suppliers, products, variants, staff, shelves, onClose, onCreate, onReceive, onApprove, onPutaway, onCancel }) {
   const [activeMode, setActiveMode] = useState(mode);
   const [supplierId, setSupplierId] = useState('');
   const [assignedStaffId, setAssignedStaffId] = useState('');
@@ -108,6 +109,7 @@ export default function InboundReceiptModal({ mode, role, receipt, centralLocati
       <header><div><span>QUY TRÌNH NHẬP KHO</span><h2 id="inbound-modal-title">{title}</h2></div><button type="button" className="wm-modal-close" onClick={onClose} aria-label="Đóng"><X size={20} /></button></header>
       {error && <div className="wm-error">{error}</div>}
       {receipt && activeMode !== 'create' && <WarehouseWorkflowProgress flow="inbound" status={receipt.status} />}
+      {receipt && activeMode !== 'create' && <WarehouseCancelledNote slip={receipt} />}
       {activeMode === 'create' && <form className="wm-form" onSubmit={submitCreate}>
         <div className="wm-central-warehouse"><small>Kho nhận hàng (kho tổng)</small><strong>{centralLocation ? `${centralLocation.code} — ${centralLocation.name}` : 'Chưa xác định duy nhất kho tổng'}</strong></div>
         <label>Nhà cung cấp<select required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Chọn nhà cung cấp</option>{suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.supplierCode} — {supplier.name}</option>)}</select></label>
@@ -140,6 +142,7 @@ export default function InboundReceiptModal({ mode, role, receipt, centralLocati
         })}</tbody></table></div>
         <footer className="wm-modal-footer">
           <button type="button" className="secondary" onClick={onClose}>Đóng</button>
+          {role === 'warehouse_manager' && onCancel && ['awaiting_receiving', 'received', 'approved'].includes(receipt.status) && <button type="button" className="danger" onClick={onCancel}>Hủy phiếu</button>}
           {role === 'warehouse_staff' && receipt.status === 'awaiting_receiving' && <button type="button" onClick={() => setActiveMode('receive')}>Ghi nhận thực nhận</button>}
           {role === 'warehouse_manager' && receipt.status === 'received' && <><button type="button" className="danger" onClick={() => onApprove('reject')}>Từ chối phiếu</button><button type="button" onClick={() => onApprove('approve')}>Duyệt phiếu</button></>}
           {role === 'warehouse_staff' && receipt.status === 'approved' && <button type="button" onClick={() => setActiveMode('putaway')}>Sắp xếp vào kệ</button>}

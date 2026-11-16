@@ -51,3 +51,25 @@ export const representativeUrlByProduct = (records = []) => {
   }
   return new Map([...grouped].map(([key, rows]) => [key, pickRepresentativeImage(rows)?.imageUrl || '']));
 };
+
+/** Ảnh đại diện cho một màu: ảnh chính (hoặc ảnh đầu) của màu đó, không có thì ảnh đại diện chung. */
+export const imageUrlForColor = (records = [], color = null) => {
+  const key = normalizeColorKey(color);
+  if (key) {
+    const sameColor = [...records].filter((r) => r.color && normalizeColorKey(r.color) === key).sort(byDisplayOrder);
+    const picked = sameColor.find((r) => r.isPrimary) || sameColor[0];
+    if (picked?.imageUrl) return picked.imageUrl;
+  }
+  return pickRepresentativeImage(records)?.imageUrl || '';
+};
+
+/** Gom bản ghi ảnh theo productId: Map<productId, records[]>. */
+export const groupImagesByProduct = (records = []) => {
+  const grouped = new Map();
+  for (const record of records) {
+    const key = String(record.productId);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(record);
+  }
+  return grouped;
+};

@@ -4,7 +4,10 @@ import {
   validateUpdateShopInfoInput,
   validateOperatingStatus,
   validateReverseGeocodeQuery,
+  validateBranchPerformanceQuery,
 } from '../../validations/shop/shopValidation.js';
+
+import { getBranchPerformanceReportData } from '../../services/shop/branchReportService.js';
 
 import {
   listShopApplications,
@@ -383,3 +386,47 @@ export const uploadShopImage = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Lấy báo cáo hiệu suất và vận hành dành riêng cho Quản lý chi nhánh
+ * GET /api/shops/reports/branch-performance
+ * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-001
+ * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-002
+ */
+export const getBranchPerformanceReport = async (req, res) => {
+  try {
+    const normalizedRole = String(req.user?.Role || req.user?.role || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]/g, '')
+      .replace('brandmanager', 'branchmanager');
+
+    if (normalizedRole !== 'branchmanager' && normalizedRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chức năng báo cáo hiệu suất chi nhánh chỉ dành riêng cho Quản lý chi nhánh.',
+      });
+    }
+
+    const validatedQuery = validateBranchPerformanceQuery(req.query);
+    const report = await getBranchPerformanceReportData({
+      user: req.user,
+      branchId: validatedQuery.branchId,
+      timeRange: validatedQuery.timeRange,
+      startDate: validatedQuery.startDate,
+      endDate: validatedQuery.endDate,
+    });
+
+    return res.json({
+      success: true,
+      data: report,
+    });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || 'Không thể tải báo cáo hiệu suất chi nhánh.',
+    });
+  }
+};
+

@@ -21,6 +21,9 @@ export function createCheckoutPayload(cartState = {}) {
   const rentalItems = items
     .filter((item) => item.orderType === ORDER_TYPES.RENTAL)
     .map((item) => ({
+      cartItemId: item.cartItemId,
+      selectedBranch: item.selectedBranch || null,
+      locationId: item.selectedBranch?.locationId || null,
       productId: String(item.productId || ''),
       variantId: String(item.variantId || ''),
       sku: String(item.sku || ''),
@@ -39,6 +42,9 @@ export function createCheckoutPayload(cartState = {}) {
   const saleItems = items
     .filter((item) => item.orderType === ORDER_TYPES.SALE)
     .map((item) => ({
+      cartItemId: item.cartItemId,
+      selectedBranch: item.selectedBranch || null,
+      locationId: item.selectedBranch?.locationId || null,
       productId: String(item.productId || ''),
       variantId: String(item.variantId || ''),
       sku: String(item.sku || ''),

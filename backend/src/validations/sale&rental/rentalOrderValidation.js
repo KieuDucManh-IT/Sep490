@@ -10,6 +10,29 @@
 
 import { z } from 'zod';
 
+export const parseCalendarDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value)) return null;
+  if (value.includes('T') && !Number.isFinite(new Date(value).getTime())) return null;
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+};
+export const computeCalendarRentalDays = (startDate, dueDate) => {
+  const start = parseCalendarDate(startDate); const due = parseCalendarDate(dueDate);
+  if (!start || !due || due < start) return 0;
+  return Math.max(1, Math.round((Date.UTC(due.getFullYear(), due.getMonth(), due.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86400000));
+};
+/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-022 */
+export const validateCalendarRentalRange = (startDate, dueDate) => {
+  const start = parseCalendarDate(startDate); const due = parseCalendarDate(dueDate);
+  const today = parseCalendarDate(formatLocalDateString(new Date()));
+  if (!start || start < today) return { valid: false, code: 'ERR_INVALID_DATES', field: 'startDate', message: 'Ngày nhận không hợp lệ hoặc đã qua.' };
+  if (!due || due < start) return { valid: false, code: 'ERR_INVALID_DATES', field: 'dueDate', message: 'Ngày trả phải sau hoặc bằng ngày nhận.' };
+  const rentalDays = computeCalendarRentalDays(startDate, dueDate);
+  if (rentalDays > 30) return { valid: false, code: 'ERR_RENTAL_TOO_LONG', field: 'dueDate', message: 'Thời gian thuê tối đa 30 ngày.' };
+  return { valid: true, rentalDays };
+};
+
 export const objectIdSchema = z
   .any()
   .refine(
@@ -58,17 +81,10 @@ export const createRentalOrderSchema = z
       .enum(['wallet', 'payos', 'cash'])
       .default('wallet'),
   })
-  .refine(
-    (data) => {
-      const start = new Date(data.startDate).getTime();
-      const due = new Date(data.dueDate).getTime();
-      return !isNaN(start) && !isNaN(due) && due > start;
-    },
-    {
-      message: 'Ngày trả đồ (dueDate) phải sau ngày nhận đồ (startDate)',
-      path: ['dueDate'],
-    }
-  );
+  .superRefine((data, ctx) => {
+    const result = validateCalendarRentalRange(data.startDate, data.dueDate);
+    if (!result.valid) ctx.addIssue({ code: 'custom', message: result.message, path: [result.field] });
+  });
 
 export const assignPhysicalItemsSchema = z.object({
   rentalOrderId: objectIdSchema,
@@ -97,3 +113,14 @@ export const cancelRentalOrderSchema = z.object({
     .min(3, 'Lý do hủy đơn tối thiểu 3 ký tự')
     .max(500, 'Lý do hủy đơn tối đa 500 ký tự'),
 });
+
+/**
+ * Format date sang chuỗi YYYY-MM-DD theo lịch địa phương
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-022
+ * @param {Date|string|number} date
+ * @returns {string} YYYY-MM-DD
+ */
+export const formatLocalDateString = (date) => {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};

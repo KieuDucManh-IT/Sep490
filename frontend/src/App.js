@@ -133,14 +133,14 @@ function App() {
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)
             ======================================================== */}
-        <Route
+        {/* <Route
           path="/branch/dashboard"
           element={
             <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <BranchDashboardPage />
             </ProtectedRoute>
           }
-        />
+        /> */}
         <Route
           path="/branch/chat"
           element={
@@ -190,9 +190,9 @@ function App() {
           }
         />
         <Route
-          path="/branch/analytics"
+          path="/branch/dashboard"
           element={
-            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER']}>
               <BranchAnalyticsPage />
             </ProtectedRoute>
           }

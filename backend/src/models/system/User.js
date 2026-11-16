@@ -32,6 +32,16 @@ const informationSchema = new mongoose.Schema(
       default: "",
     },
 
+    DistrictCode: {
+      type: String,
+      default: "",
+    },
+
+    DistrictName: {
+      type: String,
+      default: "",
+    },
+
     WardCode: {
       type: String,
       default: "",

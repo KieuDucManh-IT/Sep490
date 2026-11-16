@@ -14,8 +14,9 @@ const addressInfoSchema = new mongoose.Schema({
   address: { type: String, trim: true },
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
-  provinceId: { type: Number },
-  wardCode: { type: String, trim: true },
+  provinceId: { type: Number, default: null },
+  districtId: { type: Number, default: null },
+  wardCode: { type: String, trim: true, default: null },
 }, { _id: false });
 
 const orderShipmentSchema = new mongoose.Schema({

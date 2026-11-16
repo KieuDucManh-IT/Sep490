@@ -20,6 +20,7 @@ import rentalOrderRoutes from './rentalOrderRoutes.js';
 import rentalReturnRoutes from './rentalReturnRoutes.js';
 import rentalDisputeRoutes from './rentalDisputeRoutes.js';
 import salesOrderRoutes from './salesOrderRoutes.js';
+import cartRoutes from './cartRoutes.js';
 const router = express.Router();
 
 const publicTrackingLimiter = rateLimit({
@@ -62,4 +63,5 @@ router.use('/rental-orders', rentalOrderRoutes);
 router.use('/rental-returns', rentalReturnRoutes);
 router.use('/rental-disputes', rentalDisputeRoutes);
 router.use('/sales-orders', salesOrderRoutes);
+router.use('/cart', cartRoutes);
 export default router;

@@ -1,3 +1,5 @@
+import { activeVariants, matchVariant, variantStock, variantPricing, selectionImages } from '../../services/cart/productSelection';
+import { formatLocalDate, parseDateOnly, calculateRentalDays } from '../../services/cart/cartCalculations';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
@@ -56,18 +58,19 @@ export default function ProductDetailPage() {
 
   // User Interactive Choices
   const [selectedImgIndex, setSelectedImgIndex] = useState(0);
-  const [selectedSize, setSelectedSize] = useState('M');
+  const [selectedSize, setSelectedSize] = useState('');
+  const [selectedColor, setSelectedColor] = useState('');
   const [rentalDuration, setRentalDuration] = useState(1); // 3, 5, 7 days
   const [quantity, setQuantity] = useState(1);
   const [startDate, setStartDate] = useState(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    return formatLocalDate(tomorrow);
   });
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 2);
-    return d.toISOString().split('T')[0];
+    return formatLocalDate(d);
   });
   const [activeTab, setActiveTab] = useState('desc'); // 'desc' | 'size' | 'policy' | 'reviews'
   const [showAiModal, setShowAiModal] = useState(false);
@@ -107,6 +110,7 @@ export default function ProductDetailPage() {
     let isMounted = true;
     setLoading(true);
     setErrorMsg(null);
+    setProduct(null);
 
     const loadProduct = async () => {
       try {
@@ -121,20 +125,15 @@ export default function ProductDetailPage() {
           }
         }
 
-        // Nếu không có id hoặc tìm không thấy, fallback tải sản phẩm đầu tiên từ DB
-        if (!currentItem) {
-          const listRes = await productService.getProducts({ limit: 1 });
-          if (listRes?.data?.length > 0) {
-            currentItem = listRes.data[0];
-          }
-        }
-
         if (isMounted) {
           if (currentItem) {
             setProduct(currentItem);
-            if (currentItem.sizes && currentItem.sizes.length > 0) {
-              setSelectedSize(currentItem.sizes[0]);
-            }
+            const firstVariant = activeVariants(currentItem)[0];
+            setSelectedSize(firstVariant?.size || '');
+            setSelectedColor(firstVariant?.color || '');
+            setSelectedBranchId('');
+            setQuantity(1);
+            setSelectedImgIndex(0);
           } else {
             setErrorMsg('Không tìm thấy thông tin sản phẩm trên máy chủ.');
           }
@@ -200,17 +199,8 @@ export default function ProductDetailPage() {
 
   // Normalized product details
   const images = useMemo(() => {
-    if (!product) return [];
-    let list = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
-    if (list.length === 0 && product.image) {
-      list = [product.image];
-    }
-    // Nhân bản hình ảnh nếu danh sách quá ngắn để đủ 4 góc chụp như mockup
-    if (list.length === 1) {
-      return [list[0], list[0], list[0], list[0]];
-    }
-    return list;
-  }, [product]);
+    return selectionImages(product, selectedSize, selectedColor);
+  }, [product, selectedSize, selectedColor]);
 
   // Phân loại tag sản phẩm: 'sale' | 'rental' | 'both'
   const productTag = useMemo(() => {
@@ -246,54 +236,33 @@ export default function ProductDetailPage() {
 
   const isRental = selectedMode === 'rental';
 
-  // Giá thuê mặc định 1 ngày
-  const rentalPricePerDay = useMemo(() => {
-    if (!product) return 0;
-    if (product.rentalPricePerDay && product.rentalPricePerDay > 0) {
-      return product.rentalPricePerDay;
-    }
-    if (product.rentalPricePer3Days && product.rentalPricePer3Days > 0) {
-      return Math.round(product.rentalPricePer3Days / 3);
-    }
-    return 0;
-  }, [product]);
-
-  const currentPrice = isRental
-    ? rentalPricePerDay
-    : product?.salePrice || 0;
-
-  // Hàng mua bán thì không có tiền cọc
-  const depositAmount = useMemo(() => {
-    if (!isRental) return 0;
-    return Number(product?.deposit || product?.depositAmount || 0);
-  }, [isRental, product]);
-
-  // Available Sizes
-  const sizeOptions = useMemo(() => {
-    const standardSizes = ['XS', 'S', 'M', 'L', 'XL'];
-    const activeSizes = product?.sizes && product.sizes.length > 0 ? product.sizes : ['S', 'M', 'L'];
-    return standardSizes.map((s) => ({
-      name: s,
-      available: activeSizes.includes(s),
-    }));
-  }, [product]);
+  const matchedVariant = useMemo(() => matchVariant(product, selectedSize, selectedColor), [product, selectedSize, selectedColor]);
+  const pricing = variantPricing(product, matchedVariant);
+  const rentalPricePerDay = pricing.rentalPricePerDay;
+  const currentPrice = isRental ? rentalPricePerDay : pricing.salePrice;
+  const depositAmount = isRental ? pricing.deposit : 0;
+  const hasValidPrice = Number.isFinite(currentPrice) && currentPrice > 0 && Number.isFinite(depositAmount) && depositAmount >= 0;
+  const colorOptions = [...new Set(activeVariants(product).map(v => v.color || ''))];
+  const sizeOptions = [...new Set(activeVariants(product).filter(v => String(v.color || '').trim().toLowerCase() === String(selectedColor).trim().toLowerCase()).map(v => v.size || ''))].map(name => ({
+    name, available: Boolean(matchVariant(product, name, selectedColor)),
+  }));
 
   // Giới hạn ngày nhận đồ: Chặn ngày quá khứ, tối đa trước 60 ngày
   const todayStr = useMemo(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return formatLocalDate(today);
   }, []);
 
   const maxDateStr = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 60);
-    return d.toISOString().split('T')[0];
+    return formatLocalDate(d);
   }, []);
 
   // Format ngày nhận đồ
   const startDateFormatted = useMemo(() => {
     if (!startDate) return '';
-    const date = new Date(startDate);
+    const date = parseDateOnly(startDate);
     return date.toLocaleDateString('vi-VN', {
       day: '2-digit',
       month: '2-digit',
@@ -305,9 +274,9 @@ export default function ProductDetailPage() {
   const endDateFormatted = useMemo(() => {
     const target = dueDate || (() => {
       if (!startDate) return '';
-      const date = new Date(startDate);
+      const date = parseDateOnly(startDate);
       date.setDate(date.getDate() + (rentalDuration || 1));
-      return date.toISOString().split('T')[0];
+      return formatLocalDate(date);
     })();
     if (!target) return '';
     const date = new Date(target);
@@ -322,9 +291,9 @@ export default function ProductDetailPage() {
   const handleStartDateChange = (newStart) => {
     setStartDate(newStart);
     if (newStart) {
-      const d = new Date(newStart);
+      const d = parseDateOnly(newStart);
       d.setDate(d.getDate() + (rentalDuration || 1));
-      setDueDate(d.toISOString().split('T')[0]);
+      setDueDate(formatLocalDate(d));
     }
   };
 
@@ -332,10 +301,7 @@ export default function ProductDetailPage() {
   const handleDueDateChange = (newDue) => {
     setDueDate(newDue);
     if (startDate && newDue) {
-      const start = new Date(startDate);
-      const due = new Date(newDue);
-      const diffTime = due.getTime() - start.getTime();
-      const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+      const diffDays = calculateRentalDays(startDate, newDue);
       setRentalDuration(diffDays);
     }
   };
@@ -344,9 +310,9 @@ export default function ProductDetailPage() {
   const handleSelectDuration = (days) => {
     setRentalDuration(days);
     if (startDate) {
-      const d = new Date(startDate);
+      const d = parseDateOnly(startDate);
       d.setDate(d.getDate() + days);
-      setDueDate(d.toISOString().split('T')[0]);
+      setDueDate(formatLocalDate(d));
     }
   };
 
@@ -354,11 +320,11 @@ export default function ProductDetailPage() {
   const setQuickDate = (daysAhead) => {
     const d = new Date();
     d.setDate(d.getDate() + daysAhead);
-    const newStart = d.toISOString().split('T')[0];
+    const newStart = formatLocalDate(d);
     setStartDate(newStart);
-    const end = new Date(newStart);
+    const end = parseDateOnly(newStart);
     end.setDate(end.getDate() + (rentalDuration || 1));
-    setDueDate(end.toISOString().split('T')[0]);
+    setDueDate(formatLocalDate(end));
   };
 
   // Sắp xếp chi nhánh ưu tiên theo khoảng cách gần vị trí người dùng nhất (bỏ kho tổng)
@@ -377,30 +343,7 @@ export default function ProductDetailPage() {
       );
     });
 
-    if (rawBranches.length === 0) {
-      if (
-        product?.branchAddress &&
-        product.branchAddress !== 'Chưa có hàng tại chi nhánh' &&
-        !product.branchName?.toLowerCase().includes('kho tổng') &&
-        !product.branchName?.toLowerCase().includes('kho tong')
-      ) {
-        // Dùng shopId thực nếu có và là ObjectId hợp lệ
-        const fallbackLocationId =
-          product.shopId?._id || product.shopId || null;
-        const validLocId =
-          fallbackLocationId && isValidObjectId(fallbackLocationId)
-            ? String(fallbackLocationId)
-            : null;
-        return [{
-          locationId: validLocId,
-          name: product.branchName || 'Chi nhánh',
-          address: product.branchAddress,
-          quantity: product.quantity || 1,
-          distanceKm: null,
-        }];
-      }
-      return [];
-    }
+    if (rawBranches.length === 0) return [];
 
     const resolveCoords = (address = '', city = '') => {
       const text = `${city} ${address}`.toLowerCase();
@@ -490,44 +433,16 @@ export default function ProductDetailPage() {
     );
   }, [sortedBranches, selectedBranchId]);
 
-  // Tìm variant thực từ DB khớp size + color đã chọn
-  const matchedVariant = useMemo(() => {
-    if (!product) return null;
-    const variants = Array.isArray(product.variants) ? product.variants : [];
-    const selectedColor = (Array.isArray(product.colors) && product.colors[0]) || 'Mặc định';
-    return (
-      variants.find(
-        (v) =>
-          String(v.size || '').toLowerCase() === String(selectedSize || '').toLowerCase() &&
-          String(v.color || '').toLowerCase() === String(selectedColor).toLowerCase()
-      ) ||
-      variants.find(
-        (v) => String(v.size || '').toLowerCase() === String(selectedSize || '').toLowerCase()
-      ) ||
-      (variants.length > 0 ? variants[0] : null)
-    );
-  }, [product, selectedSize]);
-
-  // Tồn kho khả dụng của chi nhánh đã chọn hoặc sản phẩm
-  const availableStock = useMemo(() => {
-    if (!product || product.inStock === false) return 0;
-    if (currentSelectedBranch && typeof currentSelectedBranch.quantity === 'number') {
-      return Math.max(0, currentSelectedBranch.quantity);
-    }
-    if (typeof product.quantity === 'number') {
-      return Math.max(0, product.quantity);
-    }
-    return 99;
-  }, [product, currentSelectedBranch]);
-
-  const isOutOfStock = availableStock <= 0 || product?.inStock === false;
+  const availableStock = variantStock(currentSelectedBranch, matchedVariant?._id);
+  const isOutOfStock = availableStock === null || availableStock <= 0;
+  const canAdd = Boolean(matchedVariant && currentSelectedBranch?.locationId && !isOutOfStock && hasValidPrice);
 
   // Handle Add to Cart
   const handleAddToCart = () => {
     if (!product) return false;
     try {
-      if (isOutOfStock) {
-        showToast('Sản phẩm hiện đang tạm hết hàng tại chi nhánh này.', 'warning');
+      if (!canAdd) {
+        showToast('Vui lòng chọn biến thể, chi nhánh có hàng và giá hợp lệ.', 'warning');
         return false;
       }
 
@@ -545,9 +460,9 @@ export default function ProductDetailPage() {
       const isRentalItem = Boolean(isRental);
       let calculatedDueDate = '';
       if (isRentalItem && startDate) {
-        const d = new Date(startDate);
+        const d = parseDateOnly(startDate);
         d.setDate(d.getDate() + (rentalDuration || 1));
-        calculatedDueDate = d.toISOString().split('T')[0];
+        calculatedDueDate = formatLocalDate(d);
       }
 
       const resolvedVariantId = String(matchedVariant._id);
@@ -570,6 +485,7 @@ export default function ProductDetailPage() {
         thumbnailImage: images[0] || product.image || '',
         orderType: isRentalItem ? ORDER_TYPES.RENTAL : ORDER_TYPES.SALE,
         quantity: qtyToAdd,
+        availableStock,
         rentalPricePerDay: isRentalItem ? rentalPricePerDay : 0,
         depositAmount: isRentalItem ? depositAmount : 0,
         startDate: isRentalItem ? startDate : '',
@@ -959,6 +875,14 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
+          <div className="pdetail-section-group">
+            <span className="pdetail-section-title">Chọn màu sắc</span>
+            <div className="pdetail-size-buttons-row">
+              {colorOptions.map(color => <button key={color} type="button"
+                className={`pdetail-size-btn ${selectedColor === color ? 'active' : ''}`}
+                onClick={() => { setSelectedColor(color); setSelectedSize(''); setQuantity(1); setSelectedImgIndex(0); }}>{color || 'Mặc định'}</button>)}
+            </div>
+          </div>
           {/* Size Selection */}
           <div className="pdetail-section-group">
             <div className="pdetail-section-header">
@@ -976,7 +900,7 @@ export default function ProductDetailPage() {
                   key={sz.name}
                   disabled={!sz.available}
                   className={`pdetail-size-btn ${selectedSize === sz.name ? 'active' : ''}`}
-                  onClick={() => setSelectedSize(sz.name)}
+                  onClick={() => { setSelectedSize(sz.name); setQuantity(1); setSelectedImgIndex(0); }}
                   title={sz.available ? `Chọn size ${sz.name}` : `Size ${sz.name} hiện hết hàng`}
                 >
                   {sz.name}
@@ -1001,8 +925,8 @@ export default function ProductDetailPage() {
                 <span className="pdetail-stepper-value">{isOutOfStock ? 0 : quantity}</span>
                 <button
                   className="pdetail-stepper-btn"
-                  disabled={quantity >= availableStock || isOutOfStock}
-                  onClick={() => setQuantity((q) => Math.min(availableStock, q + 1))}
+                  disabled={quantity >= Math.min(99, availableStock ?? 0) || isOutOfStock}
+                  onClick={() => setQuantity((q) => Math.min(99, availableStock, q + 1))}
                   aria-label="Tăng số lượng"
                 >
                   +
@@ -1026,7 +950,7 @@ export default function ProductDetailPage() {
               <div className="pdetail-stock-indicator">
                 <span className={`pdetail-stock-dot ${isOutOfStock ? 'out-of-stock' : ''}`}></span>
                 <span>
-                  {!isOutOfStock
+                  {availableStock === null ? 'Chưa xác định tồn kho' : !isOutOfStock
                     ? `Còn hàng (${availableStock} sản phẩm)`
                     : 'Hết hàng'}
                 </span>
@@ -1120,7 +1044,7 @@ export default function ProductDetailPage() {
                           key={b.locationId || b.name}
                           value={String(b.locationId || b.name)}
                         >
-                          {b.name} — Còn {b.quantity} cái{distText}
+                          {b.name} — Còn {variantStock(b, matchedVariant?._id) ?? 'chưa xác định'} cái{distText}
                         </option>
                       );
                     })}
@@ -1170,7 +1094,7 @@ export default function ProductDetailPage() {
                           fontSize: '11.5px',
                         }}
                       >
-                        Sẵn có {currentSelectedBranch.quantity} cái
+                        Sẵn có {availableStock ?? 'chưa xác định'} cái
                       </span>
                     </div>
                     <div
@@ -1525,10 +1449,10 @@ export default function ProductDetailPage() {
             <button
               className="pdetail-btn-rent-now"
               onClick={handleRentNow}
-              disabled={isOutOfStock || !matchedVariant}
+              disabled={!canAdd}
               style={{
-                opacity: isOutOfStock || !matchedVariant ? 0.55 : 1,
-                cursor: isOutOfStock || !matchedVariant ? 'not-allowed' : 'pointer',
+                opacity: !canAdd ? 0.55 : 1,
+                cursor: !canAdd ? 'not-allowed' : 'pointer',
               }}
               title={
                 isOutOfStock
@@ -1546,10 +1470,10 @@ export default function ProductDetailPage() {
             <button
               className="pdetail-btn-add-cart"
               onClick={handleAddToCart}
-              disabled={isOutOfStock || !matchedVariant}
+              disabled={!canAdd}
               style={{
-                opacity: isOutOfStock || !matchedVariant ? 0.55 : 1,
-                cursor: isOutOfStock || !matchedVariant ? 'not-allowed' : 'pointer',
+                opacity: !canAdd ? 0.55 : 1,
+                cursor: !canAdd ? 'not-allowed' : 'pointer',
               }}
               title={
                 isOutOfStock

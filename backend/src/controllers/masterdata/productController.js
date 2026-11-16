@@ -1,3 +1,4 @@
+import { resolveProductPricing, isActiveProduct } from '../../services/masterdata/productPricing.js';
 
 import mongoose from 'mongoose';
 import { Product } from '../../models/masterdata/Product.js';
@@ -184,6 +185,8 @@ export const getProducts = async (req, res, next) => {
       sortObj = { createdAt: -1 };
     }
 
+    // Stable tie-breaker, including imported rows without createdAt.
+    sortObj._id = 1;
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, parseInt(limit, 10) || 8);
     const skip = (pageNum - 1) * limitNum;
@@ -331,24 +334,15 @@ export const getProducts = async (req, res, next) => {
       };
     });
 
-    // Lọc theo trạng thái khả dụng: Mặc định ẩn sản phẩm hết hàng (quantityAvailable <= 0) khỏi Cổng Khách Hàng / Trang Shop
-    let finalProducts = enrichedProducts;
-    if (req.query.includeOutOfStock !== 'true') {
-      finalProducts = enrichedProducts.filter((p) => {
-        if (p.inStock === false) return false;
-        if (p.quantityAvailable != null && p.quantityAvailable <= 0) return false;
-        if (p.quantity != null && p.quantity <= 0) return false;
-        return true;
-      });
-    }
-
     res.json({
       success: true,
-      data: finalProducts,
+      // Availability remains part of each record (inStock/quantityAvailable);
+      // filtering it after skip/limit made pages incomplete and totals incorrect.
+      data: enrichedProducts,
       pagination: {
-        total: req.query.includeOutOfStock === 'true' ? total : finalProducts.length,
+        total,
         page: pageNum,
-        totalPages: Math.ceil((req.query.includeOutOfStock === 'true' ? total : finalProducts.length) / limitNum) || 1,
+        totalPages: Math.ceil(total / limitNum) || 1,
         limit: limitNum,
       },
     });
@@ -407,7 +401,7 @@ export const getProductById = async (req, res, next) => {
       }
     }
 
-    if (!product) {
+    if (!isActiveProduct(product)) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm.' });
     }
 
@@ -507,7 +501,8 @@ export const getProductById = async (req, res, next) => {
       data: {
         ...product,
         shopId,
-        variants,
+        variants: variants.map(v => ({ ...v, pricing: resolveProductPricing(product, v) })),
+        inventoryKnown: invData.inventoryKnown === true,
         sizes,
         colors,
         rentalPricePerDay,

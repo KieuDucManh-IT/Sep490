@@ -42,7 +42,7 @@ export default function AdminAccountTable({
               </th>
               <th>NGƯỜI DÙNG</th>
               <th style={{ minWidth: '135px', whiteSpace: 'nowrap' }}>VAI TRÒ</th>
-              <th>XÁC MINH</th>
+              <th>CƠ SỞ / CHI NHÁNH</th>
               <th>TRẠNG THÁI</th>
               <th>NGÀY THAM GIA</th>
               <th>ĐĂNG NHẬP CUỐI</th>
@@ -106,33 +106,17 @@ export default function AdminAccountTable({
                     </span>
                   </td>
 
-                  <td>
-                    {u.verified === 'VERIFIED' && (
-                      <span className="verify-pill verified">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                          <polyline points="20 6 9 17 4 12" />
+                  <td style={{ whiteSpace: 'nowrap', fontSize: '13px' }}>
+                    {u.shopName ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#0F766E', fontWeight: 500 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          <polyline points="9 22 9 12 15 12 15 22" />
                         </svg>
-                        Đã xác minh
+                        <span>{u.shopName}</span>
                       </span>
-                    )}
-                    {u.verified === 'UNVERIFIED' && (
-                      <span className="verify-pill unverified">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <circle cx="12" cy="12" r="10" />
-                          <line x1="12" y1="8" x2="12" y2="12" />
-                          <line x1="12" y1="16" x2="12.01" y2="16" />
-                        </svg>
-                        Chưa xác minh
-                      </span>
-                    )}
-                    {u.verified === 'PENDING' && (
-                      <span className="verify-pill pending">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <circle cx="12" cy="12" r="10" />
-                          <polyline points="12 6 12 12 16 14" />
-                        </svg>
-                        Chờ duyệt
-                      </span>
+                    ) : (
+                      <span style={{ color: '#94A3B8' }}>Toàn hệ thống</span>
                     )}
                   </td>
 

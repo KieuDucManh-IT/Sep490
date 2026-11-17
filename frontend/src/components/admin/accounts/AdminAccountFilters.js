@@ -7,8 +7,6 @@ export default function AdminAccountFilters({
   onRoleFilterChange,
   statusFilter,
   onStatusFilterChange,
-  verifyFilter,
-  onVerifyFilterChange,
   onResetFilters,
   selectedCount,
   onBulkUnlock,
@@ -70,17 +68,6 @@ export default function AdminAccountFilters({
           <option value="ALL">Tất cả trạng thái</option>
           <option value="ACTIVE">Hoạt động</option>
           <option value="LOCKED">Tạm khóa</option>
-        </select>
-
-        <select
-          className="admin-acc-select"
-          value={verifyFilter}
-          onChange={(e) => onVerifyFilterChange(e.target.value)}
-        >
-          <option value="ALL">Tất cả xác minh</option>
-          <option value="VERIFIED">Đã xác minh</option>
-          <option value="UNVERIFIED">Chưa xác minh</option>
-          <option value="PENDING">Chờ duyệt</option>
         </select>
 
         <button

@@ -53,7 +53,6 @@ export default function AdminAccountsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [verifyFilter, setVerifyFilter] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
@@ -156,20 +155,12 @@ export default function AdminAccountsPage() {
           const phone = u.Information?.[0]?.Phone || u.Infomation?.[0]?.Phone || '';
           const address = u.Information?.[0]?.Address || u.Infomation?.[0]?.Address || '';
 
-          let verifyStatus = 'VERIFIED';
-          if (u.IsVerified === false) {
-            verifyStatus = 'UNVERIFIED';
-          } else if (role === 'shopOwner' && !u.IsVerified) {
-            verifyStatus = 'PENDING';
-          }
-
           return {
             id: u._id,
             displayId: `#${String(u.UserId || u._id).slice(-6).toUpperCase()}`,
             name: u.FullName || u.Email?.split('@')[0] || 'Người dùng VESTORA',
             email: u.Email,
             role,
-            verified: verifyStatus,
             status: statusUpper,
             joinDate: u.createdAt ? new Date(u.createdAt).toLocaleDateString('vi-VN') : '—',
             joinDateTime: u.createdAt ? new Date(u.createdAt).toLocaleString('vi-VN') : '—',
@@ -227,19 +218,19 @@ export default function AdminAccountsPage() {
     const total = backendStats?.total ?? users.length;
     const active = backendStats?.active ?? users.filter(u => u.status === 'ACTIVE').length;
     const locked = backendStats?.locked ?? users.filter(u => u.status === 'LOCKED').length;
-    const pending = users.filter(u => u.verified === 'PENDING' || u.verified === 'UNVERIFIED').length;
+    const staff = users.filter(u => u.role !== 'customer').length;
 
     const activePercent = total > 0 ? Math.round((active / total) * 100) : 0;
-    const pendingPercent = total > 0 ? Math.round((pending / total) * 100) : 0;
+    const staffPercent = total > 0 ? Math.round((staff / total) * 100) : 0;
     const lockedPercent = total > 0 ? Math.round((locked / total) * 100) : 0;
 
     return {
       total,
       active,
-      pending,
+      staff,
       locked,
       activePercent,
-      pendingPercent,
+      staffPercent,
       lockedPercent
     };
   }, [users, backendStats]);
@@ -266,15 +257,9 @@ export default function AdminAccountsPage() {
         if (statusFilter === 'LOCKED' && u.status !== 'LOCKED') return false;
       }
 
-      if (verifyFilter !== 'ALL') {
-        if (verifyFilter === 'VERIFIED' && u.verified !== 'VERIFIED') return false;
-        if (verifyFilter === 'UNVERIFIED' && u.verified !== 'UNVERIFIED') return false;
-        if (verifyFilter === 'PENDING' && u.verified !== 'PENDING') return false;
-      }
-
       return true;
     });
-  }, [users, searchQuery, roleFilter, statusFilter, verifyFilter]);
+  }, [users, searchQuery, roleFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
 
@@ -737,7 +722,6 @@ export default function AdminAccountsPage() {
     setSearchQuery('');
     setRoleFilter('ALL');
     setStatusFilter('ALL');
-    setVerifyFilter('ALL');
   };
 
   const handleSelectUserForDrawer = (u) => {
@@ -817,11 +801,6 @@ export default function AdminAccountsPage() {
             statusFilter={statusFilter}
             onStatusFilterChange={(val) => {
               setStatusFilter(val);
-              setCurrentPage(1);
-            }}
-            verifyFilter={verifyFilter}
-            onVerifyFilterChange={(val) => {
-              setVerifyFilter(val);
               setCurrentPage(1);
             }}
             onResetFilters={handleResetFilters}

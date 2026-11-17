@@ -182,12 +182,12 @@ export default function AdminAccountDrawer({
 
               <div>
                 <h4 className="admin-acc-sec-title" style={{ marginBottom: '12px' }}>
-                  Trạng thái &amp; Xác minh
+                  Trạng thái tài khoản
                 </h4>
 
                 <div className="admin-acc-status-box">
                   <div className="admin-acc-status-row">
-                    <span style={{ fontSize: '13px', color: '#475569' }}>Trạng thái tài khoản</span>
+                    <span style={{ fontSize: '13px', color: '#475569' }}>Trạng thái hoạt động</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span className={`status-dot-pill ${user.status === 'ACTIVE' ? 'active' : 'locked'}`}>
                         <span className="dot" />
@@ -207,16 +207,6 @@ export default function AdminAccountDrawer({
                         </button>
                       )}
                     </div>
-                  </div>
-
-                  <div className="admin-acc-status-row">
-                    <span style={{ fontSize: '13px', color: '#475569' }}>Xác minh Email</span>
-                    <span className="verify-pill verified">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      Đã xác minh
-                    </span>
                   </div>
                 </div>
               </div>

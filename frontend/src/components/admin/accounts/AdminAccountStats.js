@@ -59,14 +59,14 @@ export default function AdminAccountStats({ stats }) {
           </svg>
         </div>
         <div className="admin-acc-kpi-content">
-          <div className="admin-acc-kpi-label">Chờ xác minh</div>
+          <div className="admin-acc-kpi-label">Nhân sự / Quản lý</div>
           <div className="admin-acc-kpi-row">
-            <span className="admin-acc-kpi-value">{stats.pending}</span>
-            <span className="admin-acc-kpi-trend down">
-              {stats.pendingPercent}%
+            <span className="admin-acc-kpi-value">{stats.staff}</span>
+            <span className="admin-acc-kpi-trend up">
+              {stats.staffPercent}%
             </span>
           </div>
-          <div className="admin-acc-kpi-sub">{stats.pendingPercent}% tổng tài khoản</div>
+          <div className="admin-acc-kpi-sub">{stats.staffPercent}% tổng tài khoản</div>
         </div>
       </div>
 

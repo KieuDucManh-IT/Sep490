@@ -229,6 +229,7 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
             const records = await ProductImage.find({ productId: product._id }).lean();
             garmentImageUrl =
               product.primaryImageUrl ||
+              product.imageUrl ||
               pickRepresentativeImage(records)?.imageUrl ||
               (Array.isArray(product.images) && product.images[0]) ||
               product.image;
@@ -239,11 +240,11 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
       }
     }
 
+    const DEFAULT_GARMENT_FALLBACK =
+      "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=600&q=80";
+
     if (!garmentImageUrl) {
-      return res.status(400).json({
-        success: false,
-        message: "Vui lòng chọn trang phục hợp lệ để thử đồ.",
-      });
+      garmentImageUrl = DEFAULT_GARMENT_FALLBACK;
     }
 
     // Nếu category vẫn chưa xác định, tự động phân loại theo mô tả

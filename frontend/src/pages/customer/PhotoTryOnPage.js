@@ -483,14 +483,10 @@ export default function PhotoTryOnPage() {
 
     const garmentImg =
       product?.primaryImageUrl ||
+      product?.imageUrl ||
       product?.image ||
       (Array.isArray(product?.images) && product.images[0]) ||
-      '';
-
-    if (!garmentImg && !product?._id) {
-      setErrorMessage('Vui lòng chọn trang phục hợp lệ có hình ảnh để thử đồ.');
-      return;
-    }
+      FALLBACK_GARMENT_IMAGE;
 
     setErrorMessage('');
     setSuccessMessage('');
@@ -547,9 +543,10 @@ export default function PhotoTryOnPage() {
       if (pairedGarment) {
         const pairedImg =
           pairedGarment.primaryImageUrl ||
+          pairedGarment.imageUrl ||
           pairedGarment.image ||
           (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
-          '';
+          FALLBACK_GARMENT_IMAGE;
         if (pairedImg) {
           const pairedCat =
             category === 'upper_body' ? 'lower_body' : category === 'lower_body' ? 'upper_body' : 'upper_body';
@@ -570,9 +567,10 @@ export default function PhotoTryOnPage() {
       if (pairedAccessory) {
         const accImg =
           pairedAccessory.primaryImageUrl ||
+          pairedAccessory.imageUrl ||
           pairedAccessory.image ||
           (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
-          '';
+          FALLBACK_GARMENT_IMAGE;
         if (accImg) {
           formData.append('accessoryGarmentImageUrl', accImg);
           formData.append('accessoryGarmentDescription', pairedAccessory.name || 'phụ kiện thời trang');
@@ -665,9 +663,10 @@ export default function PhotoTryOnPage() {
 
   const garmentImageUrl =
     product?.primaryImageUrl ||
+    product?.imageUrl ||
     product?.image ||
     (Array.isArray(product?.images) && product.images[0]) ||
-    '';
+    FALLBACK_GARMENT_IMAGE;
 
   const currentDisplayImage = showOriginal ? activeModelImage : resultImage || activeModelImage;
 

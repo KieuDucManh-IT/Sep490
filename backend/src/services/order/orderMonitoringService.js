@@ -8,6 +8,7 @@ import { InventoryLocation } from '../../models/warehouse/location/InventoryLoca
 import { Shop } from '../../models/shop/Shop.js';
 import User from '../../models/system/User.js';
 import { ProductImage } from '../../models/masterdata/ProductImages.js';
+import { groupImagesByProduct, imageUrlForColor, orderedImageUrls } from '../masterdata/productImageHelper.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Product } from '../../models/masterdata/Product.js';
 import { Wallet } from '../../models/finance/Wallet.js';
@@ -33,62 +34,25 @@ export const resolvePrimaryShipment = (list = []) => {
   return null;
 };
 
+// Ảnh của dòng đơn: ảnh theo màu của biến thể → ảnh đại diện sản phẩm (TASK-007).
 const attachProductImages = async (details = []) => {
   if (!details || !details.length) return details;
-  const productIds = [];
-  const variantIds = [];
-  for (const d of details) {
-    if (d.variantId?._id) variantIds.push(d.variantId._id);
-    const pId = d.variantId?.productId?._id || d.variantId?.productId;
-    if (pId) productIds.push(pId);
-  }
+  const productIdOf = (d) => {
+    const pId = d.variantId?.productId?._id || d.variantId?.productId || d.productId?._id || d.productId;
+    return pId ? String(pId) : '';
+  };
+  const productIds = [...new Set(details.map(productIdOf).filter(Boolean))];
+  if (!productIds.length) return details;
 
-  if (!productIds.length && !variantIds.length) return details;
-
-  const images = await ProductImage.find({
-    $or: [
-      { productId: { $in: productIds } },
-      { variantId: { $in: variantIds } },
-    ],
-  })
-    .sort({ isPrimary: -1, displayOrder: 1, createdAt: 1 })
-    .lean();
-
-  const imageByProduct = new Map();
-  const imageByVariant = new Map();
-  const allImagesByProduct = new Map();
-
-  for (const img of images) {
-    const url = img.imageUrl || img.image_url || '';
-    if (!url) continue;
-    const vId = img.variantId || img.variant_id;
-    const pId = img.productId || img.product_id;
-
-    if (vId && !imageByVariant.has(String(vId))) {
-      imageByVariant.set(String(vId), url);
-    }
-    if (pId) {
-      const pIdStr = String(pId);
-      if (!imageByProduct.has(pIdStr)) {
-        imageByProduct.set(pIdStr, url);
-      }
-      if (!allImagesByProduct.has(pIdStr)) {
-        allImagesByProduct.set(pIdStr, []);
-      }
-      allImagesByProduct.get(pIdStr).push(url);
-    }
-  }
+  const images = await ProductImage.find({ productId: { $in: productIds } }).lean();
+  const recordsByProduct = groupImagesByProduct(images.filter((img) => img.imageUrl));
 
   for (const d of details) {
-    const vId = d.variantId?._id ? String(d.variantId._id) : (d.variantId ? String(d.variantId) : '');
-    const pId = d.variantId?.productId?._id
-      ? String(d.variantId.productId._id)
-      : (d.variantId?.productId ? String(d.variantId.productId) : (d.productId?._id ? String(d.productId._id) : (d.productId ? String(d.productId) : '')));
-
-    const productImagesList = (pId && allImagesByProduct.get(pId)) || [];
+    const pId = productIdOf(d);
+    const records = (pId && recordsByProduct.get(pId)) || [];
+    const productImagesList = orderedImageUrls(records);
     const itemImage =
-      (vId && imageByVariant.get(vId)) ||
-      (pId && imageByProduct.get(pId)) ||
+      (records.length && imageUrlForColor(records, d.variantId?.color)) ||
       (Array.isArray(d.variantId?.productId?.images) && d.variantId.productId.images[0]) ||
       d.variantId?.productId?.image ||
       d.variantId?.image ||

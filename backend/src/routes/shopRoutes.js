@@ -15,6 +15,7 @@ import {
   deleteBranch,
   getBranchManagers,
   uploadShopImage,
+  getBranchPerformanceReport,
 } from '../controllers/shop/shopController.js';
 import {
   getMyPolicy,
@@ -87,6 +88,12 @@ router.get(
   getAssignedBranch
 );
 router.get('/reverse-geocode', reverseGeocodeAddress);
+router.get(
+  '/reports/branch-performance',
+  authMiddleware,
+  requireRole('branch_manager'),
+  getBranchPerformanceReport
+);
 
 // ==========================================
 // BUSINESS POLICIES (Chain Management)

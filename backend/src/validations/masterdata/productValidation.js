@@ -11,10 +11,6 @@ const fields = [
   'material',
   'rating',
   'reviewsCount',
-  'rentalPricePerDay',
-  'salePrice',
-  'deposit',
-  'discount',
   'aiTryOn',
   'gender',
   'status',
@@ -32,10 +28,6 @@ const rules = {
   material: { label: 'Chất liệu', type: 'string', maxLength: 200 },
   rating: { label: 'Đánh giá', type: 'number', min: 0 },
   reviewsCount: { label: 'Số lượt đánh giá', type: 'number', min: 0, integer: true },
-  rentalPricePerDay: { label: 'Giá thuê mỗi ngày', type: 'number', min: 0 },
-  salePrice: { label: 'Giá bán', type: 'number', min: 0 },
-  deposit: { label: 'Tiền cọc', type: 'number', min: 0 },
-  discount: { label: 'Giảm giá', type: 'number', min: 0 },
   aiTryOn: { label: 'Hỗ trợ thử đồ AI', type: 'boolean' },
   gender: { label: 'Giới tính', type: 'string', maxLength: 80 },
   status: { label: 'Trạng thái', type: 'string', enum: ['active', 'inactive', 'discontinued'] },
@@ -43,8 +35,13 @@ const rules = {
   shopId: { label: 'Gian hàng', type: 'objectId', nullable: true },
 };
 
+// TASK-008: giá và trạng thái định giá chỉ do Shop Owner đặt qua PATCH /api/products/:id/pricing.
+// API masterdata (Quản lý kho) bỏ qua các field này: không ghi, không báo lỗi.
+export const OWNER_ONLY_PRODUCT_FIELDS = ['rentalPricePerDay', 'salePrice', 'deposit', 'discount', 'isSetPrice', 'priceSetBy', 'priceSetAt'];
+
 export const validateProduct = (payload, current) => {
-  const { categoryId, ...productPayload } = payload || {};
+  const { categoryId, ...rawPayload } = payload || {};
+  const productPayload = Object.fromEntries(Object.entries(rawPayload).filter(([key]) => !OWNER_ONLY_PRODUCT_FIELDS.includes(key)));
   const { categoryId: currentCategoryIds, ...currentProduct } = current || {};
   const normalized = validateInput(productPayload, currentProduct, fields, rules);
   const categories = categoryId === undefined ? currentCategoryIds : categoryId;
@@ -60,6 +57,5 @@ export const validateProduct = (payload, current) => {
   }
   normalized.categoryId = normalizedCategoryIds;
   if (normalized.rating != null && normalized.rating > 5) throw Object.assign(new Error('Đánh giá không được lớn hơn 5.'), { statusCode: 400 });
-  if (normalized.discount != null && normalized.discount > 100) throw Object.assign(new Error('Giảm giá không được lớn hơn 100%.'), { statusCode: 400 });
   return normalized;
 };

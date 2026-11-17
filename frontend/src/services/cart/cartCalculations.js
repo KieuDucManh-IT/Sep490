@@ -19,14 +19,18 @@ import {
 export function parseDateOnly(dateInput) {
   if (!dateInput) return null;
   if (typeof dateInput === 'string') {
-    const parts = dateInput.split('T')[0].split('-');
-    if (parts.length === 3) {
-      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
-    }
+    if (!/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(dateInput)) return null;
+    const [year, month, day] = dateInput.slice(0, 10).split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
   }
   const d = new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+export function formatLocalDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 /**

@@ -13,6 +13,9 @@ const stocktakeSchema = new mongoose.Schema({
   status: { type: String, default: 'draft', enum: ['draft', 'in_progress', 'counted', 'approved', 'cancelled'] },
   startedAt: { type: Date, default: null },
   completedAt: { type: Date, default: null },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  cancelledAt: { type: Date, default: null },
+  cancelReason: { type: String, trim: true, maxlength: 500, default: '' },
 }, { timestamps: true });
 
 export const Stocktake = mongoose.models.Stocktake || mongoose.model('Stocktake', stocktakeSchema);

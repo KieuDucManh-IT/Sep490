@@ -42,3 +42,12 @@ export const validateStocktakeCountInput = (payload) => {
   }
   return { items, newItems };
 };
+
+export const validateCancelReason = (payload) => {
+  const raw = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload.reason : undefined;
+  if (raw != null && typeof raw !== 'string') throw invalid('Lý do hủy phiếu không hợp lệ.');
+  const reason = String(raw || '').trim();
+  if (!reason) throw invalid('Vui lòng nhập lý do hủy phiếu.');
+  if (reason.length > 500) throw invalid('Lý do hủy phiếu tối đa 500 ký tự.');
+  return { reason };
+};

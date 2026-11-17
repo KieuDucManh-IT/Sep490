@@ -14,4 +14,5 @@ export default {
   savePick: async (id, payload) => (await api.post(`/warehouse/transfers/${id}/pick`, payload)).data,
   ship: async (id) => (await api.post(`/warehouse/transfers/${id}/ship`)).data,
   receive: async (id, payload) => (await api.post(`/warehouse/transfers/${id}/receive`, payload)).data,
+  cancel: async (id, reason) => (await api.post(`/warehouse/transfers/${id}/cancel`, { reason })).data,
 };

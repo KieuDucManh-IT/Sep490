@@ -4,6 +4,8 @@ import UserCollection from '../../models/customer/UserCollection.js';
 import CollectionItem from '../../models/customer/CollectionItem.js';
 import { Product } from '../../models/masterdata/Product.js';
 import { ProductImage } from '../../models/masterdata/ProductImages.js';
+import { pickRepresentativeImage, representativeUrlByProduct } from '../masterdata/productImageHelper.js';
+import { isCustomerVisibleProduct, customerVisibleProductFilter } from '../masterdata/productPricing.js';
 
 export const MAX_COLLECTIONS_PER_USER = 20;
 export const MAX_ITEMS_PER_COLLECTION = 100;
@@ -19,6 +21,17 @@ const createError = (message, status = 400) =>
  * Thoát ký tự đặc biệt cho Regex
  */
 const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * TASK-008: chỉ cho thêm mới sản phẩm khách nhìn thấy (đang bán và đã được Shop Owner định giá).
+ */
+const assertProductOpenForCustomers = async (productId) => {
+  if (!mongoose.Types.ObjectId.isValid(String(productId))) throw createError('productId không hợp lệ', 400);
+  const product = await Product.findById(productId).select('name status isDeleted isSetPrice').lean();
+  if (!product || product.isDeleted === true) throw createError('Không tìm thấy sản phẩm', 404);
+  if (!isCustomerVisibleProduct(product)) throw createError(`Sản phẩm [${product.name || productId}] chưa được mở bán`, 422);
+  return product;
+};
 
 /**
  * Sinh mã shareCode ngẫu nhiên an toàn (10 ký tự)
@@ -39,15 +52,9 @@ export const attachPrimaryImages = async (items) => {
 
   if (!productIds.length) return items;
 
-  const primaryImages = await ProductImage.find({
-    productId: { $in: productIds },
-    isPrimary: true,
-  }).lean();
-
-  const imageMap = new Map();
-  primaryImages.forEach((img) => {
-    imageMap.set(img.productId.toString(), img.imageUrl);
-  });
+  // Ảnh chính chung → ảnh chính của màu đầu tiên → ảnh đầu tiên (TASK-007)
+  const imageRecords = await ProductImage.find({ productId: { $in: productIds } }).lean();
+  const imageMap = representativeUrlByProduct(imageRecords);
 
   return items.map((item) => {
     const rawProd = item.productId;
@@ -60,7 +67,9 @@ export const attachPrimaryImages = async (items) => {
           ...rawProd,
           primaryImageUrl,
           // Kiểm tra tính sẵn sàng theo REQ-WSH-006
-          isAvailable: !rawProd.isDeleted && rawProd.status !== 'inactive' && rawProd.status !== 'discontinued',
+          isAvailable: isCustomerVisibleProduct(rawProd),
+          // TASK-008: món cũ trong wishlist mà sản phẩm chưa định giá → hiện "chưa mở bán"
+          isNotPriced: rawProd.isSetPrice !== true,
         },
       };
     }
@@ -129,6 +138,7 @@ export const toggleWishlistItem = async (userId, productId) => {
     };
   } else {
     // Chưa có -> Kiểm tra giới hạn tối đa 100 món
+    await assertProductOpenForCustomers(productId);
     if (defaultCol.itemCount >= MAX_ITEMS_PER_COLLECTION) {
       throw createError(
         `Danh sách yêu thích đã đạt giới hạn tối đa ${MAX_ITEMS_PER_COLLECTION} sản phẩm`,
@@ -247,7 +257,13 @@ export const syncWishlistOnLogin = async (userId, localProductIds = []) => {
     .lean();
 
   const existingSet = new Set(existingItems.map((i) => i.productId.toString()));
-  const missingProductIds = validProductIds.filter((id) => !existingSet.has(id.toString()));
+  const missingIds = validProductIds.filter((id) => !existingSet.has(id.toString()));
+  // TASK-008: bỏ qua sản phẩm chưa mở bán khi đồng bộ wishlist từ máy khách.
+  const openProducts = missingIds.length
+    ? await Product.find({ _id: { $in: missingIds }, ...customerVisibleProductFilter() }).select('_id').lean()
+    : [];
+  const openSet = new Set(openProducts.map((p) => p._id.toString()));
+  const missingProductIds = missingIds.filter((id) => openSet.has(id.toString()));
 
   // Duyệt thêm các sản phẩm thiếu nhưng không vượt quá MAX_ITEMS_PER_COLLECTION
   let syncedCount = 0;
@@ -498,6 +514,8 @@ export const addItemToCollection = async (
     throw createError('Bạn không có quyền thêm vào bộ sưu tập này', 403);
   }
 
+  await assertProductOpenForCustomers(productId);
+
   // REQ-COL-008: Chặn khi đạt 100 món
   if (collection.itemCount >= MAX_ITEMS_PER_COLLECTION) {
     throw createError(
@@ -534,7 +552,7 @@ export const addItemToCollection = async (
 
   // Nếu BST chưa có ảnh bìa, tự động lấy ảnh chính của sản phẩm vừa thêm
   if (!collection.coverImageUrl) {
-    const primaryImg = await ProductImage.findOne({ productId, isPrimary: true }).lean();
+    const primaryImg = pickRepresentativeImage(await ProductImage.find({ productId }).lean());
     if (primaryImg && primaryImg.imageUrl) {
       collection.coverImageUrl = primaryImg.imageUrl;
     }

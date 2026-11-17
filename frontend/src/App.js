@@ -57,6 +57,8 @@ import WarehouseAdjustmentPage from './pages/warehouse/WarehouseAdjustmentPage';
 import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
 import WarehouseBranchReturnsPage from './pages/warehouse/BranchReturnsPage';
 import WarehouseRelocationsPage from './pages/warehouse/WarehouseRelocationsPage';
+import WarehouseDiscrepanciesPage from './pages/warehouse/WarehouseDiscrepanciesPage';
+import WarehouseMaintenancePage from './pages/warehouse/WarehouseMaintenancePage';
 import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
 import ProductManagementPage from './pages/warehouse/ProductManagementPage';
 import SupplierManagementPage from './pages/warehouse/SupplierManagementPage';
@@ -133,14 +135,14 @@ function App() {
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)
             ======================================================== */}
-        <Route
+        {/* <Route
           path="/branch/dashboard"
           element={
             <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <BranchDashboardPage />
             </ProtectedRoute>
           }
-        />
+        /> */}
         <Route
           path="/branch/chat"
           element={
@@ -190,9 +192,9 @@ function App() {
           }
         />
         <Route
-          path="/branch/analytics"
+          path="/branch/dashboard"
           element={
-            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER']}>
               <BranchAnalyticsPage />
             </ProtectedRoute>
           }
@@ -247,6 +249,8 @@ function App() {
         <Route path="/warehousemanager/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/relocations/split" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="split" /></ProtectedRoute>} />
         <Route path="/warehousemanager/relocations/merge" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="merge" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/discrepancies" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseDiscrepanciesPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/maintenance" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseMaintenancePage mode="manager" /></ProtectedRoute>} />
         <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/products" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><ProductManagementPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/suppliers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}><SupplierManagementPage /></ProtectedRoute>} />
@@ -300,6 +304,7 @@ function App() {
         <Route path="/warehousestaff/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehousestaff/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehousestaff/relocations" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'ADMIN']}><WarehouseRelocationsPage mode="staff" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/maintenance" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseMaintenancePage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/inventory" element={<Navigate to="/branch/inventory" replace />} />

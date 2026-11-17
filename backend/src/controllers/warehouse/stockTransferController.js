@@ -9,6 +9,7 @@ import {
   saveTransferPick,
   receiveTransfer,
   shipTransfer,
+  cancelTransfer,
 } from '../../services/warehouse/stockTransferService.js';
 
 const handleError = (error, res, next) => {
@@ -55,5 +56,9 @@ export const shipTransferRow = async (req, res, next) => {
 };
 export const receiveTransferRow = async (req, res, next) => {
   try { res.json({ success: true, data: await receiveTransfer(req.params.id, req.body, req.user) }); }
+  catch (error) { handleError(error, res, next); }
+};
+export const cancelTransferRow = async (req, res, next) => {
+  try { res.json({ success: true, data: await cancelTransfer(req.params.id, req.body, req.user) }); }
   catch (error) { handleError(error, res, next); }
 };

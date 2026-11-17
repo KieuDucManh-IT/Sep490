@@ -30,8 +30,12 @@ export default function StorageLocationCrudModal({ mode, record, parent, locatio
 
   const submit = async (event) => {
     event.preventDefault();
-    setSaving(true); setError('');
-    const code = mode === 'create' ? codePrefix + form.suffix.trim() : form.code.trim();
+    setError('');
+    const usesPrefix = mode === 'create' && Boolean(codePrefix);
+    const codeInput = usesPrefix ? form.suffix.trim() : form.code.trim();
+    if (!codeInput) { setError('Vui lòng nhập mã vị trí.'); return; }
+    setSaving(true);
+    const code = usesPrefix ? codePrefix + codeInput : codeInput;
     const payload = {
       locationId: form.locationId,
       parentStorageId: form.parentStorageId || null,

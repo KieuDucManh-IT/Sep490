@@ -11,6 +11,7 @@ import { InboundReceipt } from '../../models/warehouse/inbound/InboundReceipt.js
 import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
 import User from '../../models/system/User.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
+import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const roleOf = (user) => String(user?.Role || user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
@@ -41,7 +42,8 @@ const detailsFor = (id) => StockTransferDetail.find({ transferId: id }).sort({ c
   .populate('itemIds', 'itemCode serialNumber condition status')
   .populate('receivedItemIds', 'itemCode serialNumber condition status')
   .populate('damagedItemIds', 'itemCode serialNumber condition status')
-  .populate('putawayAllocations.storageId', 'code name type');
+  .populate('putawayAllocations.storageId', 'code name type')
+  .populate('discrepancyId', 'discrepancyCode status quantityMissing quantityResolved');
 
 const getCentral = async () => {
   const rows = await InventoryLocation.find({ type: 'warehouse', status: 'active' }).select('_id code name maxCapacity').lean();
@@ -288,7 +290,7 @@ export const decideBranchReturnReceipt = async (id, payload, user) => {
   return loadReturn(id, user);
 };
 
-const capacitySnapshot = async (locationId, session, excludeTransferId) => {
+export const capacitySnapshot = async (locationId, session, excludeTransferId) => {
   const [location, storages, balances, items] = await Promise.all([
     InventoryLocation.findById(locationId).session(session).lean(),
     StorageLocation.find({ locationId }).session(session).lean(),
@@ -420,8 +422,6 @@ export const putawayBranchReturn = async (id, payload, user) => {
           await item.save({ session });
           await recordStockMovement({ variantId: detail.variantId, itemId: item._id, locationId: transfer.toLocationId, storageId: item.storageId, movementType: 'transfer_in', quantityChange: 1, referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id }, session);
         }
-        const missing = detail.itemIds.map(String).filter((itemId) => !received.has(itemId));
-        if (missing.length) await InventoryItem.updateMany({ _id: { $in: missing }, status: 'in_transit' }, { $set: { status: 'disposed', condition: 'missing' } }, { session });
       } else {
         for (const allocation of line.allocations) {
           await InventoryBalance.findOneAndUpdate(
@@ -440,6 +440,8 @@ export const putawayBranchReturn = async (id, payload, user) => {
       }
       await detail.save({ session });
     }
+    // UC-29: dòng thiếu mở phiếu chênh lệch thay vì chuyển món thiếu sang disposed.
+    await openTransferDiscrepancies({ transfer, details, tracking, user, session });
     transfer.status = 'completed'; transfer.putawayBy = user._id; transfer.putawayAt = new Date(); await transfer.save({ session });
   }); } finally { await session.endSession(); }
   return loadReturn(id, user);

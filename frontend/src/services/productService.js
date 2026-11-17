@@ -31,6 +31,18 @@ export const productService = {
     }
   },
 
+  // TASK-008: danh sách định giá cho Shop Owner, gồm cả sản phẩm chưa định giá.
+  // params: { pricingStatus: 'unset' | 'set' | 'all', search, page, limit }
+  getOwnerPricingProducts: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/products/owner/pricing', { params });
+      return response;
+    } catch (error) {
+      console.error('Lỗi khi gọi API /api/products/owner/pricing:', error);
+      throw error;
+    }
+  },
+
   updatePricing: async (id, pricingData) => {
     try {
       const response = await apiClient.patch(`/products/${id}/pricing`, pricingData);

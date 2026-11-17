@@ -11,6 +11,8 @@ import stockTransferService from '../../services/warehouse/stockTransferService'
 import inventoryReportService from '../../services/warehouse/inventoryReportService';
 import WarehouseWorkflowProgress from '../../components/WarehouseWorkflowProgress';
 import WarehouseItemChecklist from '../../components/WarehouseItemChecklist';
+import WarehouseCancelSlipModal, { WarehouseCancelledNote } from '../../components/WarehouseCancelSlipModal';
+import { StockDiscrepancyBadge } from '../../components/StockDiscrepancyDetail';
 import '../../styles/WarehouseManager.css';
 import '../../styles/WarehouseUx.css';
 
@@ -53,6 +55,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [showCancel, setShowCancel] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,6 +195,28 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
     return act(() => stockTransferService.receive(selected._id, { complete, items }), complete ? '\u0110\u00e3 x\u00e1c nh\u1eadn ho\u00e0n t\u1ea5t nh\u1eadn h\u00e0ng.' : '\u0110\u00e3 ghi nh\u1eadn s\u1ed1 h\u00e0ng nh\u1eadn \u0111\u1ee3t n\u00e0y.');
   };
 
+  const canCancel = Boolean(selected) && (isWarehouse
+    ? ['requested', 'approved', 'preparing'].includes(selected.status)
+    : !isStaff && selected.status === 'requested');
+  const confirmCancel = async (reason) => {
+    const id = selected._id;
+    try {
+      await stockTransferService.cancel(id, reason);
+    } catch (cancelError) {
+      if (cancelError.status === 409) {
+        // Phiếu vừa đổi trạng thái ở nơi khác: tải lại để hiện trạng thái mới, giữ thông báo lỗi trong hộp thoại.
+        await load();
+        await refreshSelected(id).catch(() => {});
+      }
+      throw cancelError;
+    }
+    setShowCancel(false);
+    setError('');
+    await load();
+    await refreshSelected(id).catch((refreshError) => setError(refreshError.message));
+    setNotice('Đã hủy phiếu điều chuyển.');
+  };
+
   const detailVariantOptions = useMemo(() => variants, [variants]);
   const sourceStorages = (locationId) => storages.filter((storage) => idOf(storage.locationId) === idOf(locationId));
   const branchName = (location) => `${location?.code || ''} · ${location?.name || ''}`;
@@ -241,6 +266,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
         <section className="wm-crud-modal wm-transfer-modal wm-stock-detail">
         <div className="wm-stock-detail-heading"><div><small>{selected.transferCode} · {statusLabels[selected.status]}</small><h2>{branchName(selected.toLocationId)}</h2><p>Kho xuất: {branchName(selected.fromLocationId)} · Người tạo: {selected.createdBy?.FullName || '—'}</p></div><button type="button" className="secondary" onClick={() => { setItemPickerId(''); setSelected(null); }}>Đóng</button></div>
         <WarehouseWorkflowProgress flow="transfer" status={selected.status} />
+        <WarehouseCancelledNote slip={selected} />
         {guidance && <div className="wm-action-guidance"><PackageCheck size={17} /><div><strong>Bước tiếp theo</strong>{guidance}</div></div>}
         {isWarehouse && selected.status === 'requested' && <label className="wm-staff-assign">Nhân viên kho phụ trách<select value={assignedStaffId} onChange={(event) => setAssignedStaffId(event.target.value)}><option value="">Chọn nhân viên</option>{staff.map((member) => <option key={member._id} value={member._id}>{member.FullName} · {member.Email}</option>)}</select></label>}
         <div className="wm-table-wrap"><table className={isStaff && selected.status === 'approved' ? 'wm-transfer-picking-table' : ''}><thead><tr><th>Sản phẩm / SKU</th><th>Yêu cầu</th><th>Được duyệt</th><th>Đã xuất</th><th>{!isWarehouse && !isStaff && ['shipped', 'partially_received'].includes(selected.status) ? 'Xác nhận nhận' : 'Đã nhận'}</th><th>Hỏng{selected.status === 'received' ? ' / thiếu' : ''}</th>{isStaff && selected.status === 'approved' && <th>Vị trí lấy hàng</th>}</tr></thead><tbody>
@@ -251,12 +277,13 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
             const receiving = !isWarehouse && !isStaff && ['shipped', 'partially_received'].includes(selected.status);
             return <tr key={item._id}><td>{variantLabel(item)}{item.itemIds?.length > 0 && <small className="wm-stock-subline">Mã hàng: {item.itemIds.map((it) => it.itemCode || it.serialNumber || idOf(it).slice(-6)).join(', ')}</small>}</td><td>{item.quantityRequested}</td>
               <td>{isWarehouse && selected.status === 'requested' ? <input className="wm-count-input" type="number" min="0" max={item.quantityRequested} value={approval[item._id]?.quantityApproved ?? item.quantityRequested} onChange={(event) => setApproval({ ...approval, [item._id]: { ...approval[item._id], quantityApproved: event.target.value } })} /> : item.quantityApproved ?? '—'}</td>
-              <td>{item.quantityShipped || 0}</td><td>{receiving ? (individual ? <button type="button" className="secondary" onClick={() => setReceiptPickerId(item._id)}>Xem / xác nhận nhận ({(entry.receivedItemIds || []).length}/{item.quantityShipped || 0})</button> : <div className="wm-transfer-quantity-inputs"><input type="number" min={item.quantityReceived || 0} max={item.quantityShipped} value={entry.quantityReceived ?? item.quantityShipped} aria-label="Số lượng nhận" onChange={(event) => setReceipt({ ...receipt, [item._id]: { ...entry, quantityReceived: event.target.value } })} /><input type="number" min={item.quantityDamaged || 0} max={entry.quantityReceived ?? item.quantityShipped} value={entry.quantityDamaged ?? item.quantityDamaged ?? 0} aria-label="Số lượng hỏng" onChange={(event) => setReceipt({ ...receipt, [item._id]: { ...entry, quantityDamaged: event.target.value } })} /></div>) : item.quantityReceived || 0}</td><td>{item.quantityDamaged || 0}{item.quantityMissing > 0 ? ` / thiếu ${item.quantityMissing}` : ''}</td>
+              <td>{item.quantityShipped || 0}</td><td>{receiving ? (individual ? <button type="button" className="secondary" onClick={() => setReceiptPickerId(item._id)}>Xem / xác nhận nhận ({(entry.receivedItemIds || []).length}/{item.quantityShipped || 0})</button> : <div className="wm-transfer-quantity-inputs"><input type="number" min={item.quantityReceived || 0} max={item.quantityShipped} value={entry.quantityReceived ?? item.quantityShipped} aria-label="Số lượng nhận" onChange={(event) => setReceipt({ ...receipt, [item._id]: { ...entry, quantityReceived: event.target.value } })} /><input type="number" min={item.quantityDamaged || 0} max={entry.quantityReceived ?? item.quantityShipped} value={entry.quantityDamaged ?? item.quantityDamaged ?? 0} aria-label="Số lượng hỏng" onChange={(event) => setReceipt({ ...receipt, [item._id]: { ...entry, quantityDamaged: event.target.value } })} /></div>) : item.quantityReceived || 0}</td><td>{item.quantityDamaged || 0}{item.quantityMissing > 0 ? ` / thiếu ${item.quantityMissing}` : ''}{item.discrepancyId && <div><StockDiscrepancyBadge discrepancy={item.discrepancyId} quantityMissing={item.quantityMissing} /></div>}</td>
               {isStaff && selected.status === 'approved' && <td><div className="wm-pick-allocation-list">{(pickAllocations[item._id] || []).map((allocation, index) => <div className="wm-pick-allocation" key={index}><select value={allocation.storageId} onChange={(event) => updateAllocation(item._id, index, { storageId: event.target.value, itemIds: [] })}><option value="">Chọn kệ</option><option value="none">Chưa gán vị trí</option>{sourceOptions.map((storage) => <option key={storage._id} value={storage._id}>{storage.code} · {storage.name}</option>)}</select><input aria-label="Số lượng tại vị trí" type="number" min="1" value={allocation.quantity} onChange={(event) => updateAllocation(item._id, index, { quantity: event.target.value })} /><button className="secondary" type="button" onClick={() => loadPickCandidates(item, allocation, index)}>{individual ? `Chọn item (${allocation.itemIds.length}/${allocation.quantity})` : 'Kiểm tra tồn'}</button>{(pickAllocations[item._id] || []).length > 1 && <button className="danger" type="button" onClick={() => setPickAllocations((old) => ({ ...old, [item._id]: old[item._id].filter((_, i) => i !== index) }))}>Xóa</button>}<small>{pickCandidates[`${item._id}:${index}`]?.available != null ? `Khả dụng: ${pickCandidates[`${item._id}:${index}`].available}` : ''}</small></div>)}<button className="secondary" type="button" onClick={() => addAllocation(item._id)}>+ Thêm vị trí</button><small>Đã phân bổ: {(pickAllocations[item._id] || []).reduce((sum, row) => sum + Number(row.quantity || 0), 0)}/{item.quantityApproved}</small></div></td>}
             </tr>;
           })}
         </tbody></table></div>
         <div className="wm-stock-actions">
+          {canCancel && <button className="danger" type="button" disabled={busy} onClick={() => setShowCancel(true)}>Hủy phiếu</button>}
           {isWarehouse && selected.status === 'requested' && <><button className="danger" disabled={busy} onClick={() => decide('reject')}>Từ chối</button><button disabled={busy} onClick={() => decide('approve')}>Duyệt yêu cầu</button></>}
           {isStaff && selected.status === 'approved' && <button disabled={busy} onClick={savePick}>Lưu phân bổ</button>}
           {isStaff && selected.status === 'preparing' && <button disabled={busy} onClick={() => act(() => stockTransferService.ship(selected._id), 'Đã xác nhận xuất hàng khỏi kho tổng.')}>Xác nhận xuất kho</button>}
@@ -305,6 +332,7 @@ export default function WarehouseTransfersPage({ mode = 'branch' }) {
           </section>
         </div>;
       })()}
+      <WarehouseCancelSlipModal show={showCancel && Boolean(selected)} slipLabel="phiếu điều chuyển" slipCode={selected?.transferCode} onHide={() => setShowCancel(false)} onConfirm={confirmCancel} />
     </main>
   </div>;
 }

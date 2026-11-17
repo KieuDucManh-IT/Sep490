@@ -10,11 +10,13 @@ import { StockTransfer } from '../../models/warehouse/transfer/StockTransfer.js'
 import { StockTransferDetail } from '../../models/warehouse/transfer/StockTransferDetail.js';
 import User from '../../models/system/User.js';
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
+import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
 import {
   validateCreateTransferRequest,
   validateTransferDecision,
   validateTransferPick,
   validateTransferReceipt,
+  validateCancelReason,
 } from '../../validations/warehouse/stockTransferValidation.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -32,12 +34,14 @@ const transferPopulation = [
   { path: 'approvedBy', select: 'FullName Email' },
   { path: 'shippedBy', select: 'FullName Email' },
   { path: 'receivedBy', select: 'FullName Email' },
+  { path: 'cancelledBy', select: 'FullName Email' },
 ];
 
 const loadDetails = (transferId) => StockTransferDetail.find({ transferId }).sort({ createdAt: 1 })
   .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'productCode name trackingType' } })
   .populate('fromStorageId', 'code name type')
-  .populate('itemIds', 'itemCode serialNumber condition status');
+  .populate('itemIds', 'itemCode serialNumber condition status')
+  .populate('discrepancyId', 'discrepancyCode status quantityMissing quantityResolved');
 
 const getCentralWarehouse = async () => {
   const locations = await InventoryLocation.find({ type: 'warehouse', status: 'active' }).select('_id code name maxCapacity').lean();
@@ -253,8 +257,13 @@ export const shipTransfer = async (transferId, user) => {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' }, status: 'preparing' }).session(session);
-      if (!transfer) throw fail('Phiếu chưa được phân bổ vị trí hoặc đã xuất hàng.', 409);
+      // Giành trạng thái ngay đầu transaction: nếu phiếu vừa bị hủy hoặc đã xuất thì không trừ tồn.
+      const transfer = await StockTransfer.findOneAndUpdate(
+        { _id: transferId, direction: { $ne: 'branch_to_central' }, status: 'preparing' },
+        { $set: { status: 'shipped', shippedBy: user._id, shippedAt: new Date() } },
+        { new: true, session },
+      );
+      if (!transfer) throw fail('Phiếu chưa được phân bổ vị trí, đã xuất hàng hoặc đã bị hủy.', 409);
       if (roleOf(user) === 'warehouse_staff' && String(transfer.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
       const details = await StockTransferDetail.find({ transferId }).session(session);
       const variantRows = await ProductVariant.find({ _id: { $in: details.map((detail) => detail.variantId) } }).select('productId').populate('productId', 'trackingType').session(session).lean();
@@ -290,15 +299,39 @@ export const shipTransfer = async (transferId, user) => {
         detail.quantityShipped = quantity;
         await detail.save({ session });
       }
-      transfer.status = 'shipped';
-      transfer.shippedBy = user._id;
-      transfer.shippedAt = new Date();
-      await transfer.save({ session });
     });
   } finally { await session.endSession(); }
   return getTransfer(transferId, user);
 };
-const assertBranchCapacity = async (location, incoming, session) => {
+
+export const cancelTransfer = async (transferId, payload, user) => {
+  if (!validId(transferId)) throw fail('Mã phiếu điều chuyển không hợp lệ.');
+  const manager = isManager(user);
+  if (!manager && roleOf(user) !== 'branch_manager') throw fail('Bạn không có quyền hủy phiếu điều chuyển.', 403);
+  const { reason } = validateCancelReason(payload);
+  const allowedStatuses = manager ? ['requested', 'approved', 'preparing'] : ['requested'];
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const current = await StockTransfer.findOne({ _id: transferId, direction: { $ne: 'branch_to_central' } }).select('toLocationId status').session(session).lean();
+      if (!current) throw fail('Không tìm thấy phiếu điều chuyển.', 404);
+      if (!manager) await assertBranchOwnsLocation(current.toLocationId, user);
+      // Hủy không đổi tồn: ở các trạng thái được phép, tồn chỉ thay đổi khi xuất kho.
+      const cancelled = await StockTransfer.findOneAndUpdate(
+        { _id: transferId, direction: { $ne: 'branch_to_central' }, status: { $in: allowedStatuses } },
+        { $set: { status: 'cancelled', cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
+        { new: true, session },
+      );
+      if (!cancelled) {
+        throw fail(manager
+          ? 'Chỉ hủy được phiếu đang chờ duyệt, đã duyệt hoặc đang soạn hàng. Phiếu có thể vừa được xuất kho.'
+          : 'Chi nhánh chỉ hủy được yêu cầu đang chờ duyệt.', 409);
+      }
+    });
+  } finally { await session.endSession(); }
+  return getTransfer(transferId, user);
+};
+export const assertBranchCapacity = async (location, incoming, session) => {
   if (location.maxCapacity == null) return;
   const [balances, individualItems] = await Promise.all([
     InventoryBalance.find({ locationId: location._id }).select('variantId quantityOnHand').session(session).lean(),
@@ -380,11 +413,6 @@ export const receiveTransfer = async (transferId, payload, user) => {
               }, session);
             }
           }
-          if (receipt.complete) {
-            const received = new Set(line.receivedItemIds);
-            const missingIds = detail.itemIds.map(String).filter((id) => !received.has(id));
-            if (missingIds.length) await InventoryItem.updateMany({ _id: { $in: missingIds }, status: 'in_transit' }, { $set: { status: 'disposed' } }, { session });
-          }
         } else {
           if (receivedDelta > 0 || damagedDelta > 0) {
             const balance = await increaseInventoryBalance({
@@ -401,6 +429,8 @@ export const receiveTransfer = async (transferId, payload, user) => {
         }
       }
       if (receipt.complete) {
+        // UC-29: dòng thiếu mở phiếu chênh lệch (món thiếu giữ in_transit + condition missing), không loại bỏ ngay.
+        await openTransferDiscrepancies({ transfer, details, tracking, user, session });
         transfer.status = 'received';
         transfer.receivedBy = user._id;
         transfer.receivedAt = new Date();

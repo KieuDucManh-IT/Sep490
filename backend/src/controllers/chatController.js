@@ -1,6 +1,8 @@
 import { Product } from '../models/masterdata/Product.js';
 import { ProductVariant } from '../models/masterdata/ProductVariant.js';
 import { ProductImage } from '../models/masterdata/ProductImages.js';
+import { pickRepresentativeImage } from '../services/masterdata/productImageHelper.js';
+import { customerVisibleProductFilter } from '../services/masterdata/productPricing.js';
 
 // ---------------------------------------------------------------------------
 // Cache catalog (2 phút). Lưu cả promise đang chạy để tránh nhiều request
@@ -31,10 +33,8 @@ const minPositive = (arr) => {
 };
 
 async function loadCatalog() {
-  const rawProducts = await Product.find({
-    isDeleted: { $ne: true },
-    status: { $nin: ['inactive', 'INACTIVE', 'discontinued', 'DISCONTINUED'] },
-  })
+  // Catalog AI chỉ gồm sản phẩm khách nhìn thấy: đang bán và đã định giá (TASK-008).
+  const rawProducts = await Product.find(customerVisibleProductFilter())
     .populate('categoryId')
     .limit(MAX_CATALOG_ITEMS)
     .lean();
@@ -82,8 +82,8 @@ async function loadCatalog() {
     const salePrice = p.salePrice || minPositive(variants.map((v) => v.salePrice));
     const deposit = p.deposit || minPositive(variants.map((v) => v.depositAmount));
 
-    const primaryImage =
-      images.find((i) => i.isPrimary) || images.find((i) => i.imageType === 'MAIN') || images[0];
+    // Ảnh chính chung → ảnh chính của màu đầu tiên → ảnh đầu tiên (TASK-007)
+    const primaryImage = pickRepresentativeImage(images);
 
     return {
       id: pid,

@@ -4,6 +4,8 @@ import Message from '../models/chat/Message.js';
 import Shop from '../models/shop/Shop.js';
 import { Product } from '../models/masterdata/Product.js';
 import { ProductImage } from '../models/masterdata/ProductImages.js';
+import { pickRepresentativeImage } from './masterdata/productImageHelper.js';
+import { isCustomerVisibleProduct } from './masterdata/productPricing.js';
 import { ProductVariant } from '../models/masterdata/ProductVariant.js';
 import { InventoryBalance } from '../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../models/warehouse/inventory/InventoryItem.js';
@@ -173,6 +175,13 @@ export const getOrCreateConversation = async ({
       throw err;
     }
 
+    // TASK-008: không tạo thẻ sản phẩm mới cho sản phẩm chưa mở bán (chưa định giá / ngừng bán).
+    if (!isCustomerVisibleProduct(product)) {
+      const err = new Error(`Sản phẩm [${product.name || productId}] chưa được mở bán`);
+      err.status = 422;
+      throw err;
+    }
+
     // 1. Ưu tiên shopId từ sản phẩm nếu targetShopId chưa có
     if (!targetShopId && product.shopId) {
       if (typeof product.shopId === 'object' && product.shopId._id) {
@@ -228,14 +237,9 @@ export const getOrCreateConversation = async ({
     }
 
     // Lấy ảnh đại diện sản phẩm
-    let primaryImage = '';
-    const imgDoc = await ProductImage.findOne({ productId: product._id, isPrimary: true }).lean();
-    if (imgDoc?.imageUrl) {
-      primaryImage = imgDoc.imageUrl;
-    } else {
-      const fallbackImg = await ProductImage.findOne({ productId: product._id }).sort({ displayOrder: 1 }).lean();
-      primaryImage = fallbackImg?.imageUrl || product.imageUrl || '';
-    }
+    // Ảnh chính chung → ảnh chính của màu đầu tiên → ảnh đầu tiên (TASK-007)
+    const imageRecords = await ProductImage.find({ productId: product._id }).lean();
+    const primaryImage = pickRepresentativeImage(imageRecords)?.imageUrl || product.imageUrl || '';
 
     productData = {
       productId: product._id,

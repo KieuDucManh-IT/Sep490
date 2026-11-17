@@ -12,6 +12,9 @@
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-014
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-015
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-017
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-026
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-027
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-028
  * Zustand Shopping Cart Store for Vestora Fashion Rental & Resale
  */
 
@@ -31,6 +34,14 @@ import {
   calculateSaleLineTotals,
   calculateCartSubtotals,
 } from '../services/cart/cartCalculations';
+
+/**
+ * Check whether a string is a valid 24-character hexadecimal MongoDB ObjectId
+ */
+export function isValidObjectId(id) {
+  if (!id) return false;
+  return /^[0-9a-fA-F]{24}$/.test(String(id).trim());
+}
 
 /**
  * Recalculate line totals for a single cart item
@@ -74,6 +85,17 @@ function generateCartItemId(item) {
   return `cart-${prefix}-${item.variantId}-${Date.now()}-${randomSuffix}`;
 }
 
+const branchId = (item) => String(item.selectedBranch?.locationId || '');
+const sameBranch = (a, b) => isValidObjectId(branchId(a)) && branchId(a) === branchId(b);
+const stockError = (items, input, newQuantity, replacingId = null) => {
+  const stock = input.availableStock;
+  const total = items.filter(it => it.cartItemId !== replacingId && it.variantId === input.variantId && sameBranch(it, input))
+    .reduce((sum, it) => sum + it.quantity, newQuantity);
+  if (typeof stock === 'number' && Number.isFinite(stock) && total > stock) return {
+    success: false, errorCode: 'ERR_INSUFFICIENT_STOCK', errorMessage: 'Tổng số lượng trong giỏ vượt tồn khả dụng (' + stock + ' sản phẩm).',
+  };
+  return null;
+};
 const initialSubtotals = calculateCartSubtotals([]);
 
 export const useCartStore = create(
@@ -112,7 +134,7 @@ export const useCartStore = create(
        * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-006
        */
       addItem: (inputItem) => {
-        if (!inputItem || !inputItem.variantId) {
+        if (!inputItem || !inputItem.variantId || !isValidObjectId(inputItem.variantId)) {
           return {
             success: false,
             errorCode: 'ERR_INVALID_VARIANT',
@@ -120,15 +142,26 @@ export const useCartStore = create(
           };
         }
 
-        const quantityToAdd =
-          inputItem.quantity !== undefined ? Number(inputItem.quantity) : 1;
-        if (Number.isNaN(quantityToAdd) || quantityToAdd <= 0) {
+        if (
+          inputItem.selectedBranch?.locationId &&
+          !isValidObjectId(inputItem.selectedBranch.locationId)
+        ) {
+          return {
+            success: false,
+            errorCode: 'ERR_INVALID_LOCATION',
+            errorMessage: 'Thông tin chi nhánh không hợp lệ.',
+          };
+        }
+
+        const rawQuantity = Number(inputItem.quantity !== undefined ? inputItem.quantity : 1);
+        if (!Number.isInteger(rawQuantity) || rawQuantity < 1 || rawQuantity > 99) {
           return {
             success: false,
             errorCode: CART_ERROR_CODES.ERR_INVALID_QUANTITY,
             errorMessage: CART_ERROR_MESSAGES[CART_ERROR_CODES.ERR_INVALID_QUANTITY],
           };
         }
+        const quantityToAdd = rawQuantity;
 
         const state = get();
         const currentItems = [...state.items];
@@ -156,26 +189,32 @@ export const useCartStore = create(
             (it) =>
               it.orderType === ORDER_TYPES.RENTAL &&
               it.variantId === inputItem.variantId &&
+              sameBranch(it, inputItem) &&
               it.startDate === inputItem.startDate &&
               it.dueDate === inputItem.dueDate
           );
         } else {
           // Đồ mua: Trùng variantId -> gộp số lượng
           existingIndex = currentItems.findIndex(
-            (it) => it.orderType === ORDER_TYPES.SALE && it.variantId === inputItem.variantId
+            (it) => it.orderType === ORDER_TYPES.SALE && it.variantId === inputItem.variantId && sameBranch(it, inputItem)
           );
         }
 
+        const existing = currentItems[existingIndex];
+        const mergedQuantity = (existing?.quantity || 0) + quantityToAdd;
+        if (mergedQuantity > 99) return { success: false, errorCode: CART_ERROR_CODES.ERR_INVALID_QUANTITY, errorMessage: 'Mỗi dòng giỏ hàng tối đa 99 sản phẩm.' };
+        const stockFailure = stockError(currentItems, inputItem, quantityToAdd);
+        if (stockFailure) return stockFailure;
         let updatedItems;
 
         if (existingIndex > -1) {
           // Cập nhật số lượng món đã tồn tại
           const existingItem = currentItems[existingIndex];
-          const newQty = Math.min(99, existingItem.quantity + quantityToAdd);
+          const newQty = existingItem.quantity + quantityToAdd;
           const updatedItem = refreshItemTotals({
             ...existingItem,
             quantity: newQty,
-            selectedBranch: inputItem.selectedBranch || existingItem.selectedBranch || null,
+            availableStock: inputItem.availableStock ?? existingItem.availableStock ?? null,
           });
           updatedItems = [...currentItems];
           updatedItems[existingIndex] = updatedItem;
@@ -202,6 +241,7 @@ export const useCartStore = create(
             thumbnailImage: inputItem.thumbnailImage || '',
             orderType: inputItem.orderType || ORDER_TYPES.SALE,
             quantity: quantityToAdd,
+            availableStock: inputItem.availableStock ?? null,
             salePrice: Number(inputItem.salePrice) || 0,
             rentalPricePerDay: Number(inputItem.rentalPricePerDay) || 0,
             depositAmount: Number(inputItem.depositAmount) || 0,
@@ -232,7 +272,7 @@ export const useCartStore = create(
        */
       updateQuantity: (cartItemId, quantity) => {
         const qty = Number(quantity);
-        if (Number.isNaN(qty) || qty < 1) {
+        if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
           return {
             success: false,
             errorCode: CART_ERROR_CODES.ERR_INVALID_QUANTITY,
@@ -251,6 +291,8 @@ export const useCartStore = create(
           };
         }
 
+        const stockFailure = stockError(state.items, state.items[itemIndex], safeQty, cartItemId);
+        if (stockFailure) return stockFailure;
         const updatedItem = refreshItemTotals({
           ...state.items[itemIndex],
           quantity: safeQty,
@@ -330,10 +372,12 @@ export const useCartStore = create(
         }
 
         const { variantId, ...branchInfo } = branchData || {};
+        if (!isValidObjectId(branchInfo.locationId) || (variantId && !isValidObjectId(variantId))) return { success: false, errorMessage: 'Biến thể hoặc chi nhánh không hợp lệ.' };
         const target = state.items[itemIndex];
         const updatedItems = [...state.items];
         updatedItems[itemIndex] = {
           ...target,
+          availableStock: null,
           selectedBranch: branchInfo.locationId ? branchInfo : target.selectedBranch,
           ...(variantId ? { variantId } : {}),
         };
@@ -345,6 +389,22 @@ export const useCartStore = create(
       /**
        * Xóa nhiều món đồ khỏi giỏ hàng
        */
+      // Only apply authoritative quote fields; never change variant/branch identity.
+      applyQuote: (rows) => {
+        const quotes = new Map(rows.map(row => [row.cartItemId, row]));
+        const items = get().items.map(item => {
+          const row = quotes.get(item.cartItemId);
+          if (!row || row.variantId !== item.variantId || !row.authoritative) return item;
+          const price = row.authoritative;
+          return refreshItemTotals({ ...item, availableStock: row.availableQty,
+            ...(item.orderType === ORDER_TYPES.SALE ? { salePrice: price.salePrice } : {
+              rentalPricePerDay: price.rentalPricePerDay, depositAmount: price.depositPerUnit, rentalDays: price.rentalDays,
+            }),
+          });
+        });
+        set({ items, ...calculateCartSubtotals(items) });
+      },
+
       removeItems: (cartItemIds = []) => {
         const state = get();
         const idSet = new Set(cartItemIds);
@@ -398,6 +458,9 @@ export const useCartStore = create(
         const rentalItems = state.items
           .filter((it) => it.orderType === ORDER_TYPES.RENTAL)
           .map((it) => ({
+            cartItemId: it.cartItemId,
+            selectedBranch: it.selectedBranch || null,
+            locationId: it.selectedBranch?.locationId || null,
             productId: it.productId,
             variantId: it.variantId,
             sku: it.sku,
@@ -417,6 +480,9 @@ export const useCartStore = create(
         const saleItems = state.items
           .filter((it) => it.orderType === ORDER_TYPES.SALE)
           .map((it) => ({
+            cartItemId: it.cartItemId,
+            selectedBranch: it.selectedBranch || null,
+            locationId: it.selectedBranch?.locationId || null,
             productId: it.productId,
             variantId: it.variantId,
             sku: it.sku,
@@ -459,7 +525,11 @@ export const useCartStore = create(
           if (!Array.isArray(state.items)) {
             state.items = [];
           }
-          const refreshed = state.items.map(refreshItemTotals);
+          // Lọc bỏ các sản phẩm rác hoặc có variantId không hợp lệ
+          const validItems = state.items.filter(
+            (it) => it && it.variantId && isValidObjectId(it.variantId)
+          );
+          const refreshed = validItems.map(refreshItemTotals);
           const subtotals = calculateCartSubtotals(refreshed);
           state.items = refreshed;
           Object.assign(state, subtotals);

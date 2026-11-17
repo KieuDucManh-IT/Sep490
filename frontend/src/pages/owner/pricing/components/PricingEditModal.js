@@ -11,7 +11,7 @@ import {
   Tag,
   Sparkles,
 } from 'lucide-react';
-import { fmtCurrency } from '../utils/pricingHelpers';
+import { fmtCurrency, requiredPriceText } from '../utils/pricingHelpers';
 
 const RENTAL_PRESETS = [5, 8, 10, 15];
 const DEPOSIT_PRESETS = [30, 50, 70, 100];
@@ -91,6 +91,12 @@ function PricingEditModal({
 
       {/* 2. Modal Body với cuộn mượt */}
       <div className="vestora-modal-body">
+        {/* TASK-008: giá bắt buộc theo hình thức sản phẩm */}
+        <div className="alert alert-info py-2 mb-3" role="note">
+          {requiredPriceText(editingItem.tag)}
+          {!editingItem.isSetPrice ? ' Lưu đủ giá sẽ mở bán sản phẩm cho khách.' : ''}
+        </div>
+
         {/* Thông báo lỗi nếu có */}
         {modalError ? (
           <div role="alert" aria-live="assertive" className="pricing-modal-error-box mb-3">

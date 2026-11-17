@@ -53,3 +53,16 @@ export const formatDate = (dateStr) => {
     return 'Mặc định';
   }
 };
+
+/**
+ * TASK-008: giá bắt buộc theo hình thức sản phẩm (khớp backend productPricing.missingRequiredPrices).
+ * @param {string} tag - 'rental' | 'sale' | 'both'
+ * @returns {string}
+ */
+export const requiredPriceText = (tag) => {
+  const value = String(tag || '').toLowerCase();
+  if (value === 'rental') return 'Sản phẩm cho thuê: bắt buộc giá thuê mỗi ngày > 0, tiền cọc ≥ 0.';
+  if (value === 'sale') return 'Sản phẩm bán: bắt buộc giá bán > 0.';
+  if (value === 'both') return 'Sản phẩm vừa thuê vừa bán: bắt buộc giá thuê mỗi ngày > 0 và giá bán > 0.';
+  return 'Sản phẩm chưa có hình thức: cần ít nhất giá thuê mỗi ngày hoặc giá bán > 0.';
+};

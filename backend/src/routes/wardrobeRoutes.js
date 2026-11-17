@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/system/User.js';
 import Wardrobe from '../models/system/Wardrobe.js';
 import { Product } from '../models/masterdata/Product.js';
+import { isCustomerVisibleProduct } from '../services/masterdata/productPricing.js';
 
 const router = express.Router();
 
@@ -116,6 +117,10 @@ router.post('/', optionalAuth, async (req, res) => {
     if (productId) {
       try {
         const prod = await Product.findById(productId).lean();
+        // TASK-008: sản phẩm chưa mở bán (chưa định giá / ngừng bán) thì không lấy thông tin sản phẩm.
+        if (prod && !isCustomerVisibleProduct(prod)) {
+          return res.status(422).json({ success: false, message: `Sản phẩm [${prod.name || productId}] chưa được mở bán.` });
+        }
         if (prod) {
           if (!finalTitle) finalTitle = prod.name;
           if (!finalImage) finalImage = prod.image || (Array.isArray(prod.images) && prod.images[0]);

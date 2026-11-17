@@ -23,6 +23,10 @@ const productSchema = new mongoose.Schema({
   status: { type: String, default: 'active', enum: ['active', 'inactive', 'discontinued'] },
   isDeleted: { type: Boolean, default: false },
   gender: { type: String, trim: true },
+  // TASK-008: chỉ hiện cho khách sau khi Shop Owner định giá (PATCH /api/products/:id/pricing).
+  isSetPrice: { type: Boolean, default: false, index: true },
+  priceSetBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  priceSetAt: { type: Date, default: null },
 
 }, { timestamps: true, strict: false });
 

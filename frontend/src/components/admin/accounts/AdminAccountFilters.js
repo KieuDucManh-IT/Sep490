@@ -53,8 +53,8 @@ export default function AdminAccountFilters({
         >
           <option value="ALL">Tất cả vai trò</option>
           <option value="customer">Khách hàng (customer)</option>
-          <option value="shopOwner">Chủ gian hàng (shopOwner)</option>
-          <option value="brandmanager">Quản lý thương hiệu (brandmanager)</option>
+          <option value="shopOwner">Chủ cửa hàng (shopOwner)</option>
+          <option value="branch_manager">Quản lý chi nhánh (branch_manager)</option>
           <option value="warehouse_manager">Quản lý kho (warehouse_manager)</option>
           <option value="warehouse_staff">Nhân viên kho (warehouse_staff)</option>
           <option value="admin">Quản trị viên (admin)</option>

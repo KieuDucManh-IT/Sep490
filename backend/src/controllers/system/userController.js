@@ -41,11 +41,11 @@ function buildLockEmailText(user, reason) {
 function buildNewStaffEmailText(user, rawPassword) {
   const name = user.FullName || user.Email;
   const roleDisplayNames = {
-    shopOwner: 'Chủ gian hàng (Shop Owner)',
-    brandmanager: 'Quản lý thương hiệu (Brand Manager)',
+    shopOwner: 'Chủ cửa hàng (Shop Owner)',
+    branch_manager: 'Quản lý chi nhánh (Branch Manager)',
+    brandmanager: 'Quản lý chi nhánh (Branch Manager)',
     warehouse_manager: 'Quản lý kho (Warehouse Manager)',
-    warehouse_staff: 'Nhân viên kho (Warehouse Staff)',
-
+    warehouse_staff: 'Nhân viên kho (Warehouse Staff)'
   };
   const roleName = roleDisplayNames[user.Role] || user.Role;
 
@@ -365,8 +365,8 @@ export const createUser = async (req, res) => {
 
     const normalizeRole = (r) => {
       const clean = (r || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
-      if (clean === 'shopowner') return 'shopOwner';
-      if (clean === 'brandmanager') return 'brandmanager';
+      if (clean === 'shopowner' || clean === 'owner') return 'shopOwner';
+      if (clean === 'branchmanager' || clean === 'brandmanager') return 'branch_manager';
       if (clean === 'warehousemanager') return 'warehouse_manager';
       if (clean === 'warehousestaff') return 'warehouse_staff';
       return clean || 'warehouse_staff';
@@ -399,7 +399,7 @@ export const createUser = async (req, res) => {
       const normalizedRole = normalizeRole(Role);
       if (normalizedRole === 'shopOwner') {
         await Shop.findByIdAndUpdate(assignedShopId, { ownerId: newUser._id });
-      } else if (normalizedRole === 'brandmanager') {
+      } else if (normalizedRole === 'branch_manager' || normalizedRole === 'brandmanager') {
         await Shop.findByIdAndUpdate(assignedShopId, { managerId: newUser._id });
       }
     }
@@ -496,8 +496,8 @@ export const updateUser = async (req, res) => {
 
     if (Role !== undefined) {
       const clean = Role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
-      if (clean === 'shopowner') updateData.Role = 'shopOwner';
-      else if (clean === 'brandmanager') updateData.Role = 'brandmanager';
+      if (clean === 'shopowner' || clean === 'owner') updateData.Role = 'shopOwner';
+      else if (clean === 'branchmanager' || clean === 'brandmanager') updateData.Role = 'branch_manager';
       else if (clean === 'warehousemanager') updateData.Role = 'warehouse_manager';
       else if (clean === 'warehousestaff') updateData.Role = 'warehouse_staff';
     }
@@ -534,7 +534,7 @@ export const updateUser = async (req, res) => {
         const targetRole = updateData.Role || existingUser.Role;
         if (targetRole === 'shopOwner') {
           await Shop.findByIdAndUpdate(shopId, { ownerId: existingUser._id });
-        } else if (targetRole === 'brandmanager') {
+        } else if (targetRole === 'branch_manager' || targetRole === 'brandmanager') {
           await Shop.findByIdAndUpdate(shopId, { managerId: existingUser._id });
         }
       } else {

@@ -1,7 +1,8 @@
 export const ROLE_LABELS = {
   customer: 'Khách hàng',
-  shopOwner: 'Chủ gian hàng',
-  brandmanager: 'Quản lý thương hiệu',
+  shopOwner: 'Chủ cửa hàng',
+  branch_manager: 'Quản lý chi nhánh',
+  brandmanager: 'Quản lý chi nhánh',
   warehouse_manager: 'Quản lý kho',
   warehouse_staff: 'Nhân viên kho',
   admin: 'Quản trị viên'
@@ -10,8 +11,8 @@ export const ROLE_LABELS = {
 export const normalizeRole = (raw) => {
   const r = (raw || 'customer').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
   if (r === 'admin') return 'admin';
-  if (r === 'shopowner') return 'shopOwner';
-  if (r === 'brandmanager') return 'brandmanager';
+  if (r === 'shopowner' || r === 'owner') return 'shopOwner';
+  if (r === 'branchmanager' || r === 'brandmanager') return 'branch_manager';
   if (r === 'warehousemanager') return 'warehouse_manager';
   if (r === 'warehousestaff') return 'warehouse_staff';
   return 'customer';
@@ -20,7 +21,7 @@ export const normalizeRole = (raw) => {
 export const roleColor = (role) => {
   if (role === 'admin') return '#4338CA';
   if (role === 'shopOwner') return '#C2410C';
-  if (role === 'brandmanager') return '#7E22CE';
+  if (role === 'branch_manager' || role === 'brandmanager') return '#7E22CE';
   if (role === 'warehouse_manager' || role === 'warehouseManager') return '#0E7490';
   if (role === 'warehouse_staff' || role === 'warehousestaff') return '#047857';
   return '#0369A1';

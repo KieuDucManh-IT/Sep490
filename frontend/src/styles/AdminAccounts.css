@@ -573,6 +573,8 @@
   border: 1px solid #FED7AA;
 }
 
+.role-pill.branch_manager,
+.role-pill.branch-manager,
 .role-pill.brandmanager,
 .role-pill.brand-manager {
   background: #FAF5FF;

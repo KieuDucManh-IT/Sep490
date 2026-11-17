@@ -213,8 +213,8 @@ export default function AdminEditAccountModal({
                     if (editFormErrors.role) setEditFormErrors(prev => ({ ...prev, role: null }));
                   }}
                 >
-                  <option value="shopOwner">Chủ gian hàng (shopOwner)</option>
-                  <option value="brandmanager">Quản lý thương hiệu (brandmanager)</option>
+                  <option value="shopOwner">Chủ cửa hàng (shopOwner)</option>
+                  <option value="branch_manager">Quản lý chi nhánh (branch_manager)</option>
                   <option value="warehouse_manager">Quản lý kho (warehouse_manager)</option>
                   <option value="warehouse_staff">Nhân viên kho (warehouse_staff)</option>
                 </select>

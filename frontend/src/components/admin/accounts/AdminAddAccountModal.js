@@ -162,8 +162,8 @@ export default function AdminAddAccountModal({
                       <option value="">Chọn vai trò nhân viên</option>
                       <option value="shopOwner">Chủ gian hàng (shopOwner)</option>
                       <option value="brandmanager">Quản lý thương hiệu (brandmanager)</option>
-                      <option value="warehouseManager">Quản lý kho (warehouseManager)</option>
-                      <option value="warehousestaff">Nhân viên kho (warehousestaff)</option>
+                      <option value="warehouse_manager">Quản lý kho (warehouse_manager)</option>
+                      <option value="warehouse_staff">Nhân viên kho (warehouse_staff)</option>
                     </select>
                   </div>
                   {addFormErrors.role && (

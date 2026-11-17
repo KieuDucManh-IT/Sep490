@@ -430,9 +430,9 @@ export default function AdminAccountsPage() {
       dob: user.dob && user.dob !== '—' ? user.dob : '15/08/2000',
       gender: user.gender || 'Nữ',
       avatar: user.avatar || '',
-      role: ['shopOwner', 'brandmanager', 'warehouseManager', 'warehousestaff'].includes(user.role)
-        ? user.role
-        : 'warehousestaff',
+      role: ['shopOwner', 'brandmanager', 'warehouse_manager', 'warehouseManager', 'warehouse_staff', 'warehousestaff'].includes(user.role)
+        ? (user.role === 'warehouseManager' ? 'warehouse_manager' : (user.role === 'warehousestaff' ? 'warehouse_staff' : user.role))
+        : 'warehouse_staff',
       status: user.status || 'ACTIVE'
     });
     setEditFormErrors({});

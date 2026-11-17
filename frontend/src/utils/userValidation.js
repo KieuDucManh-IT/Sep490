@@ -12,7 +12,9 @@ export const ALLOWED_ROLES = [
   'shopOwner',
   'brandmanager',
   'warehouseManager',
+  'warehouse_manager',
   'warehousestaff',
+  'warehouse_staff',
   'admin'
 ];
 
@@ -20,7 +22,9 @@ export const STAFF_ROLES = [
   'shopOwner',
   'brandmanager',
   'warehouseManager',
-  'warehousestaff'
+  'warehouse_manager',
+  'warehousestaff',
+  'warehouse_staff'
 ];
 
 export const validateStaffRole = (role) => {

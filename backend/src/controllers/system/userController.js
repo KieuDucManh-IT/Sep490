@@ -41,7 +41,9 @@ function buildNewStaffEmailText(user, rawPassword) {
   const roleDisplayNames = {
     shopOwner: 'Chủ gian hàng (Shop Owner)',
     brandmanager: 'Quản lý thương hiệu (Brand Manager)',
+    warehouse_manager: 'Quản lý kho (Warehouse Manager)',
     warehouseManager: 'Quản lý kho (Warehouse Manager)',
+    warehouse_staff: 'Nhân viên kho (Warehouse Staff)',
     warehousestaff: 'Nhân viên kho (Warehouse Staff)'
   };
   const roleName = roleDisplayNames[user.Role] || user.Role;
@@ -118,8 +120,19 @@ export const getUsers = async (req, res) => {
     const { role, status, search } = req.query;
     const filter = {};
 
-    if (role) {
-      filter.Role = { $regex: new RegExp(`^${role}$`, 'i') };
+    if (role && role !== 'ALL') {
+      const clean = role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+      if (clean === 'warehousemanager') {
+        filter.Role = { $regex: /^(warehouse_manager|warehouseManager)$/i };
+      } else if (clean === 'warehousestaff') {
+        filter.Role = { $regex: /^(warehouse_staff|warehousestaff)$/i };
+      } else if (clean === 'shopowner') {
+        filter.Role = { $regex: /^(shop_owner|shopOwner)$/i };
+      } else if (clean === 'brandmanager' || clean === 'branchmanager') {
+        filter.Role = { $regex: /^(branch_manager|brandmanager)$/i };
+      } else {
+        filter.Role = { $regex: new RegExp(`^${role}$`, 'i') };
+      }
     }
 
     if (status) {
@@ -303,9 +316,9 @@ export const createUser = async (req, res) => {
       const clean = (r || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
       if (clean === 'shopowner') return 'shopOwner';
       if (clean === 'brandmanager') return 'brandmanager';
-      if (clean === 'warehousemanager') return 'warehouseManager';
-      if (clean === 'warehousestaff') return 'warehousestaff';
-      return clean || 'warehousestaff';
+      if (clean === 'warehousemanager') return 'warehouse_manager';
+      if (clean === 'warehousestaff') return 'warehouse_staff';
+      return clean || 'warehouse_staff';
     };
 
     const newUser = new User({
@@ -422,8 +435,8 @@ export const updateUser = async (req, res) => {
       const clean = Role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
       if (clean === 'shopowner') updateData.Role = 'shopOwner';
       else if (clean === 'brandmanager') updateData.Role = 'brandmanager';
-      else if (clean === 'warehousemanager') updateData.Role = 'warehouseManager';
-      else if (clean === 'warehousestaff') updateData.Role = 'warehousestaff';
+      else if (clean === 'warehousemanager') updateData.Role = 'warehouse_manager';
+      else if (clean === 'warehousestaff') updateData.Role = 'warehouse_staff';
     }
 
     if (Status !== undefined) {

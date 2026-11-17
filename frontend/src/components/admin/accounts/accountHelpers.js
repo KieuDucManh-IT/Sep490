@@ -1,10 +1,12 @@
 export const ROLE_LABELS = {
-  customer: 'customer',
-  shopOwner: 'shopOwner',
-  brandmanager: 'brandmanager',
-  warehouseManager: 'warehouseManager',
-  warehousestaff: 'warehousestaff',
-  admin: 'admin'
+  customer: 'Khách hàng',
+  shopOwner: 'Chủ gian hàng',
+  brandmanager: 'Quản lý thương hiệu',
+  warehouse_manager: 'Quản lý kho',
+  warehouseManager: 'Quản lý kho',
+  warehouse_staff: 'Nhân viên kho',
+  warehousestaff: 'Nhân viên kho',
+  admin: 'Quản trị viên'
 };
 
 export const normalizeRole = (raw) => {
@@ -12,8 +14,8 @@ export const normalizeRole = (raw) => {
   if (r === 'admin') return 'admin';
   if (r === 'shopowner') return 'shopOwner';
   if (r === 'brandmanager') return 'brandmanager';
-  if (r === 'warehousemanager') return 'warehouseManager';
-  if (r === 'warehousestaff') return 'warehousestaff';
+  if (r === 'warehousemanager') return 'warehouse_manager';
+  if (r === 'warehousestaff') return 'warehouse_staff';
   return 'customer';
 };
 
@@ -21,8 +23,8 @@ export const roleColor = (role) => {
   if (role === 'admin') return '#4338CA';
   if (role === 'shopOwner') return '#C2410C';
   if (role === 'brandmanager') return '#7E22CE';
-  if (role === 'warehouseManager') return '#0E7490';
-  if (role === 'warehousestaff') return '#047857';
+  if (role === 'warehouse_manager' || role === 'warehouseManager') return '#0E7490';
+  if (role === 'warehouse_staff' || role === 'warehousestaff') return '#047857';
   return '#0369A1';
 };
 

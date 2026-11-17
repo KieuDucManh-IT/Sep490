@@ -581,6 +581,7 @@
 }
 
 .role-pill.warehouseManager,
+.role-pill.warehouse_manager,
 .role-pill.warehouse-manager {
   background: #ECFEFF;
   color: #0E7490;
@@ -588,6 +589,7 @@
 }
 
 .role-pill.warehousestaff,
+.role-pill.warehouse_staff,
 .role-pill.warehouse-staff {
   background: #ECFDF5;
   color: #047857;

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ROLE_LABELS } from './accountHelpers';
 
 export default function AdminAccountTable({
   isLoading,
@@ -101,7 +102,7 @@ export default function AdminAccountTable({
 
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <span className={`role-pill ${u.role}`}>
-                      {u.role}
+                      {ROLE_LABELS[u.role] || u.role}
                     </span>
                   </td>
 

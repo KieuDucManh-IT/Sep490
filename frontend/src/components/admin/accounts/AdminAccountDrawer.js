@@ -166,7 +166,7 @@ export default function AdminAccountDrawer({
                   <div className="admin-acc-kv-row">
                     <span className="admin-acc-kv-key">Vai trò</span>
                     <span className="admin-acc-kv-val" style={{ color: '#2563EB', fontWeight: 600 }}>
-                      {user.role}
+                      {ROLE_LABELS[user.role] ? `${ROLE_LABELS[user.role]} (${user.role})` : user.role}
                     </span>
                   </div>
                 </div>

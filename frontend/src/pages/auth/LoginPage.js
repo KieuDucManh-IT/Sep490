@@ -11,13 +11,13 @@ import AuthLayout from "../../components/AuthLayout";
 import { useAuth } from "../../context/AuthContext";
 
 function getHome(role) {
-  const normalized = (role || "").toLowerCase();
+  const normalized = (role || "").toLowerCase().replace(/[\s_-]/g, "");
   if (normalized === "admin") return "/admin/accounts";
-  if (normalized === "operation_staff" || normalized === "ops") return "/ops/shops";
-  if (normalized === "shop_owner" || normalized === "owner") return "/owner/dashboard";
-  if (normalized === "branch_manager") return "/branch/dashboard";
-  if (normalized === "warehouse_staff") return "/warehousestaff/inbound-receipts";
-  if (normalized === "warehouse_manager") return "/warehousemanager";
+  if (normalized === "operationstaff" || normalized === "ops") return "/ops/shops";
+  if (normalized === "shopowner" || normalized === "owner") return "/owner/dashboard";
+  if (normalized === "branchmanager") return "/branch/dashboard";
+  if (normalized === "warehousestaff") return "/warehousestaff/inbound-receipts";
+  if (normalized === "warehousemanager") return "/warehousemanager";
 
   return "/";
 }

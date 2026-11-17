@@ -12,7 +12,9 @@ export const ALLOWED_ROLES = [
   'shopOwner',
   'brandmanager',
   'warehouseManager',
+  'warehouse_manager',
   'warehousestaff',
+  'warehouse_staff',
   'admin'
 ];
 

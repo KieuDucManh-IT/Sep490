@@ -54,12 +54,12 @@ export default function AdminAccountFilters({
           onChange={(e) => onRoleFilterChange(e.target.value)}
         >
           <option value="ALL">Tất cả vai trò</option>
-          <option value="customer">customer</option>
-          <option value="shopOwner">shopOwner</option>
-          <option value="brandmanager">brandmanager</option>
-          <option value="warehouseManager">warehouseManager</option>
-          <option value="warehousestaff">warehousestaff</option>
-          <option value="admin">admin</option>
+          <option value="customer">Khách hàng (customer)</option>
+          <option value="shopOwner">Chủ gian hàng (shopOwner)</option>
+          <option value="brandmanager">Quản lý thương hiệu (brandmanager)</option>
+          <option value="warehouse_manager">Quản lý kho (warehouse_manager)</option>
+          <option value="warehouse_staff">Nhân viên kho (warehouse_staff)</option>
+          <option value="admin">Quản trị viên (admin)</option>
         </select>
 
         <select

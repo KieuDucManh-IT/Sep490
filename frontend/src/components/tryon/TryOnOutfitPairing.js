@@ -112,6 +112,7 @@ const TryOnOutfitPairing = ({
               >
                 <img
                   src={
+                    pairedGarment.primaryImageUrl ||
                     pairedGarment.image ||
                     (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
                     fallbackGarmentImage
@@ -206,6 +207,7 @@ const TryOnOutfitPairing = ({
               >
                 <img
                   src={
+                    pairedAccessory.primaryImageUrl ||
                     pairedAccessory.image ||
                     (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
                     fallbackGarmentImage

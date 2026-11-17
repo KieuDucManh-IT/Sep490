@@ -473,6 +473,25 @@ export default function PhotoTryOnPage() {
       setErrorMessage('Vui lòng tích chọn đồng ý cho phép ứng dụng sử dụng hình ảnh trước khi ghép đồ AI!');
       return;
     }
+
+    if (category === 'accessories') {
+      setErrorMessage(
+        'Phụ kiện (Túi xách, Giày, Kính...) là món phối hoàn thiện phong cách (Complete The Look). Vui lòng chọn trang phục chính (Đầm, Áo, hoặc Quần/Chân váy) để AI ướm thử phom dáng lên cơ thể!'
+      );
+      return;
+    }
+
+    const garmentImg =
+      product?.primaryImageUrl ||
+      product?.image ||
+      (Array.isArray(product?.images) && product.images[0]) ||
+      '';
+
+    if (!garmentImg && !product?._id) {
+      setErrorMessage('Vui lòng chọn trang phục hợp lệ có hình ảnh để thử đồ.');
+      return;
+    }
+
     setErrorMessage('');
     setSuccessMessage('');
     setIsGenerating(true);
@@ -482,7 +501,7 @@ export default function PhotoTryOnPage() {
 
     setGenerationStep(
       totalSetItems === 3
-        ? 'Đang chuẩn bị ghép set 3 món hoàn chỉnh: Món chính + Trang phục phối + Túi xách thời trang...'
+        ? 'Đang chuẩn bị ghép set 3 món hoàn chỉnh: Món chính + Trang phục phối + Phụ kiện thời trang...'
         : totalSetItems === 2
           ? 'Đang chuẩn bị ghép set 2 món phối hoàn chỉnh...'
           : 'Đang chuẩn hoá tỷ lệ người mẫu và nhận diện trang phục...'
@@ -499,7 +518,7 @@ export default function PhotoTryOnPage() {
     const stepTimer2 = setTimeout(() => {
       setGenerationStep(
         totalSetItems === 3
-          ? 'Bước 2 & 3: Đang ghép tiếp trang phục phối và túi xách thời trang...'
+          ? 'Bước 2 & 3: Đang ghép tiếp trang phục phối và hoàn thiện Lookbook...'
           : totalSetItems === 2
             ? 'Bước 2: Đang ghép tiếp món phối vào tổng thể người mẫu...'
             : 'Đang kết xuất ánh sáng và hoàn thiện phom dáng...'
@@ -519,11 +538,6 @@ export default function PhotoTryOnPage() {
         formData.append('productId', product._id);
       }
 
-      const garmentImg =
-        product?.image ||
-        (Array.isArray(product?.images) && product.images[0]) ||
-        '';
-
       formData.append('garmentImageUrl', garmentImg);
       formData.append('garmentDescription', product?.name || 'luxury clothing');
       formData.append('category', category);
@@ -532,8 +546,10 @@ export default function PhotoTryOnPage() {
       // 1. Trang phục phối kèm (Quần / Chân váy hoặc Áo / Blazer)
       if (pairedGarment) {
         const pairedImg =
+          pairedGarment.primaryImageUrl ||
           pairedGarment.image ||
-          (Array.isArray(pairedGarment.images) && pairedGarment.images[0]);
+          (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
+          '';
         if (pairedImg) {
           const pairedCat =
             category === 'upper_body' ? 'lower_body' : category === 'lower_body' ? 'upper_body' : 'upper_body';
@@ -550,14 +566,16 @@ export default function PhotoTryOnPage() {
         }
       }
 
-      // 2. Phụ kiện phối kèm (Túi xách, Kính mắt...)
+      // 2. Phụ kiện phối kèm (Túi xách, Giày, Kính mắt...)
       if (pairedAccessory) {
         const accImg =
+          pairedAccessory.primaryImageUrl ||
           pairedAccessory.image ||
-          (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]);
+          (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
+          '';
         if (accImg) {
           formData.append('accessoryGarmentImageUrl', accImg);
-          formData.append('accessoryGarmentDescription', pairedAccessory.name || 'phụ kiện túi xách thời trang');
+          formData.append('accessoryGarmentDescription', pairedAccessory.name || 'phụ kiện thời trang');
           formData.append('accessoryCategory', 'accessories');
         }
         if (pairedAccessory._id) {
@@ -646,6 +664,7 @@ export default function PhotoTryOnPage() {
   };
 
   const garmentImageUrl =
+    product?.primaryImageUrl ||
     product?.image ||
     (Array.isArray(product?.images) && product.images[0]) ||
     '';
@@ -803,6 +822,7 @@ export default function PhotoTryOnPage() {
 
         {/* CENTER PANEL: Real-time 3D AR Stage - Dual Split View */}
         <TryOnStageViewer
+          product={product}
           userUploadedFile={userUploadedFile}
           activeModelImage={activeModelImage}
           resultImage={resultImage}

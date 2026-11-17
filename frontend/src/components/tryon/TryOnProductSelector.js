@@ -1,4 +1,5 @@
 import React from 'react';
+import { Sparkles, Info } from 'lucide-react';
 
 export default function TryOnProductSelector({
   product,
@@ -230,7 +231,7 @@ export default function TryOnProductSelector({
             { id: 'dresses', label: 'Đầm / Cả bộ' },
             { id: 'upper_body', label: 'Áo / Thân trên' },
             { id: 'lower_body', label: 'Quần / Chân váy' },
-            { id: 'accessories', label: 'Phụ kiện (Túi, Kính)' },
+            { id: 'accessories', label: 'Phụ kiện (Túi, Giày, Kính)' },
           ].map((c) => (
             <button
               key={c.id}
@@ -248,6 +249,29 @@ export default function TryOnProductSelector({
             </button>
           ))}
         </div>
+
+        {category === 'accessories' && (
+          <div
+            style={{
+              background: '#fcf8f2',
+              border: '1px solid #ebdcc5',
+              borderRadius: '6px',
+              padding: '6px 8px',
+              marginTop: '5px',
+              fontSize: '10px',
+              color: '#8b6938',
+              lineHeight: 1.4,
+              display: 'flex',
+              gap: '6px',
+              alignItems: 'flex-start',
+            }}
+          >
+            <Sparkles size={12} color="#C5A880" style={{ flexShrink: 0, marginTop: '1px' }} />
+            <div>
+              <strong>Lưu ý phối đồ:</strong> Phụ kiện (Túi xách, Giày, Kính...) là món <em>phối kèm hoàn thiện phong cách</em> (Complete The Look). Vui lòng chọn Đầm hoặc Áo / Quần làm trang phục ướm thử chính, phụ kiện sẽ được phối kèm trong Lookbook Studio nhé!
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Size picker */}

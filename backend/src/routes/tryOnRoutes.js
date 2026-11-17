@@ -228,6 +228,7 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
             // Ảnh chính chung → ảnh chính của màu đầu tiên → ảnh đầu tiên (TASK-007)
             const records = await ProductImage.find({ productId: product._id }).lean();
             garmentImageUrl =
+              product.primaryImageUrl ||
               pickRepresentativeImage(records)?.imageUrl ||
               (Array.isArray(product.images) && product.images[0]) ||
               product.image;
@@ -280,6 +281,7 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
         if (pairedProd) {
           pairedGarmentDescription = pairedGarmentDescription || pairedProd.name;
           pairedGarmentImageUrl =
+            pairedProd.primaryImageUrl ||
             (Array.isArray(pairedProd.images) && pairedProd.images[0]) ||
             pairedProd.image;
         }
@@ -318,6 +320,7 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
         if (accProd) {
           accessoryGarmentDescription = accessoryGarmentDescription || accProd.name;
           accessoryGarmentImageUrl =
+            accProd.primaryImageUrl ||
             (Array.isArray(accProd.images) && accProd.images[0]) ||
             accProd.image;
         }

@@ -209,12 +209,20 @@ export default function AdminEditAccountModal({
                   className={`admin-acc-form-select ${editFormErrors.role ? 'error' : ''}`}
                   value={editForm.role}
                   onChange={(e) => {
-                    setEditForm({ ...editForm, role: e.target.value });
+                    const newRole = e.target.value;
+                    setEditForm({
+                      ...editForm,
+                      role: newRole,
+                      shopId: newRole === 'branch_manager' ? editForm.shopId : ''
+                    });
                     if (editFormErrors.role) setEditFormErrors(prev => ({ ...prev, role: null }));
+                    if (newRole !== 'branch_manager' && editFormErrors.shopId) {
+                      setEditFormErrors(prev => ({ ...prev, shopId: null }));
+                    }
                   }}
                 >
-                  <option value="shopOwner">Chủ cửa hàng (shopOwner)</option>
-                  <option value="branch_manager">Quản lý chi nhánh (branch_manager)</option>
+                  <option value="shopOwner">Chủ cửa hàng (shopOwner) - Quản lý toàn chuỗi</option>
+                  <option value="branch_manager">Quản lý chi nhánh (branch_manager) - Phụ trách cơ sở</option>
                   <option value="warehouse_manager">Quản lý kho (warehouse_manager)</option>
                   <option value="warehouse_staff">Nhân viên kho (warehouse_staff)</option>
                 </select>
@@ -227,38 +235,46 @@ export default function AdminEditAccountModal({
               </span>
             </div>
 
-            <div className="admin-acc-form-group">
-              <label className="admin-acc-form-label">
-                Cơ sở / Chi nhánh phân công
-              </label>
-              <div className="admin-acc-input-wrap">
-                <span className="admin-acc-input-icon">
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    <polyline points="9 22 9 12 15 12 15 22" />
-                  </svg>
+            {editForm.role === 'branch_manager' && (
+              <div className="admin-acc-form-group">
+                <label className="admin-acc-form-label">
+                  Cơ sở / Chi nhánh phân công <span style={{ color: '#EF4444' }}>*</span>
+                </label>
+                <div className="admin-acc-input-wrap">
+                  <span className="admin-acc-input-icon">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                      <polyline points="9 22 9 12 15 12 15 22" />
+                    </svg>
+                  </span>
+                  <select
+                    className={`admin-acc-form-select ${editFormErrors.shopId ? 'error' : ''}`}
+                    value={editForm.shopId || ''}
+                    onChange={(e) => {
+                      setEditForm({ ...editForm, shopId: e.target.value });
+                      if (editFormErrors.shopId) setEditFormErrors(prev => ({ ...prev, shopId: null }));
+                    }}
+                  >
+                    <option value="">-- Chọn cơ sở phân công cho Quản lý chi nhánh --</option>
+                    {loadingShops ? (
+                      <option value="" disabled>Đang tải danh sách cơ sở từ máy chủ...</option>
+                    ) : (
+                      shops.map((shop) => (
+                        <option key={shop._id} value={shop._id}>
+                          {shop.name} {shop.city ? `(${shop.city})` : ''} {shop.isHQ ? '★ [Trụ sở chính]' : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                {editFormErrors.shopId && (
+                  <span className="admin-acc-field-error">{editFormErrors.shopId}</span>
+                )}
+                <span className="admin-acc-field-hint">
+                  Quản lý chi nhánh phụ trách vận hành và quản lý trực tiếp tại cơ sở này
                 </span>
-                <select
-                  className="admin-acc-form-select"
-                  value={editForm.shopId || ''}
-                  onChange={(e) => setEditForm({ ...editForm, shopId: e.target.value })}
-                >
-                  <option value="">-- Không phân công chi nhánh --</option>
-                  {loadingShops ? (
-                    <option value="" disabled>Đang tải danh sách cơ sở từ máy chủ...</option>
-                  ) : (
-                    shops.map((shop) => (
-                      <option key={shop._id} value={shop._id}>
-                        {shop.name} {shop.city ? `(${shop.city})` : ''} {shop.isHQ ? '★ [Trụ sở chính]' : ''}
-                      </option>
-                    ))
-                  )}
-                </select>
               </div>
-              <span className="admin-acc-field-hint">
-                Dữ liệu cơ sở tải trực tiếp từ hệ thống chi nhánh VESTORA
-              </span>
-            </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div className="admin-acc-form-group">

@@ -10,7 +10,6 @@ export default function AdminAccountDrawer({
   onOpenEdit,
   onToggleLock,
   onOpenResetPassword,
-  onOpenNotify,
   isUserAdmin,
   isCustomer,
   isGoogleUser
@@ -79,22 +78,13 @@ export default function AdminAccountDrawer({
             Hoạt động
           </button>
           {!isUserAdmin(user) && (
-            <>
-              <button
-                type="button"
-                className={`admin-acc-tab-btn ${activeTab === 'TRANSACTIONS' ? 'active' : ''}`}
-                onClick={() => onTabChange('TRANSACTIONS')}
-              >
-                Giao dịch
-              </button>
-              <button
-                type="button"
-                className={`admin-acc-tab-btn ${activeTab === 'VIOLATIONS' ? 'active' : ''}`}
-                onClick={() => onTabChange('VIOLATIONS')}
-              >
-                Vi phạm
-              </button>
-            </>
+            <button
+              type="button"
+              className={`admin-acc-tab-btn ${activeTab === 'VIOLATIONS' ? 'active' : ''}`}
+              onClick={() => onTabChange('VIOLATIONS')}
+            >
+              Vi phạm
+            </button>
           )}
         </div>
 
@@ -169,14 +159,32 @@ export default function AdminAccountDrawer({
                       {ROLE_LABELS[user.role] ? `${ROLE_LABELS[user.role]} (${user.role})` : user.role}
                     </span>
                   </div>
-                  {user.shopName && (
-                    <div className="admin-acc-kv-row">
-                      <span className="admin-acc-kv-key">Cơ sở / Chi nhánh</span>
-                      <span className="admin-acc-kv-val" style={{ color: '#047857', fontWeight: 600 }}>
-                        {user.shopName} {user.shopCity ? `(${user.shopCity})` : ''}
-                      </span>
-                    </div>
-                  )}
+                  {(() => {
+                    const cleanRole = (user.role || '').toLowerCase().replace(/[_\s-]/g, '');
+                    if (cleanRole === 'shopowner' || cleanRole === 'owner') {
+                      return (
+                        <div className="admin-acc-kv-row">
+                          <span className="admin-acc-kv-key">Phạm vi cơ sở</span>
+                          <span className="admin-acc-kv-val" style={{ color: '#B45309', fontWeight: 600 }}>
+                            Tất cả chi nhánh
+                          </span>
+                        </div>
+                      );
+                    }
+                    if (cleanRole === 'branch_manager' || cleanRole === 'brandmanager') {
+                      return (
+                        <div className="admin-acc-kv-row">
+                          <span className="admin-acc-kv-key">Cơ sở trực thuộc</span>
+                          <span className="admin-acc-kv-val" style={{ color: (user.shopName && user.shopName !== 'Tất cả chi nhánh') ? '#047857' : '#DC2626', fontWeight: 600 }}>
+                            {(user.shopName && user.shopName !== 'Tất cả chi nhánh')
+                              ? `${user.shopName} ${user.shopCity ? `(${user.shopCity})` : ''}`
+                              : 'Chưa phân công cơ sở'}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
 
@@ -218,19 +226,6 @@ export default function AdminAccountDrawer({
                   </h4>
 
                   <div className="admin-acc-stats-grid">
-                    <div className="admin-acc-stat-box">
-                      <div className="admin-acc-stat-box-icon blue">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-                          <line x1="3" y1="6" x2="21" y2="6" />
-                          <path d="M16 10a4 4 0 0 1-8 0" />
-                        </svg>
-                      </div>
-                      <div className="admin-acc-stat-box-label">Giao dịch thuê</div>
-                      <div className="admin-acc-stat-box-val">{user.totalOrders} đơn</div>
-                      <div className="admin-acc-stat-box-sub">{user.totalDeposit}</div>
-                    </div>
-
                     <div className="admin-acc-stat-box">
                       <div className="admin-acc-stat-box-icon green">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -326,20 +321,6 @@ export default function AdminAccountDrawer({
                       </svg>
                       <span>Xem lịch sử hoạt động</span>
                     </button>
-
-                    {!isUserAdmin(user) && !isCustomer(user) && (
-                      <button
-                        type="button"
-                        className="btn-acc-action-secondary"
-                        onClick={() => onOpenNotify(user)}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="22" y1="2" x2="11" y2="13" />
-                          <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                        </svg>
-                        <span>Gửi thông báo</span>
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -361,27 +342,6 @@ export default function AdminAccountDrawer({
                 <div style={{ borderLeft: '2px solid #10B981', paddingLeft: '12px' }}>
                   <div style={{ fontWeight: 600, color: '#0F172A' }}>Khởi tạo tài khoản thành công</div>
                   <div style={{ color: '#64748B', fontSize: '11.5px' }}>{user.joinDateTime || user.joinDate} • VESTORA Server</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'TRANSACTIONS' && (
-            <div>
-              <h4 className="admin-acc-sec-title" style={{ marginBottom: '14px' }}>
-                Lịch sử thuê đồ &amp; Tiền đặt cọc
-              </h4>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#0F172A' }}>Giao dịch gần đây</span>
-                    <span style={{ color: '#059669', fontWeight: 600, fontSize: '13px' }}>{user.totalDeposit}</span>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#64748B', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Tổng số đơn thuê: {user.totalOrders} đơn</span>
-                    <span style={{ color: '#0284C7' }}>Thanh toán qua PayOS</span>
-                  </div>
                 </div>
               </div>
             </div>

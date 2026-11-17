@@ -22,6 +22,7 @@ import { useWishlistStore } from "../stores/useWishlistStore";
 import NavbarLocationWidget from "./NavbarLocationWidget";
 import chatApi from "../services/chatApi";
 import socketService from "../services/socket";
+import NotificationBell from "./common/NotificationBell";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
@@ -158,7 +159,6 @@ export default function Navbar() {
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
-              <Link to="/stylist" className="nav-sublink">Tư vấn AI Stylist </Link>
               <Link to="/wardrobe?filter=tryon-history" className="nav-sublink">Đã thử qua AI / Camera</Link>
               <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
             </div>
@@ -224,9 +224,13 @@ export default function Navbar() {
           </Link>
 
           {/* Notification Bell Icon */}
-          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
-            <Bell size={18} />
-          </Link>
+          {user ? (
+            <NotificationBell buttonClassName="navbar-icon-btn navbar-bell-btn" />
+          ) : (
+            <Link to="/login" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
+              <Bell size={18} />
+            </Link>
+          )}
 
           {/* Consultation Chat Icon */}
           {user && (

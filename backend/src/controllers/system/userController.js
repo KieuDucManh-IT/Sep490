@@ -4,6 +4,7 @@ import { Shop } from '../../models/shop/Shop.js';
 import bcrypt from 'bcryptjs';
 import { sendEmail } from '../../utils/sendEmail.js';
 import { validateUserUpdate, validateUserCreate } from '../../utils/userValidation.js';
+import { notifyRoles } from '../../services/system/notificationService.js';
 
 // Mẫu email thông báo khóa tài khoản dạng văn bản thuần (plain text)
 function buildLockEmailText(user, reason) {
@@ -169,6 +170,31 @@ export const getUsers = async (req, res) => {
     });
 
     const enrichedUsers = users.map(u => {
+      const cleanRole = (u.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+      const isOwner = cleanRole === 'shopowner' || cleanRole === 'owner';
+
+      if (isOwner) {
+        return {
+          ...u,
+          shopId: null,
+          shopName: 'Tất cả chi nhánh',
+          shopAddress: 'Toàn hệ thống',
+          shopCity: null,
+          isAllBranches: true
+        };
+      }
+
+      const isBranchManager = cleanRole === 'branchmanager' || cleanRole === 'brandmanager';
+      if (!isBranchManager) {
+        return {
+          ...u,
+          shopId: null,
+          shopName: null,
+          shopAddress: null,
+          shopCity: null
+        };
+      }
+
       const shop = u.ShopId || shopByUserId.get(String(u._id)) || null;
       return {
         ...u,
@@ -209,15 +235,20 @@ export const getUserById = async (req, res) => {
       isDeleted: { $ne: true }
     }).select('_id name address city isHQ').lean();
 
-    const shop = user.ShopId || managedShop || null;
+    const cleanRole = (user.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+    const isOwner = cleanRole === 'shopowner' || cleanRole === 'owner';
+    const isBranchManager = cleanRole === 'branchmanager' || cleanRole === 'brandmanager';
+    const shop = isBranchManager ? (user.ShopId || managedShop || null) : null;
+
     res.json({
       success: true,
       data: {
         ...user,
-        shopId: shop?._id || null,
-        shopName: shop?.name || null,
-        shopAddress: shop?.address || null,
-        shopCity: shop?.city || null
+        shopId: isOwner ? null : (shop?._id || null),
+        shopName: isOwner ? 'Tất cả chi nhánh' : (shop?.name || null),
+        shopAddress: isOwner ? 'Toàn hệ thống' : (shop?.address || null),
+        shopCity: isOwner ? null : (shop?.city || null),
+        isAllBranches: isOwner
       }
     });
   } catch (error) {
@@ -372,12 +403,17 @@ export const createUser = async (req, res) => {
       return clean || 'warehouse_staff';
     };
 
-    const assignedShopId = shopId && mongoose.Types.ObjectId.isValid(shopId) ? shopId : null;
+    const normalizedRole = normalizeRole(Role);
+    const isOwner = normalizedRole === 'shopOwner';
+    const isBranchManager = normalizedRole === 'branch_manager' || normalizedRole === 'brandmanager';
+
+    // Chỉ branch_manager mới phân công chi nhánh, các vai trò khác không gán
+    const assignedShopId = (isBranchManager && shopId && mongoose.Types.ObjectId.isValid(shopId)) ? shopId : null;
 
     const newUser = new User({
       Email: Email.toLowerCase().trim(),
       FullName: FullName.trim(),
-      Role: normalizeRole(Role),
+      Role: normalizedRole,
       Status: (Status || 'active').toLowerCase(),
       PasswordHash: passwordHash,
       MustChangePassword: true,
@@ -395,13 +431,21 @@ export const createUser = async (req, res) => {
 
     await newUser.save();
 
-    if (assignedShopId) {
-      const normalizedRole = normalizeRole(Role);
-      if (normalizedRole === 'shopOwner') {
-        await Shop.findByIdAndUpdate(assignedShopId, { ownerId: newUser._id });
-      } else if (normalizedRole === 'branch_manager' || normalizedRole === 'brandmanager') {
-        await Shop.findByIdAndUpdate(assignedShopId, { managerId: newUser._id });
-      }
+    // Bắn thông báo tài khoản mới tới Dashboard Quản trị viên & Chủ shop
+    notifyRoles(['admin', 'shopOwner'], {
+      type: 'account_created',
+      title: 'Tài khoản nhân viên mới',
+      message: `Tài khoản ${newUser.FullName} (${newUser.Role}) vừa được khởi tạo thành công trên hệ thống.`,
+      link: '/admin/accounts',
+      referenceType: 'User',
+      referenceId: newUser._id
+    }).catch(err => console.error('[Notification] Lỗi bắn thông báo nhân viên mới:', err.message));
+
+    if (isOwner) {
+      // Shop Owner làm chủ toàn bộ các chi nhánh trong hệ thống
+      await Shop.updateMany({ isDeleted: { $ne: true } }, { $set: { ownerId: newUser._id } });
+    } else if (assignedShopId && isBranchManager) {
+      await Shop.findByIdAndUpdate(assignedShopId, { managerId: newUser._id });
     }
 
     // Gửi email chứa thông tin tài khoản và mật khẩu khởi tạo cho nhân viên
@@ -528,18 +572,28 @@ export const updateUser = async (req, res) => {
       }];
     }
 
-    if (shopId !== undefined) {
+    const targetRole = updateData.Role || existingUser.Role;
+    const cleanTargetRole = (targetRole || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+    const isTargetOwner = cleanTargetRole === 'shopowner' || cleanTargetRole === 'owner';
+    const isTargetBranchMgr = cleanTargetRole === 'branchmanager' || cleanTargetRole === 'brandmanager';
+
+    if (isTargetOwner) {
+      // Shop Owner làm chủ tất cả chi nhánh, không gắn riêng cho 1 cơ sở
+      updateData.ShopId = null;
+      await Shop.updateMany({ isDeleted: { $ne: true } }, { $set: { ownerId: existingUser._id } });
+      await Shop.updateMany({ managerId: existingUser._id }, { $set: { managerId: null } });
+    } else if (isTargetBranchMgr) {
       if (shopId && mongoose.Types.ObjectId.isValid(shopId)) {
         updateData.ShopId = shopId;
-        const targetRole = updateData.Role || existingUser.Role;
-        if (targetRole === 'shopOwner') {
-          await Shop.findByIdAndUpdate(shopId, { ownerId: existingUser._id });
-        } else if (targetRole === 'branch_manager' || targetRole === 'brandmanager') {
-          await Shop.findByIdAndUpdate(shopId, { managerId: existingUser._id });
-        }
+        await Shop.findByIdAndUpdate(shopId, { managerId: existingUser._id });
       } else {
         updateData.ShopId = null;
+        await Shop.updateMany({ managerId: existingUser._id }, { $set: { managerId: null } });
       }
+    } else {
+      // Các vai trò khác (quản lý kho, nhân viên kho, v.v.) không gán chi nhánh
+      updateData.ShopId = null;
+      await Shop.updateMany({ managerId: existingUser._id }, { $set: { managerId: null } });
     }
 
     const user = await User.findByIdAndUpdate(
@@ -550,25 +604,23 @@ export const updateUser = async (req, res) => {
       .select('-PasswordHash')
       .populate('ShopId', 'name address city isHQ');
 
-    const managedShop = await Shop.findOne({
-      $or: [
-        { ownerId: user._id },
-        { managerId: user._id }
-      ],
+    const managedShop = isTargetBranchMgr ? await Shop.findOne({
+      managerId: user._id,
       isDeleted: { $ne: true }
-    }).select('_id name address city isHQ').lean();
+    }).select('_id name address city isHQ').lean() : null;
 
-    const currentShop = user.ShopId || managedShop || null;
+    const currentShop = isTargetBranchMgr ? (user.ShopId || managedShop || null) : null;
 
     res.json({
       success: true,
       message: 'Cập nhật thông tin tài khoản thành công',
       data: {
         ...user.toObject(),
-        shopId: currentShop?._id || null,
-        shopName: currentShop?.name || null,
-        shopAddress: currentShop?.address || null,
-        shopCity: currentShop?.city || null
+        shopId: isTargetBranchMgr ? (currentShop?._id || null) : null,
+        shopName: isTargetOwner ? 'Tất cả chi nhánh' : (isTargetBranchMgr ? (currentShop?.name || null) : null),
+        shopAddress: isTargetOwner ? 'Toàn hệ thống' : (isTargetBranchMgr ? (currentShop?.address || null) : null),
+        shopCity: isTargetOwner ? null : (isTargetBranchMgr ? (currentShop?.city || null) : null),
+        isAllBranches: isTargetOwner
       }
     });
   } catch (error) {

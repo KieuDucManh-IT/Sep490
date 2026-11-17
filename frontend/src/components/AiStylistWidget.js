@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   Sparkles,
-  Maximize2,
   X,
   Loader2,
   RotateCw,
@@ -29,13 +28,8 @@ export default function AiStylistWidget() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Không hiển thị widget nổi nếu đang ở chính trang /stylist hoặc các trang quản trị (owner, admin, warehouse, branch)
-  const isExcludedPath =
-    location.pathname.startsWith('/stylist') ||
-    location.pathname.startsWith('/admin') ||
-    location.pathname.startsWith('/owner') ||
-    location.pathname.startsWith('/branch') ||
-    location.pathname.startsWith('/warehouse');
+  // Chỉ hiển thị widget AI Stylist tại trang chủ (Homepage)
+  const isHomepage = location.pathname === '/';
 
   useEffect(() => {
     if (isOpen) {
@@ -43,7 +37,7 @@ export default function AiStylistWidget() {
     }
   }, [messages, isOpen, sending]);
 
-  if (isExcludedPath) {
+  if (!isHomepage) {
     return null;
   }
 
@@ -133,15 +127,6 @@ export default function AiStylistWidget() {
               </div>
             </div>
             <div className="stylist-widget-controls">
-              <Link
-                to="/stylist"
-                className="stylist-widget-btn"
-                title="Mở toàn màn hình Studio"
-                onClick={() => setIsOpen(false)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Maximize2 size={14} />
-              </Link>
               <button
                 type="button"
                 className="stylist-widget-btn"

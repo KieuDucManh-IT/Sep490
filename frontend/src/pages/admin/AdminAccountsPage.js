@@ -22,7 +22,6 @@ import AdminAccountDrawer from '../../components/admin/accounts/AdminAccountDraw
 import AdminAddAccountModal from '../../components/admin/accounts/AdminAddAccountModal';
 import AdminEditAccountModal from '../../components/admin/accounts/AdminEditAccountModal';
 import AdminResetPasswordModal from '../../components/admin/accounts/AdminResetPasswordModal';
-import AdminSendNotifyModal from '../../components/admin/accounts/AdminSendNotifyModal';
 import AdminLockAccountModal from '../../components/admin/accounts/AdminLockAccountModal';
 import AdminToastContainer from '../../components/admin/accounts/AdminToastContainer';
 
@@ -65,7 +64,6 @@ export default function AdminAccountsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetPwdModal, setShowResetPwdModal] = useState(false);
-  const [showNotifyModal, setShowNotifyModal] = useState(false);
   const [showLockReasonModal, setShowLockReasonModal] = useState(false);
 
   // --- Lock Reason State ---
@@ -82,9 +80,7 @@ export default function AdminAccountsPage() {
     status: 'ACTIVE',
     shopId: '',
     password: '',
-    confirmPassword: '',
-    permissionGroup: '',
-    note: ''
+    confirmPassword: ''
   });
   const [addFormErrors, setAddFormErrors] = useState({});
   const [showAddPwd, setShowAddPwd] = useState(false);
@@ -113,13 +109,6 @@ export default function AdminAccountsPage() {
   // --- Reset Password State ---
   const [resetPwdValue, setResetPwdValue] = useState('');
   const [isResettingPwd, setIsResettingPwd] = useState(false);
-
-  // --- Notify Form State ---
-  const [notifyForm, setNotifyForm] = useState({
-    title: '',
-    message: '',
-    type: 'SYSTEM'
-  });
 
   // Close row action dropdown on outside click
   useEffect(() => {
@@ -172,8 +161,6 @@ export default function AdminAccountsPage() {
             address: address || 'Chưa cập nhật',
             dob: '15/08/2000',
             gender: 'Nữ',
-            totalOrders: Math.floor(Math.random() * 8) + 1,
-            totalDeposit: `${(Math.floor(Math.random() * 10) + 1) * 2}.000.000 đ`,
             rating: u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)',
             violations: u.WarningsCount || 0,
             authProvider: (u.AuthProvider || (u.GoogleId ? 'google' : 'local')).toLowerCase(),
@@ -441,7 +428,7 @@ export default function AdminAccountsPage() {
       role: ['shopOwner', 'branch_manager', 'brandmanager', 'warehouse_manager', 'warehouseManager', 'warehouse_staff', 'warehousestaff'].includes(user.role)
         ? (user.role === 'brandmanager' ? 'branch_manager' : (user.role === 'warehouseManager' ? 'warehouse_manager' : (user.role === 'warehousestaff' ? 'warehouse_staff' : user.role)))
         : 'warehouse_staff',
-      shopId: user.shopId || '',
+      shopId: (user.role === 'branch_manager' || user.role === 'brandmanager') ? (user.shopId || '') : '',
       status: user.status || 'ACTIVE'
     });
     setEditFormErrors({});
@@ -509,6 +496,13 @@ export default function AdminAccountsPage() {
     }
     setEditFormErrors({});
 
+    const isBranchMgr = editForm.role === 'branch_manager';
+    if (isBranchMgr && !editForm.shopId) {
+      setEditFormErrors(prev => ({ ...prev, shopId: 'Vui lòng chọn cơ sở / chi nhánh phân công cho Quản lý chi nhánh' }));
+      showToast('Vui lòng chọn cơ sở / chi nhánh phân công cho Quản lý chi nhánh!', 'warning');
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/users/${selectedUser.id}`, {
         method: 'PUT',
@@ -522,7 +516,7 @@ export default function AdminAccountsPage() {
           DateOfBirth: editForm.dob,
           Gender: editForm.gender,
           Avatar: editForm.avatar,
-          shopId: editForm.shopId || null
+          shopId: isBranchMgr ? (editForm.shopId || null) : null
         })
       });
       const json = await res.json();
@@ -537,9 +531,13 @@ export default function AdminAccountsPage() {
           gender: editForm.gender,
           avatar: editForm.avatar || null,
           role: editForm.role,
-          shopId: editForm.shopId || '',
-          shopName: shops.find(s => String(s._id) === String(editForm.shopId))?.name || (editForm.shopId ? prev.shopName : ''),
-          shopCity: shops.find(s => String(s._id) === String(editForm.shopId))?.city || (editForm.shopId ? prev.shopCity : ''),
+          shopId: isBranchMgr ? (editForm.shopId || '') : '',
+          shopName: isBranchMgr
+            ? (shops.find(s => String(s._id) === String(editForm.shopId))?.name || (editForm.shopId ? prev.shopName : ''))
+            : (editForm.role === 'shopOwner' ? 'Tất cả chi nhánh' : ''),
+          shopCity: isBranchMgr
+            ? (shops.find(s => String(s._id) === String(editForm.shopId))?.city || (editForm.shopId ? prev.shopCity : ''))
+            : '',
           status: editForm.status
         } : null);
         setShowEditModal(false);
@@ -583,6 +581,8 @@ export default function AdminAccountsPage() {
 
     if (!addForm.role) {
       errors.role = 'Vui lòng chọn vai trò';
+    } else if (addForm.role === 'branch_manager' && !addForm.shopId) {
+      errors.shopId = 'Vui lòng chọn cơ sở / chi nhánh phân công cho Quản lý chi nhánh';
     }
 
     if (!addForm.password) {
@@ -603,6 +603,8 @@ export default function AdminAccountsPage() {
       return;
     }
 
+    const isBranchMgr = addForm.role === 'branch_manager';
+
     setIsSubmittingAdd(true);
     try {
       const res = await fetch(`${API_BASE_URL}/users`, {
@@ -615,7 +617,7 @@ export default function AdminAccountsPage() {
           Status: addForm.status.toLowerCase(),
           Password: addForm.password,
           Phone: addForm.phone.trim(),
-          shopId: addForm.shopId || null
+          shopId: isBranchMgr ? (addForm.shopId || null) : null
         })
       });
       const json = await res.json();
@@ -630,9 +632,7 @@ export default function AdminAccountsPage() {
           status: 'ACTIVE',
           shopId: '',
           password: '',
-          confirmPassword: '',
-          permissionGroup: '',
-          note: ''
+          confirmPassword: ''
         });
         setAddFormErrors({});
         showToast('Đã tạo tài khoản người dùng mới thành công!', 'success');
@@ -708,13 +708,6 @@ export default function AdminAccountsPage() {
     } finally {
       setIsResettingPwd(false);
     }
-  };
-
-  // --- Send Notification Handler ---
-  const handleSendNotify = () => {
-    showToast(`Đã gửi thông báo thành công tới ${selectedUser.email}!`, 'success');
-    setShowNotifyModal(false);
-    setNotifyForm({ title: '', message: '', type: 'SYSTEM' });
   };
 
   // --- Reset Filters Handler ---
@@ -827,10 +820,6 @@ export default function AdminAccountsPage() {
             onOpenEdit={openEditModalForUser}
             onToggleLock={handleToggleLock}
             onOpenResetPassword={openResetPasswordModal}
-            onOpenNotify={(u) => {
-              setSelectedUser(u);
-              setShowNotifyModal(true);
-            }}
             isUserAdmin={(u) => isUserAdmin(u)}
             isCustomer={(u) => isCustomer(u)}
             isGoogleUser={(u) => isGoogleUser(u)}
@@ -856,10 +845,6 @@ export default function AdminAccountsPage() {
         onOpenEdit={openEditModalForUser}
         onToggleLock={handleToggleLock}
         onOpenResetPassword={openResetPasswordModal}
-        onOpenNotify={(u) => {
-          setSelectedUser(u);
-          setShowNotifyModal(true);
-        }}
         isUserAdmin={(u) => isUserAdmin(u)}
         isCustomer={(u) => isCustomer(u)}
         isGoogleUser={(u) => isGoogleUser(u)}
@@ -909,16 +894,6 @@ export default function AdminAccountsPage() {
         setResetPwdValue={setResetPwdValue}
         isResettingPwd={isResettingPwd}
         onConfirm={handleConfirmResetPassword}
-      />
-
-      {/* Modal: Gửi thông báo */}
-      <AdminSendNotifyModal
-        isOpen={showNotifyModal}
-        onClose={() => setShowNotifyModal(false)}
-        user={selectedUser}
-        notifyForm={notifyForm}
-        setNotifyForm={setNotifyForm}
-        onSend={handleSendNotify}
       />
 
       {/* Modal: Khóa tài khoản kèm lý do */}

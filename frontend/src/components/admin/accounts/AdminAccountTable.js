@@ -16,7 +16,6 @@ export default function AdminAccountTable({
   onOpenEdit,
   onToggleLock,
   onOpenResetPassword,
-  onOpenNotify,
   isUserAdmin,
   isCustomer,
   isGoogleUser,
@@ -107,17 +106,31 @@ export default function AdminAccountTable({
                   </td>
 
                   <td style={{ whiteSpace: 'nowrap', fontSize: '13px' }}>
-                    {u.shopName ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#0F766E', fontWeight: 500 }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                          <polyline points="9 22 9 12 15 12 15 22" />
-                        </svg>
-                        <span>{u.shopName}</span>
-                      </span>
-                    ) : (
-                      <span style={{ color: '#94A3B8' }}>Toàn hệ thống</span>
-                    )}
+                    {(() => {
+                      const cleanRole = (u.role || '').toLowerCase().replace(/[_\s-]/g, '');
+                      if (cleanRole === 'shopowner' || cleanRole === 'owner') {
+                        return (
+                          <span className="admin-acc-all-branches-badge">
+                            Tất cả chi nhánh
+                          </span>
+                        );
+                      }
+                      if (cleanRole === 'branch_manager' || cleanRole === 'brandmanager') {
+                        return (u.shopName && u.shopName !== 'Tất cả chi nhánh') ? (
+                          <span className="admin-acc-branch-assigned">
+                            {u.shopName}
+                          </span>
+                        ) : (
+                          <span className="admin-acc-branch-unassigned">
+                            Chưa phân công
+                          </span>
+                        );
+                      }
+                      if (cleanRole === 'admin') {
+                        return <span style={{ color: '#64748B', fontSize: '12.5px' }}>Toàn hệ thống</span>;
+                      }
+                      return <span style={{ color: '#94A3B8', fontSize: '12.5px' }}>—</span>;
+                    })()}
                   </td>
 
                   <td>
@@ -245,23 +258,6 @@ export default function AdminAccountTable({
                                 <span>Đăng nhập Google (Không đổi MK)</span>
                               </button>
                             )
-                          )}
-
-                          {!isUserAdmin(u) && !isCustomer(u) && (
-                            <button
-                              type="button"
-                              className="admin-acc-action-dropdown-item"
-                              onClick={() => {
-                                onOpenNotify(u);
-                                setOpenActionId(null);
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <line x1="22" y1="2" x2="11" y2="13" />
-                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                              </svg>
-                              <span>Gửi thông báo</span>
-                            </button>
                           )}
                         </div>
                       )}

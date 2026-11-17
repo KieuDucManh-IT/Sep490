@@ -157,13 +157,21 @@ export default function AdminAddAccountModal({
                       className={`admin-acc-form-select ${addFormErrors.role ? 'error' : ''}`}
                       value={addForm.role}
                       onChange={(e) => {
-                        setAddForm({ ...addForm, role: e.target.value });
+                        const newRole = e.target.value;
+                        setAddForm({
+                          ...addForm,
+                          role: newRole,
+                          shopId: newRole === 'branch_manager' ? addForm.shopId : ''
+                        });
                         if (addFormErrors.role) setAddFormErrors({ ...addFormErrors, role: '' });
+                        if (newRole !== 'branch_manager' && addFormErrors.shopId) {
+                          setAddFormErrors({ ...addFormErrors, shopId: '' });
+                        }
                       }}
                     >
                       <option value="">Chọn vai trò nhân viên</option>
-                      <option value="shopOwner">Chủ cửa hàng (shopOwner)</option>
-                      <option value="branch_manager">Quản lý chi nhánh (branch_manager)</option>
+                      <option value="shopOwner">Chủ cửa hàng (shopOwner) - Quản lý toàn chuỗi</option>
+                      <option value="branch_manager">Quản lý chi nhánh (branch_manager) - Phụ trách cơ sở</option>
                       <option value="warehouse_manager">Quản lý kho (warehouse_manager)</option>
                       <option value="warehouse_staff">Nhân viên kho (warehouse_staff)</option>
                     </select>
@@ -196,38 +204,46 @@ export default function AdminAddAccountModal({
                   </div>
                 </div>
 
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">
-                    Cơ sở / Chi nhánh phân công
-                  </label>
-                  <div className="admin-acc-input-wrap">
-                    <span className="admin-acc-input-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                        <polyline points="9 22 9 12 15 12 15 22" />
-                      </svg>
+                {addForm.role === 'branch_manager' && (
+                  <div className="admin-acc-form-group">
+                    <label className="admin-acc-form-label">
+                      Cơ sở / Chi nhánh quản lý <span style={{ color: '#EF4444' }}>*</span>
+                    </label>
+                    <div className="admin-acc-input-wrap">
+                      <span className="admin-acc-input-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                      </span>
+                      <select
+                        className={`admin-acc-form-select ${addFormErrors.shopId ? 'error' : ''}`}
+                        value={addForm.shopId || ''}
+                        onChange={(e) => {
+                          setAddForm({ ...addForm, shopId: e.target.value });
+                          if (addFormErrors.shopId) setAddFormErrors({ ...addFormErrors, shopId: '' });
+                        }}
+                      >
+                        <option value="">-- Chọn cơ sở phân công cho Quản lý chi nhánh --</option>
+                        {loadingShops ? (
+                          <option value="" disabled>Đang tải danh sách cơ sở từ máy chủ...</option>
+                        ) : (
+                          shops.map((shop) => (
+                            <option key={shop._id} value={shop._id}>
+                              {shop.name} {shop.city ? `(${shop.city})` : ''} {shop.isHQ ? '★ [Trụ sở chính]' : ''}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                    {addFormErrors.shopId && (
+                      <span className="admin-acc-field-error">{addFormErrors.shopId}</span>
+                    )}
+                    <span className="admin-acc-field-hint">
+                      Quản lý chi nhánh phụ trách vận hành và quản lý trực tiếp tại cơ sở này
                     </span>
-                    <select
-                      className="admin-acc-form-select"
-                      value={addForm.shopId || ''}
-                      onChange={(e) => setAddForm({ ...addForm, shopId: e.target.value })}
-                    >
-                      <option value="">-- Không phân công chi nhánh --</option>
-                      {loadingShops ? (
-                        <option value="" disabled>Đang tải danh sách cơ sở từ máy chủ...</option>
-                      ) : (
-                        shops.map((shop) => (
-                          <option key={shop._id} value={shop._id}>
-                            {shop.name} {shop.city ? `(${shop.city})` : ''} {shop.isHQ ? '★ [Trụ sở chính]' : ''}
-                          </option>
-                        ))
-                      )}
-                    </select>
                   </div>
-                  <span className="admin-acc-field-hint">
-                    Dữ liệu cơ sở tải trực tiếp từ cơ sở dữ liệu chi nhánh VESTORA
-                  </span>
-                </div>
+                )}
               </div>
             </div>
 
@@ -343,70 +359,6 @@ export default function AdminAddAccountModal({
                   {addFormErrors.confirmPassword && (
                     <span className="admin-acc-field-error">{addFormErrors.confirmPassword}</span>
                   )}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div className="admin-acc-section-head">
-                <span className="admin-acc-section-num">3</span>
-                <h4 className="admin-acc-section-title">
-                  Phân quyền và ghi chú <span className="admin-acc-section-sub">(tùy chọn)</span>
-                </h4>
-              </div>
-
-              <div className="admin-acc-form-grid-2">
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Nhóm quyền</label>
-                  <div className="admin-acc-input-wrap">
-                    <span className="admin-acc-input-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      </svg>
-                    </span>
-                    <select
-                      className="admin-acc-form-select"
-                      value={addForm.permissionGroup || ''}
-                      onChange={(e) => setAddForm({ ...addForm, permissionGroup: e.target.value })}
-                    >
-                      <option value="">Chọn nhóm quyền</option>
-                      <option value="DEFAULT">Quyền mặc định theo vai trò</option>
-                      <option value="FULL_ACCESS">Toàn quyền vận hành</option>
-                      <option value="READ_ONLY">Chỉ xem dữ liệu (Read-only)</option>
-                      <option value="EDITOR">Biên tập nội dung & sản phẩm</option>
-                    </select>
-                  </div>
-                  <span className="admin-acc-field-hint">
-                    Quyền truy cập sẽ được thiết lập theo vai trò đã chọn
-                  </span>
-                </div>
-
-                <div className="admin-acc-form-group">
-                  <label className="admin-acc-form-label">Ghi chú</label>
-                  <div className="admin-acc-input-wrap has-textarea" style={{ position: 'relative' }}>
-                    <span className="admin-acc-input-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="8" y1="6" x2="21" y2="6" />
-                        <line x1="8" y1="12" x2="21" y2="12" />
-                        <line x1="8" y1="18" x2="21" y2="18" />
-                        <line x1="3" y1="6" x2="3.01" y2="6" />
-                        <line x1="3" y1="12" x2="3.01" y2="12" />
-                        <line x1="3" y1="18" x2="3.01" y2="18" />
-                      </svg>
-                    </span>
-                    <textarea
-                      className="admin-acc-form-textarea"
-                      rows={2}
-                      maxLength={500}
-                      placeholder="Nhập ghi chú (nếu có)"
-                      value={addForm.note || ''}
-                      onChange={(e) => setAddForm({ ...addForm, note: e.target.value })}
-                      style={{ minHeight: '68px', paddingBottom: '22px' }}
-                    />
-                    <span style={{ position: 'absolute', bottom: '6px', right: '12px', fontSize: '11px', color: '#94A3B8' }}>
-                      {(addForm.note || '').length}/500
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>

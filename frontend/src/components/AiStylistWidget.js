@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import apiClient from '../services/api';
 import '../styles/AiStylistWidget.css';
-import { buildTryOnUrl } from './stylist/stylistUtils';
+import { buildTryOnUrl, isWearableComboSet } from './stylist/stylistUtils';
 import StylistWidgetProductCard from './stylist/StylistWidgetProductCard';
 
 const INITIAL_MSG = {
@@ -198,6 +198,22 @@ export default function AiStylistWidget() {
                     {/* Gợi ý sản phẩm dạng thẻ nhỏ */}
                     {!m.pending && m.products && m.products.length > 0 && (
                       <div className="stylist-wrec-list">
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: '#7a7060',
+                            marginBottom: 6,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <Sparkles size={11} color="#C5A880" />
+                          {isWearableComboSet(m.products)
+                            ? 'Set đồ phối gợi ý:'
+                            : 'Các mẫu gợi ý cho bạn:'}
+                        </div>
                         {m.products.map((p) => (
                           <StylistWidgetProductCard
                             key={p.id}
@@ -206,8 +222,8 @@ export default function AiStylistWidget() {
                           />
                         ))}
 
-                        {/* Nút chuyển cả set đồ vào phòng thử đồ */}
-                        {m.products.length >= 2 && (
+                        {/* Nút chuyển cả set đồ vào phòng thử đồ: Chỉ hiển thị khi các món tạo thành 1 bộ phối hoàn chỉnh */}
+                        {isWearableComboSet(m.products) && (
                           <Link
                             to={buildTryOnUrl(m.products)}
                             className="stylist-wrec-combo-btn"

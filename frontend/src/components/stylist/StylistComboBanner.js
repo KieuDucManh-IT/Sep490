@@ -1,10 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
-import { buildTryOnUrl } from './stylistUtils';
+import { buildTryOnUrl, isWearableComboSet } from './stylistUtils';
 
 export default function StylistComboBanner({ products }) {
   if (!Array.isArray(products) || products.length < 2) return null;
+  // Chỉ hiển thị banner thử nguyên set khi các món tạo thành 1 set phối có thể mặc cùng nhau
+  if (!isWearableComboSet(products)) return null;
 
   return (
     <div className="stylist-combo-tryon-banner">

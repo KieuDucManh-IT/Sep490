@@ -18,7 +18,7 @@ import Footer from '../../components/Footer';
 import apiClient from '../../services/api';
 import productService from '../../services/productService';
 import '../../styles/StylistPage.css';
-import { currency, buildTryOnUrl } from '../../components/stylist/stylistUtils';
+import { currency, buildTryOnUrl, isWearableComboSet } from '../../components/stylist/stylistUtils';
 import StylistProductCard from '../../components/stylist/StylistProductCard';
 import StylistComboBanner from '../../components/stylist/StylistComboBanner';
 
@@ -289,7 +289,10 @@ export default function StylistPage() {
                       {!msg.pending && msg.products && msg.products.length > 0 && (
                         <div className="stylist-recommendations-box">
                           <span className="stylist-rec-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <Sparkles size={14} color="#C5A880" /> Gợi ý trang phục cho bạn
+                            <Sparkles size={14} color="#C5A880" />{' '}
+                            {isWearableComboSet(msg.products)
+                              ? 'Gợi ý set đồ phối hoàn chỉnh'
+                              : 'Gợi ý các lựa chọn trang phục cho bạn'}
                           </span>
                           {msg.products.map((prod) => (
                             <StylistProductCard key={prod.id} product={prod} />

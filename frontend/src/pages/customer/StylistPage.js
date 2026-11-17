@@ -11,14 +11,16 @@ import {
   Search,
   Trash2,
   CheckCircle2,
+  ExternalLink,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import apiClient from '../../services/api';
 import productService from '../../services/productService';
 import '../../styles/StylistPage.css';
-
-const currency = new Intl.NumberFormat('vi-VN');
+import { currency, buildTryOnUrl, isWearableComboSet } from '../../components/stylist/stylistUtils';
+import StylistProductCard from '../../components/stylist/StylistProductCard';
+import StylistComboBanner from '../../components/stylist/StylistComboBanner';
 
 const INITIAL_MESSAGE = {
   role: 'model',
@@ -287,54 +289,17 @@ export default function StylistPage() {
                       {!msg.pending && msg.products && msg.products.length > 0 && (
                         <div className="stylist-recommendations-box">
                           <span className="stylist-rec-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <Sparkles size={14} color="#C5A880" /> Gợi ý trang phục cho bạn
+                            <Sparkles size={14} color="#C5A880" />{' '}
+                            {isWearableComboSet(msg.products)
+                              ? 'Gợi ý set đồ phối hoàn chỉnh'
+                              : 'Gợi ý các lựa chọn trang phục cho bạn'}
                           </span>
                           {msg.products.map((prod) => (
-                            <Link
-                              key={prod.id}
-                              to={`/product/${prod.id}`}
-                              className="stylist-rec-card"
-                            >
-                              <div className="stylist-rec-img-wrap">
-                                {prod.imageUrl ? (
-                                  <img src={prod.imageUrl} alt={prod.name} loading="lazy" />
-                                ) : (
-                                  <span className="stylist-rec-img-fallback">V</span>
-                                )}
-                              </div>
-                              <div className="stylist-rec-content">
-                                <div>
-                                  <h4 className="stylist-rec-name">{prod.name}</h4>
-                                  <div className="stylist-rec-cat">
-                                    {prod.category} · {prod.code || prod.sku}
-                                  </div>
-                                </div>
-                                <div className="stylist-rec-price-row">
-                                  <span className="stylist-rec-rent-price">
-                                    {currency.format(prod.rentalPricePerDayVnd || prod.rentalPricePerDay || 0)}đ{' '}
-                                    <small>/ ngày</small>
-                                  </span>
-                                  {prod.depositVnd > 0 && (
-                                    <span className="stylist-rec-deposit">
-                                      Cọc {currency.format(prod.depositVnd)}đ
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="stylist-rec-tags">
-                                  {prod.sizes && prod.sizes.length > 0 && (
-                                    <span className="stylist-tag-micro">
-                                      Size: {prod.sizes.join(', ')}
-                                    </span>
-                                  )}
-                                  {prod.colors && prod.colors.length > 0 && (
-                                    <span className="stylist-tag-micro">
-                                      {prod.colors.slice(0, 2).join(' · ')}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </Link>
+                            <StylistProductCard key={prod.id} product={prod} />
                           ))}
+
+                          {/* Option chuyển cả bộ trang phục vào phòng thử đồ bằng ghép ảnh */}
+                          <StylistComboBanner products={msg.products} />
                         </div>
                       )}
 

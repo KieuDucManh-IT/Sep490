@@ -1,7 +1,10 @@
+import mongoose from 'mongoose';
 import { User } from '../../models/system/User.js';
+import { Shop } from '../../models/shop/Shop.js';
 import bcrypt from 'bcryptjs';
 import { sendEmail } from '../../utils/sendEmail.js';
 import { validateUserUpdate, validateUserCreate } from '../../utils/userValidation.js';
+import { notifyRoles } from '../../services/system/notificationService.js';
 
 // Mẫu email thông báo khóa tài khoản dạng văn bản thuần (plain text)
 function buildLockEmailText(user, reason) {
@@ -39,10 +42,11 @@ function buildLockEmailText(user, reason) {
 function buildNewStaffEmailText(user, rawPassword) {
   const name = user.FullName || user.Email;
   const roleDisplayNames = {
-    shopOwner: 'Chủ gian hàng (Shop Owner)',
-    brandmanager: 'Quản lý thương hiệu (Brand Manager)',
-    warehouseManager: 'Quản lý kho (Warehouse Manager)',
-    warehousestaff: 'Nhân viên kho (Warehouse Staff)'
+    shopOwner: 'Chủ cửa hàng (Shop Owner)',
+    branch_manager: 'Quản lý chi nhánh (Branch Manager)',
+    brandmanager: 'Quản lý chi nhánh (Branch Manager)',
+    warehouse_manager: 'Quản lý kho (Warehouse Manager)',
+    warehouse_staff: 'Nhân viên kho (Warehouse Staff)'
   };
   const roleName = roleDisplayNames[user.Role] || user.Role;
 
@@ -118,8 +122,19 @@ export const getUsers = async (req, res) => {
     const { role, status, search } = req.query;
     const filter = {};
 
-    if (role) {
-      filter.Role = { $regex: new RegExp(`^${role}$`, 'i') };
+    if (role && role !== 'ALL') {
+      const clean = role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+      if (clean === 'warehousemanager') {
+        filter.Role = { $regex: /^(warehouse_manager|warehouseManager)$/i };
+      } else if (clean === 'warehousestaff') {
+        filter.Role = { $regex: /^(warehouse_staff|warehousestaff)$/i };
+      } else if (clean === 'shopowner') {
+        filter.Role = { $regex: /^(shop_owner|shopOwner)$/i };
+      } else if (clean === 'brandmanager' || clean === 'branchmanager') {
+        filter.Role = { $regex: /^(branch_manager|brandmanager)$/i };
+      } else {
+        filter.Role = { $regex: new RegExp(`^${role}$`, 'i') };
+      }
     }
 
     if (status) {
@@ -135,12 +150,65 @@ export const getUsers = async (req, res) => {
 
     const users = await User.find(filter)
       .select('-PasswordHash') // Không trả về mật khẩu
-      .sort({ createdAt: -1 });
+      .populate('ShopId', 'name address city isHQ')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const userIds = users.map(u => u._id);
+    const managedShops = await Shop.find({
+      $or: [
+        { ownerId: { $in: userIds } },
+        { managerId: { $in: userIds } }
+      ],
+      isDeleted: { $ne: true }
+    }).select('_id name address city isHQ ownerId managerId').lean();
+
+    const shopByUserId = new Map();
+    managedShops.forEach(s => {
+      if (s.ownerId) shopByUserId.set(String(s.ownerId), s);
+      if (s.managerId) shopByUserId.set(String(s.managerId), s);
+    });
+
+    const enrichedUsers = users.map(u => {
+      const cleanRole = (u.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+      const isOwner = cleanRole === 'shopowner' || cleanRole === 'owner';
+
+      if (isOwner) {
+        return {
+          ...u,
+          shopId: null,
+          shopName: 'Tất cả chi nhánh',
+          shopAddress: 'Toàn hệ thống',
+          shopCity: null,
+          isAllBranches: true
+        };
+      }
+
+      const isBranchManager = cleanRole === 'branchmanager' || cleanRole === 'brandmanager';
+      if (!isBranchManager) {
+        return {
+          ...u,
+          shopId: null,
+          shopName: null,
+          shopAddress: null,
+          shopCity: null
+        };
+      }
+
+      const shop = u.ShopId || shopByUserId.get(String(u._id)) || null;
+      return {
+        ...u,
+        shopId: shop?._id || null,
+        shopName: shop?.name || null,
+        shopAddress: shop?.address || null,
+        shopCity: shop?.city || null
+      };
+    });
 
     res.json({
       success: true,
-      count: users.length,
-      data: users
+      count: enrichedUsers.length,
+      data: enrichedUsers
     });
   } catch (error) {
     console.error('Error in getUsers:', error);
@@ -151,11 +219,38 @@ export const getUsers = async (req, res) => {
 // Chi tiết tài khoản
 export const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-PasswordHash');
+    const user = await User.findById(req.params.id)
+      .select('-PasswordHash')
+      .populate('ShopId', 'name address city isHQ')
+      .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
-    res.json({ success: true, data: user });
+
+    const managedShop = await Shop.findOne({
+      $or: [
+        { ownerId: user._id },
+        { managerId: user._id }
+      ],
+      isDeleted: { $ne: true }
+    }).select('_id name address city isHQ').lean();
+
+    const cleanRole = (user.Role || '').toLowerCase().replace(/[_\s-]/g, '');
+    const isOwner = cleanRole === 'shopowner' || cleanRole === 'owner';
+    const isBranchManager = cleanRole === 'branchmanager' || cleanRole === 'brandmanager';
+    const shop = isBranchManager ? (user.ShopId || managedShop || null) : null;
+
+    res.json({
+      success: true,
+      data: {
+        ...user,
+        shopId: isOwner ? null : (shop?._id || null),
+        shopName: isOwner ? 'Tất cả chi nhánh' : (shop?.name || null),
+        shopAddress: isOwner ? 'Toàn hệ thống' : (shop?.address || null),
+        shopCity: isOwner ? null : (shop?.city || null),
+        isAllBranches: isOwner
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -265,7 +360,7 @@ export const getUserStats = async (req, res) => {
 // Tạo tài khoản mới từ Admin Console
 export const createUser = async (req, res) => {
   try {
-    const { Email, FullName, Role, Password, Phone, Status, Avatar, DateOfBirth, Gender } = req.body;
+    const { Email, FullName, Role, Password, Phone, Status, Avatar, DateOfBirth, Gender, shopId } = req.body;
 
     const validation = validateUserCreate(req.body);
     if (!validation.isValid) {
@@ -301,17 +396,24 @@ export const createUser = async (req, res) => {
 
     const normalizeRole = (r) => {
       const clean = (r || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
-      if (clean === 'shopowner') return 'shopOwner';
-      if (clean === 'brandmanager') return 'brandmanager';
-      if (clean === 'warehousemanager') return 'warehouseManager';
-      if (clean === 'warehousestaff') return 'warehousestaff';
-      return clean || 'warehousestaff';
+      if (clean === 'shopowner' || clean === 'owner') return 'shopOwner';
+      if (clean === 'branchmanager' || clean === 'brandmanager') return 'branch_manager';
+      if (clean === 'warehousemanager') return 'warehouse_manager';
+      if (clean === 'warehousestaff') return 'warehouse_staff';
+      return clean || 'warehouse_staff';
     };
+
+    const normalizedRole = normalizeRole(Role);
+    const isOwner = normalizedRole === 'shopOwner';
+    const isBranchManager = normalizedRole === 'branch_manager' || normalizedRole === 'brandmanager';
+
+    // Chỉ branch_manager mới phân công chi nhánh, các vai trò khác không gán
+    const assignedShopId = (isBranchManager && shopId && mongoose.Types.ObjectId.isValid(shopId)) ? shopId : null;
 
     const newUser = new User({
       Email: Email.toLowerCase().trim(),
       FullName: FullName.trim(),
-      Role: normalizeRole(Role),
+      Role: normalizedRole,
       Status: (Status || 'active').toLowerCase(),
       PasswordHash: passwordHash,
       MustChangePassword: true,
@@ -319,6 +421,7 @@ export const createUser = async (req, res) => {
       Avatar: Avatar ? Avatar.trim() : '',
       DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
       Gender: Gender ? Gender.trim() : '',
+      ShopId: assignedShopId,
       Information: [{
         Phone: Phone ? Phone.trim() : '',
         DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
@@ -327,6 +430,23 @@ export const createUser = async (req, res) => {
     });
 
     await newUser.save();
+
+    // Bắn thông báo tài khoản mới tới Dashboard Quản trị viên & Chủ shop
+    notifyRoles(['admin', 'shopOwner'], {
+      type: 'account_created',
+      title: 'Tài khoản nhân viên mới',
+      message: `Tài khoản ${newUser.FullName} (${newUser.Role}) vừa được khởi tạo thành công trên hệ thống.`,
+      link: '/admin/accounts',
+      referenceType: 'User',
+      referenceId: newUser._id
+    }).catch(err => console.error('[Notification] Lỗi bắn thông báo nhân viên mới:', err.message));
+
+    if (isOwner) {
+      // Shop Owner làm chủ toàn bộ các chi nhánh trong hệ thống
+      await Shop.updateMany({ isDeleted: { $ne: true } }, { $set: { ownerId: newUser._id } });
+    } else if (assignedShopId && isBranchManager) {
+      await Shop.findByIdAndUpdate(assignedShopId, { managerId: newUser._id });
+    }
 
     // Gửi email chứa thông tin tài khoản và mật khẩu khởi tạo cho nhân viên
     try {
@@ -360,7 +480,7 @@ export const createUser = async (req, res) => {
 // Cập nhật tài khoản từ Admin Console
 export const updateUser = async (req, res) => {
   try {
-    const { FullName, Role, Status, Phone, Address, DateOfBirth, Gender, Avatar } = req.body;
+    const { FullName, Role, Status, Phone, Address, DateOfBirth, Gender, Avatar, shopId } = req.body;
 
     const existingUser = await User.findById(req.params.id);
     if (!existingUser) {
@@ -420,10 +540,10 @@ export const updateUser = async (req, res) => {
 
     if (Role !== undefined) {
       const clean = Role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
-      if (clean === 'shopowner') updateData.Role = 'shopOwner';
-      else if (clean === 'brandmanager') updateData.Role = 'brandmanager';
-      else if (clean === 'warehousemanager') updateData.Role = 'warehouseManager';
-      else if (clean === 'warehousestaff') updateData.Role = 'warehousestaff';
+      if (clean === 'shopowner' || clean === 'owner') updateData.Role = 'shopOwner';
+      else if (clean === 'branchmanager' || clean === 'brandmanager') updateData.Role = 'branch_manager';
+      else if (clean === 'warehousemanager') updateData.Role = 'warehouse_manager';
+      else if (clean === 'warehousestaff') updateData.Role = 'warehouse_staff';
     }
 
     if (Status !== undefined) {
@@ -452,16 +572,56 @@ export const updateUser = async (req, res) => {
       }];
     }
 
+    const targetRole = updateData.Role || existingUser.Role;
+    const cleanTargetRole = (targetRole || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
+    const isTargetOwner = cleanTargetRole === 'shopowner' || cleanTargetRole === 'owner';
+    const isTargetBranchMgr = cleanTargetRole === 'branchmanager' || cleanTargetRole === 'brandmanager';
+
+    if (isTargetOwner) {
+      // Shop Owner làm chủ tất cả chi nhánh, không gắn riêng cho 1 cơ sở
+      updateData.ShopId = null;
+      await Shop.updateMany({ isDeleted: { $ne: true } }, { $set: { ownerId: existingUser._id } });
+      await Shop.updateMany({ managerId: existingUser._id }, { $set: { managerId: null } });
+    } else if (isTargetBranchMgr) {
+      if (shopId && mongoose.Types.ObjectId.isValid(shopId)) {
+        updateData.ShopId = shopId;
+        await Shop.findByIdAndUpdate(shopId, { managerId: existingUser._id });
+      } else {
+        updateData.ShopId = null;
+        await Shop.updateMany({ managerId: existingUser._id }, { $set: { managerId: null } });
+      }
+    } else {
+      // Các vai trò khác (quản lý kho, nhân viên kho, v.v.) không gán chi nhánh
+      updateData.ShopId = null;
+      await Shop.updateMany({ managerId: existingUser._id }, { $set: { managerId: null } });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
       { new: true, runValidators: true }
-    ).select('-PasswordHash');
+    )
+      .select('-PasswordHash')
+      .populate('ShopId', 'name address city isHQ');
+
+    const managedShop = isTargetBranchMgr ? await Shop.findOne({
+      managerId: user._id,
+      isDeleted: { $ne: true }
+    }).select('_id name address city isHQ').lean() : null;
+
+    const currentShop = isTargetBranchMgr ? (user.ShopId || managedShop || null) : null;
 
     res.json({
       success: true,
       message: 'Cập nhật thông tin tài khoản thành công',
-      data: user
+      data: {
+        ...user.toObject(),
+        shopId: isTargetBranchMgr ? (currentShop?._id || null) : null,
+        shopName: isTargetOwner ? 'Tất cả chi nhánh' : (isTargetBranchMgr ? (currentShop?.name || null) : null),
+        shopAddress: isTargetOwner ? 'Toàn hệ thống' : (isTargetBranchMgr ? (currentShop?.address || null) : null),
+        shopCity: isTargetOwner ? null : (isTargetBranchMgr ? (currentShop?.city || null) : null),
+        isAllBranches: isTargetOwner
+      }
     });
   } catch (error) {
     console.error('Error in updateUser:', error);

@@ -200,7 +200,34 @@ export async function generateTryOn({
   const modelVersion =
     'cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985';
 
-  const rawOutput = await replicate.run(modelVersion, { input });
+  let rawOutput;
+  try {
+    rawOutput = await replicate.run(modelVersion, { input });
+  } catch (runErr) {
+    const errText = String(runErr?.message || runErr || '');
+    console.warn('[TryOnService] Replicate run lần 1 gặp lỗi:', errText);
+
+    // Nếu lỗi "list index out of range", thường do tính năng crop=true cắt sai khung người
+    // hoặc OpenPose không nhận diện được. Thử tự động retry 1 lần với crop = false
+    if (/list index out of range/i.test(errText) && input.crop) {
+      console.log('[TryOnService] Thử lại tự động với crop = false...');
+      try {
+        rawOutput = await replicate.run(modelVersion, {
+          input: { ...input, crop: false },
+        });
+      } catch (retryErr) {
+        throw new Error(
+          'Mô hình AI không nhận diện được vóc dáng người mẫu trong ảnh (OpenPose pose detection failed). Vui lòng chọn hoặc tải ảnh chụp đứng thẳng người, rõ toàn thân, không bị che khuất ngực/eo.'
+        );
+      }
+    } else if (/list index out of range/i.test(errText)) {
+      throw new Error(
+        'Mô hình AI không nhận diện được vóc dáng người mẫu trong ảnh (OpenPose pose detection failed). Vui lòng chọn hoặc tải ảnh chụp đứng thẳng người, rõ toàn thân, không bị che khuất ngực/eo.'
+      );
+    } else {
+      throw runErr;
+    }
+  }
 
   let rawUrl = '';
   if (typeof rawOutput === 'string') {

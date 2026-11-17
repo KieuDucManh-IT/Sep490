@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   Sparkles,
-  Maximize2,
   X,
   Loader2,
   RotateCw,
@@ -13,8 +12,8 @@ import {
 } from 'lucide-react';
 import apiClient from '../services/api';
 import '../styles/AiStylistWidget.css';
-
-const currency = new Intl.NumberFormat('vi-VN');
+import { buildTryOnUrl, isWearableComboSet } from './stylist/stylistUtils';
+import StylistWidgetProductCard from './stylist/StylistWidgetProductCard';
 
 const INITIAL_MSG = {
   role: 'model',
@@ -29,13 +28,8 @@ export default function AiStylistWidget() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Không hiển thị widget nổi nếu đang ở chính trang /stylist hoặc các trang quản trị (owner, admin, warehouse, branch)
-  const isExcludedPath =
-    location.pathname.startsWith('/stylist') ||
-    location.pathname.startsWith('/admin') ||
-    location.pathname.startsWith('/owner') ||
-    location.pathname.startsWith('/branch') ||
-    location.pathname.startsWith('/warehouse');
+  // Chỉ hiển thị widget AI Stylist tại trang chủ (Homepage)
+  const isHomepage = location.pathname === '/';
 
   useEffect(() => {
     if (isOpen) {
@@ -43,7 +37,7 @@ export default function AiStylistWidget() {
     }
   }, [messages, isOpen, sending]);
 
-  if (isExcludedPath) {
+  if (!isHomepage) {
     return null;
   }
 
@@ -133,15 +127,6 @@ export default function AiStylistWidget() {
               </div>
             </div>
             <div className="stylist-widget-controls">
-              <Link
-                to="/stylist"
-                className="stylist-widget-btn"
-                title="Mở toàn màn hình Studio"
-                onClick={() => setIsOpen(false)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Maximize2 size={14} />
-              </Link>
               <button
                 type="button"
                 className="stylist-widget-btn"
@@ -198,31 +183,41 @@ export default function AiStylistWidget() {
                     {/* Gợi ý sản phẩm dạng thẻ nhỏ */}
                     {!m.pending && m.products && m.products.length > 0 && (
                       <div className="stylist-wrec-list">
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: '#7a7060',
+                            marginBottom: 6,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <Sparkles size={11} color="#C5A880" />
+                          {isWearableComboSet(m.products)
+                            ? 'Set đồ phối gợi ý:'
+                            : 'Các mẫu gợi ý cho bạn:'}
+                        </div>
                         {m.products.map((p) => (
-                          <Link
+                          <StylistWidgetProductCard
                             key={p.id}
-                            to={`/product/${p.id}`}
-                            className="stylist-wrec-card"
-                            onClick={() => setIsOpen(false)}
-                          >
-                            <div className="stylist-wrec-thumb">
-                              {p.imageUrl ? (
-                                <img src={p.imageUrl} alt={p.name} loading="lazy" />
-                              ) : (
-                                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                                  <Sparkles size={14} color="#C5A880" />
-                                </span>
-                              )}
-                            </div>
-                            <div className="stylist-wrec-details">
-                              <h6 className="stylist-wrec-title">{p.name}</h6>
-                              <span className="stylist-wrec-cat">{p.category}</span>
-                              <span className="stylist-wrec-price">
-                                {currency.format(p.rentalPricePerDayVnd || p.rentalPricePerDay || 0)}đ/ngày
-                              </span>
-                            </div>
-                          </Link>
+                            product={p}
+                            onClose={() => setIsOpen(false)}
+                          />
                         ))}
+
+                        {/* Nút chuyển cả set đồ vào phòng thử đồ: Chỉ hiển thị khi các món tạo thành 1 bộ phối hoàn chỉnh */}
+                        {isWearableComboSet(m.products) && (
+                          <Link
+                            to={buildTryOnUrl(m.products)}
+                            className="stylist-wrec-combo-btn"
+                            onClick={() => setIsOpen(false)}
+                            title="Chuyển toàn bộ set đồ này vào phòng thử đồ AI"
+                          >
+                            <Sparkles size={12} /> Chuyển cả set vào phòng thử đồ
+                          </Link>
+                        )}
                       </div>
                     )}
                   </div>

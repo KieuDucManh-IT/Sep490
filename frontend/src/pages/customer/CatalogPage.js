@@ -915,10 +915,16 @@ export default function CatalogPage() {
                             <span className="meta-separator">•</span>
                           </>
                         ) : null}
-                        <span className="stock-indicator">
-                          <span className="stock-dot"></span>
-                          <span>Còn hàng ({item.quantityAvailable || item.quantity || 1})</span>
-                        </span>
+                        {/* TASK-011: số khả dụng lấy từ API (InventoryBalance, chỉ chi nhánh); không còn fallback "|| 1". */}
+                        {(() => {
+                          const availableQty = Math.max(0, Number(item.quantityAvailable ?? 0) || 0);
+                          return (
+                            <span className="stock-indicator">
+                              <span className={`stock-dot ${availableQty > 0 ? '' : 'out-of-stock'}`}></span>
+                              <span>{availableQty > 0 ? `Còn hàng (${availableQty})` : 'Hết hàng'}</span>
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       {/* Price */}

@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
@@ -8,57 +7,34 @@ import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundRece
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { RentalOrderItem } from '../../models/sale&rental/RentalOrderItem.js';
+import { getBalances } from './balanceQueryService.js';
+import { EMPTY_SUMMARY, buildBalanceReportRows, rollupReportRows, summarizeReport } from './inventoryReportRules.js';
 
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
-const keyOf = (locationId, storageId, variantId) => `${locationId}:${storageId || 'none'}:${variantId}`;
-const statusUnavailable = (item) => ['maintenance', 'unavailable'].includes(item.status) || ['damaged', 'unrepairable'].includes(item.condition);
 const OPEN_RENTAL_STATUSES = ['renting', 'partially_returned', 'overdue'];
-const EMPTY_SUMMARY = Object.freeze({ totalOnHand: 0, totalAvailable: 0, totalReserved: 0, totalUnavailable: 0, totalRenting: 0, totalOverdue: 0 });
 
 /**
- * TASK-010: id các món đang ở chỗ khách và QUÁ HẠN trả (tính lúc đọc, không lưu vào balance):
- * RentalOrder (dueDate < now, chưa trả) → RentalOrderDetail → RentalOrderItem `handed_over` → itemId.
+ * Số món QUÁ HẠN trả theo (locationId, variantId), tính lúc đọc, không lưu vào balance:
+ * RentalOrder (dueDate < now, chưa trả) → RentalOrderDetail (variantId) → đếm RentalOrderItem `handed_over`.
+ * TASK-011: không đếm món; chi nhánh lấy từ RentalOrder.locationId.
  */
-const overdueRentingItemIds = async (locationIds, now = new Date()) => {
-  const orderIds = await RentalOrder.find({ locationId: { $in: locationIds }, rentalStatus: { $in: OPEN_RENTAL_STATUSES }, dueDate: { $lt: now } }).distinct('_id');
-  if (!orderIds.length) return new Set();
-  const detailIds = await RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } }).distinct('_id');
-  if (!detailIds.length) return new Set();
-  const itemIds = await RentalOrderItem.find({ rentalOrderDetailId: { $in: detailIds }, status: 'handed_over' }).distinct('itemId');
-  return new Set(itemIds.map(String));
+const overdueByVariantLocation = async (locationIds, now = new Date()) => {
+  const orders = await RentalOrder.find({ locationId: { $in: locationIds }, rentalStatus: { $in: OPEN_RENTAL_STATUSES }, dueDate: { $lt: now } }).select('_id locationId').lean();
+  if (!orders.length) return [];
+  const locationByOrder = new Map(orders.map((order) => [String(order._id), order.locationId]));
+  const details = await RentalOrderDetail.find({ rentalOrderId: { $in: orders.map((order) => order._id) } }).select('_id rentalOrderId variantId').lean();
+  if (!details.length) return [];
+  const counts = await RentalOrderItem.aggregate([
+    { $match: { rentalOrderDetailId: { $in: details.map((detail) => detail._id) }, status: 'handed_over' } },
+    { $group: { _id: '$rentalOrderDetailId', quantity: { $sum: 1 } } },
+  ]);
+  const countByDetail = new Map(counts.map((row) => [String(row._id), row.quantity]));
+  return details
+    .map((detail) => ({ locationId: locationByOrder.get(String(detail.rentalOrderId)), variantId: detail.variantId, quantity: countByDetail.get(String(detail._id)) || 0 }))
+    .filter((row) => row.quantity > 0);
 };
 
-const categoryNamesForProduct = (product) => {
-  const categories = Array.isArray(product?.categoryId) ? product.categoryId : product?.categoryId ? [product.categoryId] : [];
-  return categories.map((category) => category?.name).filter(Boolean).join(', ');
-};
-
-const storageNodeAtLevel = (storageId, level, storageById) => {
-  if (!storageId) return null;
-  let cursor = storageById.get(String(storageId));
-  let fallback = cursor || null;
-  const visited = new Set();
-  while (cursor && !visited.has(String(cursor._id))) {
-    visited.add(String(cursor._id));
-    if (cursor.type === level || cursor.type === 'temporary_area') return cursor;
-    cursor = cursor.parentStorageId ? storageById.get(String(cursor.parentStorageId)) : null;
-  }
-  return fallback;
-};
-
-const storagePathFor = (storageId, storageById) => {
-  if (!storageId) return 'Chưa gán vị trí';
-  const parts = [];
-  const visited = new Set();
-  let cursor = storageById.get(String(storageId));
-  while (cursor && !visited.has(String(cursor._id))) {
-    visited.add(String(cursor._id));
-    parts.unshift(cursor.code || cursor.name);
-    cursor = cursor.parentStorageId ? storageById.get(String(cursor.parentStorageId)) : null;
-  }
-  return parts.length ? parts.join(' / ') : 'Không tìm thấy vị trí';
-};
-
+/** TASK-011: mọi số lượng (cả hàng individual) đọc từ InventoryBalance; "Đang giữ" gồm giữ chỗ của đơn thuê/bán và phiếu kho. */
 export const getInventoryReport = async ({ locationId = '', storageLevel = 'shelf', itemLevel = 'variant' } = {}) => {
   if (locationId && !mongoose.isValidObjectId(locationId)) throw invalid('Kho/cửa hàng không hợp lệ.');
   if (!['zone', 'row', 'shelf'].includes(storageLevel)) throw invalid('Cấp vị trí không hợp lệ.');
@@ -71,164 +47,16 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
   const storageById = new Map(storageLocations.map((storage) => [String(storage._id), storage]));
   if (!locationIds.length) return { items: [], summary: { ...EMPTY_SUMMARY }, locations };
 
-  // TASK-010: lấy thêm món `renting` để đếm cột "Đang cho thuê" (không cộng vào tồn / sức chứa).
-  const [balances, individualItems, overdueIds] = await Promise.all([
-    InventoryBalance.find({ locationId: { $in: locationIds } }).lean(),
-    InventoryItem.find({ locationId: { $in: locationIds }, status: { $nin: ['disposed', 'in_transit', 'sold'] } }).lean(),
-    overdueRentingItemIds(locationIds),
-  ]);
-  const variantIds = [...new Set([...balances, ...individualItems].map((row) => String(row.variantId)))];
+  const [balances, overdue] = await Promise.all([getBalances({ locationIds }), overdueByVariantLocation(locationIds)]);
+  const variantIds = [...new Set([...balances, ...overdue].map((row) => String(row.variantId)))];
   const variants = await ProductVariant.find({ _id: { $in: variantIds } })
     .select('sku size color productId')
     .populate({ path: 'productId', select: 'productCode name trackingType tag categoryId', populate: { path: 'categoryId', select: 'name' } })
     .lean();
   const variantById = new Map(variants.map((variant) => [String(variant._id), variant]));
-  const grouped = new Map();
-
-  const ensureQuantityRow = (location, storageId, variant) => {
-    const key = keyOf(location._id, storageId, variant._id);
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        key,
-        trackingType: 'quantity',
-        locationId: location._id,
-        locationCode: location.code,
-        locationName: location.name,
-        locationType: location.type,
-        managerName: location.managerId?.FullName || '',
-        storageId: storageId || null,
-        storagePath: storagePathFor(storageId, storageById),
-        productCode: variant.productId?.productCode || '',
-        productName: variant.productId?.name || 'Sản phẩm đã xóa',
-        categoryName: categoryNamesForProduct(variant.productId),
-        productId: variant.productId?._id || variant.productId || null,
-        variantId: variant._id,
-        sku: variant.sku,
-        size: variant.size || '',
-        color: variant.color || '',
-        itemCode: '',
-        serialNumber: '',
-        condition: '',
-        itemStatus: '',
-        quantityOnHand: 0,
-        quantityAvailable: 0,
-        quantityReserved: 0,
-        quantityUnavailable: 0,
-        quantityRenting: 0,
-        quantityOverdue: 0,
-      });
-    }
-    return grouped.get(key);
-  };
-
-  for (const balance of balances) {
-    const variant = variantById.get(String(balance.variantId));
-    const location = locationById.get(String(balance.locationId));
-    if (!variant || variant.productId?.trackingType === 'individual' || !location) continue;
-    const row = ensureQuantityRow(location, balance.storageId, variant);
-    row.quantityOnHand += balance.quantityOnHand || 0;
-    row.quantityReserved += balance.quantityReserved || 0;
-    row.quantityUnavailable += balance.quantityUnavailable || 0;
-    row.quantityRenting += balance.quantityRenting || 0;
-  }
-
-  const individualGroups = new Map();
-  for (const item of individualItems) {
-    const variant = variantById.get(String(item.variantId));
-    const location = locationById.get(String(item.locationId));
-    if (!variant || variant.productId?.trackingType !== 'individual' || !location) continue;
-    const unavailable = statusUnavailable(item);
-    const key = keyOf(location._id, item.storageId, variant._id);
-    if (!individualGroups.has(key)) individualGroups.set(key, {
-      key,
-      trackingType: 'individual',
-      locationId: location._id,
-      locationCode: location.code,
-      locationName: location.name,
-      locationType: location.type,
-      managerName: location.managerId?.FullName || '',
-      storageId: item.storageId || null,
-      storagePath: storagePathFor(item.storageId, storageById),
-      productCode: variant.productId?.productCode || '',
-      productName: variant.productId?.name || 'Sản phẩm đã xóa',
-      categoryName: categoryNamesForProduct(variant.productId),
-      productId: variant.productId?._id || variant.productId || null,
-      variantId: variant._id,
-      sku: variant.sku,
-      size: variant.size || '',
-      color: variant.color || '',
-      itemCount: 0,
-      quantityOnHand: 0,
-      quantityAvailable: 0,
-      quantityReserved: 0,
-      quantityUnavailable: 0,
-      quantityRenting: 0,
-      quantityOverdue: 0,
-    });
-    const row = individualGroups.get(key);
-    if (item.status === 'renting') {
-      row.quantityRenting += 1;
-      if (overdueIds.has(String(item._id))) row.quantityOverdue += 1;
-      continue;
-    }
-    row.itemCount += 1;
-    row.quantityOnHand += 1;
-    if (unavailable) row.quantityUnavailable += 1;
-    else if (item.status === 'reserved') row.quantityReserved += 1;
-    else if (item.status === 'available') row.quantityAvailable += 1;
-  }
-
-  for (const row of grouped.values()) {
-    row.quantityAvailable = Math.max(0, row.quantityOnHand - row.quantityReserved - row.quantityUnavailable);
-  }
-  const baseRows = [...grouped.values(), ...individualGroups.values()];
-  const rollups = new Map();
-  for (const source of baseRows) {
-    const storage = storageNodeAtLevel(source.storageId, storageLevel, storageById);
-    const dimensionId = itemLevel === 'product' ? source.productId : source.variantId;
-    const key = `${source.locationId}:${storage?._id || 'none'}:${dimensionId || 'unknown'}`;
-    if (!rollups.has(key)) {
-      rollups.set(key, {
-        ...source,
-        key,
-        itemLevel,
-        storageLevel,
-        storageId: storage?._id || null,
-        storagePath: storagePathFor(storage?._id, storageById),
-        sku: itemLevel === 'product' ? '' : source.sku,
-        size: itemLevel === 'product' ? '' : source.size,
-        color: itemLevel === 'product' ? '' : source.color,
-        variantId: itemLevel === 'product' ? null : source.variantId,
-        itemCount: 0,
-        quantityOnHand: 0,
-        quantityAvailable: 0,
-        quantityReserved: 0,
-        quantityUnavailable: 0,
-        quantityRenting: 0,
-        quantityOverdue: 0,
-      });
-    }
-    const row = rollups.get(key);
-    row.quantityOnHand += source.quantityOnHand || 0;
-    row.quantityAvailable += source.quantityAvailable || 0;
-    row.quantityReserved += source.quantityReserved || 0;
-    row.quantityUnavailable += source.quantityUnavailable || 0;
-    row.quantityRenting += source.quantityRenting || 0;
-    row.quantityOverdue += source.quantityOverdue || 0;
-    row.itemCount += source.itemCount || 0;
-  }
-  const items = [...rollups.values()]
-    .filter((row) => row.quantityOnHand > 0 || row.quantityReserved > 0 || row.quantityUnavailable > 0 || row.quantityRenting > 0)
-    .sort((a, b) => `${a.locationCode} ${a.storagePath} ${a.productName} ${a.sku} ${a.key}`.localeCompare(`${b.locationCode} ${b.storagePath} ${b.productName} ${b.sku} ${b.key}`, 'vi'));
-  const summary = items.reduce((total, row) => ({
-    totalOnHand: total.totalOnHand + row.quantityOnHand,
-    totalAvailable: total.totalAvailable + row.quantityAvailable,
-    totalReserved: total.totalReserved + row.quantityReserved,
-    totalUnavailable: total.totalUnavailable + row.quantityUnavailable,
-    totalRenting: total.totalRenting + row.quantityRenting,
-    totalOverdue: total.totalOverdue + row.quantityOverdue,
-  }), { ...EMPTY_SUMMARY });
-  return { items, summary, locations };
+  const baseRows = buildBalanceReportRows({ balances, overdue, variantById, locationById, storageById });
+  const items = rollupReportRows(baseRows, { storageLevel, itemLevel, storageById });
+  return { items, summary: summarizeReport(items), locations };
 };
 
 export const getIndividualItemDetails = async ({ locationId, storageId, variantId, productId, itemLevel = 'variant', availableOnly = false }) => {

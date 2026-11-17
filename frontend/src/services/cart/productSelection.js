@@ -20,6 +20,24 @@ export const variantStock = (branch, variantId) => {
   const qty = branch?.variantQuantities?.[String(variantId)];
   return typeof qty === 'number' && Number.isFinite(qty) && qty >= 0 ? qty : null;
 };
+/**
+ * TASK-011: khả dụng của biến thể từ `product.variantAvailability` (API đọc InventoryBalance, chỉ chi nhánh).
+ * Có `locationId` → số của chi nhánh đó; không có → tổng mọi chi nhánh. API cũ chưa có field → null (chưa xác định).
+ */
+export const variantAvailableQty = (product, variantId, locationId = '') => {
+  const availability = product?.variantAvailability;
+  if (!availability || typeof availability !== 'object') return null;
+  const entry = availability[String(variantId)];
+  if (!entry) return 0;
+  const qty = locationId ? entry.byLocation?.[String(locationId)]?.available : entry.total;
+  return Number.isFinite(Number(qty)) ? Math.max(0, Number(qty)) : 0;
+};
+/** Nút size/màu bấm được khi biến thể tồn tại và còn khả dụng (null = API chưa trả số → không chặn). */
+export const variantSelectable = (product, variant, locationId = '') => {
+  if (!variant) return false;
+  const qty = variantAvailableQty(product, variant._id, locationId);
+  return qty === null || qty > 0;
+};
 export const variantPricing = (product, variant) => variant?.pricing || {
   salePrice: Number(variant?.attributes?.salePrice ?? variant?.attributes?.price ?? product?.salePrice ?? product?.price ?? 0),
   rentalPricePerDay: Number(variant?.attributes?.rentalPricePerDay ?? product?.rentalPricePerDay ?? 0),

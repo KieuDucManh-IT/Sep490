@@ -1,7 +1,6 @@
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
-import { availableFromBalances } from '../warehouse/orderStockService.js';
+import { getBalances, sumAvailable } from '../warehouse/balanceQueryService.js';
 import { isActiveStoreLocation, formatLocationAddress } from '../warehouse/productInventoryHelper.js';
 import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
 import { validateCalendarRentalRange } from '../../validations/sale&rental/rentalOrderValidation.js';
@@ -23,8 +22,8 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
   const siblings = await ProductVariant.find({ productId: { $in: variants.map(v => v.productId?._id).filter(Boolean) }, status: 'active', isDeleted: { $ne: true } }).lean();
   const ids = [...new Set([...variants, ...siblings].map(v => idOf(v)))];
   // TASK-010: chỉ đọc balance cho mọi loại hàng (bỏ fallback đếm món).
-  const balances = await InventoryBalance.find({ variantId: { $in: ids } }).lean();
-  const stock = (vid, lid) => availableFromBalances(balances.filter(row => idOf(row.variantId) === vid && idOf(row.locationId) === lid));
+  const balances = await getBalances({ variantIds: ids });
+  const stock = (vid, lid) => sumAvailable(balances.filter(row => idOf(row.variantId) === vid && idOf(row.locationId) === lid));
   const totals = new Map();
   for (const row of input) totals.set(String(row.variantId), (totals.get(String(row.variantId)) || 0) + row.quantity);
   const summary = { rentalFeeSubtotal: 0, depositSubtotal: 0, saleSubtotal: 0, grandTotal: 0 };

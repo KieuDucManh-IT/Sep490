@@ -232,8 +232,9 @@ export default function HomePage() {
               title: p.name,
               rating: typeof p.rating === 'number' ? Number(p.rating).toFixed(1) : '4.9',
               reviews: typeof p.reviewsCount === 'number' ? p.reviewsCount : 95,
-              inStock: p.inStock !== false && (p.quantity == null || p.quantity > 0),
-              quantity: p.quantity,
+              // TASK-011: số khả dụng từ API (InventoryBalance, chỉ chi nhánh); không tự suy ra khi thiếu.
+              inStock: p.inStock !== false && Number(p.quantityAvailable ?? p.quantity ?? 0) > 0,
+              quantity: p.quantityAvailable ?? p.quantity,
               quantityOnHand: p.quantityOnHand,
               branchAddress: p.branchAddress,
               branchName: p.branchName,

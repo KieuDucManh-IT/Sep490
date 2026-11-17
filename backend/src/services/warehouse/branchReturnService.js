@@ -13,6 +13,7 @@ import User from '../../models/system/User.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
 import { moveItem, moveItems } from './itemStateService.js';
+import { availableOf, getAvailable, stockMismatchError } from './balanceQueryService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const roleOf = (user) => String(user?.Role || user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
@@ -147,15 +148,18 @@ export const decideBranchReturn = async (id, payload, user) => {
         if (quantity > detail.quantityRequested) throw fail('Số lượng duyệt không được lớn hơn số lượng chi nhánh yêu cầu.');
         detail.quantityApproved = quantity;
         if (quantity > 0 && tracking.get(String(detail.variantId)) === 'individual') {
+          // TASK-011: kiểm khả dụng trên balance trước, rồi mới chọn món; chọn thiếu món = dữ liệu lệch.
+          const available = await getAvailable({ locationId: transfer.fromLocationId, variantId: detail.variantId }, session);
+          if (available < quantity) throw fail(`Chi nhánh chỉ còn ${available} cái khả dụng để trả.`, 409);
           const locked = await InventoryItem.find({ locationId: transfer.fromLocationId, variantId: detail.variantId, status: 'available', condition: { $nin: ['damaged', 'unrepairable', 'missing'] } }).sort({ createdAt: 1 }).limit(quantity).session(session);
-          if (locked.length < quantity) throw fail(`Chi nhánh chỉ còn ${locked.length} món đủ điều kiện để trả.`, 409);
+          if (locked.length < quantity) throw stockMismatchError({ locationId: transfer.fromLocationId, variantId: detail.variantId, expected: available, found: locked.length, context: 'decideBranchReturn' });
           detail.itemIds = locked.map((item) => item._id);
           // TASK-009: phiếu trả giữ món → reserved + warehouseHold (+1 quantityReserved ở dòng chi nhánh).
           await moveItems(locked, { status: 'reserved', warehouseHold: 1 }, session);
         } else if (quantity > 0) {
           const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: null, variantId: detail.variantId }).session(session);
-          const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
-          if (!balance || available < quantity) throw fail(`Chi nhánh chỉ còn ${Math.max(0, available)} cái khả dụng để trả.`, 409);
+          const available = availableOf(balance);
+          if (!balance || available < quantity) throw fail(`Chi nhánh chỉ còn ${available} cái khả dụng để trả.`, 409);
           balance.quantityReserved += quantity;
           await balance.save({ session });
         }

@@ -9,6 +9,7 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import User from '../../models/system/User.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 import { moveItems } from './itemStateService.js';
+import { availableOf, stockMismatchError } from './balanceQueryService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const roleOf = (user) => String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
@@ -117,15 +118,16 @@ export const createStockRelocation = async (payload, user, validated) => {
         await storageChain(line.fromStorageId, central._id, session);
         await storageChain(line.toStorageId, central._id, session);
         const balance = await InventoryBalance.findOne({ locationId: central._id, storageId: line.fromStorageId, variantId: line.variantId }).session(session);
+        // TASK-011: mọi loại hàng kiểm khả dụng trên balance của kệ nguồn trước.
+        const available = availableOf(balance);
+        if (!balance || available < line.quantity) throw fail(`Tồn khả dụng tại kệ nguồn không đủ (${available}/${line.quantity}).`, 409);
         if (tracking.get(line.variantId) === 'individual') {
           const items = await InventoryItem.find({ locationId: central._id, storageId: line.fromStorageId, variantId: line.variantId, status: 'available', condition: { $nin: ['damaged', 'unrepairable', 'missing'] } }).sort({ createdAt: 1 }).limit(line.quantity).session(session);
-          if (items.length !== line.quantity) throw fail(`Tồn khả dụng tại kệ nguồn không đủ (${items.length}/${line.quantity}).`, 409);
+          if (items.length !== line.quantity) throw stockMismatchError({ locationId: central._id, storageId: line.fromStorageId, variantId: line.variantId, expected: available, found: items.length, context: 'createStockRelocation' });
           line.itemIds = items.map((x) => x._id);
           // TASK-009: phiếu giữ món ở kệ nguồn → reserved + warehouseHold (+1 quantityReserved mỗi món).
           await moveItems(items, { status: 'reserved', warehouseHold: 1 }, session);
         } else {
-          const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
-          if (!balance || available < line.quantity) throw fail(`Tồn khả dụng tại kệ nguồn không đủ (${Math.max(0, available)}/${line.quantity}).`, 409);
           balance.quantityReserved += line.quantity; await balance.save({ session });
           line.itemIds = [];
         }

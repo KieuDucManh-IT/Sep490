@@ -251,7 +251,7 @@ export const getProducts = async (req, res, next) => {
       variantsByProduct[pid].push(v);
     });
 
-    // Làm giàu dữ liệu tồn kho và địa chỉ chi nhánh từ InventoryBalance & InventoryItem
+    // Làm giàu dữ liệu tồn kho và địa chỉ chi nhánh từ InventoryBalance (TASK-011: chỉ balance, chỉ chi nhánh)
     let inventoryEnriched = [];
     try {
       inventoryEnriched = await enrichProductsWithInventory(products, variants);
@@ -334,6 +334,7 @@ export const getProducts = async (req, res, next) => {
         branchAddress,
         branchName,
         branches,
+        variantAvailability: inv.variantAvailability,
         rating: typeof p.rating === 'number' ? p.rating : null,
         reviewsCount: typeof p.reviewsCount === 'number' ? p.reviewsCount : 0,
         inStock: inv.inStock != null ? inv.inStock : (quantityAvailable > 0),
@@ -528,6 +529,7 @@ export const getProductById = async (req, res, next) => {
         branchAddress,
         branchName,
         branches,
+        variantAvailability: inv.variantAvailability,
         rating: typeof product.rating === 'number' ? product.rating : 5,
         reviewsCount: typeof product.reviewsCount === 'number' ? product.reviewsCount : 0,
         inStock: inv.inStock != null ? inv.inStock : (quantity > 0),

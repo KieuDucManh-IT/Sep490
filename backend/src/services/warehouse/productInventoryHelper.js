@@ -1,6 +1,5 @@
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { availableFromBalances } from './orderStockService.js';
+import { getBalances, sumAvailable, sumByVariantLocation } from './balanceQueryService.js';
 
 export const formatLocationAddress = (loc) => {
   if (!loc) return '';
@@ -18,13 +17,11 @@ export const formatLocationAddress = (loc) => {
 
 
 const idOf = (value) => String(value?._id || value || '');
-const nonnegative = (value) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
-export const isWarehouseLocation = (loc) => {
-  const name = String(loc?.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  return String(loc?.type).toLowerCase() === 'warehouse' || /kho tong|kho trung tam/.test(name);
-};
-export const isActiveStoreLocation = (loc) => Boolean(loc && loc.status === 'active' && !loc.isDeleted &&
-  !isWarehouseLocation(loc) && (!loc.shopId || !loc.shopId._id ||
+/** TASK-011: nhận diện kho tổng chỉ theo `type` (bỏ đoán theo tên "kho tổng"/"kho trung tâm"). */
+export const isWarehouseLocation = (loc) => String(loc?.type || '').toLowerCase() === 'warehouse';
+/** Màn khách chỉ tính chi nhánh: InventoryLocation `type: 'store'`, `status: 'active'`, shop (nếu có) còn hoạt động. */
+export const isActiveStoreLocation = (loc) => Boolean(loc && loc.type === 'store' && loc.status === 'active' && !loc.isDeleted &&
+  (!loc.shopId || !loc.shopId._id ||
     (!loc.shopId.isDeleted && (!loc.shopId.status || String(loc.shopId.status).toLowerCase() === 'active'))));
 export const validateActiveStoreLocation = async (locationId, session = null) => {
   const query = locationId ? InventoryLocation.findById(locationId) : null;
@@ -36,50 +33,46 @@ export const validateActiveStoreLocation = async (locationId, session = null) =>
 };
 
 /** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025
- * TASK-010: mọi loại hàng (quantity + individual) chỉ đọc InventoryBalance; khả dụng = Σ max(0, onHand − reserved − unavailable).
- * Balance của hàng individual đã đồng bộ với món (TASK-009) và đã trừ giữ chỗ của đơn → không đếm món nữa. */
+ * TASK-011: chỉ đọc balance qua balanceQueryService (mọi loại hàng), chỉ chi nhánh `store` + `active`.
+ * Trả thêm `variantAvailability: { [variantId]: { total, byLocation } }`; giữ nguyên các field cũ cho giao diện. */
 export const enrichProductsWithInventory = async (products = [], variants = []) => {
   if (!products.length) return [];
   const variantIds = variants.map(v => v._id);
-  const balances = variantIds.length
-    ? await InventoryBalance.find({ variantId: { $in: variantIds } }).populate({ path: 'locationId', populate: { path: 'shopId' } }).lean()
+  const stores = variantIds.length
+    ? (await InventoryLocation.find({ type: 'store', status: 'active' }).populate('shopId').lean()).filter(isActiveStoreLocation)
     : [];
-  const byPair = new Map();
-  for (const row of balances) {
-    const location = row.locationId;
-    if (!isActiveStoreLocation(location)) continue;
-    const key = idOf(row.variantId) + ':' + idOf(location);
-    if (!byPair.has(key)) byPair.set(key, { variantId: idOf(row.variantId), location, balances: [] });
-    byPair.get(key).balances.push(row);
-  }
-  for (const row of byPair.values()) {
-    row.quantityOnHand = row.balances.reduce((sum, b) => sum + nonnegative(b.quantityOnHand), 0);
-    row.quantityAvailable = availableFromBalances(row.balances);
-  }
+  const storeById = new Map(stores.map(loc => [idOf(loc), loc]));
+  const balances = stores.length ? await getBalances({ locationIds: stores.map(loc => loc._id), variantIds }) : [];
+  const availability = sumByVariantLocation(balances);
   return products.map(product => {
     const pVariants = variants.filter(v => idOf(v.productId) === idOf(product));
-    const ids = new Set(pVariants.map(v => idOf(v)));
+    const variantAvailability = {};
     const locations = new Map();
-    for (const row of byPair.values()) {
-      if (!ids.has(row.variantId)) continue;
-      const loc = row.location; const lid = idOf(loc);
-      if (!locations.has(lid)) locations.set(lid, {
-        locationId: lid, shopId: loc.shopId?._id || loc.shopId || null, name: loc.name,
-        type: loc.type, status: loc.status, address: formatLocationAddress(loc),
-        city: loc.shopId?.city || loc.city || '', latitude: loc.shopId?.latitude ?? loc.latitude ?? null,
-        longitude: loc.shopId?.longitude ?? loc.longitude ?? null,
-        quantityOnHand: 0, quantityAvailable: 0, quantity: 0, variantQuantities: {},
-      });
-      const branch = locations.get(lid);
-      branch.quantityOnHand += row.quantityOnHand;
-      branch.quantityAvailable += row.quantityAvailable;
-      branch.quantity += row.quantityAvailable;
-      branch.variantQuantities[row.variantId] = row.quantityAvailable;
+    for (const v of pVariants) {
+      const vid = idOf(v);
+      const entry = availability[vid] || { total: 0, byLocation: {} };
+      variantAvailability[vid] = entry;
+      for (const [lid, cell] of Object.entries(entry.byLocation)) {
+        const loc = storeById.get(lid);
+        if (!loc) continue;
+        if (!locations.has(lid)) locations.set(lid, {
+          locationId: lid, shopId: loc.shopId?._id || loc.shopId || null, name: loc.name,
+          type: loc.type, status: loc.status, address: formatLocationAddress(loc),
+          city: loc.shopId?.city || loc.city || '', latitude: loc.shopId?.latitude ?? loc.latitude ?? null,
+          longitude: loc.shopId?.longitude ?? loc.longitude ?? null,
+          quantityOnHand: 0, quantityAvailable: 0, quantity: 0, variantQuantities: {},
+        });
+        const branch = locations.get(lid);
+        branch.quantityOnHand += cell.onHand;
+        branch.quantityAvailable += cell.available;
+        branch.quantity += cell.available;
+        branch.variantQuantities[vid] = cell.available;
+      }
     }
     const branches = [...locations.values()];
     for (const branch of branches) for (const v of pVariants) branch.variantQuantities[idOf(v)] ??= 0;
     const quantity = branches.reduce((sum, b) => sum + b.quantity, 0);
-    return { ...product, branches, inventoryKnown: true, quantity, quantityAvailable: quantity,
+    return { ...product, branches, variantAvailability, inventoryKnown: true, quantity, quantityAvailable: quantity,
       quantityOnHand: branches.reduce((sum, b) => sum + b.quantityOnHand, 0), inStock: quantity > 0,
       branchAddress: branches[0]?.address || 'Chưa có hàng tại chi nhánh', branchName: branches[0]?.name || '',
     };
@@ -92,9 +85,7 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
 const checkAvailability = async (variantId, locationId, requestedQty, session = null) => {
   const branch = await validateActiveStoreLocation(locationId, session);
   if (!variantId || !branch.valid) return { available: false, availableQty: 0, code: branch.code || 'ERR_INVALID_VARIANT', message: branch.message || 'Thiếu biến thể.' };
-  const query = InventoryBalance.find({ variantId, locationId });
-  if (session) query.session(session);
-  const availableQty = availableFromBalances(await query.lean());
+  const availableQty = sumAvailable(await getBalances({ locationIds: [locationId], variantIds: [variantId] }, session));
   const available = Number.isInteger(requestedQty) && requestedQty > 0 && availableQty >= requestedQty;
   return { available, availableQty, code: available ? null : 'ERR_OUT_OF_STOCK',
     message: available ? 'Còn hàng khả dụng' : 'Chi nhánh chỉ còn ' + availableQty + ' sản phẩm khả dụng.' };

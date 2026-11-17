@@ -9,6 +9,7 @@ import { InventoryReservation as InventoryReservationModel } from '../../models/
 import { ProductVariant as ProductVariantModel } from '../../models/masterdata/ProductVariant.js';
 import { assertBalanceInvariant, idOf } from './itemBalanceRules.js';
 import { moveItems as defaultMoveItems } from './itemStateService.js';
+import { availableOf, sumAvailable } from './balanceQueryService.js';
 
 /** Tình trạng món không được bán/cho thuê dù status `available`. */
 export const UNUSABLE_CONDITIONS = Object.freeze(['damaged', 'unrepairable', 'missing']);
@@ -28,11 +29,11 @@ const num = (value) => (Number.isFinite(Number(value)) ? Math.max(0, Number(valu
 
 /* ------------------------------------------------ Hàm thuần ------------------------------------------------ */
 
-/** Khả dụng của một dòng balance: max(0, onHand − reserved − unavailable). `quantityRenting` không tham gia. */
-export const availableOfBalance = (row) => Math.max(0, num(row?.quantityOnHand) - num(row?.quantityReserved) - num(row?.quantityUnavailable));
+/** Khả dụng của một dòng balance — TASK-011: công thức dùng chung ở balanceQueryService (giữ tên cũ để không vỡ chỗ gọi). */
+export const availableOfBalance = availableOf;
 
 /** Khả dụng cho khách tại một chi nhánh = Σ khả dụng các dòng balance (mọi loại hàng, không đếm món). */
-export const availableFromBalances = (rows = []) => (rows || []).reduce((sum, row) => sum + availableOfBalance(row), 0);
+export const availableFromBalances = sumAvailable;
 
 /** Điều kiện giữ chỗ (đúng điều kiện `$expr` của reserveFilter). */
 export const canReserve = (row, quantity) => Boolean(row) && Number(quantity) > 0 && availableOfBalance(row) >= Number(quantity);

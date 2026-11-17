@@ -12,6 +12,7 @@ import User from '../../models/system/User.js';
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
 import { moveItem, moveItems } from './itemStateService.js';
+import { availableOf, getAvailable } from './balanceQueryService.js';
 import {
   validateCreateTransferRequest,
   validateTransferDecision,
@@ -172,15 +173,9 @@ export const decideTransferRequest = async (transferId, payload, user) => {
         const detail = byId.get(line.detailId);
         if (line.quantityApproved > detail.quantityRequested) throw fail('Số lượng duyệt không được lớn hơn số lượng chi nhánh yêu cầu.');
         if (line.quantityApproved > 0) {
-          const variant = await ProductVariant.findById(detail.variantId).select('productId').populate('productId', 'trackingType').session(session).lean();
-          if (variant?.productId?.trackingType === 'individual') {
-            const available = await InventoryItem.countDocuments({ locationId: transfer.fromLocationId, variantId: detail.variantId, status: 'available' }).session(session);
-            if (available < line.quantityApproved) throw fail(`Kho tổng chỉ còn ${available} cá thể khả dụng cho biến thể này.`, 409);
-          } else {
-            const balances = await InventoryBalance.find({ locationId: transfer.fromLocationId, variantId: detail.variantId }).session(session);
-            const available = balances.reduce((sum, row) => sum + row.quantityOnHand - row.quantityReserved - row.quantityUnavailable, 0);
-            if (available < line.quantityApproved) throw fail(`Kho tổng chỉ còn ${Math.max(0, available)} cái khả dụng cho biến thể này.`, 409);
-          }
+          // TASK-011: mọi loại hàng kiểm khả dụng trên balance (món cụ thể chọn ở bước soạn hàng).
+          const available = await getAvailable({ locationId: transfer.fromLocationId, variantId: detail.variantId }, session);
+          if (available < line.quantityApproved) throw fail(`Kho tổng chỉ còn ${available} cái khả dụng cho biến thể này.`, 409);
         }
         detail.quantityApproved = line.quantityApproved;
         detail.pickAllocations = [];
@@ -212,7 +207,7 @@ export const getTransferPickCandidates = async (transferId, detailId, storageId,
   const variant = await ProductVariant.findById(detail.variantId).select('productId').populate('productId', 'trackingType').lean();
   if (variant?.productId?.trackingType === 'individual') return InventoryItem.find({ locationId: transfer.fromLocationId, storageId: storage, variantId: detail.variantId, status: 'available' }).select('_id itemCode serialNumber condition status').sort({ createdAt: 1 }).lean();
   const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: storage, variantId: detail.variantId }).select('quantityOnHand quantityReserved quantityUnavailable').lean();
-  return { available: Math.max(0, (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0)) };
+  return { available: availableOf(balance) };
 };
 
 export const saveTransferPick = async (transferId, payload, user) => {
@@ -240,7 +235,7 @@ export const saveTransferPick = async (transferId, payload, user) => {
         } else {
           if (allocation.itemIds.length) throw fail('Mặt hàng quản lý theo số lượng không cần chọn InventoryItem.');
           const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: allocation.storageId, variantId: detail.variantId }).session(session);
-          const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
+          const available = availableOf(balance);
           if (available < allocation.quantity) throw fail(`Vị trí chỉ còn ${Math.max(0, available)} cái khả dụng.`, 409);
         }
       }
@@ -289,7 +284,7 @@ export const shipTransfer = async (transferId, user) => {
             }
           } else {
             const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId, variantId: detail.variantId }).session(session);
-            const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
+            const available = availableOf(balance);
             if (!balance || available < allocation.quantity) throw fail('Tồn khả dụng tại một vị trí đã thay đổi.', 409);
             balance.quantityOnHand -= allocation.quantity;
             await balance.save({ session });

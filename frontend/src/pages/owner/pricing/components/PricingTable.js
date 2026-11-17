@@ -116,6 +116,14 @@ function PricingTable({
                           ) : null}
                         </div>
                         <div className="pricing-product-name">{it.name}</div>
+                        {/* TASK-008: trạng thái định giá */}
+                        {it.isSetPrice ? (
+                          <span className="badge bg-success-subtle text-success border border-success-subtle">Đã định giá</span>
+                        ) : (
+                          <span className="badge bg-warning text-dark" title={it.missingPrices?.length ? `Còn thiếu: ${it.missingPrices.join(', ')}` : undefined}>
+                            Chưa định giá
+                          </span>
+                        )}
                         <div className="pricing-product-updated">
                           Cập nhật: {formatDate(it.updatedAt)}
                         </div>

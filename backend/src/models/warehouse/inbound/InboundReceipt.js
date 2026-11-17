@@ -15,6 +15,9 @@ const inboundReceiptSchema = new mongoose.Schema({
   approvedAt: { type: Date, default: null },
   putawayBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   putawayAt: { type: Date, default: null },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  cancelledAt: { type: Date, default: null },
+  cancelReason: { type: String, trim: true, maxlength: 500, default: '' },
   note: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 

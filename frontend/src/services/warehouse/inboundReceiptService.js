@@ -8,4 +8,5 @@ export default {
   receive: async (id, payload) => (await api.post('/warehouse/inbound-receipts/' + id + '/receive', payload)).data,
   approve: async (id, decision, note) => (await api.post('/warehouse/inbound-receipts/' + id + '/approve', { decision, note })).data,
   putaway: async (id, payload) => (await api.post('/warehouse/inbound-receipts/' + id + '/putaway', payload)).data,
+  cancel: async (id, reason) => (await api.post('/warehouse/inbound-receipts/' + id + '/cancel', { reason })).data,
 };

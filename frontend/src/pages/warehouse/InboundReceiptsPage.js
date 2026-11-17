@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import WarehouseSidebar from '../../components/WarehouseSidebar';
 import InboundReceiptModal from '../../components/InboundReceiptModal';
+import WarehouseCancelSlipModal from '../../components/WarehouseCancelSlipModal';
 import inboundReceiptService from '../../services/warehouse/inboundReceiptService';
 import inventoryLocationService from '../../services/warehouse/inventoryLocationService';
 import storageLocationService from '../../services/warehouse/storageLocationService';
@@ -36,6 +37,7 @@ export default function InboundReceiptsPage({ mode = 'manager' }) {
   const [pageSize, setPageSize] = useState(10);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showCancel, setShowCancel] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -86,6 +88,25 @@ export default function InboundReceiptsPage({ mode = 'manager' }) {
     } catch (err) { setError(err.message); }
   };
 
+  const confirmCancel = async (reason) => {
+    const id = selected._id;
+    try {
+      const updated = await inboundReceiptService.cancel(id, reason);
+      setShowCancel(false);
+      setError('');
+      setSelected(updated);
+      await load();
+    } catch (err) {
+      if (err.status === 409) {
+        // Phiếu vừa đổi trạng thái ở nơi khác: tải lại để hiện trạng thái mới, giữ thông báo lỗi trong hộp thoại.
+        await load();
+        const fresh = await inboundReceiptService.get(id).catch(() => null);
+        if (fresh) setSelected(fresh);
+      }
+      throw err;
+    }
+  };
+
   return <div className="wm-layout"><WarehouseSidebar mode={mode} /><main className="wm-main">
     <header className="wm-header"><div><span>WAREHOUSE MANAGER / NHẬP KHO</span><h1>{mode === 'manager' ? 'Phiếu nhập từ nhà cung cấp' : 'Tiếp nhận & sắp xếp hàng nhập'}</h1><p>{mode === 'manager' ? 'Tạo phiếu, theo dõi tiếp nhận và phê duyệt.' : 'Ghi số lượng thực nhận, hàng hỏng và đưa hàng vào shelf.'}</p></div>{mode === 'manager' && <button className="wm-primary-button" onClick={() => open(null, 'create')}>+ Tạo phiếu nhập</button>}</header>
     {error && <div className="wm-error">{error}</div>}
@@ -102,6 +123,7 @@ export default function InboundReceiptsPage({ mode = 'manager' }) {
       </table></div>
       <div className="wm-pagination"><span>{filtered.length ? ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, filtered.length) + ' / ' + filtered.length : '0 kết quả'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</button><span>Trang {page} / {pages}</span><button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)}>Sau</button></div></div>
     </section>
-    {modalMode && <InboundReceiptModal key={modalMode + '-' + (selected?._id || 'new')} mode={modalMode} role={role} receipt={selected} centralLocation={locations.length === 1 ? locations[0] : null} locations={locations} suppliers={suppliers} products={products} variants={variants} staff={staff} shelves={shelves} onClose={() => { setSelected(null); setModalMode(''); }} onCreate={saveCreate} onReceive={saveReceive} onApprove={decide} onPutaway={savePutaway} />}
+    {modalMode && <InboundReceiptModal key={modalMode + '-' + (selected?._id || 'new')} mode={modalMode} role={role} receipt={selected} centralLocation={locations.length === 1 ? locations[0] : null} locations={locations} suppliers={suppliers} products={products} variants={variants} staff={staff} shelves={shelves} onClose={() => { setSelected(null); setModalMode(''); }} onCreate={saveCreate} onReceive={saveReceive} onApprove={decide} onPutaway={savePutaway} onCancel={mode === 'manager' ? () => setShowCancel(true) : undefined} />}
+    <WarehouseCancelSlipModal show={showCancel && Boolean(selected)} slipLabel="phiếu nhập" slipCode={selected?.receiptCode} onHide={() => setShowCancel(false)} onConfirm={confirmCancel} />
   </main></div>;
 }

@@ -1,4 +1,4 @@
-﻿import { approveStocktake, createStocktake, getStocktake, listStocktakes, listWarehouseStaffForStocktake, recordStocktakeCounts, startStocktake, submitStocktake } from '../../services/warehouse/stocktakeService.js';
+﻿import { approveStocktake, cancelStocktake, createStocktake, getStocktake, listStocktakes, listWarehouseStaffForStocktake, recordStocktakeCounts, startStocktake, submitStocktake } from '../../services/warehouse/stocktakeService.js';
 const respond = (fn, status = 200) => async (req, res, next) => { try { res.status(status).json({ success: true, data: await fn(req) }); } catch (error) { if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message }); next(error); } };
 export const listStocktakeStaff = respond(() => listWarehouseStaffForStocktake());
 export const listStocktakesRow = respond((req) => listStocktakes(req.user, req.query));
@@ -8,4 +8,4 @@ export const startStocktakeRow = respond((req) => startStocktake(req.params.id, 
 export const countStocktakeRow = respond((req) => recordStocktakeCounts(req.params.id, req.body, req.user));
 export const submitStocktakeRow = respond((req) => submitStocktake(req.params.id, req.user));
 export const approveStocktakeRow = respond((req) => approveStocktake(req.params.id, req.user));
-
+export const cancelStocktakeRow = respond((req) => cancelStocktake(req.params.id, req.body, req.user));

@@ -1,6 +1,6 @@
 ﻿import express from 'express';
 import { authMiddleware, requireRoles } from '../middlewares/errorMiddleware.js';
-import { approveStocktakeRow, countStocktakeRow, createStocktakeRow, getStocktakeRow, listStocktakeStaff, listStocktakesRow, startStocktakeRow, submitStocktakeRow } from '../controllers/warehouse/stocktakeController.js';
+import { approveStocktakeRow, cancelStocktakeRow, countStocktakeRow, createStocktakeRow, getStocktakeRow, listStocktakeStaff, listStocktakesRow, startStocktakeRow, submitStocktakeRow } from '../controllers/warehouse/stocktakeController.js';
 const router = express.Router();
 router.use(authMiddleware);
 router.get('/staff', requireRoles('warehouse_manager'), listStocktakeStaff);
@@ -11,4 +11,5 @@ router.post('/:id/start', requireRoles('warehouse_manager'), startStocktakeRow);
 router.post('/:id/counts', requireRoles('warehouse_manager', 'warehouse_staff'), countStocktakeRow);
 router.post('/:id/submit', requireRoles('warehouse_manager', 'warehouse_staff'), submitStocktakeRow);
 router.post('/:id/approve', requireRoles('warehouse_manager'), approveStocktakeRow);
+router.post('/:id/cancel', requireRoles('warehouse_manager'), cancelStocktakeRow);
 export default router;

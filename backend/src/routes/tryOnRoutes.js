@@ -5,6 +5,8 @@ import multer from "multer";
 import { uploadToCloudinary } from "../config/cloudinary.js";
 import { Product } from "../models/masterdata/Product.js";
 import ProductImage from "../models/masterdata/ProductImages.js";
+import { pickRepresentativeImage } from "../services/masterdata/productImageHelper.js";
+import { isCustomerVisibleProduct } from "../services/masterdata/productPricing.js";
 import { generateTryOn, detectGarmentCategory } from "../services/tryOnService.js";
 import { authMiddleware } from "../middlewares/errorMiddleware.js";
 import tryOnVideoRoutes from "./tryOnVideoRoutes.js";
@@ -207,6 +209,10 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
         if (!product) {
           product = await Product.findOne({ productCode: req.body.productId }).lean();
         }
+        // TASK-008: sản phẩm chưa mở bán (chưa định giá / ngừng bán) → không dùng làm trang phục thử.
+        if (product && !isCustomerVisibleProduct(product)) {
+          return res.status(422).json({ success: false, message: `Sản phẩm [${product.name}] chưa được mở bán.` });
+        }
         if (product) {
           if (!garmentDescription) {
             garmentDescription = product.name;
@@ -219,22 +225,12 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
 
           // Lấy ảnh trang phục từ database nếu frontend chưa truyền
           if (!garmentImageUrl) {
-            const primaryImage = await ProductImage.findOne({
-              productId: product._id,
-              isPrimary: true,
-            }).lean();
-
-            if (primaryImage?.imageUrl) {
-              garmentImageUrl = primaryImage.imageUrl;
-            } else {
-              const anyImage = await ProductImage.findOne({
-                productId: product._id,
-              }).lean();
-              garmentImageUrl =
-                anyImage?.imageUrl ||
-                (Array.isArray(product.images) && product.images[0]) ||
-                product.image;
-            }
+            // Ảnh chính chung → ảnh chính của màu đầu tiên → ảnh đầu tiên (TASK-007)
+            const records = await ProductImage.find({ productId: product._id }).lean();
+            garmentImageUrl =
+              pickRepresentativeImage(records)?.imageUrl ||
+              (Array.isArray(product.images) && product.images[0]) ||
+              product.image;
           }
         }
       } catch (prodErr) {
@@ -271,6 +267,9 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
         }
         if (!bottomProd) {
           bottomProd = await Product.findOne({ productCode: req.body.bottomProductId }).lean();
+        }
+        if (bottomProd && !isCustomerVisibleProduct(bottomProd)) {
+          return res.status(422).json({ success: false, message: `Sản phẩm [${bottomProd.name}] chưa được mở bán.` });
         }
         if (bottomProd) {
           bottomGarmentDescription = bottomGarmentDescription || bottomProd.name;

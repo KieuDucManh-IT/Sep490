@@ -1,3 +1,4 @@
+import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
 /**
  * Sales Order Core Service
  * Layered Monolith Service handling Sales / Purchase Lifecycle
@@ -81,33 +82,31 @@ export const calculateSalesOrderPrice = async (items) => {
     if (!variant) {
       throw new ServiceError(404, `Không tìm thấy biến thể sản phẩm: ${item.variantId}`);
     }
-    if (variant.status === 'inactive') {
+    if (!isActiveVariant(variant)) {
       throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`, 'ERR_ITEM_INACTIVE');
     }
 
     const product = variant.productId || {};
 
-    if (product.status === 'discontinued') {
+    if (!isActiveProduct(variant.productId)) {
       throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] đã ngừng kinh doanh`, 'ERR_ITEM_INACTIVE');
+    }
+    // TASK-008: sản phẩm chưa được Shop Owner định giá thì chưa mở bán.
+    if (product.isSetPrice !== true) {
+      throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] chưa được mở bán`, 'ERR_ITEM_NOT_PRICED');
     }
 
     // Kiểm tra type mismatch: sản phẩm chỉ dành cho thuê không thể mua
     // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
-    if (product.tag === 'rental') {
+    if (String(product.tag).toLowerCase() === 'rental') {
       throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chỉ dành cho thuê, không thể mua`, 'ERR_ITEM_TYPE_MISMATCH');
     }
 
-    const rawPrice =
-      variant.attributes?.salePrice ??
-      variant.attributes?.price ??
-      product.salePrice ??
-      product.price ??
-      0;
-    const unitPrice = Number(rawPrice);
+    const unitPrice = resolveProductPricing(product, variant).salePrice;
 
     // Kiểm tra giá bán hợp lệ
     // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
-    if (unitPrice <= 0) {
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
       throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chưa được thiết lập giá bán hợp lệ`, 'ERR_INVALID_PRICE');
     }
 
@@ -153,6 +152,7 @@ export const createSalesOrder = async ({
   paymentMethod = 'cod',
   shippingAddress,
   note = '',
+  expectedTotalAmount,
   session: externalSession = null,
   deps = {},
 }) => {
@@ -183,6 +183,11 @@ export const createSalesOrder = async ({
 
   // 2. Tính toán giá authoritative từ database
   const priceCalc = await calculateSalesOrderPrice(items);
+  // Reject price changes between the read-only quote and order submission, before payment.
+  if (expectedTotalAmount !== undefined && (!Number.isFinite(expectedTotalAmount) || expectedTotalAmount !== priceCalc.totalAmount)) {
+    throw new ServiceError(409, 'Giá đã thay đổi. Vui lòng kiểm tra lại tổng tiền trước khi xác nhận.', 'ERR_PRICE_CHANGED');
+  }
+
 
   // 3. Kiểm tra khả dụng tồn kho tại chi nhánh chỉ định
   // Aggregate duplicate variantIds trước khi kiểm tra kho — REQ-CART-021 / REQ-CART-023

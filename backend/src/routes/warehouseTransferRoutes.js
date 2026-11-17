@@ -11,6 +11,7 @@ import {
   saveTransferPickRow,
   receiveTransferRow,
   shipTransferRow,
+  cancelTransferRow,
 } from '../controllers/warehouse/stockTransferController.js';
 
 const router = express.Router();
@@ -25,5 +26,6 @@ router.post('/:id/pick', requireRoles('warehouse_staff', 'warehouse_manager'), s
 router.post('/:id/decision', requireRoles('warehouse_manager'), decideTransferRequestRow);
 router.post('/:id/ship', requireRoles('warehouse_staff', 'warehouse_manager'), shipTransferRow);
 router.post('/:id/receive', requireRoles('branch_manager'), receiveTransferRow);
+router.post('/:id/cancel', requireRoles('warehouse_manager', 'branch_manager'), cancelTransferRow);
 
 export default router;

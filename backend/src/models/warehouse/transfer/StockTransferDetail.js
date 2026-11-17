@@ -24,6 +24,7 @@ const stockTransferDetailSchema = new mongoose.Schema({
   quantityReceived: { type: Number, min: 0, default: 0, validate: Number.isInteger },
   quantityDamaged: { type: Number, min: 0, default: 0, validate: Number.isInteger },
   quantityMissing: { type: Number, min: 0, default: 0, validate: Number.isInteger },
+  discrepancyId: { type: mongoose.Schema.Types.ObjectId, ref: 'StockDiscrepancy', default: null },
   note: { type: String, trim: true },
 }, { timestamps: true });
 

@@ -804,3 +804,8 @@
   background: #27272a;
   transform: translateY(-2px);
 }
+.cart-branch-picker { margin: 16px 0; padding: 16px; border: 1px solid #E5E0D8; border-radius: 8px; background: #F8F7F4; }
+.cart-branch-picker > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
+.cart-branch-picker button, .cart-branch-picker select { padding: 8px 12px; border: 1px solid #C5A880; border-radius: 6px; background: #FBF9F5; color: #171717; }
+.cart-branch-picker select { display: block; margin-top: 8px; max-width: 100%; }
+.cart-checkout-progress { padding: 12px; background: #F8F7F4; border: 1px solid #C5A880; border-radius: 6px; }

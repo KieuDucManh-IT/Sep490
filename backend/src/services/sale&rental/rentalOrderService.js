@@ -1,3 +1,4 @@
+import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
 /**
  * Rental Order Core Service
  * Layered Monolith Service handling Rental Lifecycle
@@ -38,6 +39,7 @@ import {
   createRentalOrderSchema,
   assignPhysicalItemsSchema,
   cancelRentalOrderSchema,
+  computeCalendarRentalDays,
 } from '../../validations/sale&rental/rentalOrderValidation.js';
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
 
@@ -86,7 +88,7 @@ export const calculateRentalPriceAndDeposit = async (items, startDate, dueDate) 
   }
 
   // Số ngày thuê tối thiểu 1 ngày
-  const rentalDays = Math.max(1, Math.round((due - start) / (1000 * 60 * 60 * 24)));
+  const rentalDays = computeCalendarRentalDays(startDate, dueDate);
 
   const variantIds = items.map((it) => it.variantId);
   const variants = await ProductVariant.find({ _id: { $in: variantIds } })
@@ -107,41 +109,39 @@ export const calculateRentalPriceAndDeposit = async (items, startDate, dueDate) 
     if (!variant) {
       throw new ServiceError(404, `Không tìm thấy biến thể sản phẩm: ${item.variantId}`);
     }
-    if (variant.status === 'inactive') {
+    if (!isActiveVariant(variant)) {
       throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`, 'ERR_ITEM_INACTIVE');
     }
 
     const product = variant.productId || {};
 
-    if (product.status === 'discontinued') {
+    if (!isActiveProduct(variant.productId)) {
       throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] đã ngừng kinh doanh`, 'ERR_ITEM_INACTIVE');
+    }
+    // TASK-008: sản phẩm chưa được Shop Owner định giá thì chưa mở bán.
+    if (product.isSetPrice !== true) {
+      throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] chưa được mở bán`, 'ERR_ITEM_NOT_PRICED');
     }
 
     // Kiểm tra type mismatch: sản phẩm chỉ dành để bán không thể thuê
     // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
-    if (product.tag === 'sale') {
+    if (String(product.tag).toLowerCase() === 'sale') {
       throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chỉ dành để mua, không thể thuê`, 'ERR_ITEM_TYPE_MISMATCH');
     }
 
     // Đơn vị giá thuê theo ngày lấy từ variant hoặc product gốc
-    const dailyPrice = Number(
-      variant.attributes?.rentalPricePerDay != null
-        ? variant.attributes.rentalPricePerDay
-        : product.rentalPricePerDay || 0
-    );
+    const pricing = resolveProductPricing(product, variant);
+    const dailyPrice = pricing.rentalPricePerDay;
 
     // Kiểm tra giá thuê hợp lệ
     // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
-    if (dailyPrice <= 0) {
+    if (!Number.isFinite(dailyPrice) || dailyPrice <= 0) {
       throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chưa được thiết lập giá thuê hợp lệ`, 'ERR_INVALID_PRICE');
     }
 
     // Tiền cọc lấy từ variant hoặc product gốc
-    const unitDeposit = Number(
-      variant.attributes?.deposit != null
-        ? variant.attributes.deposit
-        : product.deposit || 0
-    );
+    const unitDeposit = pricing.deposit;
+    if (!Number.isFinite(unitDeposit) || unitDeposit < 0) throw new ServiceError(400, 'Tiền cọc không hợp lệ', 'ERR_INVALID_PRICE');
 
     const qty = Math.max(1, Number(item.quantity) || 1);
     const lineRentalFee = dailyPrice * rentalDays * qty;
@@ -190,6 +190,7 @@ export const createRentalOrder = async ({
   note = '',
   paymentMethod = 'wallet',
   shippingAddress = null,
+  expectedTotalAmount,
   session: externalSession = null,
   deps = {},
 }) => {
@@ -224,6 +225,11 @@ export const createRentalOrder = async ({
 
   // 2. Tính toán tiền thuê & tiền cọc authoritative từ DB
   const priceCalc = await calculateRentalPriceAndDeposit(items, startDate, dueDate);
+  // Reject price changes between the read-only quote and order submission, before payment.
+  if (expectedTotalAmount !== undefined && (!Number.isFinite(expectedTotalAmount) || expectedTotalAmount !== priceCalc.totalPayable)) {
+    throw new ServiceError(409, 'Giá đã thay đổi. Vui lòng kiểm tra lại tổng tiền trước khi xác nhận.', 'ERR_PRICE_CHANGED');
+  }
+
 
   // 3. Kiểm tra khả dụng tồn kho tại chi nhánh chỉ định
   // Aggregate duplicate variantIds trước khi kiểm tra kho — REQ-CART-021 / REQ-CART-023

@@ -167,14 +167,6 @@ export default function CatalogPage() {
         list = list.filter((item) => item.tag !== 'sale');
       }
 
-      // Lọc bỏ sản phẩm hết hàng: Nếu sản phẩm không khả dụng (hết hàng) thì ẩn không hiển thị
-      list = list.filter((item) => {
-        if (item.inStock === false) return false;
-        if (item.quantityAvailable != null && item.quantityAvailable <= 0) return false;
-        if (item.quantity != null && item.quantity <= 0) return false;
-        return true;
-      });
-
       setProducts(list);
     } catch (err) {
       console.error('Lỗi khi gọi API /api/products:', err);
@@ -718,7 +710,7 @@ export default function CatalogPage() {
 
 
               {/* Color Filter */}
-              <div className="catalog-filter-group">
+              {/* <div className="catalog-filter-group">
                 <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Palette size={14} />
                   Màu sắc
@@ -745,7 +737,7 @@ export default function CatalogPage() {
                     );
                   })}
                 </div>
-              </div>
+              </div> */}
 
 
 

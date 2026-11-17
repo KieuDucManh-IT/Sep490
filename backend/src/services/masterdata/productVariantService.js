@@ -4,7 +4,6 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
-import { ProductImage } from '../../models/masterdata/ProductImages.js';
 import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { validateProductVariant } from '../../validations/masterdata/productVariantValidation.js';
@@ -36,7 +35,7 @@ const validateProductOwnership = async (productId) => {
 
 const referenced = async (variantId) => Promise.all([
   InventoryItem.exists({ variantId }), InventoryBalance.exists({ variantId }),
-  InboundReceiptDetail.exists({ variantId }), ProductImage.exists({ variantId }),
+  InboundReceiptDetail.exists({ variantId }),
   SalesOrderDetail.exists({ variantId }), RentalOrderDetail.exists({ variantId }),
 ]);
 

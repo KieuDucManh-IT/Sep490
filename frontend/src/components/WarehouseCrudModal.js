@@ -34,7 +34,7 @@ export default function WarehouseCrudModal({ config, mode, record, choices, onCl
       else if (!fieldRequired && type === 'text') payload[key] = '';
     });
     if (isProduct) {
-      payload.images = images.map(({ _id, imageUrl, imageType, isPrimary, displayOrder, variantId }) => ({ _id, imageUrl, imageType, isPrimary: Boolean(isPrimary), displayOrder: Number(displayOrder || 0), variantId: variantId || null }));
+      payload.images = images.map(({ _id, imageUrl, imageType, isPrimary, displayOrder, color }) => ({ _id, imageUrl, imageType, isPrimary: Boolean(isPrimary), displayOrder: Number(displayOrder || 0), color: color || null }));
     }
     try { await onSave(payload); onClose(); }
     catch (err) { setError(err.message); }
@@ -45,7 +45,7 @@ export default function WarehouseCrudModal({ config, mode, record, choices, onCl
     <section className="wm-crud-modal" role="dialog" aria-modal="true" aria-labelledby="wm-modal-title">
       <header><div><span>{mode === 'create' ? 'THÊM MỚI' : mode === 'edit' ? 'CẬP NHẬT' : 'CHI TIẾT'}</span><h2 id="wm-modal-title">{config.title}</h2></div><button type="button" className="wm-modal-close" onClick={onClose} aria-label="Đóng"><X size={20} /></button></header>
       {error && <div className="wm-error">{error}</div>}
-      {readOnly ? <><div className="wm-detail-grid">{config.fields.map(([key, label]) => <div key={key}><small>{label}</small><strong>{key === 'aiTryOn' ? (record?.[key] ? 'Có' : 'Không') : Array.isArray(record?.[key]) ? record[key].map(display).join(', ') : display(record?.[key]) || '—'}</strong></div>)}</div>{isProduct && <ProductImagesEditor readOnly images={images} variants={choices.variants || []} productId={record?._id} />}</> : <form className="wm-form" onSubmit={submit}>
+      {readOnly ? <><div className="wm-detail-grid">{config.fields.map(([key, label]) => <div key={key}><small>{label}</small><strong>{key === 'aiTryOn' ? (record?.[key] ? 'Có' : 'Không') : Array.isArray(record?.[key]) ? record[key].map(display).join(', ') : display(record?.[key]) || '—'}</strong></div>)}{isProduct && <div><small>Định giá</small><strong>{record?.isSetPrice === true ? 'Đã mở bán' : 'Chờ Shop Owner định giá'}</strong></div>}</div>{isProduct && <ProductImagesEditor readOnly images={images} variants={choices.variants || []} productId={record?._id} />}</> : <form className="wm-form" onSubmit={submit}>
         {config.fields.map(([key, label, type, required, optionOrResource, displayKey]) => {
           const multiple = config.multipleFields?.includes(key);
           const fieldRequired = required || (config.service === 'inventoryLocations' && key === 'shopId' && form.type === 'store');
@@ -76,29 +76,58 @@ export default function WarehouseCrudModal({ config, mode, record, choices, onCl
   </div>;
 }
 
+const colorKey = (value) => String(value || '').trim().toLowerCase();
+const imageScope = (image) => colorKey(image?.color) || '__product__';
+
+// Ảnh gắn theo màu (TASK-007): "Toàn sản phẩm" (color null) hoặc "Màu: <tên>" dùng cho mọi size của màu đó.
 function ProductImagesEditor({ images, onChange, variants = [], productId, readOnly = false }) {
-  const productVariants = variants.filter((variant) => String(variant.productId?._id || variant.productId) === String(productId));
+  const productVariants = variants.filter((variant) => String(variant.productId?._id || variant.productId) === String(productId) && !variant.isDeleted);
+  const colorOptions = [];
+  productVariants.forEach((variant) => {
+    const color = String(variant.color || '').trim();
+    if (color && !colorOptions.some((item) => colorKey(item) === colorKey(color))) colorOptions.push(color);
+  });
+  const hasVariantColor = (color) => colorOptions.some((item) => colorKey(item) === colorKey(color));
+  const orphanColors = [...new Set(images.map((image) => String(image.color || '').trim()).filter((color) => color && !hasVariantColor(color)))];
   const update = (index, field, value) => {
-    const targetScope = String(images[index]?.variantId?._id || images[index]?.variantId || 'product');
-    onChange(images.map((image, current) => {
-      const sameScope = String(image.variantId?._id || image.variantId || 'product') === targetScope;
-      if (field === 'isPrimary' && sameScope) return { ...image, isPrimary: current === index };
-      return current === index ? { ...image, [field]: value } : image;
-    }));
+    if (field === 'isPrimary') {
+      const targetScope = imageScope(images[index]);
+      onChange(images.map((image, current) => (imageScope(image) === targetScope ? { ...image, isPrimary: current === index } : image)));
+      return;
+    }
+    if (field === 'color') {
+      const color = value || null;
+      // Đổi phạm vi: nếu phạm vi mới đã có ảnh chính thì ảnh này không còn là ảnh chính.
+      const nextScope = colorKey(color) || '__product__';
+      const scopeHasPrimary = images.some((image, current) => current !== index && image.isPrimary && imageScope(image) === nextScope);
+      onChange(images.map((image, current) => (current === index ? { ...image, color, isPrimary: image.isPrimary && !scopeHasPrimary } : image)));
+      return;
+    }
+    onChange(images.map((image, current) => (current === index ? { ...image, [field]: value } : image)));
   };
+  const scopeLabel = (image) => (image.color ? `Màu: ${image.color}` : 'Toàn sản phẩm');
   return <section className="wm-product-images">
-    <div className="wm-inbound-lines-heading"><strong>Ảnh sản phẩm</strong>{!readOnly && <button type="button" className="secondary" onClick={() => onChange([...images, { imageUrl: '', imageType: 'GALLERY', isPrimary: images.length === 0, displayOrder: images.length, variantId: null }])}>+ Thêm ảnh</button>}</div>
+    <div className="wm-inbound-lines-heading"><strong>Ảnh sản phẩm</strong>{!readOnly && <button type="button" className="secondary" onClick={() => onChange([...images, { imageUrl: '', imageType: 'GALLERY', isPrimary: !images.some((image) => image.isPrimary && !image.color), displayOrder: images.length, color: null }])}>+ Thêm ảnh</button>}</div>
     {!images.length && <small>Chưa có ảnh sản phẩm.</small>}
-    {images.map((image, index) => <div className="wm-product-image-row" key={image._id || index}>
-      {image.imageUrl && <img src={image.imageUrl} alt={`Ảnh sản phẩm ${index + 1}`} />}
-      {readOnly ? <><span>{image.imageType || 'GALLERY'} · thứ tự {image.displayOrder ?? index}</span>{image.isPrimary && <strong>Ảnh chính</strong>}</> : <>
-        <label>URL ảnh<input type="url" required value={image.imageUrl || ''} onChange={(event) => update(index, 'imageUrl', event.target.value)} placeholder="https://..." /></label>
-        <label>Loại ảnh<select value={image.imageType || 'GALLERY'} onChange={(event) => update(index, 'imageType', event.target.value)}><option value="MAIN">Ảnh chính</option><option value="GALLERY">Thư viện</option><option value="DETAIL">Chi tiết</option></select></label>
-        <label>Áp dụng cho<select value={image.variantId?._id || image.variantId || ''} onChange={(event) => update(index, 'variantId', event.target.value || null)}><option value="">Toàn sản phẩm</option>{productVariants.map((variant) => <option key={variant._id} value={variant._id}>{variant.sku} · {variant.color || ''} · {variant.size || ''}</option>)}</select></label>
-        <label>Thứ tự<input type="number" min="0" step="1" value={image.displayOrder ?? index} onChange={(event) => update(index, 'displayOrder', event.target.value)} /></label>
-        <label className="wm-image-primary"><input type="radio" name={`product-primary-image-${image.variantId?._id || image.variantId || 'product'}`} checked={Boolean(image.isPrimary)} onChange={() => update(index, 'isPrimary', true)} /> Ảnh chính</label>
-        <button type="button" className="danger" onClick={() => onChange(images.filter((_, current) => current !== index))}>Xóa ảnh</button>
-      </>}
-    </div>)}
+    {!readOnly && !colorOptions.length && <small>Sản phẩm chưa có biến thể có màu: chỉ thêm được ảnh dùng chung cho toàn sản phẩm.</small>}
+    {images.map((image, index) => {
+      const orphan = Boolean(image.color) && !hasVariantColor(image.color);
+      return <div className="wm-product-image-row" key={image._id || index}>
+        {image.imageUrl && <img src={image.imageUrl} alt={`Ảnh sản phẩm ${index + 1}`} />}
+        {readOnly ? <><span>{scopeLabel(image)} · {image.imageType || 'GALLERY'} · thứ tự {image.displayOrder ?? index}</span>{image.isPrimary && <strong>Ảnh chính</strong>}</> : <>
+          <label>URL ảnh<input type="url" required value={image.imageUrl || ''} onChange={(event) => update(index, 'imageUrl', event.target.value)} placeholder="https://..." /></label>
+          <label>Loại ảnh<select value={image.imageType || 'GALLERY'} onChange={(event) => update(index, 'imageType', event.target.value)}><option value="MAIN">Ảnh chính</option><option value="GALLERY">Thư viện</option><option value="DETAIL">Chi tiết</option></select></label>
+          <label>Áp dụng cho<select value={image.color || ''} onChange={(event) => update(index, 'color', event.target.value)}>
+            <option value="">Toàn sản phẩm</option>
+            {colorOptions.map((color) => <option key={color} value={color}>Màu: {color}</option>)}
+            {orphanColors.map((color) => <option key={`orphan-${color}`} value={color}>Màu: {color} (không còn biến thể)</option>)}
+          </select></label>
+          <label>Thứ tự<input type="number" min="0" step="1" value={image.displayOrder ?? index} onChange={(event) => update(index, 'displayOrder', event.target.value)} /></label>
+          <label className="wm-image-primary"><input type="radio" name={`product-primary-image-${imageScope(image)}`} checked={Boolean(image.isPrimary)} onChange={() => update(index, 'isPrimary', true)} /> Ảnh chính{image.color ? ` (màu ${image.color})` : ' (chung)'}</label>
+          <button type="button" className="danger" onClick={() => onChange(images.filter((_, current) => current !== index))}>Xóa ảnh</button>
+        </>}
+        {orphan && <small className="wm-error">Màu này không còn biến thể — ảnh không hiện cho khách.</small>}
+      </div>;
+    })}
   </section>;
 }

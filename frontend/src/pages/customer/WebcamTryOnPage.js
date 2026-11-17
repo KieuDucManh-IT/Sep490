@@ -55,6 +55,28 @@ function resolveImageUrl(rawImage) {
   }
 }
 
+function getGarmentImage(product, requestedImage) {
+  const images = Array.isArray(product?.images)
+    ? product.images.filter(
+      (image) => typeof image === "string" && image.trim()
+    )
+    : [];
+
+  if (
+    !images.length &&
+    typeof product?.image === "string" &&
+    product.image.trim()
+  ) {
+    images.push(product.image);
+  }
+
+  if (requestedImage) {
+    return images.includes(requestedImage) ? requestedImage : "";
+  }
+
+  return images[0] || "";
+}
+
 function SavedVideoCard({ item }) {
   const [failed, setFailed] = useState(false);
 
@@ -90,6 +112,7 @@ function SavedVideoCard({ item }) {
 export default function WebcamTryOnPage() {
   const [params] = useSearchParams();
   const productId = params.get("product");
+  const requestedImage = params.get("image") || "";
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(Boolean(productId));
@@ -157,17 +180,17 @@ export default function WebcamTryOnPage() {
 
           setProduct(result.data);
 
-          const image = result.data.images?.[0] || result.data.image;
+          const image = getGarmentImage(result.data, requestedImage);
 
           if (!resolveImageUrl(image)) {
             setHasError(true);
             setMessage(
-              "Trang phục này chưa có ảnh hợp lệ để thử đồ."
+              requestedImage
+                ? "Ảnh trang phục đã chọn không còn khả dụng. Hãy quay lại sản phẩm và chọn lại ảnh."
+                : "Trang phục này chưa có ảnh hợp lệ để thử đồ."
             );
           } else {
-            setMessage(
-              "Mọi thứ đã sẵn sàng. Bắt đầu để mở camera của bạn."
-            );
+            setMessage("Mọi thứ đã sẵn sàng. Bắt đầu để mở camera của bạn.");
           }
         })
         .catch((error) => {
@@ -176,7 +199,7 @@ export default function WebcamTryOnPage() {
           setHasError(true);
           setMessage(
             error.message ||
-              "Không tải được sản phẩm. Vui lòng thử lại."
+            "Không tải được sản phẩm. Vui lòng thử lại."
           );
         })
         .finally(() => {
@@ -188,10 +211,10 @@ export default function WebcamTryOnPage() {
       active = false;
       clearSession();
     };
-  }, [productId, clearSession]);
+  }, [productId, requestedImage, clearSession]);
 
   const imageUrl = resolveImageUrl(
-    product?.images?.[0] || product?.image
+    getGarmentImage(product, requestedImage)
   );
 
   const productName =
@@ -288,16 +311,13 @@ export default function WebcamTryOnPage() {
 
       const garment = await response.blob();
 
-      if (!isCurrent()) return;
+      if (session.cancelled) return;
 
       if (
         !garment.type.startsWith("image/") ||
-        !garment.size ||
         garment.size > 10 * 1024 * 1024
       ) {
-        throw new Error(
-          "Ảnh sản phẩm phải hợp lệ và nhỏ hơn 10 MB."
-        );
+        throw new Error("Ảnh sản phẩm phải hợp lệ và nhỏ hơn 10 MB.");
       }
 
       setMessage(
@@ -432,8 +452,8 @@ export default function WebcamTryOnPage() {
 
       finish(
         cameraErrors[error.name] ||
-          error.message ||
-          "Không thể bắt đầu thử đồ. Vui lòng thử lại.",
+        error.message ||
+        "Không thể bắt đầu thử đồ. Vui lòng thử lại.",
         true
       );
     }
@@ -521,21 +541,17 @@ export default function WebcamTryOnPage() {
             </div>
 
             <div
-              className={`vto-product-image${
-                loading ? " vto-product-image--loading" : ""
-              }`}
+              className={`vto-product-image${loading ? " vto-product-image--loading" : ""
+                }`}
             >
               {imageUrl && !imageFailed ? (
-                <img
-                  src={imageUrl}
-                  alt={productName}
-                  onError={() => {
-                    setImageFailed(true);
-                    setHasError(true);
-                    setMessage(
-                      "Không tải được ảnh trang phục. Hãy tải lại trang hoặc chọn một sản phẩm khác."
-                    );
-                  }}
+                <img key={imageUrl} src={imageUrl} alt={productName} onError={() => {
+                  setImageFailed(true);
+                  setHasError(true);
+                  setMessage(
+                    "Không tải được ảnh trang phục. Hãy tải lại trang hoặc chọn một sản phẩm khác."
+                  );
+                }}
                 />
               ) : (
                 <div className="vto-product-placeholder">
@@ -596,9 +612,8 @@ export default function WebcamTryOnPage() {
               </div>
 
               <span
-                className={`vto-session-state${
-                  phase === "live" ? " vto-session-state--live" : ""
-                }`}
+                className={`vto-session-state${phase === "live" ? " vto-session-state--live" : ""
+                  }`}
               >
                 <span />
                 {phase === "live"
@@ -623,9 +638,8 @@ export default function WebcamTryOnPage() {
                 </div>
 
                 <div
-                  className={`vto-video-stage${
-                    cameraReady ? " vto-video-stage--playing" : ""
-                  }`}
+                  className={`vto-video-stage${cameraReady ? " vto-video-stage--playing" : ""
+                    }`}
                 >
                   <video
                     ref={inputRef}
@@ -637,7 +651,7 @@ export default function WebcamTryOnPage() {
                       if (
                         sessionRef.current?.camera &&
                         inputRef.current?.srcObject ===
-                          sessionRef.current.camera
+                        sessionRef.current.camera
                       ) {
                         setCameraReady(true);
                       }
@@ -689,9 +703,8 @@ export default function WebcamTryOnPage() {
                 </div>
 
                 <div
-                  className={`vto-video-stage${
-                    outputReady ? " vto-video-stage--playing" : ""
-                  }`}
+                  className={`vto-video-stage${outputReady ? " vto-video-stage--playing" : ""
+                    }`}
                 >
                   <video
                     ref={outputRef}
@@ -833,9 +846,8 @@ export default function WebcamTryOnPage() {
               </div>
 
               <div
-                className={`vto-status${
-                  hasError ? " vto-status--error" : ""
-                }`}
+                className={`vto-status${hasError ? " vto-status--error" : ""
+                  }`}
                 role="status"
                 aria-live="polite"
                 aria-atomic="true"
@@ -859,11 +871,10 @@ export default function WebcamTryOnPage() {
 
               {video.notice && (
                 <div
-                  className={`vto-recording-note${
-                    video.status === "error"
-                      ? " vto-recording-note--error"
-                      : ""
-                  }`}
+                  className={`vto-recording-note${video.status === "error"
+                    ? " vto-recording-note--error"
+                    : ""
+                    }`}
                   role="status"
                 >
                   <VideoIcon

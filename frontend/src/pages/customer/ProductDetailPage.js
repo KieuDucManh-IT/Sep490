@@ -380,7 +380,7 @@ export default function ProductDetailPage() {
         !product.branchName?.toLowerCase().includes('kho tổng') &&
         !product.branchName?.toLowerCase().includes('kho tong')
       ) {
-        // Dùng shopId thực nếu có, tránh chuỗi giả 'single-branch'
+
         const fallbackLocationId =
           product.shopId?._id || product.shopId || null;
         return [{
@@ -1402,14 +1402,23 @@ export default function ProductDetailPage() {
             </button>
 
             <button
+              type="button"
               className="pdetail-btn-ai-tryon"
-              onClick={() =>
-                navigate(
-                  `/try-on/webcam?product=${encodeURIComponent(
-                    product._id || product.productCode
-                  )}`
-                )
-              }
+              onClick={() => {
+                const selectedImage = images[selectedImgIndex];
+
+                if (!selectedImage) {
+                  showToast("Vui lòng chọn ảnh trang phục trước khi thử đồ.");
+                  return;
+                }
+
+                const query = new URLSearchParams({
+                  product: String(product._id || product.productCode),
+                  image: selectedImage,
+                });
+
+                navigate(`/try-on/webcam?${query.toString()}`);
+              }}
             >
               <Camera size={16} />
               <span>Thử đồ AI</span>
@@ -1742,10 +1751,10 @@ export default function ProductDetailPage() {
                   <div className="card-media-box">
                     <span
                       className={`product-type-badge ${item.tag === 'sale'
-                          ? 'badge-sale'
-                          : item.tag === 'both'
-                            ? 'badge-both'
-                            : 'badge-rental'
+                        ? 'badge-sale'
+                        : item.tag === 'both'
+                          ? 'badge-both'
+                          : 'badge-rental'
                         }`}
                       style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
                     >

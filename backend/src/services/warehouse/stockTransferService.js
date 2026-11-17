@@ -11,6 +11,7 @@ import { StockTransferDetail } from '../../models/warehouse/transfer/StockTransf
 import User from '../../models/system/User.js';
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
+import { moveItem, moveItems } from './itemStateService.js';
 import {
   validateCreateTransferRequest,
   validateTransferDecision,
@@ -280,10 +281,10 @@ export const shipTransfer = async (transferId, user) => {
           if (individual) {
             const items = await InventoryItem.find({ _id: { $in: allocation.itemIds }, locationId: transfer.fromLocationId, storageId, variantId: detail.variantId, status: 'available' }).session(session);
             if (items.length !== allocation.quantity) throw fail('Một số InventoryItem đã thay đổi vị trí hoặc trạng thái.', 409);
+            // TASK-009: món rời kệ nguồn → in_transit, balance kệ nguồn onHand -1 mỗi món (qua itemStateService).
+            await moveItems(items, { status: 'in_transit' }, session);
             for (const item of items) {
               itemIds.push(item._id);
-              item.status = 'in_transit';
-              await item.save({ session });
               await recordStockMovement({ variantId: detail.variantId, itemId: item._id, locationId: transfer.fromLocationId, storageId, movementType: 'transfer_out', quantityChange: -1, referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id }, session);
             }
           } else {
@@ -331,17 +332,11 @@ export const cancelTransfer = async (transferId, payload, user) => {
   } finally { await session.endSession(); }
   return getTransfer(transferId, user);
 };
+// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho mọi loại hàng (balance individual đã đồng bộ với món).
 export const assertBranchCapacity = async (location, incoming, session) => {
   if (location.maxCapacity == null) return;
-  const [balances, individualItems] = await Promise.all([
-    InventoryBalance.find({ locationId: location._id }).select('variantId quantityOnHand').session(session).lean(),
-    InventoryItem.find({ locationId: location._id, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).select('variantId').session(session).lean(),
-  ]);
-  const variants = await ProductVariant.find({ _id: { $in: [...balances.map((row) => row.variantId), ...individualItems.map((row) => row.variantId), ...incoming.map((row) => row.variantId)] } })
-    .select('productId').populate('productId', 'trackingType').session(session).lean();
-  const tracking = new Map(variants.map((row) => [String(row._id), row.productId?.trackingType || 'quantity']));
-  const current = balances.reduce((sum, row) => sum + (tracking.get(String(row.variantId)) === 'individual' ? 0 : row.quantityOnHand), 0)
-    + individualItems.reduce((sum, row) => sum + (tracking.get(String(row.variantId)) === 'individual' ? 1 : 0), 0);
+  const balances = await InventoryBalance.find({ locationId: location._id }).select('quantityOnHand').session(session).lean();
+  const current = balances.reduce((sum, row) => sum + Math.max(0, row.quantityOnHand || 0), 0);
   const added = incoming.reduce((sum, row) => sum + row.quantity, 0);
   if (current + added > location.maxCapacity) throw fail(`Kho chi nhánh không đủ sức chứa. Còn ${Math.max(0, location.maxCapacity - current)} cái.`, 409);
 };
@@ -394,18 +389,20 @@ export const receiveTransfer = async (transferId, payload, user) => {
         if (individual) {
           for (const itemId of line.receivedItemIds) {
             const isDamaged = line.damagedItemIds.includes(itemId);
-            const item = previousReceived.has(itemId)
-              ? await InventoryItem.findOne({ _id: itemId, locationId: destination._id }).session(session)
+            const alreadyReceived = previousReceived.has(itemId);
+            // Món đã nhận ở lần trước: chỉ xử lý khi lần này mới báo hỏng (available → unavailable).
+            if (alreadyReceived && (!isDamaged || previousDamaged.has(itemId))) continue;
+            const item = alreadyReceived
+              ? await InventoryItem.findOne({ _id: itemId, locationId: destination._id, status: 'available' }).session(session)
               : await InventoryItem.findOne({ _id: itemId, locationId: transfer.fromLocationId, status: 'in_transit' }).session(session);
             if (!item) throw fail('Một mã hàng cá thể không còn ở trạng thái/vị trí dự kiến.', 409);
-            if (!previousReceived.has(itemId)) {
-              item.locationId = destination._id;
-              item.storageId = null;
-            }
-            item.status = isDamaged ? 'unavailable' : 'available';
-            if (isDamaged) item.condition = 'damaged';
-            await item.save({ session });
-            if (!previousReceived.has(itemId)) {
+            // TASK-009: in_transit → available/unavailable ở chi nhánh (storageId null); balance chi nhánh cộng qua itemStateService.
+            await moveItem(item, {
+              status: isDamaged ? 'unavailable' : 'available',
+              ...(isDamaged ? { condition: 'damaged' } : {}),
+              ...(alreadyReceived ? {} : { locationId: destination._id, storageId: null }),
+            }, session);
+            if (!alreadyReceived) {
               await recordStockMovement({
                 variantId: detail.variantId, itemId: item._id, locationId: destination._id,
                 movementType: 'transfer_in', quantityChange: 1, referenceType: 'stock_transfer',

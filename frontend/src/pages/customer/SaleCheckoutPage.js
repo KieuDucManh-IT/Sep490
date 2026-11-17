@@ -239,7 +239,10 @@ export default function SaleCheckoutPage() {
       });
       setSuccessOrder(orders[orders.length - 1]);
     } catch (err) {
-      setSubmitError(err.message || 'Đặt mua thất bại. Vui lòng thử lại.');
+      // TASK-010: hết hàng khi giữ chỗ (409 ERR_OUT_OF_STOCK) — message dạng "Sản phẩm … chỉ còn N."
+      setSubmitError((err.code || err.data?.code) === 'ERR_OUT_OF_STOCK'
+        ? `${err.message} Vui lòng giảm số lượng hoặc chọn chi nhánh khác.`
+        : (err.message || 'Đặt mua thất bại. Vui lòng thử lại.'));
     } finally {
       submissionLock.current = false;
       setSubmitting(false);

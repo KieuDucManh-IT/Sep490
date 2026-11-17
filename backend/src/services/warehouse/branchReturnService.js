@@ -12,6 +12,7 @@ import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundRece
 import User from '../../models/system/User.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
+import { moveItem, moveItems } from './itemStateService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const roleOf = (user) => String(user?.Role || user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
@@ -149,7 +150,8 @@ export const decideBranchReturn = async (id, payload, user) => {
           const locked = await InventoryItem.find({ locationId: transfer.fromLocationId, variantId: detail.variantId, status: 'available', condition: { $nin: ['damaged', 'unrepairable', 'missing'] } }).sort({ createdAt: 1 }).limit(quantity).session(session);
           if (locked.length < quantity) throw fail(`Chi nhánh chỉ còn ${locked.length} món đủ điều kiện để trả.`, 409);
           detail.itemIds = locked.map((item) => item._id);
-          for (const item of locked) { item.status = 'reserved'; await item.save({ session }); }
+          // TASK-009: phiếu trả giữ món → reserved + warehouseHold (+1 quantityReserved ở dòng chi nhánh).
+          await moveItems(locked, { status: 'reserved', warehouseHold: 1 }, session);
         } else if (quantity > 0) {
           const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: null, variantId: detail.variantId }).session(session);
           const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
@@ -185,8 +187,9 @@ export const dispatchBranchReturn = async (id, user) => {
       if (tracking.get(String(detail.variantId)) === 'individual') {
         const locked = await InventoryItem.find({ _id: { $in: detail.itemIds }, locationId: transfer.fromLocationId, variantId: detail.variantId, status: 'reserved' }).session(session);
         if (locked.length !== quantity) throw fail('Một số món đã thay đổi trạng thái, không thể gửi phiếu.', 409);
+        // TASK-009: reserved → in_transit, nhả giữ của phiếu: chi nhánh onHand -1, reserved -1 mỗi món.
+        await moveItems(locked, { status: 'in_transit', warehouseHold: -1 }, session);
         for (const item of locked) {
-          item.status = 'in_transit'; await item.save({ session });
           await recordStockMovement({ variantId: detail.variantId, itemId: item._id, locationId: transfer.fromLocationId, movementType: 'transfer_out', quantityChange: -1, referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id }, session);
         }
       } else {
@@ -217,7 +220,9 @@ export const cancelBranchReturn = async (id, user) => {
       const quantity = detail.quantityApproved || 0;
       if (!quantity) continue;
       if (tracking.get(String(detail.variantId)) === 'individual') {
-        await InventoryItem.updateMany({ _id: { $in: detail.itemIds }, locationId: transfer.fromLocationId, status: 'reserved' }, { $set: { status: 'available' } }, { session });
+        // TASK-009: hủy phiếu → món về available và nhả giữ (reserved -1 mỗi món).
+        const locked = await InventoryItem.find({ _id: { $in: detail.itemIds }, locationId: transfer.fromLocationId, variantId: detail.variantId, status: 'reserved' }).session(session);
+        await moveItems(locked, { status: 'available', warehouseHold: -1 }, session);
       } else {
         const balance = await InventoryBalance.findOne({ locationId: transfer.fromLocationId, storageId: null, variantId: detail.variantId }).session(session);
         if (!balance || balance.quantityReserved < quantity) throw fail('Không thể giải phóng khóa tồn kho; cần kiểm tra số dư chi nhánh.', 409);
@@ -290,24 +295,17 @@ export const decideBranchReturnReceipt = async (id, payload, user) => {
   return loadReturn(id, user);
 };
 
+// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho mọi loại hàng (balance individual đã đồng bộ với món).
 export const capacitySnapshot = async (locationId, session, excludeTransferId) => {
-  const [location, storages, balances, items] = await Promise.all([
+  const [location, storages, balances] = await Promise.all([
     InventoryLocation.findById(locationId).session(session).lean(),
     StorageLocation.find({ locationId }).session(session).lean(),
-    InventoryBalance.find({ locationId }).session(session).lean(),
-    InventoryItem.find({ locationId, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).session(session).lean(),
+    InventoryBalance.find({ locationId }).select('storageId quantityOnHand').session(session).lean(),
   ]);
-  const variantIds = [...new Set([...balances.map((row) => String(row.variantId)), ...items.map((row) => String(row.variantId))])];
-  const variants = await ProductVariant.find({ _id: { $in: variantIds } }).select('productId').populate('productId', 'trackingType').session(session).lean();
-  const tracking = new Map(variants.map((row) => [String(row._id), row.productId?.trackingType || 'quantity']));
   const usedByStorage = new Map(); let used = 0;
-  for (const balance of balances) if (tracking.get(String(balance.variantId)) !== 'individual') {
-    const quantity = balance.quantityOnHand || 0; used += quantity;
+  for (const balance of balances) {
+    const quantity = Math.max(0, balance.quantityOnHand || 0); used += quantity;
     if (balance.storageId) usedByStorage.set(String(balance.storageId), (usedByStorage.get(String(balance.storageId)) || 0) + quantity);
-  }
-  for (const item of items) if (tracking.get(String(item.variantId)) === 'individual') {
-    used += 1;
-    if (item.storageId) usedByStorage.set(String(item.storageId), (usedByStorage.get(String(item.storageId)) || 0) + 1);
   }
   const storageById = new Map(storages.map((row) => [String(row._id), row]));
   const usedWithAncestors = new Map();
@@ -416,10 +414,10 @@ export const putawayBranchReturn = async (id, payload, user) => {
         for (const itemId of received) {
           const item = await InventoryItem.findOne({ _id: itemId, status: 'in_transit', locationId: transfer.fromLocationId }).session(session);
           if (!item) throw fail('Một món hàng không còn ở trạng thái đang điều chuyển.', 409);
-          item.locationId = transfer.toLocationId;
-          if (damaged.has(itemId)) { item.storageId = null; item.status = 'unavailable'; item.condition = 'damaged'; }
-          else { item.storageId = allocationByItem.get(itemId); item.status = 'available'; }
-          await item.save({ session });
+          // TASK-009: in_transit → available (kệ) hoặc unavailable (storageId null) ở kho tổng, balance cộng qua itemStateService.
+          await moveItem(item, damaged.has(itemId)
+            ? { locationId: transfer.toLocationId, storageId: null, status: 'unavailable', condition: 'damaged' }
+            : { locationId: transfer.toLocationId, storageId: allocationByItem.get(itemId), status: 'available' }, session);
           await recordStockMovement({ variantId: detail.variantId, itemId: item._id, locationId: transfer.toLocationId, storageId: item.storageId, movementType: 'transfer_in', quantityChange: 1, referenceType: 'stock_transfer', referenceId: transfer._id, createdBy: user._id }, session);
         }
       } else {

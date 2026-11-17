@@ -1,13 +1,11 @@
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
-import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
-import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
+import { availableFromBalances } from '../warehouse/orderStockService.js';
 import { isActiveStoreLocation, formatLocationAddress } from '../warehouse/productInventoryHelper.js';
 import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
 import { validateCalendarRentalRange } from '../../validations/sale&rental/rentalOrderValidation.js';
 const idOf = (v) => String(v?._id || v || '');
-const number = (v) => Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : 0;
 
 /** Read-only quote; no reservations or business data writes.
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-019
@@ -24,17 +22,9 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
   const location = locationId ? { locationId: String(locationId), name: selected?.name || '', address: formatLocationAddress(selected), type: selected?.type || '', active: isActiveStoreLocation(selected) } : null;
   const siblings = await ProductVariant.find({ productId: { $in: variants.map(v => v.productId?._id).filter(Boolean) }, status: 'active', isDeleted: { $ne: true } }).lean();
   const ids = [...new Set([...variants, ...siblings].map(v => idOf(v)))];
-  const [balances, items, reservations] = await Promise.all([
-    InventoryBalance.find({ variantId: { $in: ids } }).lean(),
-    InventoryItem.find({ variantId: { $in: ids }, status: 'available', condition: { $nin: ['damaged', 'unrepairable', 'missing'] } }).select('variantId locationId status condition').lean(),
-    InventoryReservation.find({ variantId: { $in: ids }, status: 'active' }).select('variantId locationId quantity').lean(),
-  ]);
-  const stock = (vid, lid) => {
-    const match = row => idOf(row.variantId) === vid && idOf(row.locationId) === lid;
-    const rows = balances.filter(match);
-    if (rows.length) return rows.reduce((sum, b) => sum + Math.max(0, number(b.quantityOnHand) - number(b.quantityReserved) - number(b.quantityUnavailable)), 0);
-    return Math.max(0, items.filter(match).filter(it => (!it.status || it.status === 'available') && !['damaged', 'unrepairable', 'missing'].includes(it.condition)).length - reservations.filter(match).reduce((sum, r) => sum + number(r.quantity), 0));
-  };
+  // TASK-010: chỉ đọc balance cho mọi loại hàng (bỏ fallback đếm món).
+  const balances = await InventoryBalance.find({ variantId: { $in: ids } }).lean();
+  const stock = (vid, lid) => availableFromBalances(balances.filter(row => idOf(row.variantId) === vid && idOf(row.locationId) === lid));
   const totals = new Map();
   for (const row of input) totals.set(String(row.variantId), (totals.get(String(row.variantId)) || 0) + row.quantity);
   const summary = { rentalFeeSubtotal: 0, depositSubtotal: 0, saleSubtotal: 0, grandTotal: 0 };

@@ -7,6 +7,9 @@ const inventoryBalanceSchema = new mongoose.Schema({
   quantityOnHand: { type: Number, required: true, min: 0, default: 0 },
   quantityReserved: { type: Number, required: true, min: 0, default: 0 },
   quantityUnavailable: { type: Number, required: true, min: 0, default: 0 },
+  // TASK-010: số món đang ở chỗ khách (status renting) — chỉ ghi ở dòng chi nhánh storageId null.
+  // KHÔNG nằm trong quantityOnHand, không ảnh hưởng quantityAvailable.
+  quantityRenting: { type: Number, required: true, min: 0, default: 0 },
 }, { timestamps: true });
 
 inventoryBalanceSchema.index({ locationId: 1, storageId: 1, variantId: 1 }, { unique: true });

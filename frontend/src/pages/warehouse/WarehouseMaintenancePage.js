@@ -10,7 +10,7 @@ import '../../styles/WarehouseUx.css';
 const TYPE_LABELS = { cleaning: 'Giặt/vệ sinh', repair: 'Sửa chữa', inspection: 'Kiểm tra', replacement_part: 'Thay phụ kiện', other: 'Khác' };
 const METHOD_LABELS = { discard: 'Hủy bỏ', sell_as_is: 'Bán thanh lý nguyên trạng', recycle: 'Tái chế', donate: 'Quyên góp', other: 'Khác' };
 const CONDITION_LABELS = { new: 'Mới', good: 'Tốt', worn: 'Đã qua sử dụng', damaged: 'Hỏng', unrepairable: 'Không thể sửa', missing: 'Thất lạc' };
-const ITEM_STATUS_LABELS = { available: 'Sẵn sàng', unavailable: 'Không khả dụng', maintenance: 'Đang xử lý', reserved: 'Đang giữ chỗ', renting: 'Đang cho thuê', in_transit: 'Đang điều chuyển', disposed: 'Đã thanh lý' };
+const ITEM_STATUS_LABELS = { available: 'Sẵn sàng', unavailable: 'Không khả dụng', maintenance: 'Đang xử lý', reserved: 'Đang giữ chỗ', renting: 'Đang cho thuê', in_transit: 'Đang điều chuyển', disposed: 'Đã thanh lý', sold: 'Đã bán' };
 const RECORD_STATUS_LABELS = { pending: 'Chờ làm', in_progress: 'Đang làm', completed: 'Hoàn tất', cancelled: 'Đã hủy' };
 const RESULT_LABELS = { success: 'Đạt', failed: 'Không đạt', unrepairable: 'Không thể sửa' };
 const DISPOSAL_STATUS_LABELS = { requested: 'Chờ duyệt', approved: 'Đã duyệt', completed: 'Đã thanh lý', rejected: 'Đã từ chối' };

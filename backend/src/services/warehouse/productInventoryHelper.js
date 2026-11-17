@@ -1,7 +1,6 @@
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
-import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
+import { availableFromBalances } from './orderStockService.js';
 
 export const formatLocationAddress = (loc) => {
   if (!loc) return '';
@@ -27,44 +26,35 @@ export const isWarehouseLocation = (loc) => {
 export const isActiveStoreLocation = (loc) => Boolean(loc && loc.status === 'active' && !loc.isDeleted &&
   !isWarehouseLocation(loc) && (!loc.shopId || !loc.shopId._id ||
     (!loc.shopId.isDeleted && (!loc.shopId.status || String(loc.shopId.status).toLowerCase() === 'active'))));
-export const validateActiveStoreLocation = async (locationId) => {
-  const location = locationId ? await InventoryLocation.findById(locationId).lean() : null;
+export const validateActiveStoreLocation = async (locationId, session = null) => {
+  const query = locationId ? InventoryLocation.findById(locationId) : null;
+  if (query && session) query.session(session);
+  const location = query ? await query.lean() : null;
   return isActiveStoreLocation(location)
     ? { valid: true, location, code: null }
     : { valid: false, location, code: 'ERR_BRANCH_UNAVAILABLE', message: 'Chi nhánh không tồn tại, ngừng hoạt động hoặc là kho tổng.' };
 };
 
-/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025 */
+/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025
+ * TASK-010: mọi loại hàng (quantity + individual) chỉ đọc InventoryBalance; khả dụng = Σ max(0, onHand − reserved − unavailable).
+ * Balance của hàng individual đã đồng bộ với món (TASK-009) và đã trừ giữ chỗ của đơn → không đếm món nữa. */
 export const enrichProductsWithInventory = async (products = [], variants = []) => {
   if (!products.length) return [];
   const variantIds = variants.map(v => v._id);
-  const [balances, items] = variantIds.length ? await Promise.all([
-    InventoryBalance.find({ variantId: { $in: variantIds } }).populate({ path: 'locationId', populate: { path: 'shopId' } }).lean(),
-    InventoryItem.find({ variantId: { $in: variantIds }, status: { $nin: ['disposed', 'in_transit'] } })
-      .populate({ path: 'locationId', populate: { path: 'shopId' } }).lean(),
-  ]) : [[], []];
+  const balances = variantIds.length
+    ? await InventoryBalance.find({ variantId: { $in: variantIds } }).populate({ path: 'locationId', populate: { path: 'shopId' } }).lean()
+    : [];
   const byPair = new Map();
-  const rowFor = (row) => {
+  for (const row of balances) {
     const location = row.locationId;
-    if (!isActiveStoreLocation(location)) return null;
+    if (!isActiveStoreLocation(location)) continue;
     const key = idOf(row.variantId) + ':' + idOf(location);
-    if (!byPair.has(key)) byPair.set(key, { variantId: idOf(row.variantId), location, balances: [], items: [] });
-    return byPair.get(key);
-  };
-  for (const row of balances) rowFor(row)?.balances.push(row);
-  for (const row of items) rowFor(row)?.items.push(row);
-  // Only fallback pairs need reservations; a balance already includes quantityReserved.
-  const fallback = [...byPair.values()].filter(row => !row.balances.length);
-  const reservations = fallback.length ? await InventoryReservation.find({
-    variantId: { $in: fallback.map(row => row.variantId) }, status: 'active',
-  }).select('variantId locationId quantity').lean() : [];
+    if (!byPair.has(key)) byPair.set(key, { variantId: idOf(row.variantId), location, balances: [] });
+    byPair.get(key).balances.push(row);
+  }
   for (const row of byPair.values()) {
-    row.quantityOnHand = row.balances.length
-      ? row.balances.reduce((sum, b) => sum + nonnegative(b.quantityOnHand), 0) : row.items.length;
-    row.quantityAvailable = row.balances.length
-      ? row.balances.reduce((sum, b) => sum + Math.max(0, nonnegative(b.quantityOnHand) - nonnegative(b.quantityReserved) - nonnegative(b.quantityUnavailable)), 0)
-      : Math.max(0, row.items.filter(it => it.status === 'available' && !['damaged', 'unrepairable', 'missing'].includes(it.condition)).length -
-        reservations.filter(r => idOf(r.variantId) === row.variantId && idOf(r.locationId) === idOf(row.location)).reduce((sum, r) => sum + nonnegative(r.quantity), 0));
+    row.quantityOnHand = row.balances.reduce((sum, b) => sum + nonnegative(b.quantityOnHand), 0);
+    row.quantityAvailable = availableFromBalances(row.balances);
   }
   return products.map(product => {
     const pVariants = variants.filter(v => idOf(v.productId) === idOf(product));
@@ -96,24 +86,18 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
   });
 };
 
-/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025 */
-const checkAvailability = async (variantId, locationId, requestedQty) => {
-  const branch = await validateActiveStoreLocation(locationId);
+/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025
+ * TASK-010: chỉ đọc balance (bỏ fallback đếm món). Nhận `session` để đọc trong transaction tạo đơn.
+ * Đây chỉ là kiểm tra sớm để báo lỗi đẹp; chốt chặn thật là lệnh giữ chỗ nguyên tử (orderStockService.reserveStock). */
+const checkAvailability = async (variantId, locationId, requestedQty, session = null) => {
+  const branch = await validateActiveStoreLocation(locationId, session);
   if (!variantId || !branch.valid) return { available: false, availableQty: 0, code: branch.code || 'ERR_INVALID_VARIANT', message: branch.message || 'Thiếu biến thể.' };
-  const balances = await InventoryBalance.find({ variantId, locationId }).lean();
-  let availableQty;
-  if (balances.length) {
-    availableQty = balances.reduce((sum, b) => sum + Math.max(0, nonnegative(b.quantityOnHand) - nonnegative(b.quantityReserved) - nonnegative(b.quantityUnavailable)), 0);
-  } else {
-    const [count, reservations] = await Promise.all([
-      InventoryItem.countDocuments({ variantId, locationId, status: 'available', condition: { $nin: ['damaged', 'unrepairable', 'missing'] } }),
-      InventoryReservation.find({ variantId, locationId, status: 'active' }).select('quantity').lean(),
-    ]);
-    availableQty = Math.max(0, count - reservations.reduce((sum, r) => sum + nonnegative(r.quantity), 0));
-  }
+  const query = InventoryBalance.find({ variantId, locationId });
+  if (session) query.session(session);
+  const availableQty = availableFromBalances(await query.lean());
   const available = Number.isInteger(requestedQty) && requestedQty > 0 && availableQty >= requestedQty;
-  return { available, availableQty, code: available ? null : 'ERR_INSUFFICIENT_STOCK',
+  return { available, availableQty, code: available ? null : 'ERR_OUT_OF_STOCK',
     message: available ? 'Còn hàng khả dụng' : 'Chi nhánh chỉ còn ' + availableQty + ' sản phẩm khả dụng.' };
 };
-export const checkRentalAvailability = (variantId, locationId, requestedQty = 1, startDate, dueDate) => checkAvailability(variantId, locationId, requestedQty);
-export const checkSalesAvailability = (variantId, locationId, requestedQty = 1) => checkAvailability(variantId, locationId, requestedQty);
+export const checkRentalAvailability = (variantId, locationId, requestedQty = 1, startDate, dueDate, session = null) => checkAvailability(variantId, locationId, requestedQty, session);
+export const checkSalesAvailability = (variantId, locationId, requestedQty = 1, session = null) => checkAvailability(variantId, locationId, requestedQty, session);

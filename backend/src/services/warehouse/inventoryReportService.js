@@ -5,10 +5,29 @@ import { InventoryLocation } from '../../models/warehouse/location/InventoryLoca
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
+import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
+import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
+import { RentalOrderItem } from '../../models/sale&rental/RentalOrderItem.js';
 
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const keyOf = (locationId, storageId, variantId) => `${locationId}:${storageId || 'none'}:${variantId}`;
 const statusUnavailable = (item) => ['maintenance', 'unavailable'].includes(item.status) || ['damaged', 'unrepairable'].includes(item.condition);
+const OPEN_RENTAL_STATUSES = ['renting', 'partially_returned', 'overdue'];
+const EMPTY_SUMMARY = Object.freeze({ totalOnHand: 0, totalAvailable: 0, totalReserved: 0, totalUnavailable: 0, totalRenting: 0, totalOverdue: 0 });
+
+/**
+ * TASK-010: id các món đang ở chỗ khách và QUÁ HẠN trả (tính lúc đọc, không lưu vào balance):
+ * RentalOrder (dueDate < now, chưa trả) → RentalOrderDetail → RentalOrderItem `handed_over` → itemId.
+ */
+const overdueRentingItemIds = async (locationIds, now = new Date()) => {
+  const orderIds = await RentalOrder.find({ locationId: { $in: locationIds }, rentalStatus: { $in: OPEN_RENTAL_STATUSES }, dueDate: { $lt: now } }).distinct('_id');
+  if (!orderIds.length) return new Set();
+  const detailIds = await RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } }).distinct('_id');
+  if (!detailIds.length) return new Set();
+  const itemIds = await RentalOrderItem.find({ rentalOrderDetailId: { $in: detailIds }, status: 'handed_over' }).distinct('itemId');
+  return new Set(itemIds.map(String));
+};
+
 const categoryNamesForProduct = (product) => {
   const categories = Array.isArray(product?.categoryId) ? product.categoryId : product?.categoryId ? [product.categoryId] : [];
   return categories.map((category) => category?.name).filter(Boolean).join(', ');
@@ -50,11 +69,13 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
   const storageLocations = await StorageLocation.find(locationId ? { locationId } : {}).select('_id code name type parentStorageId').lean();
   const locationById = new Map(selectedLocations.map((location) => [String(location._id), location]));
   const storageById = new Map(storageLocations.map((storage) => [String(storage._id), storage]));
-  if (!locationIds.length) return { items: [], summary: { totalOnHand: 0, totalAvailable: 0, totalReserved: 0, totalUnavailable: 0 }, locations };
+  if (!locationIds.length) return { items: [], summary: { ...EMPTY_SUMMARY }, locations };
 
-  const [balances, individualItems] = await Promise.all([
+  // TASK-010: lấy thêm món `renting` để đếm cột "Đang cho thuê" (không cộng vào tồn / sức chứa).
+  const [balances, individualItems, overdueIds] = await Promise.all([
     InventoryBalance.find({ locationId: { $in: locationIds } }).lean(),
-    InventoryItem.find({ locationId: { $in: locationIds }, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).lean(),
+    InventoryItem.find({ locationId: { $in: locationIds }, status: { $nin: ['disposed', 'in_transit', 'sold'] } }).lean(),
+    overdueRentingItemIds(locationIds),
   ]);
   const variantIds = [...new Set([...balances, ...individualItems].map((row) => String(row.variantId)))];
   const variants = await ProductVariant.find({ _id: { $in: variantIds } })
@@ -93,6 +114,8 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
         quantityAvailable: 0,
         quantityReserved: 0,
         quantityUnavailable: 0,
+        quantityRenting: 0,
+        quantityOverdue: 0,
       });
     }
     return grouped.get(key);
@@ -106,6 +129,7 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
     row.quantityOnHand += balance.quantityOnHand || 0;
     row.quantityReserved += balance.quantityReserved || 0;
     row.quantityUnavailable += balance.quantityUnavailable || 0;
+    row.quantityRenting += balance.quantityRenting || 0;
   }
 
   const individualGroups = new Map();
@@ -138,8 +162,15 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
       quantityAvailable: 0,
       quantityReserved: 0,
       quantityUnavailable: 0,
+      quantityRenting: 0,
+      quantityOverdue: 0,
     });
     const row = individualGroups.get(key);
+    if (item.status === 'renting') {
+      row.quantityRenting += 1;
+      if (overdueIds.has(String(item._id))) row.quantityOverdue += 1;
+      continue;
+    }
     row.itemCount += 1;
     row.quantityOnHand += 1;
     if (unavailable) row.quantityUnavailable += 1;
@@ -173,6 +204,8 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
         quantityAvailable: 0,
         quantityReserved: 0,
         quantityUnavailable: 0,
+        quantityRenting: 0,
+        quantityOverdue: 0,
       });
     }
     const row = rollups.get(key);
@@ -180,17 +213,21 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
     row.quantityAvailable += source.quantityAvailable || 0;
     row.quantityReserved += source.quantityReserved || 0;
     row.quantityUnavailable += source.quantityUnavailable || 0;
+    row.quantityRenting += source.quantityRenting || 0;
+    row.quantityOverdue += source.quantityOverdue || 0;
     row.itemCount += source.itemCount || 0;
   }
   const items = [...rollups.values()]
-    .filter((row) => row.quantityOnHand > 0 || row.quantityReserved > 0 || row.quantityUnavailable > 0)
+    .filter((row) => row.quantityOnHand > 0 || row.quantityReserved > 0 || row.quantityUnavailable > 0 || row.quantityRenting > 0)
     .sort((a, b) => `${a.locationCode} ${a.storagePath} ${a.productName} ${a.sku} ${a.key}`.localeCompare(`${b.locationCode} ${b.storagePath} ${b.productName} ${b.sku} ${b.key}`, 'vi'));
   const summary = items.reduce((total, row) => ({
     totalOnHand: total.totalOnHand + row.quantityOnHand,
     totalAvailable: total.totalAvailable + row.quantityAvailable,
     totalReserved: total.totalReserved + row.quantityReserved,
     totalUnavailable: total.totalUnavailable + row.quantityUnavailable,
-  }), { totalOnHand: 0, totalAvailable: 0, totalReserved: 0, totalUnavailable: 0 });
+    totalRenting: total.totalRenting + row.quantityRenting,
+    totalOverdue: total.totalOverdue + row.quantityOverdue,
+  }), { ...EMPTY_SUMMARY });
   return { items, summary, locations };
 };
 
@@ -211,7 +248,7 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     variantIds = [variant._id];
   }
   const onlyAvailable = availableOnly === true || String(availableOnly).toLowerCase() === 'true';
-  const query = { locationId, variantId: { $in: variantIds }, status: onlyAvailable ? 'available' : { $nin: ['disposed', 'renting', 'in_transit'] } };
+  const query = { locationId, variantId: { $in: variantIds }, status: onlyAvailable ? 'available' : { $nin: ['disposed', 'renting', 'in_transit', 'sold'] } };
   if (storageId === 'none' || !storageId) query.storageId = null;
   else {
     const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId').lean();

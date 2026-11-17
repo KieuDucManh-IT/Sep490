@@ -8,6 +8,7 @@ import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import User from '../../models/system/User.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
+import { moveItems } from './itemStateService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const roleOf = (user) => String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
@@ -63,17 +64,11 @@ const storageChain = async (storageId, locationId, session) => {
   return chain;
 };
 
+// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho mọi loại hàng (balance individual đã đồng bộ với món).
 const checkCapacity = async (locationId, lines, session) => {
   const storages = await StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity').session(session || null).lean();
   const byId = new Map(storages.map((x) => [String(x._id), x]));
-  const allVariants = await ProductVariant.find({}).select('productId').populate('productId', 'trackingType').session(session || null).lean();
-  const trackedIds = allVariants.filter((variant) => variant.productId?.trackingType !== 'individual').map((variant) => variant._id);
-  const balances = trackedIds.length ? await InventoryBalance.find({ locationId, storageId: { $ne: null }, variantId: { $in: trackedIds } }).session(session || null).lean() : [];
-  const individualIds = allVariants.filter((variant) => variant.productId?.trackingType === 'individual').map((variant) => variant._id);
-  const itemRows = individualIds.length ? await InventoryItem.aggregate([
-    { $match: { locationId: new mongoose.Types.ObjectId(locationId), variantId: { $in: individualIds }, storageId: { $ne: null }, status: { $nin: ['disposed', 'in_transit'] }, condition: { $ne: 'missing' } } },
-    { $group: { _id: '$storageId', count: { $sum: 1 } } },
-  ]).session(session || null) : [];
+  const balances = await InventoryBalance.find({ locationId, storageId: { $ne: null } }).select('storageId quantityOnHand').session(session || null).lean();
   const used = new Map();
   const addUsed = (storageId, amount) => {
     const visited = new Set(); let cursor = byId.get(String(storageId));
@@ -83,8 +78,7 @@ const checkCapacity = async (locationId, lines, session) => {
       cursor = cursor.parentStorageId ? byId.get(String(cursor.parentStorageId)) : null;
     }
   };
-  for (const row of balances) addUsed(row.storageId, Math.max(0, row.quantityOnHand));
-  for (const row of itemRows) addUsed(row._id, row.count);
+  for (const row of balances) addUsed(row.storageId, Math.max(0, row.quantityOnHand || 0));
   const delta = new Map();
   const addAncestors = (id, amount) => {
     const visited = new Set(); let cursor = byId.get(String(id));
@@ -127,8 +121,8 @@ export const createStockRelocation = async (payload, user, validated) => {
           const items = await InventoryItem.find({ locationId: central._id, storageId: line.fromStorageId, variantId: line.variantId, status: 'available', condition: { $nin: ['damaged', 'unrepairable', 'missing'] } }).sort({ createdAt: 1 }).limit(line.quantity).session(session);
           if (items.length !== line.quantity) throw fail(`Tồn khả dụng tại kệ nguồn không đủ (${items.length}/${line.quantity}).`, 409);
           line.itemIds = items.map((x) => x._id);
-          for (const item of items) { item.status = 'reserved'; await item.save({ session }); }
-          await InventoryBalance.findOneAndUpdate({ locationId: central._id, storageId: line.fromStorageId, variantId: line.variantId }, { $inc: { quantityReserved: line.quantity } }, { upsert: true, new: true, session, setDefaultsOnInsert: true });
+          // TASK-009: phiếu giữ món ở kệ nguồn → reserved + warehouseHold (+1 quantityReserved mỗi món).
+          await moveItems(items, { status: 'reserved', warehouseHold: 1 }, session);
         } else {
           const available = (balance?.quantityOnHand || 0) - (balance?.quantityReserved || 0) - (balance?.quantityUnavailable || 0);
           if (!balance || available < line.quantity) throw fail(`Tồn khả dụng tại kệ nguồn không đủ (${Math.max(0, available)}/${line.quantity}).`, 409);
@@ -176,11 +170,8 @@ export const completeStockRelocation = async (id, user, confirmations) => {
         if (individual) {
           const items = await InventoryItem.find({ _id: { $in: result.itemIds }, locationId: doc.locationId, storageId: row.fromStorageId, status: 'reserved' }).session(session);
           if (items.length !== row.quantity) throw fail('Có item không còn ở kệ nguồn hoặc không còn được giữ cho phiếu.', 409);
-          for (const item of items) { item.storageId = row.toStorageId; item.status = 'available'; await item.save({ session }); }
-          const source = await InventoryBalance.findOne({ locationId: doc.locationId, storageId: row.fromStorageId, variantId: row.variantId }).session(session);
-          if (!source || source.quantityReserved < row.quantity || source.quantityOnHand < row.quantity) throw fail('Tồn kho nguồn đã thay đổi, không thể hoàn tất phiếu.', 409);
-          source.quantityOnHand -= row.quantity; source.quantityReserved -= row.quantity; await source.save({ session });
-          await InventoryBalance.findOneAndUpdate({ locationId: doc.locationId, storageId: row.toStorageId, variantId: row.variantId }, { $inc: { quantityOnHand: row.quantity } }, { upsert: true, new: true, session, setDefaultsOnInsert: true });
+          // TASK-009: reserved ở kệ nguồn → available ở kệ đích, nhả giữ: nguồn onHand -1/reserved -1, đích onHand +1.
+          await moveItems(items, { storageId: row.toStorageId, status: 'available', warehouseHold: -1 }, session);
           for (const item of items) await recordStockMovement({ variantId: row.variantId, itemId: item._id, locationId: doc.locationId, storageId: row.fromStorageId, movementType: 'transfer_out', quantityChange: -1, referenceType: 'stock_relocation', referenceId: doc._id, createdBy: user._id }, session);
           for (const item of items) await recordStockMovement({ variantId: row.variantId, itemId: item._id, locationId: doc.locationId, storageId: row.toStorageId, movementType: 'transfer_in', quantityChange: 1, referenceType: 'stock_relocation', referenceId: doc._id, createdBy: user._id }, session);
         } else {
@@ -209,8 +200,11 @@ export const cancelStockRelocation = async (id, user) => {
       const rows = await StockRelocationDetail.find({ relocationId: id }).session(session);
       for (const row of rows) {
         const variant = await ProductVariant.findById(row.variantId).populate('productId', 'trackingType').session(session);
-        if (variant?.productId?.trackingType === 'individual') await InventoryItem.updateMany({ _id: { $in: row.itemIds }, status: 'reserved' }, { $set: { status: 'available' } }, { session });
-        else await InventoryBalance.updateOne({ locationId: doc.locationId, storageId: row.fromStorageId, variantId: row.variantId }, { $inc: { quantityReserved: -row.quantity } }, { session });
+        if (variant?.productId?.trackingType === 'individual') {
+          // TASK-009 (sửa lỗi AC5): hủy phải nhả giữ, quantityReserved của kệ nguồn giảm theo số món.
+          const items = await InventoryItem.find({ _id: { $in: row.itemIds }, locationId: doc.locationId, storageId: row.fromStorageId, status: 'reserved' }).session(session);
+          await moveItems(items, { status: 'available', warehouseHold: -1 }, session);
+        } else await InventoryBalance.updateOne({ locationId: doc.locationId, storageId: row.fromStorageId, variantId: row.variantId }, { $inc: { quantityReserved: -row.quantity } }, { session });
       }
       doc.status = 'cancelled'; doc.cancelledAt = new Date(); await doc.save({ session });
     });

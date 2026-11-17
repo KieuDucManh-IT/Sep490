@@ -3,9 +3,7 @@ export const ROLE_LABELS = {
   shopOwner: 'Chủ gian hàng',
   brandmanager: 'Quản lý thương hiệu',
   warehouse_manager: 'Quản lý kho',
-  warehouseManager: 'Quản lý kho',
   warehouse_staff: 'Nhân viên kho',
-  warehousestaff: 'Nhân viên kho',
   admin: 'Quản trị viên'
 };
 

@@ -12,7 +12,6 @@ import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Product } from '../../models/masterdata/Product.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
@@ -22,6 +21,9 @@ import {
   changeFunds,
 } from '../walletService.js';
 import { checkSalesAvailability } from '../warehouse/productInventoryHelper.js';
+import {
+  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes, sellItems, withStatus,
+} from '../warehouse/orderStockService.js';
 import {
   createSalesOrderSchema,
   updateSalesOrderStatusSchema,
@@ -211,8 +213,10 @@ export const createSalesOrder = async ({
     if (!stockCheck.available) {
       throw new ServiceError(
         409,
-        `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`,
-        stockCheck.code || 'ERR_INSUFFICIENT_STOCK',
+        stockCheck.code === 'ERR_OUT_OF_STOCK'
+          ? `Sản phẩm ${it.sku || it.variantId} chỉ còn ${stockCheck.availableQty ?? 0}.`
+          : `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`,
+        stockCheck.code || 'ERR_OUT_OF_STOCK',
         { requestedQuantity: it.quantity, availableQuantity: stockCheck.availableQty ?? 0 }
       );
     }
@@ -226,6 +230,9 @@ export const createSalesOrder = async ({
   }
 
   try {
+    // TASK-010: giữ chỗ NGUYÊN TỬ trên dòng (locationId, storageId: null, variantId), không upsert → 409 ERR_OUT_OF_STOCK.
+    await reserveStock({ locationId, lines: itemsToCheck }, session);
+
     let orderStatus = 'confirmed';
     let paymentStatus = 'unpaid';
     let paymentRefId = null;
@@ -325,14 +332,7 @@ export const createSalesOrder = async ({
     }));
     await InventoryReservation.insertMany(reservationDocs, { session });
 
-    // Cập nhật quantityReserved trong InventoryBalance
-    for (const it of itemsToCheck) {
-      await InventoryBalance.updateOne(
-        { locationId, variantId: it.variantId },
-        { $inc: { quantityReserved: it.quantity } },
-        { session, upsert: true }
-      );
-    }
+    // quantityReserved đã tăng ở bước giữ chỗ nguyên tử đầu transaction (reserveStock).
 
     if (isInternalSession) {
       await session.commitTransaction();
@@ -346,7 +346,7 @@ export const createSalesOrder = async ({
     if (isInternalSession) {
       await session.abortTransaction();
     }
-    throw error;
+    throw withStatus(error);
   } finally {
     if (isInternalSession) {
       session.endSession();
@@ -614,6 +614,14 @@ export const updateSalesOrderStatus = async ({
   session.startTransaction();
 
   try {
+    // Chốt trạng thái có điều kiện: hai lần hoàn tất/hủy đồng thời → lần sau 409 (không trừ kho hai lần).
+    const claimed = await SalesOrder.updateOne(
+      { _id: order._id, orderStatus: order.orderStatus },
+      { $set: { orderStatus } },
+      { session }
+    );
+    if (claimed.matchedCount !== 1) throw new ServiceError(409, 'Đơn mua vừa được cập nhật bởi người khác, vui lòng tải lại.');
+
     const updateFields = { orderStatus };
     if (note) {
       updateFields.note = order.note ? `${order.note} | ${note}` : note;
@@ -628,59 +636,65 @@ export const updateSalesOrderStatus = async ({
         updateFields.paymentStatus = 'paid';
       }
 
-      // Giải phóng reservation và trừ thật vào tồn kho qua StockMovement
-      const details = await SalesOrderDetail.find({ salesOrderId: order._id }).session(session);
+      // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật.
+      // - individual: chọn FIFO món `available` (condition dùng được) → `sold` qua itemStateService, gộp reserved −qty;
+      //   StockMovement mỗi món một dòng có itemId.
+      // - quantity: giữ hành vi cũ (onHand −qty, reserved −qty) trên dòng chi nhánh, có chặn âm.
+      const details = await SalesOrderDetail.find({ salesOrderId: order._id }).populate('variantId', 'sku').session(session);
+      const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'sale' }, 'consumed', session);
+      const lines = new Map();
       for (const it of details) {
-        await InventoryBalance.updateOne(
-          { locationId: order.locationId, variantId: it.variantId },
-          {
-            $inc: {
-              quantityOnHand: -it.quantity,
-              quantityReserved: -it.quantity,
-            },
-          },
-          { session }
-        );
-
-        await StockMovement.create(
-          [
-            {
-              variantId: it.variantId,
-              locationId: order.locationId,
-              movementType: 'sale',
-              quantityChange: -it.quantity,
-              referenceType: 'sales_order',
-              referenceId: order._id,
-              createdBy: user._id,
-            },
-          ],
-          { session }
-        );
+        const variantId = String(it.variantId?._id || it.variantId);
+        if (!lines.has(variantId)) lines.set(variantId, { variantId: it.variantId?._id || it.variantId, sku: it.variantId?.sku, quantity: 0 });
+        lines.get(variantId).quantity += it.quantity;
       }
-
-      await InventoryReservation.updateMany(
-        { orderId: order._id, status: 'active' },
-        { status: 'consumed' },
-        { session }
-      );
+      const tracking = await trackingTypes([...lines.keys()], session);
+      for (const [variantId, line] of lines) {
+        const reservedQuantity = reservedByVariant.get(variantId) || 0;
+        if (tracking.get(variantId) === 'individual') {
+          const soldItems = await sellItems({
+            locationId: order.locationId, variantId: line.variantId, quantity: line.quantity, reservedQuantity, sku: line.sku,
+          }, session);
+          await StockMovement.insertMany(soldItems.map((item) => ({
+            variantId: line.variantId,
+            itemId: item._id,
+            locationId: order.locationId,
+            storageId: item.storageId ?? null,
+            movementType: 'sale',
+            quantityChange: -1,
+            referenceType: 'sales_order',
+            referenceId: order._id,
+            createdBy: user._id,
+          })), { session });
+        } else {
+          await incBranchBalance({
+            locationId: order.locationId,
+            variantId: line.variantId,
+            inc: { quantityOnHand: -line.quantity, quantityReserved: -reservedQuantity },
+          }, session);
+          await StockMovement.create(
+            [
+              {
+                variantId: line.variantId,
+                locationId: order.locationId,
+                storageId: null,
+                movementType: 'sale',
+                quantityChange: -line.quantity,
+                referenceType: 'sales_order',
+                referenceId: order._id,
+                createdBy: user._id,
+              },
+            ],
+            { session }
+          );
+        }
+      }
     } else if (orderStatus === 'cancelled') {
       updateFields.cancelledAt = new Date();
 
-      // Giải phóng hàng giữ chỗ
-      const details = await SalesOrderDetail.find({ salesOrderId: order._id }).session(session);
-      for (const it of details) {
-        await InventoryBalance.updateOne(
-          { locationId: order.locationId, variantId: it.variantId },
-          { $inc: { quantityReserved: -it.quantity } },
-          { session }
-        );
-      }
-
-      await InventoryReservation.updateMany(
-        { orderId: order._id, status: 'active' },
-        { status: 'released' },
-        { session }
-      );
+      // TASK-010: giải phóng giữ chỗ đúng bằng số InventoryReservation đang active (→ released). Món không đổi.
+      const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'sale' }, 'released', session);
+      await releaseReserved({ locationId: order.locationId, reservedByVariant }, session);
 
       // Nếu đã thanh toán bằng ví, hoàn tiền lại cho khách hàng
       if (order.paymentStatus === 'paid' && order.paymentMethod === 'wallet' && order.customerId) {
@@ -726,7 +740,7 @@ export const updateSalesOrderStatus = async ({
     return updatedOrder;
   } catch (error) {
     await session.abortTransaction();
-    throw error;
+    throw withStatus(error);
   } finally {
     session.endSession();
   }

@@ -273,7 +273,10 @@ export default function CheckoutPage() {
       setSuccessModal(true);
     } catch (err) {
       console.error('Lỗi đặt thuê:', err);
-      setSubmitError(err.message || 'Không thể tạo đơn thuê. Vui lòng thử lại sau.');
+      // TASK-010: hết hàng khi giữ chỗ (409 ERR_OUT_OF_STOCK) — message dạng "Sản phẩm … chỉ còn N."
+      setSubmitError((err.code || err.data?.code) === 'ERR_OUT_OF_STOCK'
+        ? `${err.message} Vui lòng giảm số lượng hoặc chọn chi nhánh khác.`
+        : (err.message || 'Không thể tạo đơn thuê. Vui lòng thử lại sau.'));
     } finally {
       submissionLock.current = false;
       setSubmitting(false);

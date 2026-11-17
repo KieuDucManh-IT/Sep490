@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { Shop } from '../../models/shop/Shop.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
+import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
@@ -579,10 +579,11 @@ export async function getBranchPerformanceReportData({
       toLocationId: { $in: locationIds },
       status: { $in: ['shipped', 'partially_received'] },
     }),
-    InventoryItem.countDocuments({
-      locationId: { $in: locationIds },
-      status: 'renting',
-    }),
+    // TASK-011: số đang cho thuê đọc balance.quantityRenting (mọi loại hàng), không đếm món.
+    InventoryBalance.aggregate([
+      { $match: { locationId: { $in: locationIds } } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$quantityRenting', 0] } } } },
+    ]).then((rows) => rows[0]?.total || 0),
     RentalOrder.find({
       locationId: { $in: locationIds },
       rentalStatus: { $in: ['renting', 'partially_returned'] },

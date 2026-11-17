@@ -13,69 +13,8 @@ import {
 } from 'lucide-react';
 import apiClient from '../services/api';
 import '../styles/AiStylistWidget.css';
-
-const currency = new Intl.NumberFormat('vi-VN');
-
-const isJewelry = (item) => {
-  if (!item) return false;
-  const text = `${item.name || ''} ${item.category || ''}`.toLowerCase();
-  return /nhẫn|nhan|bông tai|bong tai|khuyên|khuyen|vòng|vong|dây chuyền|day chuyen|lắc|lac|trang sức|trang suc|jewelry|earring|necklace|ring|bracelet/.test(text);
-};
-
-const isTestItem = (item) => {
-  if (!item) return false;
-  const text = `${item.name || ''} ${item.category || ''}`.toLowerCase();
-  return text.includes('test') || text.includes('(test)');
-};
-
-// Helper phân loại và tạo link chuyển cả set đồ sang phòng thử đồ ảo AI IDM-VTON (đã lọc sạch trang sức & test)
-const buildTryOnUrl = (products) => {
-  if (!Array.isArray(products) || products.length === 0) return '/try-on/photo';
-
-  // Lọc sạch trang sức và hàng test lỗi
-  const validProducts = products.filter((p) => !isJewelry(p) && !isTestItem(p));
-  if (validProducts.length === 0) return '/try-on/photo';
-  if (validProducts.length === 1) return `/try-on/photo?productId=${validProducts[0].id}`;
-
-  let mainItem = null;
-  let pairedItem = null;
-  let accessoryItem = null;
-
-  for (const p of validProducts) {
-    const catStr = `${p.name || ''} ${p.category || ''}`.toLowerCase();
-    // Phụ kiện chỉ nhận túi xách, kính, khăn, mũ... (không nhận trang sức)
-    if (/túi|tui|bag|kính|kinh|glasses|khăn|clutch|nón|mũ|hat|giày|shoes/.test(catStr) && !accessoryItem) {
-      accessoryItem = p;
-    } else if (/quần|quan|chân váy|skirt|pants|trouser|short/.test(catStr) && !pairedItem) {
-      pairedItem = p;
-    } else if (/đầm|dam|váy|vay|áo dài|ao dai|dress|suit|blazer|áo|ao/.test(catStr) && !mainItem) {
-      mainItem = p;
-    }
-  }
-
-  // Phân bổ các món còn lại đảm bảo không trùng nhau
-  for (const p of validProducts) {
-    if (mainItem?.id === p.id || pairedItem?.id === p.id || accessoryItem?.id === p.id) continue;
-    if (!mainItem) {
-      mainItem = p;
-    } else if (!pairedItem) {
-      pairedItem = p;
-    } else if (!accessoryItem) {
-      accessoryItem = p;
-    }
-  }
-
-  if (!mainItem) mainItem = validProducts[0];
-
-  const params = new URLSearchParams();
-  if (mainItem?.id) params.set('productId', mainItem.id);
-  if (pairedItem?.id && pairedItem.id !== mainItem.id) params.set('pairedId', pairedItem.id);
-  if (accessoryItem?.id && accessoryItem.id !== mainItem.id && accessoryItem.id !== pairedItem?.id) {
-    params.set('accessoryId', accessoryItem.id);
-  }
-
-  return `/try-on/photo?${params.toString()}`;
-};
+import { buildTryOnUrl } from './stylist/stylistUtils';
+import StylistWidgetProductCard from './stylist/StylistWidgetProductCard';
 
 const INITIAL_MSG = {
   role: 'model',
@@ -260,58 +199,11 @@ export default function AiStylistWidget() {
                     {!m.pending && m.products && m.products.length > 0 && (
                       <div className="stylist-wrec-list">
                         {m.products.map((p) => (
-                          <div
+                          <StylistWidgetProductCard
                             key={p.id}
-                            className="stylist-wrec-card"
-                          >
-                            <Link
-                              to={`/product/${p.id}`}
-                              className="stylist-wrec-thumb"
-                              onClick={() => setIsOpen(false)}
-                              title="Xem chi tiết sản phẩm"
-                            >
-                              {p.imageUrl ? (
-                                <img src={p.imageUrl} alt={p.name} loading="lazy" />
-                              ) : (
-                                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                                  <Sparkles size={14} color="#C5A880" />
-                                </span>
-                              )}
-                            </Link>
-                            <div className="stylist-wrec-details">
-                              <h6 className="stylist-wrec-title">
-                                <Link
-                                  to={`/product/${p.id}`}
-                                  onClick={() => setIsOpen(false)}
-                                  className="stylist-wrec-title-link"
-                                >
-                                  {p.name}
-                                </Link>
-                              </h6>
-                              <span className="stylist-wrec-cat">{p.category}</span>
-                              <span className="stylist-wrec-price">
-                                {currency.format(p.rentalPricePerDayVnd || p.rentalPricePerDay || 0)}đ/ngày
-                              </span>
-                              <div className="stylist-wrec-actions">
-                                <Link
-                                  to={`/try-on/photo?productId=${p.id}`}
-                                  className="stylist-wrec-btn-tryon"
-                                  onClick={() => setIsOpen(false)}
-                                  title="Thử đồ bằng AI IDM-VTON"
-                                >
-                                  <Sparkles size={11} /> Thử đồ AI
-                                </Link>
-                                <Link
-                                  to={`/product/${p.id}`}
-                                  className="stylist-wrec-btn-view"
-                                  onClick={() => setIsOpen(false)}
-                                  title="Xem chi tiết"
-                                >
-                                  Chi tiết
-                                </Link>
-                              </div>
-                            </div>
-                          </div>
+                            product={p}
+                            onClose={() => setIsOpen(false)}
+                          />
                         ))}
 
                         {/* Nút chuyển cả set đồ vào phòng thử đồ */}

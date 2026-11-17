@@ -1878,3 +1878,17 @@
   color: #2563EB;
   flex-shrink: 0;
 }
+
+@keyframes adminAccSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.admin-acc-spin {
+  animation: adminAccSpin 1s linear infinite;
+}
+

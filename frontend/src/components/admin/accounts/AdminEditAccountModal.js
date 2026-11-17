@@ -12,7 +12,9 @@ export default function AdminEditAccountModal({
   avatarFileInputRef,
   onAvatarChange,
   onRemoveAvatar,
-  onSubmit
+  onSubmit,
+  shops = [],
+  loadingShops = false
 }) {
   if (!isOpen || !user) return null;
 
@@ -222,6 +224,39 @@ export default function AdminEditAccountModal({
               )}
               <span className="admin-acc-field-hint">
                 Chỉ cập nhật vai trò phân công cho nhân viên (không bao gồm Quản trị viên và Khách hàng)
+              </span>
+            </div>
+
+            <div className="admin-acc-form-group">
+              <label className="admin-acc-form-label">
+                Cơ sở / Chi nhánh phân công
+              </label>
+              <div className="admin-acc-input-wrap">
+                <span className="admin-acc-input-icon">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                  </svg>
+                </span>
+                <select
+                  className="admin-acc-form-select"
+                  value={editForm.shopId || ''}
+                  onChange={(e) => setEditForm({ ...editForm, shopId: e.target.value })}
+                >
+                  <option value="">-- Không phân công chi nhánh --</option>
+                  {loadingShops ? (
+                    <option value="" disabled>Đang tải danh sách cơ sở từ máy chủ...</option>
+                  ) : (
+                    shops.map((shop) => (
+                      <option key={shop._id} value={shop._id}>
+                        {shop.name} {shop.city ? `(${shop.city})` : ''} {shop.isHQ ? '★ [Trụ sở chính]' : ''}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <span className="admin-acc-field-hint">
+                Dữ liệu cơ sở tải trực tiếp từ hệ thống chi nhánh VESTORA
               </span>
             </div>
 

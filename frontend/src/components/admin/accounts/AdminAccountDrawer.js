@@ -169,6 +169,14 @@ export default function AdminAccountDrawer({
                       {ROLE_LABELS[user.role] ? `${ROLE_LABELS[user.role]} (${user.role})` : user.role}
                     </span>
                   </div>
+                  {user.shopName && (
+                    <div className="admin-acc-kv-row">
+                      <span className="admin-acc-kv-key">Cơ sở / Chi nhánh</span>
+                      <span className="admin-acc-kv-val" style={{ color: '#047857', fontWeight: 600 }}>
+                        {user.shopName} {user.shopCity ? `(${user.shopCity})` : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

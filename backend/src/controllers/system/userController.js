@@ -1,4 +1,6 @@
+import mongoose from 'mongoose';
 import { User } from '../../models/system/User.js';
+import { Shop } from '../../models/shop/Shop.js';
 import bcrypt from 'bcryptjs';
 import { sendEmail } from '../../utils/sendEmail.js';
 import { validateUserUpdate, validateUserCreate } from '../../utils/userValidation.js';
@@ -42,9 +44,8 @@ function buildNewStaffEmailText(user, rawPassword) {
     shopOwner: 'Chủ gian hàng (Shop Owner)',
     brandmanager: 'Quản lý thương hiệu (Brand Manager)',
     warehouse_manager: 'Quản lý kho (Warehouse Manager)',
-    warehouseManager: 'Quản lý kho (Warehouse Manager)',
     warehouse_staff: 'Nhân viên kho (Warehouse Staff)',
-    warehousestaff: 'Nhân viên kho (Warehouse Staff)'
+
   };
   const roleName = roleDisplayNames[user.Role] || user.Role;
 
@@ -148,12 +149,40 @@ export const getUsers = async (req, res) => {
 
     const users = await User.find(filter)
       .select('-PasswordHash') // Không trả về mật khẩu
-      .sort({ createdAt: -1 });
+      .populate('ShopId', 'name address city isHQ')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const userIds = users.map(u => u._id);
+    const managedShops = await Shop.find({
+      $or: [
+        { ownerId: { $in: userIds } },
+        { managerId: { $in: userIds } }
+      ],
+      isDeleted: { $ne: true }
+    }).select('_id name address city isHQ ownerId managerId').lean();
+
+    const shopByUserId = new Map();
+    managedShops.forEach(s => {
+      if (s.ownerId) shopByUserId.set(String(s.ownerId), s);
+      if (s.managerId) shopByUserId.set(String(s.managerId), s);
+    });
+
+    const enrichedUsers = users.map(u => {
+      const shop = u.ShopId || shopByUserId.get(String(u._id)) || null;
+      return {
+        ...u,
+        shopId: shop?._id || null,
+        shopName: shop?.name || null,
+        shopAddress: shop?.address || null,
+        shopCity: shop?.city || null
+      };
+    });
 
     res.json({
       success: true,
-      count: users.length,
-      data: users
+      count: enrichedUsers.length,
+      data: enrichedUsers
     });
   } catch (error) {
     console.error('Error in getUsers:', error);
@@ -164,11 +193,33 @@ export const getUsers = async (req, res) => {
 // Chi tiết tài khoản
 export const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-PasswordHash');
+    const user = await User.findById(req.params.id)
+      .select('-PasswordHash')
+      .populate('ShopId', 'name address city isHQ')
+      .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
-    res.json({ success: true, data: user });
+
+    const managedShop = await Shop.findOne({
+      $or: [
+        { ownerId: user._id },
+        { managerId: user._id }
+      ],
+      isDeleted: { $ne: true }
+    }).select('_id name address city isHQ').lean();
+
+    const shop = user.ShopId || managedShop || null;
+    res.json({
+      success: true,
+      data: {
+        ...user,
+        shopId: shop?._id || null,
+        shopName: shop?.name || null,
+        shopAddress: shop?.address || null,
+        shopCity: shop?.city || null
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -278,7 +329,7 @@ export const getUserStats = async (req, res) => {
 // Tạo tài khoản mới từ Admin Console
 export const createUser = async (req, res) => {
   try {
-    const { Email, FullName, Role, Password, Phone, Status, Avatar, DateOfBirth, Gender } = req.body;
+    const { Email, FullName, Role, Password, Phone, Status, Avatar, DateOfBirth, Gender, shopId } = req.body;
 
     const validation = validateUserCreate(req.body);
     if (!validation.isValid) {
@@ -321,6 +372,8 @@ export const createUser = async (req, res) => {
       return clean || 'warehouse_staff';
     };
 
+    const assignedShopId = shopId && mongoose.Types.ObjectId.isValid(shopId) ? shopId : null;
+
     const newUser = new User({
       Email: Email.toLowerCase().trim(),
       FullName: FullName.trim(),
@@ -332,6 +385,7 @@ export const createUser = async (req, res) => {
       Avatar: Avatar ? Avatar.trim() : '',
       DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
       Gender: Gender ? Gender.trim() : '',
+      ShopId: assignedShopId,
       Information: [{
         Phone: Phone ? Phone.trim() : '',
         DateOfBirth: DateOfBirth ? DateOfBirth.trim() : '',
@@ -340,6 +394,15 @@ export const createUser = async (req, res) => {
     });
 
     await newUser.save();
+
+    if (assignedShopId) {
+      const normalizedRole = normalizeRole(Role);
+      if (normalizedRole === 'shopOwner') {
+        await Shop.findByIdAndUpdate(assignedShopId, { ownerId: newUser._id });
+      } else if (normalizedRole === 'brandmanager') {
+        await Shop.findByIdAndUpdate(assignedShopId, { managerId: newUser._id });
+      }
+    }
 
     // Gửi email chứa thông tin tài khoản và mật khẩu khởi tạo cho nhân viên
     try {
@@ -373,7 +436,7 @@ export const createUser = async (req, res) => {
 // Cập nhật tài khoản từ Admin Console
 export const updateUser = async (req, res) => {
   try {
-    const { FullName, Role, Status, Phone, Address, DateOfBirth, Gender, Avatar } = req.body;
+    const { FullName, Role, Status, Phone, Address, DateOfBirth, Gender, Avatar, shopId } = req.body;
 
     const existingUser = await User.findById(req.params.id);
     if (!existingUser) {
@@ -465,16 +528,48 @@ export const updateUser = async (req, res) => {
       }];
     }
 
+    if (shopId !== undefined) {
+      if (shopId && mongoose.Types.ObjectId.isValid(shopId)) {
+        updateData.ShopId = shopId;
+        const targetRole = updateData.Role || existingUser.Role;
+        if (targetRole === 'shopOwner') {
+          await Shop.findByIdAndUpdate(shopId, { ownerId: existingUser._id });
+        } else if (targetRole === 'brandmanager') {
+          await Shop.findByIdAndUpdate(shopId, { managerId: existingUser._id });
+        }
+      } else {
+        updateData.ShopId = null;
+      }
+    }
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
       { new: true, runValidators: true }
-    ).select('-PasswordHash');
+    )
+      .select('-PasswordHash')
+      .populate('ShopId', 'name address city isHQ');
+
+    const managedShop = await Shop.findOne({
+      $or: [
+        { ownerId: user._id },
+        { managerId: user._id }
+      ],
+      isDeleted: { $ne: true }
+    }).select('_id name address city isHQ').lean();
+
+    const currentShop = user.ShopId || managedShop || null;
 
     res.json({
       success: true,
       message: 'Cập nhật thông tin tài khoản thành công',
-      data: user
+      data: {
+        ...user.toObject(),
+        shopId: currentShop?._id || null,
+        shopName: currentShop?.name || null,
+        shopAddress: currentShop?.address || null,
+        shopCity: currentShop?.city || null
+      }
     });
   } catch (error) {
     console.error('Error in updateUser:', error);

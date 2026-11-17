@@ -12,7 +12,9 @@ export default function AdminAddAccountModal({
   showAddConfirmPwd,
   setShowAddConfirmPwd,
   isSubmittingAdd,
-  onSubmit
+  onSubmit,
+  shops = [],
+  loadingShops = false
 }) {
   if (!isOpen) return null;
 
@@ -196,7 +198,7 @@ export default function AdminAddAccountModal({
 
                 <div className="admin-acc-form-group">
                   <label className="admin-acc-form-label">
-                    Cửa hàng (nếu là nhân viên shop)
+                    Cơ sở / Chi nhánh phân công
                   </label>
                   <div className="admin-acc-input-wrap">
                     <span className="admin-acc-input-icon">
@@ -210,14 +212,20 @@ export default function AdminAddAccountModal({
                       value={addForm.shopId || ''}
                       onChange={(e) => setAddForm({ ...addForm, shopId: e.target.value })}
                     >
-                      <option value="">Chọn chi nhánh</option>
-                      <option value="VESTORA_FLAGSHIP">VESTORA Flagship Store - Hà Nội</option>
-                      <option value="VESTORA_BOUTIQUE">VESTORA Boutique - TP. Hồ Chí Minh</option>
-                      <option value="VESTORA_ATELIER">VESTORA Atelier Showroom</option>
+                      <option value="">-- Không phân công chi nhánh --</option>
+                      {loadingShops ? (
+                        <option value="" disabled>Đang tải danh sách cơ sở từ máy chủ...</option>
+                      ) : (
+                        shops.map((shop) => (
+                          <option key={shop._id} value={shop._id}>
+                            {shop.name} {shop.city ? `(${shop.city})` : ''} {shop.isHQ ? '★ [Trụ sở chính]' : ''}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <span className="admin-acc-field-hint">
-                    Chỉ áp dụng khi tạo tài khoản nhân viên cho cửa hàng
+                    Dữ liệu cơ sở tải trực tiếp từ cơ sở dữ liệu chi nhánh VESTORA
                   </span>
                 </div>
               </div>

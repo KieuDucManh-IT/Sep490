@@ -107,6 +107,10 @@ export default function AdminAccountsPage() {
   const [editFormErrors, setEditFormErrors] = useState({});
   const avatarFileInputRef = useRef(null);
 
+  // --- Shops State from DB ---
+  const [shops, setShops] = useState([]);
+  const [loadingShops, setLoadingShops] = useState(false);
+
   // --- Reset Password State ---
   const [resetPwdValue, setResetPwdValue] = useState('');
   const [isResettingPwd, setIsResettingPwd] = useState(false);
@@ -182,7 +186,10 @@ export default function AdminAccountsPage() {
             rating: u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)',
             violations: u.WarningsCount || 0,
             authProvider: (u.AuthProvider || (u.GoogleId ? 'google' : 'local')).toLowerCase(),
-            googleId: u.GoogleId || ''
+            googleId: u.GoogleId || '',
+            shopId: u.shopId || (typeof u.ShopId === 'object' ? u.ShopId?._id : u.ShopId) || '',
+            shopName: u.shopName || (typeof u.ShopId === 'object' ? u.ShopId?.name : '') || '',
+            shopCity: u.shopCity || (typeof u.ShopId === 'object' ? u.ShopId?.city : '') || ''
           };
         });
 
@@ -195,8 +202,24 @@ export default function AdminAccountsPage() {
     }
   };
 
+  const fetchShops = async () => {
+    try {
+      setLoadingShops(true);
+      const res = await fetch(`${API_BASE_URL}/shops?limit=100`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setShops(json.data);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải danh sách chi nhánh:', err);
+    } finally {
+      setLoadingShops(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchShops();
   }, []);
 
   // --- Statistics Calculation ---
@@ -433,6 +456,7 @@ export default function AdminAccountsPage() {
       role: ['shopOwner', 'brandmanager', 'warehouse_manager', 'warehouseManager', 'warehouse_staff', 'warehousestaff'].includes(user.role)
         ? (user.role === 'warehouseManager' ? 'warehouse_manager' : (user.role === 'warehousestaff' ? 'warehouse_staff' : user.role))
         : 'warehouse_staff',
+      shopId: user.shopId || '',
       status: user.status || 'ACTIVE'
     });
     setEditFormErrors({});
@@ -512,7 +536,8 @@ export default function AdminAccountsPage() {
           Address: editForm.address,
           DateOfBirth: editForm.dob,
           Gender: editForm.gender,
-          Avatar: editForm.avatar
+          Avatar: editForm.avatar,
+          shopId: editForm.shopId || null
         })
       });
       const json = await res.json();
@@ -527,6 +552,9 @@ export default function AdminAccountsPage() {
           gender: editForm.gender,
           avatar: editForm.avatar || null,
           role: editForm.role,
+          shopId: editForm.shopId || '',
+          shopName: shops.find(s => String(s._id) === String(editForm.shopId))?.name || (editForm.shopId ? prev.shopName : ''),
+          shopCity: shops.find(s => String(s._id) === String(editForm.shopId))?.city || (editForm.shopId ? prev.shopCity : ''),
           status: editForm.status
         } : null);
         setShowEditModal(false);
@@ -601,7 +629,8 @@ export default function AdminAccountsPage() {
           Role: addForm.role,
           Status: addForm.status.toLowerCase(),
           Password: addForm.password,
-          Phone: addForm.phone.trim()
+          Phone: addForm.phone.trim(),
+          shopId: addForm.shopId || null
         })
       });
       const json = await res.json();
@@ -871,6 +900,8 @@ export default function AdminAccountsPage() {
         setShowAddConfirmPwd={setShowAddConfirmPwd}
         isSubmittingAdd={isSubmittingAdd}
         onSubmit={handleCreateUser}
+        shops={shops}
+        loadingShops={loadingShops}
       />
 
       {/* Modal: Chỉnh sửa thông tin nhân viên */}
@@ -886,6 +917,8 @@ export default function AdminAccountsPage() {
         onAvatarChange={handleAvatarFileChange}
         onRemoveAvatar={handleRemoveAvatar}
         onSubmit={handleSaveEdit}
+        shops={shops}
+        loadingShops={loadingShops}
       />
 
       {/* Modal: Đặt lại mật khẩu */}

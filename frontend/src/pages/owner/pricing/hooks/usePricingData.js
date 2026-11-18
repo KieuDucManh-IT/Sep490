@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useDeferredValue } from 'react';
 import productService from '../../../../services/productService';
-import { calculateRentalPrice, calculateDeposit } from '../utils/pricingHelpers';
+import { calculateRentalPrice, calculateDeposit, isRentalConfigured } from '../utils/pricingHelpers';
 
 /**
  * Custom hook quản lý toàn bộ dữ liệu, tìm kiếm, lọc và trạng thái cập nhật bảng giá
@@ -105,7 +105,16 @@ export function usePricingData() {
 
   const pricingCounts = useMemo(() => {
     const unset = items.filter((it) => !it.isSetPrice).length;
-    return { unset, set: items.length - unset, all: items.length };
+    const set = items.filter((it) => it.isSetPrice).length;
+    const configured = items.filter(isRentalConfigured).length;
+    const unconfigured = items.filter((it) => !isRentalConfigured(it)).length;
+    return {
+      unset,
+      set,
+      configured,
+      unconfigured,
+      all: items.length,
+    };
   }, [items]);
 
   // Danh mục lấy từ dữ liệu thực kèm số lượng sản phẩm mỗi danh mục
@@ -124,7 +133,7 @@ export function usePricingData() {
     return list;
   }, [items]);
 
-  // Lọc sản phẩm theo từ khóa tìm kiếm (dùng deferredSearch) và danh mục
+  // Lọc sản phẩm theo từ khóa tìm kiếm (dùng deferredSearch), danh mục và trạng thái định giá/cấu hình
   const filteredItems = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
     return items.filter((it) => {
@@ -135,8 +144,16 @@ export function usePricingData() {
         it.brand.toLowerCase().includes(query);
       const matchCategory =
         selectedCategory === 'ALL' || it.category === selectedCategory;
-      const matchPricing =
-        pricingFilter === 'all' || (pricingFilter === 'unset' ? !it.isSetPrice : it.isSetPrice);
+
+      const matchPricing = (() => {
+        if (pricingFilter === 'all') return true;
+        if (pricingFilter === 'unset') return !it.isSetPrice;
+        if (pricingFilter === 'set') return it.isSetPrice;
+        if (pricingFilter === 'configured') return isRentalConfigured(it);
+        if (pricingFilter === 'unconfigured') return !isRentalConfigured(it);
+        return true;
+      })();
+
       return matchSearch && matchCategory && matchPricing;
     });
   }, [items, deferredSearch, selectedCategory, pricingFilter]);

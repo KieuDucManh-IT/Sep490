@@ -341,11 +341,34 @@ export const getProducts = async (req, res, next) => {
       };
     });
 
+    // TASK-012: Phát hiện sản phẩm hết hàng ở tất cả chi nhánh nhưng chưa được đánh dấu isOutOfStock trong DB
+    const outOfStockToMark = [];
+    enrichedProducts.forEach((item) => {
+      const isZeroStock = Number(item.quantityAvailable ?? 0) <= 0;
+      const isRestockRequested = Boolean(item.restockRequestedAt);
+      if (isZeroStock && !isRestockRequested && item.isOutOfStock !== true) {
+        outOfStockToMark.push(item._id);
+      }
+    });
+    if (outOfStockToMark.length) {
+      Product.updateMany(
+        { _id: { $in: outOfStockToMark } },
+        { $set: { isOutOfStock: true, outOfStockAt: new Date() } }
+      ).catch((err) => console.error('[TASK-012] Auto-update outOfStock error:', err.message));
+    }
+
+    // TASK-012: Ẩn sản phẩm hết hàng ở tất cả chi nhánh, trừ khi có yêu cầu nhập hàng từ Branch Manager (restockRequestedAt)
+    const customerVisibleProducts = enrichedProducts.filter((item) => {
+      if (item.isOutOfStock === true) return false;
+      const isZeroStock = Number(item.quantityAvailable ?? 0) <= 0;
+      const isRestockRequested = Boolean(item.restockRequestedAt);
+      if (isZeroStock && !isRestockRequested) return false;
+      return true;
+    });
+
     res.json({
       success: true,
-      // Availability remains part of each record (inStock/quantityAvailable);
-      // filtering it after skip/limit made pages incomplete and totals incorrect.
-      data: enrichedProducts,
+      data: customerVisibleProducts,
       pagination: {
         total,
         page: pageNum,
@@ -439,6 +462,15 @@ export const getProductById = async (req, res, next) => {
     const branchName = invData.branchName || '';
     const branches = invData.branches || [];
     const inv = invData;
+
+    // TASK-012: Hết hàng ở tất cả chi nhánh và không có yêu cầu nhập hàng -> ẩn với khách hàng (404)
+    if (quantityAvailable <= 0 && !product.restockRequestedAt) {
+      Product.updateOne(
+        { _id: product._id, isOutOfStock: { $ne: true } },
+        { $set: { isOutOfStock: true, outOfStockAt: new Date() } }
+      ).catch(() => {});
+      return res.status(404).json({ success: false, message: 'Sản phẩm hiện đang hết hàng tại tất cả chi nhánh.' });
+    }
 
     let imageRecords = [];
     try {

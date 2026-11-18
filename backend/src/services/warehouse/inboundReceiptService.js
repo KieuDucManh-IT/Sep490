@@ -12,6 +12,7 @@ import { validateCancelReason, validateCreateInboundReceipt, validatePutaway, va
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
 import { createItems } from './itemStateService.js';
+import { refreshOutOfStockStatus, markRestockRequested } from './productStockStatusService.js';
 
 const openStatuses = ['awaiting_receiving', 'received', 'approved'];
 const receiptStatuses = [...openStatuses, 'completed', 'rejected', 'cancelled'];
@@ -140,6 +141,10 @@ export const createInboundReceipt = async (payload, userId) => {
     await InboundReceipt.findByIdAndDelete(receipt._id);
     throw error;
   }
+
+  // TASK-012: Branch manager tạo phiếu nhập → hiển thị lại sản phẩm cho khách ngay lập tức
+  await markRestockRequested(data.items.map((item) => item.variantId));
+
   return getInboundReceipt(receipt._id);
 };
 
@@ -168,6 +173,20 @@ export const recordReceipt = async (receiptId, payload, user) => {
       }
     });
   } finally { await session.endSession(); }
+
+  // TASK-012: Sau khi putaway hoàn tất, hàng đã vào chi nhánh → kiểm tra lại trạng thái hết hàng
+  // Lấy productId từ các biến thể trong phiếu để cập nhật isOutOfStock
+  try {
+    const detailsForStock = await InboundReceiptDetail.find({ receiptId })
+      .populate({ path: 'variantId', select: 'productId' }).lean();
+    const productIds = [...new Set(
+      detailsForStock.map((d) => String(d.variantId?.productId)).filter(Boolean)
+    )];
+    if (productIds.length) await refreshOutOfStockStatus(productIds);
+  } catch (err) {
+    console.error('[TASK-012] Lỗi refreshOutOfStockStatus sau putaway:', err.message);
+  }
+
   return getInboundReceipt(receiptId);
 };
 
@@ -273,6 +292,20 @@ export const putawayReceipt = async (receiptId, payload, user) => {
       }
     });
   } finally { await session.endSession(); }
+
+  // TASK-012: Sau khi putaway hoàn tất, hàng đã vào chi nhánh → kiểm tra lại trạng thái hết hàng
+  // Lấy productId từ các biến thể trong phiếu để cập nhật isOutOfStock
+  try {
+    const detailsForStock = await InboundReceiptDetail.find({ receiptId })
+      .populate({ path: 'variantId', select: 'productId' }).lean();
+    const productIds = [...new Set(
+      detailsForStock.map((d) => String(d.variantId?.productId)).filter(Boolean)
+    )];
+    if (productIds.length) await refreshOutOfStockStatus(productIds);
+  } catch (err) {
+    console.error('[TASK-012] Lỗi refreshOutOfStockStatus sau putaway:', err.message);
+  }
+
   return getInboundReceipt(receiptId);
 };
 
@@ -296,5 +329,19 @@ export const cancelInboundReceipt = async (receiptId, payload, user) => {
       }
     });
   } finally { await session.endSession(); }
+
+  // TASK-012: Sau khi putaway hoàn tất, hàng đã vào chi nhánh → kiểm tra lại trạng thái hết hàng
+  // Lấy productId từ các biến thể trong phiếu để cập nhật isOutOfStock
+  try {
+    const detailsForStock = await InboundReceiptDetail.find({ receiptId })
+      .populate({ path: 'variantId', select: 'productId' }).lean();
+    const productIds = [...new Set(
+      detailsForStock.map((d) => String(d.variantId?.productId)).filter(Boolean)
+    )];
+    if (productIds.length) await refreshOutOfStockStatus(productIds);
+  } catch (err) {
+    console.error('[TASK-012] Lỗi refreshOutOfStockStatus sau putaway:', err.message);
+  }
+
   return getInboundReceipt(receiptId);
 };

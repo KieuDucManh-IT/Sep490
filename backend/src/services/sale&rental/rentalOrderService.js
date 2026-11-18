@@ -1,4 +1,5 @@
 import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
+import { refreshOutOfStockStatus } from '../warehouse/productStockStatusService.js';
 /**
  * Rental Order Core Service
  * Layered Monolith Service handling Rental Lifecycle
@@ -679,6 +680,23 @@ export const handoverRentalOrder = async ({
     if (movementDocs.length) await StockMovement.insertMany(movementDocs, { session });
 
     if (isInternal) await session.commitTransaction();
+
+    // TASK-012: Bàn giao → tồn kho renting tăng → kiểm tra hết hàng tại store
+    if (isInternal) {
+      try {
+        const orderDetails = await RentalOrderDetail.find({ rentalOrderId: order._id })
+          .populate({ path: 'variantId', select: 'productId' })
+          .lean();
+        const productIds = [...new Set(
+          orderDetails.map((d) => String(d.variantId?.productId)).filter(Boolean)
+        )];
+        if (productIds.length) {
+          refreshOutOfStockStatus(productIds).catch((err) =>
+            console.error('[TASK-012] rental handover refresh lỗi:', err.message)
+          );
+        }
+      } catch (_) { /* non-blocking */ }
+    }
 
     return {
       success: true,

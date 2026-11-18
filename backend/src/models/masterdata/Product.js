@@ -27,6 +27,9 @@ const productSchema = new mongoose.Schema({
   isSetPrice: { type: Boolean, default: false, index: true },
   priceSetBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   priceSetAt: { type: Date, default: null },
+  isOutOfStock: { type: Boolean, default: false, index: true },
+  outOfStockAt: { type: Date, default: null },      // thời điểm bị đánh dấu hết hàng
+  restockRequestedAt: { type: Date, default: null }, // thời điểm branch_manager tạo phiếu nhập → hiển thị lại
 
 }, { timestamps: true, strict: false });
 

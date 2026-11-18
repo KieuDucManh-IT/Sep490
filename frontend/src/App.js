@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -10,6 +10,7 @@ import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 
 // 2. Role Customer (UC-29..UC-42, UC-65..UC-74)
+import FavoritesPage from './pages/customer/FavoritesPage';
 import HomePage from './pages/customer/HomePage';
 import CatalogPage from './pages/customer/CatalogPage';
 import ProductDetailPage from './pages/customer/ProductDetailPage';
@@ -24,7 +25,6 @@ import AboutPage from './pages/customer/AboutPage';
 import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
-import WardrobePage from './pages/customer/WardrobePage';
 import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
@@ -89,7 +89,7 @@ function App() {
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
         <Route path="/checkout/sale" element={<ProtectedRoute><SaleCheckoutPage /></ProtectedRoute>} />
-        <Route path="/favorites" element={<Navigate to="/wardrobe" replace />} />
+        <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/map" element={<ShopMapPage />} />
         <Route
           path="/profile"
@@ -100,9 +100,7 @@ function App() {
           }
         />
         <Route path="/try-on/photo" element={<PhotoTryOnPage />} />
-        <Route path="/try-on-photo" element={<PhotoTryOnPage />} />
         <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
-        <Route path="/try-on-webcam" element={<WebcamTryOnPage />} />
 
         <Route path="/about" element={<AboutPage />} />
         <Route path="/blog" element={<BlogPage />} />
@@ -110,8 +108,15 @@ function App() {
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
         <Route path="/policy/:tab" element={<PolicyPage />} />
-        <Route path="/wardrobe" element={<WardrobePage />} />
-        <Route path="/my-wardrobe" element={<WardrobePage />} />
+        <Route
+          path="/wardrobe"
+          element={<Navigate to="/favorites" replace />}
+        />
+
+        <Route
+          path="/my-wardrobe"
+          element={<Navigate to="/favorites" replace />}
+        />
         <Route path="/stylist" element={<StylistPage />} />
         <Route path="/lookbook/:shareCode" element={<SharedLookbookPage />} />
 

@@ -927,11 +927,11 @@ export default function UserProfilePage() {
             <button
               type="button"
               className="profile-nav-btn"
-              onClick={() => navigate("/wardrobe")}
+              onClick={() => navigate("/favorites")}
               disabled={accountBusy}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <Heart size={15} color="#C5A880" /> Tủ Đồ & Yêu Thích
+                <Heart size={15} color="#C5A880" /> Sản phẩm yêu thích
               </span>
               <ChevronRight size={14} color="#A3A3A3" />
             </button>

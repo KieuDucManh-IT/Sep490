@@ -32,14 +32,29 @@ export default function Navbar() {
       return 0;
     }
   });
-  const [wishlistCount] = useState(() => {
-    try {
-      const raw = localStorage.getItem('vestora_favorites');
-      return raw ? JSON.parse(raw).length : 0;
-    } catch {
-      return 0;
-    }
-  });
+  const [wishlistCount, setWishlistCount] = useState(0);
+
+  useEffect(() => {
+    const updateWishlistCount = () => {
+      try {
+        const ids = JSON.parse(
+          localStorage.getItem('vestora_favorites') || '[]'
+        );
+
+        setWishlistCount(Array.isArray(ids) ? ids.length : 0);
+      } catch {
+        setWishlistCount(0);
+      }
+    };
+
+    updateWishlistCount();
+
+    window.addEventListener('favoritesUpdated', updateWishlistCount);
+
+    return () => {
+      window.removeEventListener('favoritesUpdated', updateWishlistCount);
+    };
+  }, []);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -100,15 +115,28 @@ export default function Navbar() {
           </div>
 
           {/* Tủ Đồ Cá Nhân */}
+          {/* Yêu thích */}
           <div className="nav-dropdown-item">
-            <Link to="/wardrobe" className={`navbar-link ${isActive("/wardrobe")}`}>
-              Tủ Đồ Cá Nhân <ChevronDown size={12} className="nav-arrow" />
+            <Link
+              to="/favorites"
+              className={`navbar-link ${isActive("/favorites")}`}
+            >
+              Yêu Thích
+              <ChevronDown size={12} className="nav-arrow" />
             </Link>
+
             <div className="nav-dropdown-menu">
-              <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
-              <Link to="/stylist" className="nav-sublink">Tư vấn AI Stylist </Link>
-              <Link to="/wardrobe?filter=tryon-history" className="nav-sublink">Đã thử qua AI / Camera</Link>
-              <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
+              <Link to="/favorites" className="nav-sublink">
+                Sản phẩm yêu thích
+              </Link>
+
+              <Link to="/stylist" className="nav-sublink">
+                Tư vấn AI Stylist
+              </Link>
+
+              <Link to="/try-on/photo" className="nav-sublink">
+                Ướm thử bộ đồ mới
+              </Link>
             </div>
           </div>
 
@@ -221,7 +249,7 @@ export default function Navbar() {
                     <Wallet size={15} className="menu-icon" /> Ví Vestora
                   </Link>
                   <Link
-                    to="/wardrobe"
+                    to="/favorites"
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
@@ -306,21 +334,25 @@ export default function Navbar() {
             </button>
           ) : (
             <Link to="/login" className="navbar-icon-btn" title="Đăng nhập tài khoản">
-            <User size={18} />
+              <User size={18} />
             </Link>
           )}
 
           {/* Wishlist / Wardrobe Icon with reactive badge */}
           <Link
-            to="/wardrobe"
+            to="/favorites"
             className="navbar-icon-btn navbar-wishlist-btn"
-            title="Tủ đồ & Yêu thích"
-            aria-label="Tủ đồ & Yêu thích"
+            title="Sản phẩm yêu thích"
+            aria-label="Sản phẩm yêu thích"
             data-testid="navbar-wishlist-btn"
           >
             <Heart size={18} />
+
             {wishlistCount > 0 && (
-              <span className="cart-badge-count" data-testid="navbar-wishlist-count">
+              <span
+                className="cart-badge-count"
+                data-testid="navbar-wishlist-count"
+              >
                 {wishlistCount}
               </span>
             )}

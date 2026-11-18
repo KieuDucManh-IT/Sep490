@@ -19,6 +19,7 @@ export default function FavoritesPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
+  const [loadError, setLoadError] = useState('');
 
   // Format currency
   const formatVND = (amount) => {
@@ -28,35 +29,56 @@ export default function FavoritesPage() {
 
   // Load products from backend matching favoriteIds
   useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
+    let active = true;
 
     const loadFavorites = async () => {
-      try {
-        const res = await productService.getProducts({ limit: 50 });
-        if (isMounted && res?.data) {
-          if (favoriteIds.length > 0) {
-            const matched = res.data.filter((p) =>
-              favoriteIds.includes(String(p._id)) ||
-              favoriteIds.includes(String(p.productCode)) ||
-              favoriteIds.includes(String(p.sku))
-            );
-            setProducts(matched);
-          } else {
-            setProducts([]);
-          }
-        }
-      } catch (err) {
-        console.error('Lỗi tải sản phẩm yêu thích:', err);
-      } finally {
-        if (isMounted) setLoading(false);
+      setLoading(true);
+      setLoadError('');
+
+      const ids = [
+        ...new Set(favoriteIds.map(String).filter(Boolean)),
+      ];
+
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          productService.getProductById(encodeURIComponent(id))
+        )
+      );
+
+      if (!active) return;
+
+      const loadedProducts = results
+        .filter(
+          (result) =>
+            result.status === 'fulfilled' &&
+            result.value?.data
+        )
+        .map((result) => result.value.data);
+
+      // Loại bỏ sản phẩm trùng nhau.
+      const uniqueProducts = [
+        ...new Map(
+          loadedProducts.map((item) => [String(item._id), item])
+        ).values(),
+      ];
+
+      setProducts(uniqueProducts);
+
+      const failedCount = results.length - loadedProducts.length;
+
+      if (failedCount > 0) {
+        setLoadError(
+          `Có ${failedCount} sản phẩm không còn tồn tại hoặc chưa tải được. Bạn có thể tải lại trang để thử lại.`
+        );
       }
+
+      setLoading(false);
     };
 
     loadFavorites();
 
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, [favoriteIds]);
 
@@ -208,6 +230,11 @@ export default function FavoritesPage() {
 
       {/* Favorites Content */}
       <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '0 32px' }}>
+        {loadError && (
+          <p role="alert" style={{ color: '#b42318' }}>
+            {loadError}
+          </p>
+        )}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '90px 0', color: '#687261' }}>
             <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '32px', color: '#5b6e4e', marginBottom: '14px' }}></i>

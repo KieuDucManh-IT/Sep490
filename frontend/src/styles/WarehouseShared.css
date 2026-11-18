@@ -1,0 +1,380 @@
+/* =========================================================
+   VESTORA — THÀNH PHẦN DÙNG CHUNG CỦA PHÂN HỆ KHO
+   Theo tông của BranchDashboard.css: chữ slate (#0f172a / #64748b),
+   nhấn đen #171717 và vàng đồng #c5a880, bo góc 12px.
+   ========================================================= */
+
+/* ---------- Sidebar kho: viên đếm (dùng cùng ShopDashboard.css) ---------- */
+.wh-sidebar-count {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+
+.wh-sidebar-icon-wrap {
+  position: relative;
+}
+
+.wh-sidebar-count-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e11d48;
+  border: 1.5px solid #1c1917;
+}
+
+/* Sidebar mới (shop-sidebar) đặt trong layout cũ wm-layout: trên mobile wm-layout xếp dọc,
+   nên sidebar không được cao 100vh và dính đầu trang. */
+@media (max-width: 760px) {
+  .wm-layout > .shop-sidebar {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    max-height: 60vh;
+  }
+}
+
+/* ---------- PageHeader ---------- */
+.wh-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.wh-page-heading {
+  min-width: 0;
+}
+
+.wh-page-eyebrow {
+  display: block;
+  color: #c5a880;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.wh-page-title {
+  margin: 6px 0 0;
+  color: #0f172a;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.wh-page-desc {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.wh-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---------- KpiCards ---------- */
+.wh-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.wh-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px 18px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.wh-kpi-label {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.wh-kpi-value {
+  color: #0f172a;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.wh-kpi-unit {
+  margin-left: 4px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wh-kpi-hint {
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.wh-kpi-card.warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.wh-kpi-card.warn .wh-kpi-value {
+  color: #92400e;
+}
+
+.wh-kpi-card.danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.wh-kpi-card.danger .wh-kpi-value {
+  color: #991b1b;
+}
+
+.wh-kpi-card.success .wh-kpi-value {
+  color: #166534;
+}
+
+/* ---------- Viên đếm trong trang (giống bd-count-pill) ---------- */
+.wh-count-pill {
+  display: inline-block;
+  min-width: 26px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.wh-count-pill.warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.wh-count-pill.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ---------- EmptyState (giống bd-empty-panel) ---------- */
+.wh-empty-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+.wh-empty-icon {
+  color: #c5a880;
+}
+
+.wh-empty-title {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wh-empty-desc {
+  margin: 0;
+  max-width: 420px;
+}
+
+.wh-empty-action {
+  margin-top: 6px;
+}
+
+/* ---------- Pagination ---------- */
+.wh-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  color: #64748b;
+  font-size: 12.5px;
+}
+
+.wh-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wh-pagination-controls button {
+  padding: 7px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.wh-pagination-controls button:hover:not(:disabled) {
+  border-color: #c5a880;
+}
+
+.wh-pagination-controls button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.wh-pagination-limit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wh-pagination-limit select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+/* ---------- ConfirmModal ---------- */
+.wh-confirm-error {
+  margin-top: 12px;
+}
+
+.wh-required-mark {
+  color: #b91c1c;
+}
+
+/* ---------- Layout trang kho (shop-dashboard-layout + shop-main-content) ---------- */
+.wh-main button,
+.wh-main a,
+.wh-main input,
+.wh-main select {
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wh-main button:focus-visible,
+.wh-main a:focus-visible,
+.wh-main input:focus-visible,
+.wh-main select:focus-visible {
+  outline: 3px solid #9b824455;
+  outline-offset: 2px;
+}
+
+.wh-main button:disabled {
+  cursor: not-allowed;
+}
+
+/* Trên mobile, layout xếp dọc: sidebar không cao 100vh và không dính đầu trang. */
+@media (max-width: 760px) {
+  .shop-dashboard-layout.wh-layout {
+    flex-direction: column;
+  }
+
+  .shop-dashboard-layout.wh-layout > .shop-sidebar {
+    position: relative;
+    top: 0;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    max-height: 60vh;
+  }
+
+  .shop-dashboard-layout.wh-layout > .shop-main-content {
+    width: 100%;
+    padding: 16px 12px;
+  }
+}
+
+/* Nút badge chênh lệch trên dòng phiếu điều chuyển / phiếu trả (thay inline style). */
+.wh-discrepancy-badge-button {
+  border: 0;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+/* Bảng trong modal react-bootstrap của trang kho. */
+.wh-modal-section-title {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.wh-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Dòng hàng phiếu nhập: một ô chọn biến thể thay cho hai ô sản phẩm + biến thể. */
+.wm-inbound-line.wh-inbound-line {
+  grid-template-columns: minmax(240px, 2fr) minmax(100px, 0.7fr) minmax(120px, 0.8fr) 34px;
+}
+
+@media (max-width: 760px) {
+  .wm-inbound-line.wh-inbound-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Form xếp dọc trong modal (tạo phiếu tách / gộp tồn). */
+.wh-stack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wh-stack-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #4b4b4b;
+  font-size: 12px;
+}
+
+.wh-stack-form select,
+.wh-stack-form input {
+  height: 38px;
+  border: 1px solid #d7d7d7;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+/* Modal react-bootstrap `scrollable` có <form> bọc header/body/footer: cho phần body cuộn được. */
+.modal-dialog-scrollable .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}

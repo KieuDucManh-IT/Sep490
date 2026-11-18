@@ -7,12 +7,12 @@ import {
   assertBalanceInvariant, bucketOf, computeBalanceDeltas, idOf, mergeBalanceDeltas,
 } from './itemBalanceRules.js';
 
+import { appError as fail } from './shared/errors.js';
 export {
   bucketOf, computeBalanceDeltas, mergeBalanceDeltas, checkBalanceInvariant, assertBalanceInvariant,
   applyBalanceDeltas, balanceKey, ON_HAND_STATUSES, UNAVAILABLE_STATUSES, OFF_HAND_STATUSES,
 } from './itemBalanceRules.js';
 
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const STATE_FIELDS = ['status', 'locationId', 'storageId'];
 
 const stateOf = (item) => ({

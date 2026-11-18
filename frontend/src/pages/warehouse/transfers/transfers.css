@@ -1,0 +1,13 @@
+/* Trang điều chuyển kho tổng → chi nhánh (pages/warehouse/transfers). */
+
+/* Modal chi tiết phiếu rộng hơn modal-xl mặc định để đủ cột phân bổ vị trí. */
+.modal-dialog.wm-transfer-modal { max-width: min(1480px, 98vw); }
+.wm-transfer-modal .modal-header .wm-stock-detail-heading { margin-bottom: 0; }
+.wm-transfer-modal .modal-title { margin: 5px 0; font-size: 18px; }
+
+/* Modal chọn món hàng mở chồng lên modal chi tiết. */
+.wm-transfer-stacked-backdrop { z-index: 1060; }
+.modal.wm-transfer-stacked { z-index: 1065; }
+
+/* Ô tìm biến thể trong form tạo yêu cầu. */
+.wm-transfer-request-item > label { color: #555; font-size: 12px; margin-bottom: -4px; }

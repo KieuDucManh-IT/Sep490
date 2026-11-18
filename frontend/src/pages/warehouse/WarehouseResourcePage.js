@@ -13,10 +13,11 @@ import supplierService from '../../services/masterdata/supplierService';
 import inventoryLocationService from '../../services/warehouse/inventoryLocationService';
 import warehouseManagerService from '../../services/warehouse/warehouseManagerService';
 import shopBranchService from '../../services/warehouse/shopBranchService';
-import StorageLocationPage from './StorageLocationPage';
+import StorageLocationPage from './storageLocations/StorageLocationPage';
 import ProductVariantsModal from '../../components/ProductVariantsModal';
 import '../../styles/WarehouseManager.css';
 import '../../styles/ShopDashboard.css';
+import '../../styles/WarehouseShared.css';
 
 const services = { categories: categoryService, products: productService, variants: productVariantService, suppliers: supplierService, inventoryLocations: inventoryLocationService, warehouseManagers: warehouseManagerService, shops: shopBranchService };
 const configs = {
@@ -296,9 +297,9 @@ function WarehouseResourceList({ config }) {
   }
 
   return (
-    <div className="wm-layout">
+    <div className="shop-dashboard-layout wh-layout">
       <WarehouseSidebar />
-      <main className="wm-main">
+      <main className="shop-main-content wh-main">
         {resourceContent}
       </main>
     </div>

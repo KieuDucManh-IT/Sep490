@@ -1,19 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Form, Modal, Nav } from 'react-bootstrap';
 import WarehouseSidebar from '../../components/WarehouseSidebar';
+import {
+  CONDITION_LABELS,
+  DISPOSAL_METHOD_LABELS as METHOD_LABELS,
+  DISPOSAL_STATUS_LABELS,
+  ITEM_STATUS_LABELS,
+  MAINTENANCE_RESULT_LABELS as RESULT_LABELS,
+  MAINTENANCE_STATUS_LABELS as RECORD_STATUS_LABELS,
+  MAINTENANCE_TYPE_LABELS as TYPE_LABELS,
+} from '../../constants/warehouseLabels';
 import maintenanceService from '../../services/warehouse/maintenanceService';
 import inventoryLocationService from '../../services/warehouse/inventoryLocationService';
 import storageLocationService from '../../services/warehouse/storageLocationService';
+import '../../styles/ShopDashboard.css';
 import '../../styles/WarehouseManager.css';
+import '../../styles/WarehouseShared.css';
 import '../../styles/WarehouseUx.css';
 
-const TYPE_LABELS = { cleaning: 'Giặt/vệ sinh', repair: 'Sửa chữa', inspection: 'Kiểm tra', replacement_part: 'Thay phụ kiện', other: 'Khác' };
-const METHOD_LABELS = { discard: 'Hủy bỏ', sell_as_is: 'Bán thanh lý nguyên trạng', recycle: 'Tái chế', donate: 'Quyên góp', other: 'Khác' };
-const CONDITION_LABELS = { new: 'Mới', good: 'Tốt', worn: 'Đã qua sử dụng', damaged: 'Hỏng', unrepairable: 'Không thể sửa', missing: 'Thất lạc' };
-const ITEM_STATUS_LABELS = { available: 'Sẵn sàng', unavailable: 'Không khả dụng', maintenance: 'Đang xử lý', reserved: 'Đang giữ chỗ', renting: 'Đang cho thuê', in_transit: 'Đang điều chuyển', disposed: 'Đã thanh lý', sold: 'Đã bán' };
-const RECORD_STATUS_LABELS = { pending: 'Chờ làm', in_progress: 'Đang làm', completed: 'Hoàn tất', cancelled: 'Đã hủy' };
-const RESULT_LABELS = { success: 'Đạt', failed: 'Không đạt', unrepairable: 'Không thể sửa' };
-const DISPOSAL_STATUS_LABELS = { requested: 'Chờ duyệt', approved: 'Đã duyệt', completed: 'Đã thanh lý', rejected: 'Đã từ chối' };
 const RESTORED_CONDITIONS = ['new', 'good', 'worn'];
 
 const idOf = (value) => String(value?._id || value || '');
@@ -495,9 +499,9 @@ export default function WarehouseMaintenancePage({ mode = 'manager' }) {
 
   const close = () => setDialog(null);
 
-  return <div className="wm-layout">
+  return <div className="shop-dashboard-layout wh-layout">
     <WarehouseSidebar mode={mode} />
-    <main className="wm-main">
+    <main className="shop-main-content wh-main">
       <header className="wm-header">
         <div>
           <span>KHO TỔNG</span>

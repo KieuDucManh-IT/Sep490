@@ -8,6 +8,7 @@ import {
   putawayReceipt,
   recordReceipt,
 } from '../../services/warehouse/inboundReceiptService.js';
+import { isWarehouseStaff } from '../../services/warehouse/shared/roles.js';
 
 const handleError = (error, res, next) => {
   if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
@@ -16,7 +17,7 @@ const handleError = (error, res, next) => {
 
 export const listReceipts = async (req, res, next) => {
   try {
-    const filters = req.user.Role.toLowerCase() === 'warehouse_staff' ? { ...req.query, staffId: req.user._id } : req.query;
+    const filters = isWarehouseStaff(req.user) ? { ...req.query, staffId: req.user._id } : req.query;
     res.json({ success: true, data: await listInboundReceipts(filters) });
   }
   catch (error) { handleError(error, res, next); }

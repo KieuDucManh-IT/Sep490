@@ -3,10 +3,11 @@ import { Shop } from '../../models/shop/Shop.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { getIndividualItemDetails, getInventoryReport } from './inventoryReportService.js';
 
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from './shared/errors.js';
+import { isBranchManager } from './shared/roles.js';
 
 const getManagedBranchLocation = async (user, branchId = '') => {
-  if (String(user?.Role || '').toLowerCase() !== 'branch_manager') throw fail('Chỉ quản lý chi nhánh mới được xem tồn kho chi nhánh.', 403);
+  if (!isBranchManager(user)) throw fail('Chỉ quản lý chi nhánh mới được xem tồn kho chi nhánh.', 403);
   if (branchId && !mongoose.isValidObjectId(branchId)) throw fail('Chi nhánh không hợp lệ.');
   const shopFilter = { managerId: user._id, status: 'ACTIVE', isDeleted: { $ne: true } };
   if (branchId) shopFilter._id = branchId;

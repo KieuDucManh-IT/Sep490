@@ -3,7 +3,9 @@ import { ChevronDown, ChevronRight, Eye, Pencil, Plus, Tags, Trash2 } from 'luci
 import WarehouseSidebar from '../../components/WarehouseSidebar';
 import WarehouseCrudModal from '../../components/WarehouseCrudModal';
 import categoryService from '../../services/masterdata/categoryService';
+import '../../styles/ShopDashboard.css';
 import '../../styles/WarehouseManager.css';
+import '../../styles/WarehouseShared.css';
 
 const labels = { lv1: 'Cấp 1', lv2: 'Cấp 2', lv3: 'Cấp 3' };
 const config = { service: 'categories', title: 'Loại sản phẩm', defaults: { type: 'lv1', status: 'active' }, fields: [
@@ -71,7 +73,7 @@ export default function CategoryManagementPage() {
     </div>;
   };
 
-  return <div className="wm-layout"><WarehouseSidebar /><main className="wm-main">
+  return <div className="shop-dashboard-layout wh-layout"><WarehouseSidebar /><main className="shop-main-content wh-main">
     <header className="wm-header"><div><span>WAREHOUSE MANAGER / DANH MỤC DÙNG CHUNG</span><h1>Loại sản phẩm</h1><p>Phân cấp danh mục Cấp 1 → Cấp 2 → Cấp 3.</p></div><button type="button" className="wm-primary-button" onClick={() => setModal({ mode: 'create', record: { type: 'lv1', status: 'active' } })}>+ Thêm cấp 1</button></header>
     {error && <div className="wm-error">{error}</div>}
     <section className="wm-panel wm-list-panel">

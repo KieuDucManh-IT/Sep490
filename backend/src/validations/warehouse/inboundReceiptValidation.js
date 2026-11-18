@@ -44,7 +44,7 @@ export const validatePutaway = (payload, detailIds) => {
     const seenStorage = new Set();
     const allocations = item.allocations.map((allocation) => {
       if (!isObjectId(allocation?.storageId) || !isQuantity(allocation.quantity) || allocation.quantity === 0 || seenStorage.has(allocation.storageId)) {
-        throw badRequest('Mỗi phân bổ cần một shelf hợp lệ, số lượng nguyên dương và không được lặp shelf.');
+        throw badRequest('Mỗi phân bổ cần một kệ hợp lệ, số lượng nguyên dương và không được lặp kệ.');
       }
       seenStorage.add(allocation.storageId);
       return { storageId: allocation.storageId, quantity: allocation.quantity };

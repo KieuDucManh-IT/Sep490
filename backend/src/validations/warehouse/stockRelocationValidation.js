@@ -34,7 +34,7 @@ export const validateCompleteStockRelocation = (payload) => {
     const quantityMoved = Number(line.quantityMoved);
     if (!Number.isInteger(quantityMoved) || quantityMoved < 0) throw invalid('Số lượng thực di chuyển phải là số nguyên không âm.');
     const itemIds = line.itemIds == null ? [] : line.itemIds;
-    if (!Array.isArray(itemIds) || itemIds.some((id) => !validId(id))) throw invalid('Danh sách InventoryItem xác nhận không hợp lệ.');
+    if (!Array.isArray(itemIds) || itemIds.some((id) => !validId(id))) throw invalid('Danh sách mã hàng xác nhận không hợp lệ.');
     return { detailId: String(line.detailId), quantityMoved, itemIds: [...new Set(itemIds.map(String))] };
   });
 };

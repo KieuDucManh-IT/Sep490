@@ -1,16 +1,13 @@
-import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
+// Kiểm tra một nghiệp vụ chỉ được làm tại kho tổng (nhập kho từ nhà cung cấp, kiểm kê).
+// Việc tìm kho tổng nằm ở shared/locations.js; file này giữ API cũ cho các service đang import.
+import { appError } from './shared/errors.js';
+import { getCentralWarehouse } from './shared/locations.js';
 
-const fail = (message) => Object.assign(new Error(message), { statusCode: 409 });
+export { getCentralWarehouse };
 
-export const getCentralWarehouse = async () => {
-  const warehouses = await InventoryLocation.find({ type: 'warehouse', status: 'active' }).sort({ createdAt: 1, _id: 1 }).lean();
-  if (!warehouses.length) throw fail('Chưa cấu hình kho tổng đang hoạt động.');
-  if (warehouses.length > 1) throw fail('Cần xác định duy nhất một kho tổng đang hoạt động trước khi tạo phiếu.');
-  return warehouses[0];
-};
-
-export const assertCentralWarehouse = async (locationId) => {
-  const warehouse = await getCentralWarehouse();
-  if (String(warehouse._id) !== String(locationId)) throw fail('Nghiệp vụ này chỉ được thực hiện tại kho tổng.');
+/** Ném 409 nếu `locationId` không phải kho tổng đang hoạt động. */
+export const assertCentralWarehouse = async (locationId, session = null) => {
+  const warehouse = await getCentralWarehouse(session);
+  if (String(warehouse._id) !== String(locationId)) throw appError('Nghiệp vụ này chỉ được thực hiện tại kho tổng.', 409);
   return warehouse;
 };

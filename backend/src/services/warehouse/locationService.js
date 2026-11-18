@@ -67,11 +67,11 @@ const validateParentAndCapacity = async (candidate, currentId = null) => {
     parent = await StorageLocation.findById(candidate.parentStorageId);
     if (!parent) throw Object.assign(new Error('Không tìm thấy vị trí cha.'), { statusCode: 400 });
     const validParentType = (candidate.type === 'row' && parent.type === 'zone') || (candidate.type === 'shelf' && parent.type === 'row');
-    if (!validParentType) throw Object.assign(new Error('Cấu trúc hợp lệ là zone → row → shelf.'), { statusCode: 400 });
+    if (!validParentType) throw Object.assign(new Error('Cấu trúc hợp lệ là Khu → Dãy → Kệ.'), { statusCode: 400 });
     if (String(parent.locationId) !== String(candidate.locationId)) throw Object.assign(new Error('Vị trí cha phải thuộc cùng kho/cửa hàng.'), { statusCode: 400 });
     if (!candidate.code.startsWith(`${parent.code}-`)) throw Object.assign(new Error(`Mã vị trí phải bắt đầu bằng ${parent.code}-.`), { statusCode: 400 });
   } else if (!['zone', 'temporary_area'].includes(candidate.type)) {
-    throw Object.assign(new Error('Row và shelf phải có vị trí cha.'), { statusCode: 400 });
+    throw Object.assign(new Error('Dãy và kệ phải có vị trí cha.'), { statusCode: 400 });
   }
 
   const childrenFilter = { parentStorageId: currentId || candidate._id };
@@ -128,7 +128,7 @@ export const storageLocationService = {
     return location.save();
   },
   remove: async (id) => {
-    if (await StorageLocation.exists({ parentStorageId: id })) throw capacityConflict('Hãy xóa các row/shelf bên trong trước khi xóa vị trí này.');
+    if (await StorageLocation.exists({ parentStorageId: id })) throw capacityConflict('Hãy xóa các dãy/kệ bên trong trước khi xóa vị trí này.');
     return StorageLocation.findByIdAndDelete(id);
   },
 };

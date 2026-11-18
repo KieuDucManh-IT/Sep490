@@ -2,6 +2,8 @@ import api from '../api';
 
 export default {
   list: async () => (await api.get('/warehouse/inbound-receipts')).data || [],
+  /** Danh sách phân trang: params gồm page, limit, status, search → { items, total, page, limit }. */
+  listPage: async (params = {}) => (await api.get('/warehouse/inbound-receipts', { params })).data,
   listStaff: async () => (await api.get('/warehouse/inbound-receipts/staff')).data || [],
   get: async (id) => (await api.get('/warehouse/inbound-receipts/' + id)).data,
   create: async (payload) => (await api.post('/warehouse/inbound-receipts', payload)).data,

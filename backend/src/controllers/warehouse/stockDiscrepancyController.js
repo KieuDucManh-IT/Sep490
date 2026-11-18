@@ -1,4 +1,6 @@
-import { getDiscrepancy, listDiscrepancies, resolveDiscrepancy } from '../../services/warehouse/stockDiscrepancyService.js';
+import {
+  countDiscrepancies, getDiscrepancy, listDiscrepancies, resolveDiscrepancy,
+} from '../../services/warehouse/stockDiscrepancyService.js';
 
 const handleError = (error, res, next) => {
   if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
@@ -8,6 +10,10 @@ const handleError = (error, res, next) => {
 
 export const listDiscrepancyRows = async (req, res, next) => {
   try { res.json({ success: true, data: await listDiscrepancies(req.user, req.query) }); }
+  catch (error) { handleError(error, res, next); }
+};
+export const countDiscrepancyRows = async (req, res, next) => {
+  try { res.json({ success: true, data: await countDiscrepancies(req.user, req.query) }); }
   catch (error) { handleError(error, res, next); }
 };
 export const getDiscrepancyRow = async (req, res, next) => {

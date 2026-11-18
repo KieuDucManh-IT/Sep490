@@ -1,7 +1,7 @@
 import { Category } from '../../models/masterdata/Category.js';
 import { validateCategory } from '../../validations/masterdata/categoryValidation.js';
 import { createCrudService } from '../../generic/crudService.js';
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
 export const categoryService = {
   ...createCrudService(Category, validateCategory, ['parentCategoryId']),
   list: async () => {

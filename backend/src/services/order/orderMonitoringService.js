@@ -29,8 +29,10 @@ export const resolvePrimaryShipment = (list = []) => {
   if (!Array.isArray(list) || !list.length) return null;
   const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
   if (active.length > 0) {
-    const withCode = active.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
-    return withCode || active[0];
+    // Sắp xếp theo ngày tạo mới nhất lên đầu
+    const sorted = [...active].sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+    const withCode = sorted.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
+    return withCode || sorted[0];
   }
   return null;
 };
@@ -459,6 +461,7 @@ export const getRentalOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'rental', orderId: order._id })
+      .sort({ createdAt: -1 })
       .populate({ path: 'createdBy', select: 'FullName Email' }),
   ]);
 
@@ -710,6 +713,7 @@ export const getSalesOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'sale', orderId: order._id })
+      .sort({ createdAt: -1 })
       .populate({ path: 'createdBy', select: 'FullName Email' }),
   ]);
 

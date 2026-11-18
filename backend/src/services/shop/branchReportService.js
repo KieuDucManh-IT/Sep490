@@ -372,8 +372,8 @@ const buildEmptyReport = ({
 async function resolveAuthorizedBranch({ user, branchId }) {
   const role = user ? normalizeRole(user.Role || user.role) : 'admin';
 
-  if (user && role !== 'branchmanager' && role !== 'admin') {
-    throw validationError('Chức năng báo cáo hiệu suất chi nhánh chỉ dành riêng cho Quản lý chi nhánh.', 403);
+  if (user && !['branchmanager', 'admin', 'shopowner', 'owner'].includes(role)) {
+    throw validationError('Chức năng báo cáo hiệu suất chi nhánh chỉ dành cho Quản lý chi nhánh hoặc Ban quản trị.', 403);
   }
 
   if (branchId && !mongoose.isValidObjectId(branchId)) {
@@ -407,7 +407,6 @@ async function resolveAuthorizedBranch({ user, branchId }) {
         .lean();
     }
   }
-
   return shop;
 }
 

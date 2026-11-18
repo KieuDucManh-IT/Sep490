@@ -27,6 +27,7 @@ export default function ShipmentCreateModal({
   show,
   onClose,
   order,
+  initialShipment = null,
   orderType = 'rental',
   onSuccess,
 }) {
@@ -59,7 +60,7 @@ export default function ShipmentCreateModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // 1. Điền thông tin khách hàng từ order và tự động khớp Tỉnh / Xã
+  // 1. Điền thông tin khách hàng từ order / initialShipment và tự động khớp Tỉnh / Xã
   useEffect(() => {
     if (!show || !order) return;
 
@@ -74,13 +75,28 @@ export default function ShipmentCreateModal({
       fullAddr,
     } = extractOrderAddressInfo(order);
 
-    setToName(receiverName);
-    setToPhone(receiverPhone);
-    setToAddress(detailedAddress);
+    const prevReceiver = initialShipment?.receiverInfo || {};
+    const finalName = prevReceiver.name || receiverName;
+    const finalPhone = prevReceiver.phone || receiverPhone;
+    const finalAddress = prevReceiver.address || detailedAddress;
+    const finalProvId = prevReceiver.provinceId || provinceIdHint;
+    const finalWardCode = prevReceiver.wardCode || wardCodeHint;
 
-    // Tính COD mặc định theo số dư chưa thanh toán
+    setToName(finalName);
+    setToPhone(finalPhone);
+    setToAddress(finalAddress);
+
+    if (initialShipment?.weight) setWeight(Number(initialShipment.weight));
+    if (initialShipment?.length) setLength(Number(initialShipment.length));
+    if (initialShipment?.width) setWidth(Number(initialShipment.width));
+    if (initialShipment?.height) setHeight(Number(initialShipment.height));
+    if (initialShipment?.note) setNote(initialShipment.note);
+
+    // Tính COD mặc định theo số dư chưa thanh toán hoặc lấy từ vận đơn retry
     let defaultCod = 0;
-    if (order.paymentStatus !== 'paid') {
+    if (initialShipment?.codAmount !== undefined) {
+      defaultCod = initialShipment.codAmount;
+    } else if (order.paymentStatus !== 'paid') {
       if (orderType === 'sale') {
         defaultCod = Math.max(0, (order.totalAmount || 0) - (order.paidAmount || 0));
       } else {
@@ -94,16 +110,16 @@ export default function ShipmentCreateModal({
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã
     if (provinces.length > 0) {
-      if (provinceIdHint) {
-        handleProvinceChange(String(provinceIdHint), wardHint, wardCodeHint, fullAddr);
+      if (finalProvId) {
+        handleProvinceChange(String(finalProvId), wardHint, finalWardCode, fullAddr);
       } else {
         const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
         if (matchedProv) {
-          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, wardCodeHint, fullAddr);
+          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, finalWardCode, fullAddr);
         }
       }
     }
-  }, [show, order, orderType, provinces, handleProvinceChange]);
+  }, [show, order, initialShipment, orderType, provinces, handleProvinceChange]);
 
   const onProvinceSelect = (val) => {
     setFeeResult(null);

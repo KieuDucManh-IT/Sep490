@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import HauteCoutureModal from '../HauteCoutureModal';
-import { trackPublicShipmentApi } from '../../services/shippingApi';
+import { trackShipmentApi } from '../../services/shippingApi';
 import { cancelRentalOrder } from '../../services/rentalOrderApi';
 import { createRentalClaim } from '../../services/rentalReturnApi';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
@@ -15,24 +15,13 @@ import {
   User,
   Store,
   ExternalLink,
-  RotateCw,
   XCircle,
   RotateCcw,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
+import { sanitizeTimelineText } from '../../pages/shipping/shippingUtils';
 import '../../styles/CustomerOrderTracking.css';
-
-const sanitizeTimelineText = (text) => {
-  if (!text) return 'Cập nhật tiến trình';
-  return String(text)
-    .replace(/\s*\(Cập nhật trạng thái vận chuyển qua Sandbox\)/gi, '')
-    .replace(/\s*\(Sandbox\)/gi, '')
-    .replace(/trên Shop ID \d+/gi, 'tại cửa hàng')
-    .replace(/trên Shop \d+/gi, 'tại cửa hàng')
-    .replace(/sang Shop ID \d+/gi, 'sang thông tin mới')
-    .replace(/sang Shop \d+/gi, 'sang thông tin mới')
-    .trim();
-};
 
 const getStepIndex = (status, displayStatusText = '') => {
   if (String(displayStatusText).toLowerCase().includes('chuẩn bị lại')) {
@@ -71,6 +60,553 @@ const formatDate = (dateStr) => {
   }
 };
 
+/* ==========================================================================
+   SUB-COMPONENTS (Chia nhỏ logic & giao diện sạch sẽ, giữ nguyên 100% layout)
+   ========================================================================== */
+
+/** 1. Header thẻ vận đơn GHN */
+function TrackingHeader({ trackingData }) {
+  return (
+    <div className="tracking-card-header" style={{ paddingBottom: '16px', marginBottom: '16px' }}>
+      <div>
+        <div className="tracking-header-tags">
+          <span className="tracking-carrier-tag">
+            {trackingData.carrierName || 'Giao Hàng Nhanh'}
+          </span>
+          {trackingData.hasGhnShipment ? (
+            <span className="tracking-badge-delivered">
+              <CheckCircle size={13} /> Đã bàn giao GHN
+            </span>
+          ) : (
+            <span className="tracking-badge-preparing">
+              <Clock size={13} /> Đang chuẩn bị tại Shop
+            </span>
+          )}
+        </div>
+        <div className="tracking-meta-section" style={{ marginTop: '8px' }}>
+          <div className="tracking-type-label tracking-meta-code">
+            <span>
+              Mã vận đơn GHN:{' '}
+              <strong className={trackingData.hasGhnShipment ? 'tracking-order-code-highlight' : 'tracking-code-empty'}>
+                {trackingData.hasGhnShipment ? trackingData.trackingCode : 'Chưa có mã vận đơn'}
+              </strong>
+            </span>
+          </div>
+          <div className="tracking-type-label">
+            <span className="me-2">
+              Mã đơn hàng: <strong className="tracking-order-code-highlight">{trackingData.orderCode || trackingData.trackingCode}</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-end">
+        <span className="tracking-status-sub">Trạng thái hiện tại:</span>
+        <div className="tracking-status-actions">
+          <span className={`tracking-status-badge status-${trackingData.shipmentStatus}`}>
+            {trackingData.displayStatusText || trackingData.shipmentStatus}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 2. Thông báo chuẩn bị tại cửa hàng */
+function TrackingShopNotice({ shipmentStatus }) {
+  return (
+    <div className="tracking-shop-notice" style={{ marginBottom: '16px' }}>
+      <Clock size={16} className="tracking-notice-icon" />
+      <span>
+        {shipmentStatus === 'pending_confirmation'
+          ? 'Đơn hàng đang chờ cửa hàng liên hệ xác nhận (Đơn ship COD). Sau khi xác nhận, đơn sẽ được đóng gói giao cho shipper GHN.'
+          : 'Cửa hàng đang đóng gói sản phẩm và chờ shipper GHN đến lấy hàng. Mã vận đơn GHN chính thức sẽ được kích hoạt ngay khi bưu tá nhận kiện.'}
+      </span>
+    </div>
+  );
+}
+
+/** 3. Tiến trình vận chuyển 4 bước */
+function TrackingStepper({ currentStep, shipmentStatus }) {
+  const steps = [
+    {
+      label: shipmentStatus === 'pending_confirmation' ? 'Chờ xác nhận' : 'Tiếp nhận',
+      icon: shipmentStatus === 'pending_confirmation' ? Clock : Package,
+      step: 0,
+    },
+    { label: 'Chờ lấy hàng', icon: ShieldCheck, step: 1 },
+    { label: 'Đang giao hàng', icon: Truck, step: 2 },
+    { label: 'Giao thành công', icon: CheckCircle, step: 3 },
+  ];
+
+  return (
+    <div className="tracking-stepper-wrap" style={{ margin: '16px 0 20px 0' }}>
+      <div className="tracking-stepper">
+        <div className="stepper-progress-bg" />
+        <div className="stepper-progress-fill" data-step={currentStep} />
+
+        {steps.map((item, idx) => {
+          const isDone = currentStep >= item.step;
+          const isActive = currentStep === item.step;
+          const StepIcon = item.icon;
+          return (
+            <div key={idx} className={`stepper-step ${isDone ? 'completed' : ''} ${isActive ? 'active' : ''}`}>
+              <div className="stepper-circle">
+                <StepIcon size={16} />
+              </div>
+              <div className="stepper-label">{item.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 4. Lưới 3 khối thông tin chi tiết */
+function TrackingInfoGrid({ receiverInfo, storeInfo, expectedDeliveryTime, deliveredAt }) {
+  return (
+    <div className="tracking-info-grid" style={{ marginBottom: '16px' }}>
+      {/* Card 1: Người nhận */}
+      <div className="info-block">
+        <div className="info-block-header">
+          <span className="info-block-title">
+            <User size={14} /> Người nhận
+          </span>
+          {receiverInfo?.isMasked === false ? (
+            <span className="info-block-badge" style={{ backgroundColor: '#ECFDF5', color: '#059669', borderColor: '#A7F3D0', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+              <ShieldCheck size={11} /> Đã xác thực
+            </span>
+          ) : (
+            <span className="info-block-badge">Bảo mật</span>
+          )}
+        </div>
+        <div className="info-main-text">{receiverInfo?.name}</div>
+        <div className="info-sub-text">{receiverInfo?.phone}</div>
+        <div className="info-sub-text info-address-row">
+          <MapPin size={13} className="info-icon-green" />
+          <span>{receiverInfo?.address || receiverInfo?.maskedAddress}</span>
+        </div>
+      </div>
+
+      {/* Card 2: Cửa hàng gửi đồ */}
+      <div className="info-block">
+        <div className="info-block-header">
+          <span className="info-block-title">
+            <Store size={14} /> Cửa hàng gửi đồ
+          </span>
+        </div>
+        <div className="info-main-text">{storeInfo?.name || 'Vestora Showroom'}</div>
+        <div className="info-sub-text info-address-row">
+          <MapPin size={13} className="info-icon-green" />
+          <span>{storeInfo?.address || 'Hệ thống Showroom Vestora'}</span>
+        </div>
+        {storeInfo?.latitude && storeInfo?.longitude && (
+          <a
+            href={`https://www.google.com/maps?q=${storeInfo.latitude},${storeInfo.longitude}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="info-map-pill"
+            title="Mở chỉ đường trên Google Maps"
+          >
+            <ExternalLink size={11} /> Google Maps
+          </a>
+        )}
+      </div>
+
+      {/* Card 3: Dự kiến giao nhận */}
+      <div className="info-block">
+        <div className="info-block-header">
+          <span className="info-block-title">
+            <Calendar size={14} /> Dự kiến giao nhận
+          </span>
+        </div>
+        {expectedDeliveryTime ? (
+          <>
+            <div className="info-sub-text">Thời gian dự kiến:</div>
+            <div className="info-main-text info-main-text-green">
+              {formatDate(expectedDeliveryTime)}
+            </div>
+          </>
+        ) : (
+          <div className="info-sub-text">Đang cập nhật lịch trình...</div>
+        )}
+        {deliveredAt && (
+          <div className="info-delivered-tag">
+            <CheckCircle size={13} className="info-icon-shrink" />
+            <span>Đã giao thành công lúc {formatDate(deliveredAt)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 5. Bằng chứng giao hàng & Lý do hủy/thất bại */
+function TrackingProofAndFailureAlerts({ deliveryProofImage, failureReason, cancellationReason, onImageClick }) {
+  return (
+    <>
+      {/* Hiển thị Bằng Chứng Giao Hàng Thành Công nếu có */}
+      {deliveryProofImage && (
+        <div style={{ margin: '0 0 16px 0', padding: '10px 14px', background: '#F0FDF4', borderRadius: '8px', border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img
+              src={deliveryProofImage}
+              alt="Ảnh xác nhận nhận hàng"
+              style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '6px', cursor: 'pointer', border: '1px solid #86EFAC' }}
+              onClick={() => onImageClick(deliveryProofImage)}
+              title="Bấm để xem ảnh phóng to"
+            />
+            <div>
+              <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#166534' }}>
+                ✓ Ảnh chụp khi giao hàng thành công
+              </div>
+              <div style={{ fontSize: '11px', color: '#15803D' }}>
+                Ảnh do shipper chụp khi giao kiện hàng cho bạn.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            style={{ padding: '4px 10px', fontSize: '11.5px', background: '#FFFFFF', color: '#166534', border: '1px solid #86EFAC', borderRadius: '4px', cursor: 'pointer', fontWeight: 500 }}
+            onClick={() => onImageClick(deliveryProofImage)}
+          >
+            Xem ảnh
+          </button>
+        </div>
+      )}
+
+      {/* Hiển thị Lý Do Giao Thất Bại hoặc Hủy Đơn nếu có */}
+      {(failureReason || cancellationReason) && (
+        <div style={{ margin: '0 0 16px 0', padding: '10px 14px', background: '#FEF2F2', borderRadius: '8px', border: '1px solid #FECACA', display: 'flex', alignItems: 'center', gap: '8px', color: '#B91C1C', fontSize: '12.5px' }}>
+          <AlertCircle size={16} />
+          <span>
+            <strong>{cancellationReason && !failureReason ? 'Lý do hủy đơn:' : 'Lý do chưa giao được / hủy:'}</strong>{' '}
+            {failureReason || cancellationReason}
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 6. Lịch sử hành trình vận chuyển chi tiết */
+function TrackingTimeline({ statusHistory, onImageClick }) {
+  return (
+    <div className="tracking-timeline-section" style={{ margin: 0, padding: '16px' }}>
+      <h3 className="timeline-heading" style={{ fontSize: '13px', marginBottom: '12px' }}>
+        <Clock size={16} className="timeline-heading-icon" />
+        Lịch Sử Hành Trình Chi Tiết
+      </h3>
+
+      {Array.isArray(statusHistory) && statusHistory.length > 0 ? (
+        <div className="timeline-list">
+          {statusHistory
+            .slice()
+            .reverse()
+            .map((item, idx) => {
+              const isLatest = idx === 0;
+              return (
+                <div key={item._id || `${item.status}-${item.timestamp || idx}`} className={`timeline-item ${isLatest ? 'latest' : ''}`}>
+                  <div className="timeline-node" />
+                  <div className="timeline-item-title" style={{ fontSize: '12px' }}>
+                    {sanitizeTimelineText(item.description || item.status)}
+                  </div>
+                  <div className="timeline-item-time" style={{ fontSize: '11px' }}>
+                    <Clock size={11} />
+                    {formatDate(item.timestamp)}
+                    {item.location && <span>• {item.location}</span>}
+                  </div>
+
+                  {item.evidenceImage && (
+                    <div style={{ marginTop: '6px' }}>
+                      <img
+                        src={item.evidenceImage}
+                        alt="Ảnh khi nhận hàng"
+                        style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer', border: '1px solid #D1D5DB' }}
+                        onClick={() => onImageClick(item.evidenceImage)}
+                        title="Bấm để xem ảnh phóng to"
+                      />
+                    </div>
+                  )}
+                  {item.failReason && (
+                    <div style={{ marginTop: '4px', fontSize: '11.5px', color: '#DC2626' }}>
+                      Lý do chưa giao được: <em>{item.failReason}</em>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      ) : (
+        <div className="timeline-empty-msg" style={{ fontSize: '12px', padding: '12px' }}>
+          Đơn hàng đang chờ bưu tá GHN tiếp nhận gói hàng tại cửa hàng.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 7. Danh sách trang phục trong đơn */
+function OrderProductsList({ orderItems }) {
+  return (
+    <div style={{ padding: '16px', background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E5E0D8' }}>
+      <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#171717', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Package size={16} color="#96723D" />
+        <span>Danh Sách Trang Phục ({orderItems.length} món)</span>
+      </h4>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {orderItems.map((item, idx) => {
+          const prodName = item.productName || item.name || item.variantId?.productId?.name || `Trang phục #${idx + 1}`;
+          const prodSize = item.size || item.variantId?.size || 'M';
+          const prodPrice = item.rentalPrice || item.unitPrice || item.unitRentalFee || item.lineTotal || 0;
+          const prodQty = item.quantity || 1;
+
+          return (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '10px 14px',
+                background: '#FAF9F6',
+                borderRadius: '8px',
+                border: '1px solid #E5E0D8',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#171717' }}>{prodName}</div>
+                <div style={{ fontSize: '11px', color: '#78716C', marginTop: '2px' }}>
+                  Size: {prodSize} • Số lượng: {prodQty}
+                </div>
+              </div>
+              <strong style={{ fontSize: '13px', color: '#96723D' }}>
+                {formatCurrencyVND(prodPrice * prodQty)}
+              </strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 8. Bảng kê tài chính đơn hàng */
+function OrderFinancialSummary({ order, isRental }) {
+  return (
+    <div style={{ padding: '16px', background: '#FAFAF9', borderRadius: '12px', border: '1px solid #E5E0D8' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
+        <span style={{ color: '#78716C' }}>{isRental ? 'Tiền thuê trang phục:' : 'Tiền hàng:'}</span>
+        <strong style={{ color: '#171717' }}>{formatCurrencyVND(isRental ? order.rentalFee : order.totalAmount)}</strong>
+      </div>
+
+      {isRental && order.depositAmount > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
+          <span style={{ color: '#78716C' }}>Tiền đặt cọc bảo đảm:</span>
+          <strong style={{ color: '#C5A880' }}>{formatCurrencyVND(order.depositAmount)}</strong>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
+        <span style={{ color: '#78716C' }}>Phương thức thanh toán:</span>
+        <strong style={{ color: order.paymentMethod === 'wallet' ? '#15803D' : '#B45309' }}>
+          {order.paymentMethod === 'wallet' ? 'Ví nội bộ Vestora (Đã thanh toán)' : 'Thanh toán khi nhận hàng (COD)'}
+        </strong>
+      </div>
+
+      <hr style={{ border: 'none', borderTop: '1px solid #E5E0D8', margin: '10px 0' }} />
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+        <span style={{ fontWeight: 600, color: '#171717' }}>Tổng thanh toán:</span>
+        <strong style={{ fontSize: '16px', color: '#96723D' }}>
+          {formatCurrencyVND(isRental ? (order.rentalFee || 0) + (order.depositAmount || 0) : order.totalAmount || 0)}
+        </strong>
+      </div>
+    </div>
+  );
+}
+
+/** 9. Form Hủy Đơn Thuê */
+function CancelOrderForm({ cancelReason, setCancelReason, isSubmitting, onBack, onSubmit }) {
+  return (
+    <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ fontSize: '13px', color: '#57534E', lineHeight: 1.6 }}>
+        Quý khách chỉ có thể hủy đơn khi trang phục chưa được bàn giao cho đơn vị vận chuyển GHN. Số tiền thuê và tiền cọc (nếu đã trừ qua ví) sẽ được hoàn trả tự động vào ví Vestora.
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
+          Lý Do Hủy Đơn: <span style={{ color: '#DC2626' }}>*</span>
+        </label>
+        <textarea
+          rows={3}
+          required
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="VD: Thay đổi kế hoạch sự kiện, chọn nhầm kích thước..."
+          style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
+        />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isSubmitting}
+          style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #D6D3D1', background: '#FFFFFF', color: '#44403C', fontSize: '13px', cursor: 'pointer' }}
+        >
+          Quay Lại
+        </button>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#DC2626', color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+        >
+          {isSubmitting ? 'Đang Hủy...' : 'Xác Nhận Hủy Đơn'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** 10. Form Khiếu Nại Đổi Trả 24h */
+function DisputeOrderForm({ disputeReason, setDisputeReason, disputeDesc, setDisputeDesc, evidenceUrl, setEvidenceUrl, isSubmitting, onBack, onSubmit }) {
+  return (
+    <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ padding: '12px 14px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', color: '#1E40AF', fontSize: '12px' }}>
+        Chính sách bảo đảm Haute Couture: Quý khách được quyền khiếu nại đổi trả trong vòng 24 giờ kể từ thời điểm shipper GHN giao đồ thành công.
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
+          Lý Do Đổi Trả:
+        </label>
+        <select
+          value={disputeReason}
+          onChange={(e) => setDisputeReason(e.target.value)}
+          style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
+        >
+          <option value="manufacturing_defect">Lỗi từ xưởng may / rách chỉ / thiếu cúc</option>
+          <option value="stain_damage">Trang phục bị ố bẩn trước khi nhận</option>
+          <option value="wrong_item">Giao sai mẫu / sai kích thước yêu cầu</option>
+          <option value="other">Lý do kỹ thuật khác</option>
+        </select>
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
+          Mô Tả Chi Tiết Lỗi: <span style={{ color: '#DC2626' }}>*</span>
+        </label>
+        <textarea
+          rows={3}
+          required
+          value={disputeDesc}
+          onChange={(e) => setDisputeDesc(e.target.value)}
+          placeholder="Mô tả cụ thể vị trí lỗi trên trang phục (tối thiểu 10 ký tự)..."
+          style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
+        />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
+          Đường Dẫn Ảnh Minh Chứng (URL):
+        </label>
+        <input
+          type="text"
+          value={evidenceUrl}
+          onChange={(e) => setEvidenceUrl(e.target.value)}
+          placeholder="https://... (phân cách bằng dấu phẩy nếu nhiều ảnh)"
+          style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
+        />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isSubmitting}
+          style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #D6D3D1', background: '#FFFFFF', color: '#44403C', fontSize: '13px', cursor: 'pointer' }}
+        >
+          Quay Lại
+        </button>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#D97706', color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+        >
+          {isSubmitting ? 'Đang Gửi...' : 'Nộp Đơn Khiếu Nại'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** 11. Lightbox phóng to ảnh bằng chứng */
+function EvidenceLightboxModal({ imageSrc, onClose }) {
+  if (!imageSrc) return null;
+  return (
+    <div
+      role="dialog"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(3px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          position: 'relative',
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          background: '#FFFFFF',
+          padding: '8px',
+          borderRadius: '12px',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', borderBottom: '1px solid #E5E7EB', marginBottom: '8px' }}>
+          <strong style={{ fontSize: '13px', color: '#166534' }}>
+            Ảnh chụp khi giao hàng thành công
+          </strong>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              fontSize: '18px',
+              cursor: 'pointer',
+              lineHeight: 1,
+              color: '#6B7280',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+        <img
+          src={imageSrc}
+          alt="Ảnh xác nhận khi nhận hàng"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '75vh',
+            objectFit: 'contain',
+            borderRadius: '8px',
+            display: 'block',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   MAIN COMPONENT: OrderTrackingDetailModal
+   ========================================================================== */
+
 export default function OrderTrackingDetailModal({
   isOpen,
   onClose,
@@ -92,6 +628,7 @@ export default function OrderTrackingDetailModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
+  const [selectedEvidenceImage, setSelectedEvidenceImage] = useState(null);
 
   // Nạp dữ liệu vận chuyển thời gian thực từ GHN
   const fetchTracking = useCallback(async (code, force = false) => {
@@ -103,14 +640,14 @@ export default function OrderTrackingDetailModal({
     }
     setErrorMsg('');
     try {
-      const res = await trackPublicShipmentApi(code, { force });
+      const res = await trackShipmentApi(code, { force });
       if (res?.success && res.data) {
         setTrackingData(res.data);
       } else {
         setErrorMsg(res?.message || 'Không tìm thấy dữ liệu vận chuyển.');
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Lỗi khi tải dữ liệu vận chuyển.');
+      setErrorMsg(err?.response?.data?.message || err?.message || 'Lỗi khi tải dữ liệu vận chuyển.');
     } finally {
       setLoading(false);
       setSyncing(false);
@@ -162,7 +699,7 @@ export default function OrderTrackingDetailModal({
         onClose();
       }, 1200);
     } catch (err) {
-      setActionError(err.message || 'Không thể hủy đơn thuê.');
+      setActionError(err?.response?.data?.message || err?.message || 'Không thể hủy đơn thuê.');
     } finally {
       setIsSubmitting(false);
     }
@@ -193,7 +730,7 @@ export default function OrderTrackingDetailModal({
         onClose();
       }, 1500);
     } catch (err) {
-      setActionError(err.message || 'Không thể gửi khiếu nại đổi trả.');
+      setActionError(err?.response?.data?.message || err?.message || 'Không thể gửi khiếu nại đổi trả.');
     } finally {
       setIsSubmitting(false);
     }
@@ -233,109 +770,30 @@ export default function OrderTrackingDetailModal({
           MODE 1: HỦY ĐƠN THUÊ
           ======================================================== */}
       {viewMode === 'cancel' && (
-        <form onSubmit={handleCancelSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ fontSize: '13px', color: '#57534E', lineHeight: 1.6 }}>
-            Quý khách chỉ có thể hủy đơn khi trang phục chưa được bàn giao cho đơn vị vận chuyển GHN. Số tiền thuê và tiền cọc (nếu đã trừ qua ví) sẽ được hoàn trả tự động vào ví Vestora.
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
-              Lý Do Hủy Đơn: <span style={{ color: '#DC2626' }}>*</span>
-            </label>
-            <textarea
-              rows={3}
-              required
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="VD: Thay đổi kế hoạch sự kiện, chọn nhầm kích thước..."
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-            <button
-              type="button"
-              onClick={() => setViewMode('tracking')}
-              disabled={isSubmitting}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #D6D3D1', background: '#FFFFFF', color: '#44403C', fontSize: '13px', cursor: 'pointer' }}
-            >
-              Quay Lại
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#DC2626', color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-            >
-              {isSubmitting ? 'Đang Hủy...' : 'Xác Nhận Hủy Đơn'}
-            </button>
-          </div>
-        </form>
+        <CancelOrderForm
+          cancelReason={cancelReason}
+          setCancelReason={setCancelReason}
+          isSubmitting={isSubmitting}
+          onBack={() => setViewMode('tracking')}
+          onSubmit={handleCancelSubmit}
+        />
       )}
 
       {/* ========================================================
           MODE 2: KHIẾU NẠI ĐỔI TRẢ 24H
           ======================================================== */}
       {viewMode === 'dispute' && (
-        <form onSubmit={handleDisputeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ padding: '12px 14px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', color: '#1E40AF', fontSize: '12px' }}>
-            Chính sách bảo đảm Haute Couture: Quý khách được quyền khiếu nại đổi trả trong vòng 24 giờ kể từ thời điểm shipper GHN giao đồ thành công.
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
-              Lý Do Đổi Trả:
-            </label>
-            <select
-              value={disputeReason}
-              onChange={(e) => setDisputeReason(e.target.value)}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
-            >
-              <option value="manufacturing_defect">Lỗi từ xưởng may / rách chỉ / thiếu cúc</option>
-              <option value="stain_damage">Trang phục bị ố bẩn trước khi nhận</option>
-              <option value="wrong_item">Giao sai mẫu / sai kích thước yêu cầu</option>
-              <option value="other">Lý do kỹ thuật khác</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
-              Mô Tả Chi Tiết Lỗi: <span style={{ color: '#DC2626' }}>*</span>
-            </label>
-            <textarea
-              rows={3}
-              required
-              value={disputeDesc}
-              onChange={(e) => setDisputeDesc(e.target.value)}
-              placeholder="Mô tả cụ thể vị trí lỗi trên trang phục (tối thiểu 10 ký tự)..."
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
-              Đường Dẫn Ảnh Minh Chứng (URL):
-            </label>
-            <input
-              type="text"
-              value={evidenceUrl}
-              onChange={(e) => setEvidenceUrl(e.target.value)}
-              placeholder="https://... (phân cách bằng dấu phẩy nếu nhiều ảnh)"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D6D3D1', fontSize: '13px', boxSizing: 'border-box' }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-            <button
-              type="button"
-              onClick={() => setViewMode('tracking')}
-              disabled={isSubmitting}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #D6D3D1', background: '#FFFFFF', color: '#44403C', fontSize: '13px', cursor: 'pointer' }}
-            >
-              Quay Lại
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#D97706', color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-            >
-              {isSubmitting ? 'Đang Gửi...' : 'Nộp Đơn Khiếu Nại'}
-            </button>
-          </div>
-        </form>
+        <DisputeOrderForm
+          disputeReason={disputeReason}
+          setDisputeReason={setDisputeReason}
+          disputeDesc={disputeDesc}
+          setDisputeDesc={setDisputeDesc}
+          evidenceUrl={evidenceUrl}
+          setEvidenceUrl={setEvidenceUrl}
+          isSubmitting={isSubmitting}
+          onBack={() => setViewMode('tracking')}
+          onSubmit={handleDisputeSubmit}
+        />
       )}
 
       {/* ========================================================
@@ -357,290 +815,43 @@ export default function OrderTrackingDetailModal({
               {/* KHỐI 1: FORM TIẾN TRÌNH VẬN CHUYỂN & TRẠNG THÁI GHN */}
               {trackingData && (
                 <div className="tracking-result-card" style={{ margin: 0, padding: '20px', borderRadius: '12px', border: '1px solid #E5E0D8' }}>
-                  {/* Header Banner */}
-                  <div className="tracking-card-header" style={{ paddingBottom: '16px', marginBottom: '16px' }}>
-                    <div>
-                      <div className="tracking-header-tags">
-                        <span className="tracking-carrier-tag">
-                          {trackingData.carrierName || 'Giao Hàng Nhanh'}
-                        </span>
-                        {trackingData.hasGhnShipment ? (
-                          <span className="tracking-badge-delivered">
-                            <CheckCircle size={13} /> Đã bàn giao GHN
-                          </span>
-                        ) : (
-                          <span className="tracking-badge-preparing">
-                            <Clock size={13} /> Đang chuẩn bị tại Shop
-                          </span>
-                        )}
-                      </div>
-                      <div className="tracking-meta-section" style={{ marginTop: '8px' }}>
-                        <div className="tracking-type-label tracking-meta-code">
-                          <span>
-                            Mã vận đơn GHN:{' '}
-                            <strong className={trackingData.hasGhnShipment ? 'tracking-order-code-highlight' : 'tracking-code-empty'}>
-                              {trackingData.hasGhnShipment ? trackingData.trackingCode : 'Chưa có mã vận đơn'}
-                            </strong>
-                          </span>
-                        </div>
-                        <div className="tracking-type-label">
-                          <span className="me-2">
-                            Mã đơn hàng: <strong className="tracking-order-code-highlight">{trackingData.orderCode || trackingData.trackingCode}</strong>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                  <TrackingHeader trackingData={trackingData} />
 
-                    <div className="text-end">
-                      <span className="tracking-status-sub">Trạng thái hiện tại:</span>
-                      <div className="tracking-status-actions">
-                        <span className={`tracking-status-badge status-${trackingData.shipmentStatus}`}>
-                          {trackingData.displayStatusText || trackingData.shipmentStatus}
-                        </span>
-                        {trackingData.hasGhnShipment && (
-                          <button
-                            type="button"
-                            onClick={() => fetchTracking(trackingData.trackingCode || trackingData.orderCode, true)}
-                            disabled={syncing || loading}
-                            title="Đồng bộ trực tiếp từ GHN API"
-                            className="tracking-sync-btn"
-                          >
-                            <RotateCw size={13} className={syncing ? 'animate-spin' : ''} />
-                            <span>{syncing ? 'Đang đồng bộ...' : 'Làm mới'}</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Thông báo chuẩn bị nếu chưa bàn giao GHN */}
                   {!trackingData.hasGhnShipment && (
-                    <div className="tracking-shop-notice" style={{ marginBottom: '16px' }}>
-                      <Clock size={16} className="tracking-notice-icon" />
-                      <span>
-                        {trackingData.shipmentStatus === 'pending_confirmation'
-                          ? 'Đơn hàng đang chờ cửa hàng liên hệ xác nhận (Đơn ship COD). Sau khi xác nhận, đơn sẽ được đóng gói giao cho shipper GHN.'
-                          : 'Cửa hàng đang đóng gói sản phẩm và chờ shipper GHN đến lấy hàng. Mã vận đơn GHN chính thức sẽ được kích hoạt ngay khi bưu tá nhận kiện.'}
-                      </span>
-                    </div>
+                    <TrackingShopNotice shipmentStatus={trackingData.shipmentStatus} />
                   )}
 
-                  {/* Stepper Progress 4 Bước */}
-                  <div className="tracking-stepper-wrap" style={{ margin: '16px 0 20px 0' }}>
-                    <div className="tracking-stepper">
-                      <div className="stepper-progress-bg" />
-                      <div className="stepper-progress-fill" data-step={currentStep} />
+                  <TrackingStepper
+                    currentStep={currentStep}
+                    shipmentStatus={trackingData.shipmentStatus}
+                  />
 
-                      {[
-                        {
-                          label: trackingData.shipmentStatus === 'pending_confirmation' ? 'Chờ xác nhận' : 'Tiếp nhận',
-                          icon: trackingData.shipmentStatus === 'pending_confirmation' ? Clock : Package,
-                          step: 0,
-                        },
-                        { label: 'Chờ lấy hàng', icon: ShieldCheck, step: 1 },
-                        { label: 'Đang giao hàng', icon: Truck, step: 2 },
-                        { label: 'Giao thành công', icon: CheckCircle, step: 3 },
-                      ].map((item, idx) => {
-                        const isDone = currentStep >= item.step;
-                        const isActive = currentStep === item.step;
-                        const StepIcon = item.icon;
-                        return (
-                          <div key={idx} className={`stepper-step ${isDone ? 'completed' : ''} ${isActive ? 'active' : ''}`}>
-                            <div className="stepper-circle">
-                              <StepIcon size={16} />
-                            </div>
-                            <div className="stepper-label">{item.label}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <TrackingInfoGrid
+                    receiverInfo={trackingData.receiverInfo}
+                    storeInfo={trackingData.storeInfo}
+                    expectedDeliveryTime={trackingData.expectedDeliveryTime}
+                    deliveredAt={trackingData.deliveredAt}
+                  />
 
-                  {/* Grid 3 Card Chi Tiết: Người Nhận, Cửa Hàng, Dự Kiến */}
-                  <div className="tracking-info-grid" style={{ marginBottom: '16px' }}>
-                    {/* Card 1: Người nhận */}
-                    <div className="info-block">
-                      <div className="info-block-header">
-                        <span className="info-block-title">
-                          <User size={14} /> Người nhận
-                        </span>
-                        {trackingData.receiverInfo?.isMasked === false ? (
-                          <span className="info-block-badge" style={{ backgroundColor: '#ECFDF5', color: '#059669', borderColor: '#A7F3D0', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <ShieldCheck size={11} /> Đã xác thực
-                          </span>
-                        ) : (
-                          <span className="info-block-badge">Bảo mật</span>
-                        )}
-                      </div>
-                      <div className="info-main-text">{trackingData.receiverInfo?.name}</div>
-                      <div className="info-sub-text">{trackingData.receiverInfo?.phone}</div>
-                      <div className="info-sub-text info-address-row">
-                        <MapPin size={13} className="info-icon-green" />
-                        <span>{trackingData.receiverInfo?.address || trackingData.receiverInfo?.maskedAddress}</span>
-                      </div>
-                    </div>
+                  <TrackingProofAndFailureAlerts
+                    deliveryProofImage={trackingData.deliveryProofImage}
+                    failureReason={trackingData.failureReason}
+                    cancellationReason={trackingData.cancellationReason}
+                    onImageClick={(img) => setSelectedEvidenceImage(img)}
+                  />
 
-                    {/* Card 2: Cửa hàng gửi đồ */}
-                    <div className="info-block">
-                      <div className="info-block-header">
-                        <span className="info-block-title">
-                          <Store size={14} /> Cửa hàng gửi đồ
-                        </span>
-                      </div>
-                      <div className="info-main-text">{trackingData.storeInfo?.name || 'Vestora Showroom'}</div>
-                      <div className="info-sub-text info-address-row">
-                        <MapPin size={13} className="info-icon-green" />
-                        <span>{trackingData.storeInfo?.address || 'Hệ thống Showroom Vestora'}</span>
-                      </div>
-                      {trackingData.storeInfo?.latitude && trackingData.storeInfo?.longitude && (
-                        <a
-                          href={`https://www.google.com/maps?q=${trackingData.storeInfo.latitude},${trackingData.storeInfo.longitude}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="info-map-pill"
-                          title="Mở chỉ đường trên Google Maps"
-                        >
-                          <ExternalLink size={11} /> Google Maps
-                        </a>
-                      )}
-                    </div>
-
-                    {/* Card 3: Dự kiến giao nhận */}
-                    <div className="info-block">
-                      <div className="info-block-header">
-                        <span className="info-block-title">
-                          <Calendar size={14} /> Dự kiến giao nhận
-                        </span>
-                      </div>
-                      {trackingData.expectedDeliveryTime ? (
-                        <>
-                          <div className="info-sub-text">Thời gian dự kiến:</div>
-                          <div className="info-main-text info-main-text-green">
-                            {formatDate(trackingData.expectedDeliveryTime)}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="info-sub-text">Đang cập nhật lịch trình...</div>
-                      )}
-                      {trackingData.deliveredAt && (
-                        <div className="info-delivered-tag">
-                          <CheckCircle size={13} className="info-icon-shrink" />
-                          <span>Đã giao thành công lúc {formatDate(trackingData.deliveredAt)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Timeline Hành Trình Chi Tiết */}
-                  <div className="tracking-timeline-section" style={{ margin: 0, padding: '16px' }}>
-                    <h3 className="timeline-heading" style={{ fontSize: '13px', marginBottom: '12px' }}>
-                      <Clock size={16} className="timeline-heading-icon" />
-                      Lịch Sử Hành Trình Chi Tiết
-                    </h3>
-
-                    {Array.isArray(trackingData.statusHistory) && trackingData.statusHistory.length > 0 ? (
-                      <div className="timeline-list">
-                        {trackingData.statusHistory
-                          .slice()
-                          .reverse()
-                          .map((item, idx) => {
-                            const isLatest = idx === 0;
-                            return (
-                              <div key={item._id || `${item.status}-${item.timestamp || idx}`} className={`timeline-item ${isLatest ? 'latest' : ''}`}>
-                                <div className="timeline-node" />
-                                <div className="timeline-item-title" style={{ fontSize: '12px' }}>
-                                  {sanitizeTimelineText(item.description || item.status)}
-                                </div>
-                                <div className="timeline-item-time" style={{ fontSize: '11px' }}>
-                                  <Clock size={11} />
-                                  {formatDate(item.timestamp)}
-                                  {item.location && <span>• {item.location}</span>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    ) : (
-                      <div className="timeline-empty-msg" style={{ fontSize: '12px', padding: '12px' }}>
-                        Đơn hàng đang chờ bưu tá GHN tiếp nhận gói hàng tại cửa hàng.
-                      </div>
-                    )}
-                  </div>
+                  <TrackingTimeline
+                    statusHistory={trackingData.statusHistory}
+                    onImageClick={(img) => setSelectedEvidenceImage(img)}
+                  />
                 </div>
               )}
 
               {/* KHỐI 2: DANH SÁCH SẢN PHẨM TRONG ĐƠN */}
-              <div style={{ padding: '16px', background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E5E0D8' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#171717', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Package size={16} color="#96723D" />
-                  <span>Danh Sách Trang Phục ({orderItems.length} món)</span>
-                </h4>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {orderItems.map((item, idx) => {
-                    const prodName = item.productName || item.name || item.variantId?.productId?.name || `Trang phục #${idx + 1}`;
-                    const prodSize = item.size || item.variantId?.size || 'M';
-                    const prodPrice = item.rentalPrice || item.unitPrice || item.unitRentalFee || item.lineTotal || 0;
-                    const prodQty = item.quantity || 1;
-
-                    return (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '10px 14px',
-                          background: '#FAF9F6',
-                          borderRadius: '8px',
-                          border: '1px solid #E5E0D8',
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#171717' }}>{prodName}</div>
-                          <div style={{ fontSize: '11px', color: '#78716C', marginTop: '2px' }}>
-                            Size: {prodSize} • Số lượng: {prodQty}
-                          </div>
-                        </div>
-                        <strong style={{ fontSize: '13px', color: '#96723D' }}>
-                          {formatCurrencyVND(prodPrice * prodQty)}
-                        </strong>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <OrderProductsList orderItems={orderItems} />
 
               {/* KHỐI 3: CHI TIẾT TÀI CHÍNH & THANH TOÁN */}
-              <div style={{ padding: '16px', background: '#FAFAF9', borderRadius: '12px', border: '1px solid #E5E0D8' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                  <span style={{ color: '#78716C' }}>{isRental ? 'Tiền thuê trang phục:' : 'Tiền hàng:'}</span>
-                  <strong style={{ color: '#171717' }}>{formatCurrencyVND(isRental ? order.rentalFee : order.totalAmount)}</strong>
-                </div>
-
-                {isRental && order.depositAmount > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                    <span style={{ color: '#78716C' }}>Tiền đặt cọc bảo đảm:</span>
-                    <strong style={{ color: '#C5A880' }}>{formatCurrencyVND(order.depositAmount)}</strong>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                  <span style={{ color: '#78716C' }}>Phương thức thanh toán:</span>
-                  <strong style={{ color: order.paymentMethod === 'wallet' ? '#15803D' : '#B45309' }}>
-                    {order.paymentMethod === 'wallet' ? 'Ví nội bộ Vestora (Đã thanh toán)' : 'Thanh toán khi nhận hàng (COD)'}
-                  </strong>
-                </div>
-
-                <hr style={{ border: 'none', borderTop: '1px solid #E5E0D8', margin: '10px 0' }} />
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ fontWeight: 600, color: '#171717' }}>Tổng thanh toán:</span>
-                  <strong style={{ fontSize: '16px', color: '#96723D' }}>
-                    {formatCurrencyVND(isRental ? (order.rentalFee || 0) + (order.depositAmount || 0) : order.totalAmount || 0)}
-                  </strong>
-                </div>
-              </div>
+              <OrderFinancialSummary order={order} isRental={isRental} />
 
               {/* KHỐI 4: CÁC NÚT HÀNH ĐỘNG */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingTop: '8px' }}>
@@ -713,7 +924,12 @@ export default function OrderTrackingDetailModal({
           )}
         </div>
       )}
+
+      {/* Lightbox xem ảnh bằng chứng giao hàng full size */}
+      <EvidenceLightboxModal
+        imageSrc={selectedEvidenceImage}
+        onClose={() => setSelectedEvidenceImage(null)}
+      />
     </HauteCoutureModal>
   );
 }
-

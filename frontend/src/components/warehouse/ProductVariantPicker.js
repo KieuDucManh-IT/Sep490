@@ -29,7 +29,7 @@ async function attachProducts(variants) {
   });
 }
 
-function loadVariantsWithProducts() {
+export function loadVariantsWithProducts() {
   const cacheIsFresh = Date.now() - cachedAt < CACHE_MS;
   if (cachedLoad && cacheIsFresh) return cachedLoad;
   cachedAt = Date.now();

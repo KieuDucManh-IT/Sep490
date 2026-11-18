@@ -6,6 +6,8 @@ import { EmptyState, KpiCards, PageHeader, Pagination } from '../../components/w
 import inventoryReportService from '../../services/warehouse/inventoryReportService';
 import { useAuth } from '../../context/AuthContext';
 import WarehousePageLayout from './shared/WarehousePageLayout';
+import CentralCapacityPanel from './inventory/CentralCapacityPanel';
+import ItemHistoryOffcanvas from './inventory/ItemHistoryOffcanvas';
 
 const number = (value) => Number(value || 0).toLocaleString('vi-VN');
 const STORAGE_LEVEL_OPTIONS = [['zone', 'Khu'], ['row', 'Dãy'], ['shelf', 'Kệ']];
@@ -83,6 +85,7 @@ export default function InventoryReportPage({ mode = 'manager' }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [serialDetail, setSerialDetail] = useState(null);
+  const [historyItemId, setHistoryItemId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,6 +124,7 @@ export default function InventoryReportPage({ mode = 'manager' }) {
       />
       {error && <div className="wm-error">{error}</div>}
       <KpiCards items={summaryCards(report.summary)} loading={loading} />
+      <CentralCapacityPanel />
       <section className="wm-panel wm-list-panel">
         <div className="wm-list-toolbar">
           <label className="wm-search-field">
@@ -161,7 +165,15 @@ export default function InventoryReportPage({ mode = 'manager' }) {
         <Pagination page={page} limit={pageSize} total={filtered.length} onChange={setPage}
           onLimitChange={setPageSize} limitOptions={[10, 20, 50]} disabled={loading} />
       </section>
-      {serialDetail && <InventorySerialsModal item={serialDetail} onClose={() => setSerialDetail(null)} />}
+      {/* Mở lịch sử mã hàng thì tạm ẩn danh sách món (Offcanvas nằm dưới Modal), đóng lại thì hiện lại. */}
+      {serialDetail && !historyItemId && (
+        <InventorySerialsModal
+          item={serialDetail}
+          onClose={() => setSerialDetail(null)}
+          onItemClick={(serial) => setHistoryItemId(serial._id)}
+        />
+      )}
+      <ItemHistoryOffcanvas itemId={historyItemId} onHide={() => setHistoryItemId(null)} />
     </WarehousePageLayout>
   );
 }

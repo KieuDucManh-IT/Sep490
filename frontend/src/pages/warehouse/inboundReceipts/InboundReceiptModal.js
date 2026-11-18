@@ -21,7 +21,7 @@ function modalTitle(mode, receipt) {
  */
 export default function InboundReceiptModal({
   mode, role, receipt, centralLocation, suppliers, staff, shelves, hidden, error,
-  onClose, onCreate, onReceive, onApprove, onReject, onPutaway, onCancel,
+  onClose, onCreate, onReceive, onApprove, onRecount, onPutaway, onCancel,
 }) {
   const [activeMode, setActiveMode] = useState(mode);
   const showProgress = receipt && activeMode !== 'create';
@@ -58,7 +58,7 @@ export default function InboundReceiptModal({
           onClose={onClose}
           onCancel={onCancel}
           onApprove={onApprove}
-          onReject={onReject}
+          onRecount={onRecount}
           onSwitchMode={setActiveMode}
         />
       )}

@@ -1,26 +1,20 @@
 import React from 'react';
 import { Button, Modal } from 'react-bootstrap';
-import { RELOCATION_TYPE_LABELS, labelOf } from '../../../constants/warehouseLabels';
-import RelocationGroupEditor from './RelocationGroupEditor';
-import { groupKey } from './relocationHelpers';
+import RelocationLinesEditor from './RelocationLinesEditor';
 
 /**
- * Form tạo phiếu tách / gộp tồn (chủ kho): chọn nhân viên thực hiện, thêm hàng từ tồn kho,
- * rồi chỉnh kệ / số lượng cho từng mặt hàng. Modal được ẩn (không gỡ) khi mở bảng chọn hàng để giữ dữ liệu.
+ * Form tạo phiếu di chuyển hàng giữa các kệ (chủ kho): chọn nhân viên thực hiện, thêm hàng từ kệ nguồn,
+ * chọn kệ đích và số lượng cho từng dòng. Modal được ẩn (không gỡ) khi mở bảng chọn hàng để giữ dữ liệu.
+ * Hàng quản lý theo mã: hệ thống tự giữ các món cũ nhất ở kệ nguồn khi tạo phiếu (như trước).
  */
 export default function RelocationCreateModal({
-  show, operationType, staff, assigned, setAssigned, groups, setGroups, shelves, shelfCode, error, busy,
-  onPickGoods, onSubmit, onHide,
+  show, staff, assigned, setAssigned, lines, setLines, shelves, error, busy, onPickGoods, onSubmit, onHide,
 }) {
-  const isSplit = operationType === 'split';
-  const updateGroup = (index, group) => setGroups((old) => old.map((item, i) => (i === index ? group : item)));
-  const removeGroup = (index) => setGroups((old) => old.filter((_, i) => i !== index));
-
   return (
     <Modal show={show} onHide={onHide} size="xl" centered scrollable>
       <form onSubmit={onSubmit}>
         <Modal.Header closeButton>
-          <Modal.Title as="h5">Tạo phiếu {labelOf(RELOCATION_TYPE_LABELS, operationType, '').toLowerCase()}</Modal.Title>
+          <Modal.Title as="h5">Tạo phiếu di chuyển hàng</Modal.Title>
         </Modal.Header>
         <Modal.Body className="wh-stack-form">
           {error && <div className="wm-error">{error}</div>}
@@ -32,23 +26,17 @@ export default function RelocationCreateModal({
             </select>
           </label>
           <div>
-            <Button variant="outline-secondary" onClick={onPickGoods}>+ Thêm hàng hóa</Button>
+            <Button variant="outline-secondary" onClick={onPickGoods}>+ Thêm hàng từ kệ nguồn</Button>
+            <small className="wm-stock-subline">
+              Tách một kệ ra nhiều kệ: “+ Kệ đích khác”. Gộp nhiều kệ về một kệ: chọn hàng ở các kệ nguồn,
+              chọn kệ đích ở một dòng rồi “Dùng kệ đích này cho mọi kệ nguồn”.
+            </small>
           </div>
-          {groups.map((group, index) => (
-            <RelocationGroupEditor
-              key={groupKey(group, operationType)}
-              group={group}
-              isSplit={isSplit}
-              shelves={shelves}
-              shelfCode={shelfCode}
-              onChange={(next) => updateGroup(index, next)}
-              onRemove={() => removeGroup(index)}
-            />
-          ))}
+          <RelocationLinesEditor lines={lines} setLines={setLines} shelves={shelves} />
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={onHide}>Đóng</Button>
-          <Button variant="dark" type="submit" disabled={!groups.length || busy}>Tạo và giao nhân viên</Button>
+          <Button variant="dark" type="submit" disabled={!lines.length || busy}>Tạo và giao nhân viên</Button>
         </Modal.Footer>
       </form>
     </Modal>

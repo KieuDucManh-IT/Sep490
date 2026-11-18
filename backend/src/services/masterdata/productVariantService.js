@@ -58,7 +58,8 @@ export const productVariantService = {
     const input = { ...payload, productId };
     delete input.sku;
     const data = validateProductVariant(input, variant.toObject());
-    data.sku = await buildSku(product, data, variant._id);
+    // Form biến thể không còn gửi `attributes` (TASK-014 A4): SKU tính trên dữ liệu đã gộp để giữ phần thuộc tính cũ.
+    data.sku = await buildSku(product, { ...variant.toObject(), ...data }, variant._id);
     Object.assign(variant, data);
     return variant.save();
   },

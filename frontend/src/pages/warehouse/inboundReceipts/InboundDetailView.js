@@ -3,6 +3,7 @@ import { Button, Modal } from 'react-bootstrap';
 import { StatusBadge } from '../../../components/warehouse';
 import { INBOUND_STATUS_DETAIL_LABELS } from '../../../constants/warehouseLabels';
 import { codeAndName } from '../shared/slipHelpers';
+import RecountNotice from './RecountNotice';
 import { CANCELLABLE_STATUSES, lineName, money, storedPositions } from './inboundHelpers';
 
 function ReceiptInfo({ receipt }) {
@@ -20,6 +21,9 @@ function ReceiptInfo({ receipt }) {
       <div><small>Người tạo</small><strong>{receipt.createdBy?.FullName || '—'}</strong></div>
       <div><small>Nhân viên được giao</small><strong>{receipt.assignedStaffId?.FullName || '—'}</strong></div>
       {receipt.note && <div><small>Ghi chú</small><strong>{receipt.note}</strong></div>}
+      {receipt.recountCount > 0 && (
+        <div><small>Số lần kiểm nhận lại</small><strong>{receipt.recountCount}</strong></div>
+      )}
     </div>
   );
 }
@@ -59,17 +63,24 @@ function ReceiptLines({ items }) {
 
 /**
  * Xem phiếu nhập và các nút theo vai trò:
- * chủ kho hủy / duyệt / từ chối; nhân viên ghi nhận thực nhận và xếp hàng lên kệ.
+ * chủ kho hủy / duyệt / yêu cầu kiểm nhận lại; nhân viên ghi nhận thực nhận và xếp hàng lên kệ.
  */
-export default function InboundDetailView({ receipt, role, onClose, onCancel, onApprove, onReject, onSwitchMode }) {
+export default function InboundDetailView({ receipt, role, onClose, onCancel, onApprove, onRecount, onSwitchMode }) {
   const isManager = role === 'warehouse_manager';
   const isStaff = role === 'warehouse_staff';
   const status = receipt.status;
   return (
     <>
       <Modal.Body className="wm-inbound-detail">
+        <RecountNotice receipt={receipt} />
         <ReceiptInfo receipt={receipt} />
         <ReceiptLines items={receipt.items || []} />
+        {isManager && CANCELLABLE_STATUSES.includes(status) && (
+          <p className="small text-muted mt-3 mb-0">
+            Hủy phiếu = không nhập lô này nữa.
+            {status === 'received' && ' Yêu cầu kiểm nhận lại = nhân viên đếm lại hàng của phiếu này.'}
+          </p>
+        )}
       </Modal.Body>
       <Modal.Footer>
         <Button variant="secondary" onClick={onClose}>Đóng</Button>
@@ -81,7 +92,7 @@ export default function InboundDetailView({ receipt, role, onClose, onCancel, on
         )}
         {isManager && status === 'received' && (
           <>
-            <Button variant="outline-danger" onClick={onReject}>Từ chối phiếu</Button>
+            <Button variant="outline-warning" onClick={onRecount}>Yêu cầu kiểm nhận lại</Button>
             <Button variant="dark" onClick={onApprove}>Duyệt phiếu</Button>
           </>
         )}

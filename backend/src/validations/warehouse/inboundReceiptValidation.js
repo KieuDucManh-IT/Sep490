@@ -62,3 +62,24 @@ export const validateCancelReason = (payload) => {
   if (reason.length > 500) throw badRequest('Lý do hủy phiếu tối đa 500 ký tự.');
   return { reason };
 };
+
+export const RECEIPT_DECISIONS = ['approve', 'recount'];
+
+/**
+ * Quyết định của quản lý kho với phiếu đã ghi nhận: 'approve' (cho xếp kệ) hoặc 'recount' (nhân viên kiểm nhận lại).
+ * 'reject' không còn được chấp nhận (TASK-014). 'recount' bắt buộc lý do (`reason`, client cũ gửi `note`), ≤ 500 ký tự.
+ */
+export const validateReceiptDecision = (payload) => {
+  const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  if (body.decision === 'reject') {
+    throw badRequest('Không còn hỗ trợ từ chối phiếu nhập. Hãy dùng "Yêu cầu kiểm nhận lại" hoặc hủy phiếu.');
+  }
+  if (!RECEIPT_DECISIONS.includes(body.decision)) throw badRequest('Quyết định không hợp lệ.');
+  if (body.decision === 'approve') return { decision: 'approve' };
+  const raw = body.reason ?? body.recountReason ?? body.note;
+  if (raw != null && typeof raw !== 'string') throw badRequest('Lý do kiểm nhận lại không hợp lệ.');
+  const reason = String(raw || '').trim();
+  if (!reason) throw badRequest('Vui lòng nhập lý do yêu cầu kiểm nhận lại.');
+  if (reason.length > 500) throw badRequest('Lý do kiểm nhận lại tối đa 500 ký tự.');
+  return { decision: 'recount', reason };
+};

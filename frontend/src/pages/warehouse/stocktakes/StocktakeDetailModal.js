@@ -18,6 +18,12 @@ function summaryCards(summary) {
     { key: 'counted', label: 'Thực tế dự kiến', value: summary.counted },
     { key: 'missing', label: 'Thiếu / mất', value: summary.missing, tone: summary.missing > 0 ? 'danger' : 'default' },
     { key: 'damaged', label: 'Hỏng / không sửa được', value: summary.damaged, tone: summary.damaged > 0 ? 'warn' : 'default' },
+    {
+      key: 'damagedQuantity',
+      label: 'Hỏng (hàng số lượng)',
+      value: summary.damagedQuantity,
+      tone: summary.damagedQuantity > 0 ? 'warn' : 'default',
+    },
   ];
 }
 
@@ -56,7 +62,7 @@ export default function StocktakeDetailModal({
 }) {
   const lines = stocktake.items || [];
   const editable = stocktake.status === 'in_progress';
-  const summary = countSummary(lines, counting.counts, counting.itemConditions);
+  const summary = countSummary(lines, counting.counts, counting.itemConditions, counting.damaged);
   const storagesOfLocation = storages.filter((storage) => idOf(storage.locationId) === idOf(stocktake.locationId));
 
   return (
@@ -71,6 +77,15 @@ export default function StocktakeDetailModal({
         </p>
         <WarehouseWorkflowProgress flow="stocktake" status={stocktake.status} />
         <WarehouseCancelledNote slip={stocktake} />
+        {stocktake.selectedLines?.length > 0 && (
+          <p className="wm-stock-subline">Phiếu chỉ gồm {stocktake.selectedLines.length} dòng hàng đã chọn khi tạo phiếu.</p>
+        )}
+        {editable && (
+          <p className="wm-stock-subline">
+            Hàng quản lý theo số lượng: nhập số đếm được và "Trong đó hỏng" (hàng hỏng vẫn tính trong tồn
+            nhưng không bán / cho thuê được). Số hỏng điền sẵn là số đang ghi nhận không khả dụng.
+          </p>
+        )}
         {error && <div className="wm-error">{error}</div>}
         <KpiCards items={summaryCards(summary)} />
         <StocktakeCountTable
@@ -78,8 +93,10 @@ export default function StocktakeDetailModal({
           editable={editable}
           counts={counting.counts}
           itemConditions={counting.itemConditions}
+          damaged={counting.damaged}
           onCountChange={counting.setCount}
           onConditionChange={counting.setCondition}
+          onDamagedChange={counting.setDamagedCount}
         />
         {editable && (
           <StocktakeNewItems

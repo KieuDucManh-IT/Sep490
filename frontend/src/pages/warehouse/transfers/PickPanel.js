@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
+import { Alert } from 'react-bootstrap';
 import stockTransferService from '../../../services/warehouse/stockTransferService';
 import TransferLinesTable from './TransferLinesTable';
 import PickItemsModal from './PickItemsModal';
 import { idOf, isIndividual } from './transferHelpers';
+import usePickSuggestion from './usePickSuggestion';
+import PickSuggestionList from './PickSuggestionList';
 
 const initialAllocations = (transfer) => Object.fromEntries((transfer.items || []).map((line) => [
   line._id,
@@ -18,6 +21,8 @@ export default function PickPanel({ transfer, storages, busy, onAction, onError,
   const [allocations, setAllocations] = useState(() => initialAllocations(transfer));
   const [candidates, setCandidates] = useState({});
   const [picker, setPicker] = useState(null);
+  const suggestion = usePickSuggestion(transfer._id);
+  const [applied, setApplied] = useState(false);
   const fromLocationId = idOf(transfer.fromLocationId);
 
   const updateRow = (lineId, index, changes) => setAllocations((old) => ({
@@ -31,6 +36,27 @@ export default function PickPanel({ transfer, storages, busy, onAction, onError,
       const result = await stockTransferService.pickCandidates(transfer._id, line._id, allocation.storageId);
       setCandidates((old) => ({ ...old, [`${line._id}:${index}`]: result }));
       if (isIndividual(line)) setPicker({ lineId: line._id, index });
+    } catch (loadError) { onError(loadError.message); }
+  };
+
+  /** Điền kế hoạch lấy hàng theo gợi ý (ít kệ nhất, theo mã vị trí). Nhân viên vẫn sửa được trước khi lưu. */
+  const applySuggestion = async () => {
+    try {
+      const lines = await suggestion.load();
+      const byDetail = new Map(lines.map((line) => [String(line.detailId), line]));
+      setAllocations((old) => {
+        const next = { ...old };
+        for (const line of transfer.items || []) {
+          const suggested = byDetail.get(String(line._id));
+          if (!suggested || !(Number(line.quantityApproved) > 0)) continue;
+          next[line._id] = suggested.picks.map((pick) => ({
+            storageId: idOf(pick.storageId), quantity: String(pick.quantity), itemIds: pick.itemIds || [],
+          }));
+        }
+        return next;
+      });
+      setCandidates({});
+      setApplied(true);
     } catch (loadError) { onError(loadError.message); }
   };
 
@@ -48,7 +74,9 @@ export default function PickPanel({ transfer, storages, busy, onAction, onError,
     const options = storages.filter((storage) => idOf(storage.locationId) === fromLocationId && (!individual || storage.type === 'shelf'));
     const rows = allocations[line._id] || [];
     const allocated = rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+    const suggested = applied ? suggestion.byDetail.get(String(line._id)) : null;
     return <div className="wm-pick-allocation-list">
+      {suggested && <PickSuggestionList line={suggested} />}
       {rows.map((row, index) => {
         const available = candidates[`${line._id}:${index}`]?.available;
         return <div className="wm-pick-allocation" key={index}>
@@ -77,10 +105,22 @@ export default function PickPanel({ transfer, storages, busy, onAction, onError,
     updateRow(picker.lineId, picker.index, { itemIds: checked ? [...chosen, itemId] : chosen.filter((id) => id !== itemId) });
   };
 
+  const shortLines = applied ? suggestion.lines.filter((line) => line.shortage > 0 && line.needed > 0) : [];
+
   return <>
+    <div className="wm-stock-actions justify-content-start mt-0 mb-2">
+      <button type="button" className="secondary" disabled={busy || suggestion.loading} onClick={applySuggestion}>
+        {suggestion.loading ? 'Đang tính gợi ý...' : 'Lấy theo gợi ý'}
+      </button>
+    </div>
+    {applied && <Alert variant={shortLines.length ? 'warning' : 'info'} className="py-2">
+      Đã điền theo gợi ý: ít kệ nhất, đi theo thứ tự mã vị trí. Có thể sửa trước khi lưu; khi lưu, hệ thống kiểm lại tồn thực tế.
+      {shortLines.length > 0 && ` ${shortLines.length} dòng không đủ hàng tại kho tổng — xem cảnh báo ở từng dòng.`}
+    </Alert>}
     <TransferLinesTable
       transfer={transfer}
       className="wm-transfer-picking-table"
+      rowClassName={(line) => (applied && suggestion.byDetail.get(String(line._id))?.shortage > 0 ? 'wm-transfer-row-short' : '')}
       extraColumn={{ header: 'Vị trí lấy hàng', render: renderAllocations }}
     />
     <div className="wm-stock-actions">

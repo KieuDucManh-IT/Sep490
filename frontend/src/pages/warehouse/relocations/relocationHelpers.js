@@ -1,14 +1,17 @@
 /**
- * Hàm thuần cho phiếu tách / gộp tồn trong kho tổng.
- * - Tách: một biến thể ở một kệ nguồn → chia sang nhiều kệ đích.
- * - Gộp: một biến thể ở nhiều kệ nguồn → dồn về một kệ đích.
- * Mỗi "nhóm" (group) trong form là một mặt hàng cùng các kệ liên quan (`places`).
+ * Hàm thuần cho phiếu "Di chuyển hàng giữa các kệ" trong kho tổng.
+ * Mỗi dòng: Biến thể · Từ kệ · Đến kệ · Số lượng. "Thêm kệ đích" (tách) và "Dùng kệ đích cho mọi kệ nguồn"
+ * (gộp) chỉ là cách điền nhanh nhiều dòng; mọi dòng gửi lên cùng một kiểu.
  */
 import { idOf } from '../shared/slipHelpers';
 
 export const PICKER_PAGE_SIZE = 10;
 
-export const emptyPlace = () => ({ storageId: '', quantity: 1 });
+let lineSeq = 0;
+const nextKey = () => {
+  lineSeq += 1;
+  return `line-${lineSeq}`;
+};
 
 /** Tên dòng tồn: "Tên · SKU · size · màu". */
 export const inventoryRowName = (row) => [row.productName, row.sku, row.size, row.color].filter(Boolean).join(' · ');
@@ -25,102 +28,111 @@ export function filterAvailable(inventory, query) {
     });
 }
 
-function addSplitRow(groups, row) {
-  const exists = groups.some((group) => idOf(group.variantId) === idOf(row.variantId)
-    && idOf(group.fromStorageId) === idOf(row.storageId));
-  if (exists) return;
-  groups.push({
-    variantId: row.variantId,
-    label: inventoryRowName(row),
-    fromStorageId: row.storageId,
-    available: Number(row.quantityAvailable),
-    places: [emptyPlace(), emptyPlace()],
-  });
-}
-
-function addMergeRow(groups, row) {
-  const source = {
-    storageId: row.storageId,
-    quantity: Number(row.quantityAvailable),
-    available: Number(row.quantityAvailable),
-  };
-  const group = groups.find((item) => idOf(item.variantId) === idOf(row.variantId));
-  if (!group) {
-    groups.push({ variantId: row.variantId, label: inventoryRowName(row), toStorageId: '', places: [source] });
-    return;
-  }
-  const alreadyAdded = group.places.some((place) => idOf(place.storageId) === idOf(row.storageId));
-  if (!alreadyAdded) group.places.push(source);
-}
-
-/** Thêm các dòng tồn đã chọn vào form; dòng trùng (đã có) thì bỏ qua. */
-export function addRowsToGroups(groups, rows, operationType) {
-  const next = groups.map((group) => ({ ...group, places: [...group.places] }));
+/** Mỗi dòng tồn chọn từ bảng (biến thể tại một kệ) thành một dòng di chuyển chưa có kệ đích. */
+export function addInventoryRows(lines, rows) {
+  const next = [...lines];
   rows.forEach((row) => {
-    if (operationType === 'split') addSplitRow(next, row);
-    else addMergeRow(next, row);
+    const exists = next.some((line) => idOf(line.variantId) === idOf(row.variantId)
+      && idOf(line.fromStorageId) === idOf(row.storageId) && !line.toStorageId);
+    if (exists) return;
+    next.push({
+      key: nextKey(),
+      variantId: idOf(row.variantId),
+      label: inventoryRowName(row),
+      fromStorageId: idOf(row.storageId),
+      fromLabel: row.storagePath || '',
+      available: Number(row.quantityAvailable),
+      toStorageId: '',
+      quantity: 1,
+    });
   });
   return next;
 }
 
+/** Tách: thêm một dòng cùng biến thể, cùng kệ nguồn để chọn thêm một kệ đích. */
+export function addTargetLine(lines, index) {
+  const source = lines[index];
+  if (!source) return lines;
+  const copy = { ...source, key: nextKey(), toStorageId: '', quantity: 1 };
+  return [...lines.slice(0, index + 1), copy, ...lines.slice(index + 1)];
+}
+
+/** Gộp: dùng kệ đích của dòng này cho mọi dòng cùng biến thể (các kệ nguồn khác). */
+export function applyTargetToVariant(lines, index) {
+  const source = lines[index];
+  if (!source?.toStorageId) return lines;
+  return lines.map((line) => {
+    if (line.variantId !== source.variantId || line.fromStorageId === source.toStorageId) return line;
+    return { ...line, toStorageId: source.toStorageId };
+  });
+}
+
 const isPositiveInteger = (value) => Number.isInteger(Number(value)) && Number(value) > 0;
 
-function validateSplitGroup(group) {
-  const usedShelves = [];
-  let total = 0;
-  for (const place of group.places) {
-    if (!place.storageId) return `Vui lòng chọn kệ đích cho ${group.label}.`;
-    if (idOf(place.storageId) === idOf(group.fromStorageId)) return `Kệ đích không được trùng kệ nguồn của ${group.label}.`;
-    if (!isPositiveInteger(place.quantity)) return `Số lượng phân bổ của ${group.label} phải là số nguyên lớn hơn 0.`;
-    if (usedShelves.includes(idOf(place.storageId))) return `Không được chọn trùng kệ đích cho ${group.label}.`;
-    usedShelves.push(idOf(place.storageId));
-    total += Number(place.quantity);
-  }
-  if (total > Number(group.available)) {
-    return `Tổng số lượng phân bổ của ${group.label} vượt quá số lượng khả dụng (${group.available}).`;
-  }
-  return '';
-}
-
-function validateMergeGroup(group) {
-  if (!group.toStorageId) return `Vui lòng chọn kệ đích cho ${group.label}.`;
-  const sourceIds = group.places.map((place) => idOf(place.storageId));
-  if (sourceIds.includes(idOf(group.toStorageId))) return `Kệ đích không được trùng với kệ nguồn của ${group.label}.`;
-  for (const place of group.places) {
-    if (!isPositiveInteger(place.quantity)) return `Số lượng gộp của ${group.label} phải là số nguyên lớn hơn 0.`;
-    if (Number(place.quantity) > Number(place.available)) {
-      return `Số lượng lấy từ kệ nguồn của ${group.label} vượt quá tồn khả dụng.`;
-    }
-  }
-  return '';
-}
-
 /** Kiểm tra form trước khi tạo phiếu; trả message lỗi đầu tiên hoặc ''. */
-export function validateGroups(groups, operationType) {
-  if (!groups.length) return 'Vui lòng thêm ít nhất một mặt hàng.';
-  for (const group of groups) {
-    if (!group.places.length) return `Mặt hàng ${group.label} chưa có kệ được chọn.`;
-    const message = operationType === 'split' ? validateSplitGroup(group) : validateMergeGroup(group);
-    if (message) return message;
+export function validateMoveLines(lines) {
+  if (!lines.length) return 'Vui lòng thêm ít nhất một dòng hàng.';
+  const seen = new Set();
+  const usedBySource = new Map();
+  for (const line of lines) {
+    if (!line.toStorageId) return `Chọn kệ đích cho ${line.label}.`;
+    if (line.toStorageId === line.fromStorageId) return `Kệ đích phải khác kệ nguồn (${line.label}).`;
+    if (!isPositiveInteger(line.quantity)) return `Số lượng của ${line.label} phải là số nguyên lớn hơn 0.`;
+    const key = `${line.variantId}|${line.fromStorageId}|${line.toStorageId}`;
+    if (seen.has(key)) return `Có hai dòng ${line.label} cùng kệ nguồn và kệ đích; hãy gộp số lượng vào một dòng.`;
+    seen.add(key);
+    const sourceKey = `${line.variantId}|${line.fromStorageId}`;
+    const used = (usedBySource.get(sourceKey) || 0) + Number(line.quantity);
+    usedBySource.set(sourceKey, used);
+    if (used > Number(line.available)) {
+      return `Tổng số lượng lấy từ ${line.fromLabel || 'kệ nguồn'} của ${line.label} vượt khả dụng (${line.available}).`;
+    }
   }
   return '';
 }
 
-/** Chuyển các nhóm trong form thành dòng phiếu gửi API (mỗi dòng: biến thể, kệ nguồn, kệ đích, số lượng). */
-export function buildRelocationItems(groups, operationType) {
-  return groups.flatMap((group) => group.places.map((place) => {
-    if (operationType === 'split') {
-      return { variantId: group.variantId, fromStorageId: group.fromStorageId, toStorageId: place.storageId, quantity: Number(place.quantity) };
-    }
-    return { variantId: group.variantId, fromStorageId: place.storageId, toStorageId: group.toStorageId, quantity: Number(place.quantity) };
-  }));
+/** Dòng phiếu gửi API (giữ đúng định dạng backend: biến thể, kệ nguồn, kệ đích, số lượng). */
+export const buildRelocationItems = (lines) => lines.map((line) => ({
+  variantId: line.variantId,
+  fromStorageId: line.fromStorageId,
+  toStorageId: line.toStorageId,
+  quantity: Number(line.quantity),
+}));
+
+/* ---------------- Nhân viên xác nhận hoàn tất ---------------- */
+
+export const isIndividualLine = (line) => line.variantId?.productId?.trackingType === 'individual';
+
+/** Giá trị xác nhận ban đầu: số lượng thực tế = số được giao, món = các món đã giữ cho dòng. */
+export const initialConfirmations = (relocation) => Object.fromEntries((relocation.items || []).map((line) => [
+  idOf(line),
+  { quantity: String(line.quantity), itemIds: (line.itemIds || []).map(idOf) },
+]));
+
+/** Lỗi xác nhận của một dòng (trả '' nếu hợp lệ). Server vẫn kiểm lại. */
+export function confirmationError(line, value) {
+  if (!value) return 'Chưa xác nhận dòng này.';
+  if (isIndividualLine(line)) {
+    if (value.itemIds.length !== line.quantity) return `Cần đánh dấu đủ ${line.quantity} món đã chuyển.`;
+    return '';
+  }
+  const quantity = Number(value.quantity);
+  if (!Number.isInteger(quantity) || quantity < 0) return 'Số lượng thực tế phải là số nguyên không âm.';
+  if (quantity !== Number(line.quantity)) {
+    return 'Số thực tế khác số được giao: hãy báo quản lý kho xử lý phiếu (hủy và tạo lại) thay vì hoàn tất.';
+  }
+  return '';
 }
 
-/** Tổng số lượng đã phân bổ (bỏ qua ô trống / số âm). */
-export const allocatedTotal = (places) => places
-  .reduce((sum, place) => sum + (Number(place.quantity) > 0 ? Number(place.quantity) : 0), 0);
-
-export const groupKey = (group, operationType) => {
-  if (operationType === 'split') return `${idOf(group.variantId)}-${idOf(group.fromStorageId)}`;
-  return idOf(group.variantId);
-};
+/** Payload hoàn tất: [{ detailId, quantityMoved, itemIds }]. */
+export const buildCompletePayload = (relocation, confirmations) => ({
+  items: (relocation.items || []).map((line) => {
+    const value = confirmations[idOf(line)];
+    const individual = isIndividualLine(line);
+    return {
+      detailId: idOf(line),
+      quantityMoved: individual ? value.itemIds.length : Number(value.quantity),
+      itemIds: individual ? value.itemIds : [],
+    };
+  }),
+});

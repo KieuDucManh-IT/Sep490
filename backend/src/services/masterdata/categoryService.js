@@ -2,6 +2,8 @@ import { Category } from '../../models/masterdata/Category.js';
 import { validateCategory } from '../../validations/masterdata/categoryValidation.js';
 import { createCrudService } from '../../generic/crudService.js';
 import { appError as fail } from '../warehouse/shared/errors.js';
+import { resolveCategoryLevel } from './categoryRules.js';
+
 export const categoryService = {
   ...createCrudService(Category, validateCategory, ['parentCategoryId']),
   list: async () => {
@@ -17,18 +19,27 @@ export const categoryService = {
     };
     return rows.map((row) => ({ ...row, type: inferType(row) }));
   },
+  // Danh mục tối đa 2 cấp (TASK-014 A3): cấp (`type`) do server tính từ loại cha, bỏ qua `type` client gửi.
   create: async (payload) => {
-    const data = validateCategory(payload);
-    await assertHierarchy(data.type, data.parentCategoryId);
+    const data = validateCategory({ ...(payload || {}), type: 'lv1' });
+    const parent = await findParent(data.parentCategoryId);
+    data.type = resolveCategoryLevel({ parent });
     return Category.create(data);
   },
   update: async (id, payload) => {
     const category = await Category.findById(id);
     if (!category) return null;
     const legacyType = category.type || await inferCategoryType(category);
-    const data = validateCategory(payload, { ...category.toObject(), type: legacyType });
-    if (String(data.parentCategoryId || '') === String(id)) throw fail('Loại sản phẩm không thể là loại cha của chính nó.');
-    await assertHierarchy(data.type, data.parentCategoryId, id);
+    const data = validateCategory({ ...(payload || {}), type: legacyType }, { ...category.toObject(), type: legacyType });
+    const nextParentId = Object.hasOwn(data, 'parentCategoryId') ? data.parentCategoryId : category.parentCategoryId;
+    // Chỉ kiểm tra cấp khi đổi loại cha: loại cấp 3 cũ vẫn sửa được tên / trạng thái để dọn dữ liệu.
+    if (String(nextParentId || '') !== String(category.parentCategoryId || '')) {
+      const parent = await findParent(nextParentId);
+      const hasChildren = parent
+        ? Boolean(await Category.exists({ parentCategoryId: id, isDeleted: { $ne: true } }))
+        : false;
+      data.type = resolveCategoryLevel({ parent, hasChildren, currentId: id });
+    }
     Object.assign(category, data);
     return category.save();
   },
@@ -40,6 +51,7 @@ export const categoryService = {
   },
 };
 
+/** Cấp của loại cũ chưa lưu `type` (đếm số tầng cha, tối đa 3). */
 const inferCategoryType = async (category) => {
   if (category.type) return category.type;
   let depth = 0;
@@ -53,30 +65,9 @@ const inferCategoryType = async (category) => {
   return ['lv1', 'lv2', 'lv3'][Math.min(depth, 2)];
 };
 
-const assertHierarchy = async (type, parentCategoryId, currentId = null) => {
-  if (type === 'lv1' && parentCategoryId) throw fail('Danh mục cấp 1 không được có danh mục cha.');
-  if (type !== 'lv1' && !parentCategoryId) throw fail('Danh mục cấp 2 và cấp 3 phải chọn danh mục cha.');
-  if (currentId) {
-    const children = await Category.find({ parentCategoryId: currentId, isDeleted: { $ne: true } }).select('type').lean();
-    const expectedChildType = type === 'lv1' ? 'lv2' : type === 'lv2' ? 'lv3' : null;
-    if (children.length && (!expectedChildType || children.some((child) => child.type && child.type !== expectedChildType))) {
-      throw fail('Không thể đổi cấp danh mục vì cấp của danh mục con sẽ không còn hợp lệ.');
-    }
-  }
-  if (!parentCategoryId) return;
-  const parent = await Category.findOne({ _id: parentCategoryId, isDeleted: { $ne: true } }).select('_id type parentCategoryId').lean();
+const findParent = async (parentCategoryId) => {
+  if (!parentCategoryId) return null;
+  const parent = await Category.findOne({ _id: parentCategoryId, isDeleted: { $ne: true } }).select('_id parentCategoryId status').lean();
   if (!parent) throw fail('Loại cha không tồn tại hoặc đã bị xóa.');
-  const parentType = parent.type || await inferCategoryType(parent);
-  const expectedParent = type === 'lv2' ? 'lv1' : 'lv2';
-  if (parentType !== expectedParent) throw fail(`${type === 'lv2' ? 'Danh mục cấp 2' : 'Danh mục cấp 3'} chỉ được nằm dưới ${expectedParent === 'lv1' ? 'danh mục cấp 1' : 'danh mục cấp 2'}.`);
-  if (currentId && String(parent._id) === String(currentId)) throw fail('Loại sản phẩm không thể là loại cha của chính nó.');
-  if (currentId) {
-    let ancestor = parent;
-    const visited = new Set();
-    while (ancestor && !visited.has(String(ancestor._id))) {
-      if (String(ancestor._id) === String(currentId)) throw fail('Không thể đưa loại sản phẩm vào hậu duệ của chính nó.');
-      visited.add(String(ancestor._id));
-      ancestor = ancestor.parentCategoryId ? await Category.findById(ancestor.parentCategoryId).select('_id type parentCategoryId').lean() : null;
-    }
-  }
+  return parent;
 };

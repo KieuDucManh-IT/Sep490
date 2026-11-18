@@ -7,6 +7,12 @@ const stocktakeSchema = new mongoose.Schema({
   productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
   variantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' }],
   storageIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation' }],
+  // Cặp (biến thể, vị trí) WM đã chọn khi tạo phiếu; rỗng = mọi dòng trong phạm vi (hành vi cũ).
+  selectedLines: [{
+    _id: false,
+    variantId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant', required: true },
+    storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
+  }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assignedStaffId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

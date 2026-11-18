@@ -6,7 +6,8 @@ Tài liệu ngắn để đọc code và bảo vệ đồ án: luồng phiếu, 
 
 ```
 Nhập kho (NCC → kho tổng)          awaiting_receiving → received → approved → completed
-  inboundReceiptService              (received → rejected; mọi trạng thái chưa completed → cancelled)
+  inboundReceiptService              (received → awaiting_receiving khi WM yêu cầu kiểm nhận lại; chưa completed → cancelled;
+                                      `rejected` chỉ còn ở dữ liệu cũ)
                                      Tồn cộng ở bước completed (xếp hàng lên kệ).
 
 Điều chuyển (kho tổng → chi nhánh)  requested → approved → preparing → shipped → partially_received → received
@@ -45,6 +46,7 @@ Thanh lý                           requested → completed | rejected
 | `itemStateService.js` | Cách DUY NHẤT để đổi trạng thái / vị trí / kệ của món `individual`; cập nhật balance trong cùng transaction. |
 | `itemBalanceRules.js` | Hàm thuần: quy đổi trạng thái món → phần chênh balance, kiểm invariant. |
 | `balanceQueryService.js` | Đọc số lượng: `availableOf`, `getBalances`, `getAvailable`, `stockMismatchError`. |
+| `pickSuggestionRules.js` | Hàm thuần: gợi ý kệ / món lấy hàng cho phiếu xuất (ít kệ nhất, sắp theo mã vị trí), có unit test. API `GET /transfers/:id/pick-suggestion` chỉ đọc. |
 | `orderStockService.js` | Giữ / nhả tồn cho đơn thuê / bán. |
 | `inboundReceiptService.js`, `stockTransferService.js`, `branchReturnService.js`, `stockDiscrepancyService.js`, `stockRelocationService.js`, `stockControlDomainCore.js` | Nghiệp vụ từng loại phiếu (xem mục 1). `stocktakeService.js` / `stockAdjustmentService.js` chỉ re-export từ `stockControlDomainCore.js`. |
 | `inventoryReportService.js`, `inventoryReportRules.js`, `branchInventoryReportService.js` | Báo cáo tồn kho tổng / chi nhánh (đọc từ balance). |

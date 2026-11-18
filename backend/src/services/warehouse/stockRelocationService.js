@@ -1,7 +1,9 @@
-// Tách / gộp tồn giữa các kệ trong kho tổng (phiếu di chuyển nội bộ, không đổi tổng tồn của kho).
-// Luồng trạng thái: assigned → in_progress → completed   (assigned có thể bị cancelled).
+// Di chuyển hàng giữa các kệ trong kho tổng (phiếu nội bộ, không đổi tổng tồn của kho).
+// Mỗi dòng là một lệnh tổng quát: biến thể · từ kệ → đến kệ · số lượng; xử lý không phụ thuộc operationType
+// (phiếu mới 'move'; 'split' / 'merge' là dữ liệu cũ, đi cùng một đường xử lý).
+// Luồng trạng thái: assigned → in_progress → completed   (assigned / in_progress có thể bị cancelled).
 // Ai làm bước nào:
-// - Quản lý kho: tạo phiếu (giữ hàng ở kệ nguồn ngay lúc tạo) và giao nhân viên, hủy khi nhân viên chưa bắt đầu.
+// - Quản lý kho: tạo phiếu (giữ hàng ở kệ nguồn ngay lúc tạo) và giao nhân viên, hủy khi phiếu chưa hoàn tất.
 // - Nhân viên kho được giao: bắt đầu thực hiện, xác nhận đã chuyển (kệ nguồn giảm, kệ đích tăng).
 // Sức chứa kệ đích (và các cấp cha) được kiểm lúc tạo phiếu, tính cả các phiếu di chuyển khác đang mở.
 import mongoose from 'mongoose';
@@ -31,7 +33,7 @@ export const RELOCATION_STATUS = {
   CANCELLED: 'cancelled',
 };
 const OPEN_STATUSES = [RELOCATION_STATUS.ASSIGNED, RELOCATION_STATUS.IN_PROGRESS];
-const OPERATION_TYPES = ['split', 'merge'];
+const OPERATION_TYPES = ['move', 'split', 'merge'];
 /** Món có tình trạng này không được chọn để dời kệ. */
 const UNMOVABLE_CONDITIONS = ['damaged', 'unrepairable', 'missing'];
 
@@ -77,7 +79,7 @@ const load = async (id, user, session) => {
 /* ------------------------------ Danh sách ------------------------------ */
 
 /**
- * Danh sách phiếu tách/gộp. Query: operationType (split|merge), status, search, page, limit.
+ * Danh sách phiếu di chuyển. Query: operationType (move|split|merge), status, search, page, limit.
  * Có page/limit → { items, total, page, limit } (kèm lineCount, totalQuantity); không có → mảng như cũ.
  */
 export const listStockRelocations = async (user, query = {}) => {
@@ -197,7 +199,7 @@ const holdSourceStock = async ({ central, line, individual, session }) => {
   await moveItems(items, { status: 'reserved', warehouseHold: 1 }, session);
 };
 
-/** Quản lý kho tạo phiếu tách/gộp: giữ hàng ở kệ nguồn, kiểm sức chứa kệ đích, giao nhân viên. */
+/** Quản lý kho tạo phiếu di chuyển: giữ hàng ở kệ nguồn, kiểm sức chứa kệ đích, giao nhân viên. */
 export const createStockRelocation = async (payload, user, validated) => {
   if (!isWarehouseManagerOrAdmin(user)) throw appError('Chỉ quản lý kho mới được tạo và giao phiếu di chuyển.', 403);
   const session = await mongoose.startSession();
@@ -239,11 +241,12 @@ export const createStockRelocation = async (payload, user, validated) => {
 /** Nhân viên được giao bắt đầu thực hiện phiếu. */
 export const startStockRelocation = async (id, user) => {
   if (!validId(id)) throw appError('Mã phiếu di chuyển không hợp lệ.');
-  const doc = await StockRelocation.findOne({ _id: id, assignedStaffId: user._id, status: RELOCATION_STATUS.ASSIGNED });
-  if (!doc) throw appError('Phiếu không còn ở trạng thái được nhận thực hiện.', 409);
-  doc.status = RELOCATION_STATUS.IN_PROGRESS;
-  doc.startedAt = new Date();
-  await doc.save();
+  const doc = await StockRelocation.findOneAndUpdate(
+    { _id: id, assignedStaffId: user._id, status: RELOCATION_STATUS.ASSIGNED },
+    { $set: { status: RELOCATION_STATUS.IN_PROGRESS, startedAt: new Date() } },
+    { new: true },
+  );
+  if (!doc) throw appError('Phiếu không còn ở trạng thái được nhận thực hiện hoặc không được giao cho bạn.', 409);
   return load(id, user);
 };
 
@@ -322,9 +325,13 @@ export const completeStockRelocation = async (id, user, confirmations) => {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const doc = await StockRelocation.findOne({ _id: id, assignedStaffId: user._id, status: RELOCATION_STATUS.IN_PROGRESS })
-        .session(session);
-      if (!doc) throw appError('Phiếu chưa được bắt đầu hoặc không được giao cho bạn.', 409);
+      // Giành trạng thái trước (in_progress → completed) để hủy đồng thời không nhả hàng đã chuyển.
+      const doc = await StockRelocation.findOneAndUpdate(
+        { _id: id, assignedStaffId: user._id, status: RELOCATION_STATUS.IN_PROGRESS },
+        { $set: { status: RELOCATION_STATUS.COMPLETED, completedAt: new Date() } },
+        { new: true, session },
+      );
+      if (!doc) throw appError('Phiếu chưa được bắt đầu, đã bị hủy hoặc không được giao cho bạn.', 409);
       const rows = await StockRelocationDetail.find({ relocationId: id }).session(session);
       const incoming = new Map(confirmations.map((x) => [x.detailId, x]));
       if (incoming.size !== rows.length || rows.some((row) => !incoming.has(String(row._id)))) {
@@ -342,9 +349,6 @@ export const completeStockRelocation = async (id, user, confirmations) => {
         row.confirmedAt = new Date();
         await row.save({ session });
       }
-      doc.status = RELOCATION_STATUS.COMPLETED;
-      doc.completedAt = new Date();
-      await doc.save({ session });
     });
   } finally {
     await session.endSession();
@@ -354,32 +358,43 @@ export const completeStockRelocation = async (id, user, confirmations) => {
 
 /* ------------------------------ Hủy ------------------------------ */
 
-/** Quản lý hủy phiếu chưa bắt đầu: nhả toàn bộ hàng đã giữ ở kệ nguồn. */
+/**
+ * Quản lý hủy phiếu chưa hoàn tất (đã giao hoặc đang thực hiện): nhả toàn bộ hàng đã giữ ở kệ nguồn.
+ * Hàng chỉ rời kệ nguồn ở bước hoàn tất nên hủy chỉ cần nhả giữ.
+ */
 export const cancelStockRelocation = async (id, user) => {
   if (!isWarehouseManagerOrAdmin(user)) throw appError('Chỉ quản lý kho mới được hủy phiếu di chuyển.', 403);
+  if (!validId(id)) throw appError('Mã phiếu di chuyển không hợp lệ.');
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const doc = await StockRelocation.findOne({ _id: id, status: RELOCATION_STATUS.ASSIGNED }).session(session);
-      if (!doc) throw appError('Chỉ có thể hủy phiếu chưa được nhân viên bắt đầu thực hiện.', 409);
+      // Giành trạng thái bằng lệnh có điều kiện để hủy và hoàn tất loại trừ nhau.
+      const doc = await StockRelocation.findOneAndUpdate(
+        { _id: id, status: { $in: OPEN_STATUSES } },
+        { $set: { status: RELOCATION_STATUS.CANCELLED, cancelledAt: new Date() } },
+        { new: true, session },
+      );
+      if (!doc) throw appError('Chỉ có thể hủy phiếu chưa hoàn tất.', 409);
       const rows = await StockRelocationDetail.find({ relocationId: id }).session(session);
       for (const row of rows) {
         const source = { locationId: doc.locationId, storageId: row.fromStorageId };
         if (await isIndividualVariant(row.variantId, session)) {
           const items = await InventoryItem.find({ _id: { $in: row.itemIds }, ...source, status: 'reserved' })
             .session(session);
+          if (items.length !== row.itemIds.length) {
+            throw appError('Có món hàng của phiếu không còn được giữ ở kệ nguồn; hãy tải lại và báo quản lý kho đối soát.', 409);
+          }
           await moveItems(items, { status: 'available', warehouseHold: -1 }, session);
         } else {
-          await InventoryBalance.updateOne(
-            { ...source, variantId: row.variantId },
-            { $inc: { quantityReserved: -row.quantity } },
-            { session },
-          );
+          await releaseReservedBalance({
+            ...source,
+            variantId: row.variantId,
+            quantity: row.quantity,
+            session,
+            message: 'Số đang giữ ở kệ nguồn không khớp phiếu; hãy tải lại và báo quản lý kho đối soát.',
+          });
         }
       }
-      doc.status = RELOCATION_STATUS.CANCELLED;
-      doc.cancelledAt = new Date();
-      await doc.save({ session });
     });
   } finally {
     await session.endSession();

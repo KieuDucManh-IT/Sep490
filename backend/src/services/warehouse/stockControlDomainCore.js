@@ -24,7 +24,13 @@ import { StockAdjustmentDetail } from '../../models/warehouse/adjustment/StockAd
 import {
   validateCancelReason, validateCreateStocktakeInput, validateStocktakeCountInput,
 } from '../../validations/warehouse/stockControlValidation.js';
-import { decreaseInventoryBalance, increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
+import {
+  applyCountedQuantityBalance, decreaseInventoryBalance, increaseInventoryBalance, recordStockMovement,
+} from './inventoryLedgerService.js';
+import {
+  filterRowsByLines, groupRowsToPairs, initialDamagedQuantity, pairsOutOfScope, quantityAdjustmentNeed, stocktakePairKey,
+  unavailableAfterStocktake,
+} from './stocktakeRules.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
 import { createItems, moveItem } from './itemStateService.js';
 import { appError } from './shared/errors.js';
@@ -162,14 +168,41 @@ const assertScopeProductsActive = async (productIds, variantIds) => {
   }
 };
 
-/** Tạo phiếu kiểm kê nháp tại kho tổng với phạm vi kệ / sản phẩm. Chưa chụp số hệ thống. */
-export const createStocktake = async (payload, user) => {
-  const { locationId, scopeType, productIds, variantIds, storageIds, assignedStaffId } = validateCreateStocktakeInput(payload);
-  const location = await InventoryLocation.findOne({ _id: locationId, status: 'active' }).lean();
+/** Kiểm phạm vi gửi lên (kho tổng, vị trí, sản phẩm còn hoạt động); dùng chung cho tạo phiếu và xem trước. */
+const validateScope = async (payload) => {
+  const input = validateCreateStocktakeInput(payload);
+  const location = await InventoryLocation.findOne({ _id: input.locationId, status: 'active' }).lean();
   if (!location) throw appError('Kho/cửa hàng không tồn tại hoặc không hoạt động.');
   await assertCentralWarehouse(location._id);
-  if (storageIds.length) await storageScope(locationId, storageIds);
-  await assertScopeProductsActive(productIds, variantIds);
+  if (input.storageIds.length) await storageScope(input.locationId, input.storageIds);
+  await assertScopeProductsActive(input.productIds, input.variantIds);
+  return input;
+};
+
+/** Mỗi cặp WM chọn phải nằm trong phạm vi phiếu: biến thể thuộc phạm vi sản phẩm, vị trí thuộc phạm vi kệ. */
+const assertLinesInScope = async (scope, lines) => {
+  const selectedVariants = await resolveScopeVariants(scope, null);
+  let expanded = null;
+  if (scope.storageIds?.length) ({ expanded } = await storageScope(scope.locationId, scope.storageIds.map(String)));
+  if (pairsOutOfScope(lines, { variantIds: selectedVariants, storageIds: expanded }).length) {
+    throw appError('Có dòng hàng nằm ngoài phạm vi kiểm kê đã chọn.');
+  }
+  const variantIds = [...new Set(lines.map((line) => line.variantId))];
+  const activeVariants = await ProductVariant.countDocuments({ _id: { $in: variantIds }, status: 'active', isDeleted: { $ne: true } });
+  if (activeVariants !== variantIds.length) throw appError('Có dòng hàng chứa biến thể không tồn tại hoặc đã ngừng hoạt động.');
+  const storageIds = [...new Set(lines.map((line) => line.storageId).filter(Boolean))];
+  const activeStorages = await StorageLocation.countDocuments({ _id: { $in: storageIds }, locationId: scope.locationId, status: 'active' });
+  if (activeStorages !== storageIds.length) throw appError('Có dòng hàng chứa vị trí không thuộc kho hoặc không hoạt động.');
+};
+
+/**
+ * Tạo phiếu kiểm kê nháp tại kho tổng với phạm vi kệ / sản phẩm. Chưa chụp số hệ thống.
+ * `lines` (tùy chọn): chỉ kiểm các cặp (biến thể, vị trí) này; mỗi cặp phải nằm trong phạm vi, không thì 400.
+ */
+export const createStocktake = async (payload, user) => {
+  const scope = await validateScope(payload);
+  const { locationId, scopeType, productIds, variantIds, storageIds, assignedStaffId, lines } = scope;
+  if (lines) await assertLinesInScope(scope, lines);
   if (assignedStaffId) {
     const staffOk = await User.exists({ _id: assignedStaffId, Role: WAREHOUSE_STAFF_ROLE_PATTERN, Status: /^active$/i });
     if (!staffOk) throw appError('Nhân viên được giao không hợp lệ.');
@@ -181,6 +214,7 @@ export const createStocktake = async (payload, user) => {
     productIds,
     variantIds,
     storageIds,
+    selectedLines: lines || [],
     createdBy: user._id,
     assignedStaffId,
     status: STOCKTAKE_STATUS.DRAFT,
@@ -254,6 +288,7 @@ const buildSnapshotRows = async (stocktake, scopeFilter, session) => {
     rows.push({
       stocktakeId, variantId: balance.variantId, storageId: balance.storageId,
       systemQuantity: balance.quantityOnHand, countedQuantity: 0, isCounted: false,
+      damagedQuantity: initialDamagedQuantity(balance),
     });
   }
   for (const item of items) {
@@ -263,7 +298,50 @@ const buildSnapshotRows = async (stocktake, scopeFilter, session) => {
       systemQuantity: 1, countedQuantity: 0, isCounted: false,
     });
   }
-  return rows;
+  return { rows, tracking };
+};
+
+/**
+ * Chọn các dòng sẽ kiểm của một phạm vi — MỘT logic dùng chung cho lúc bắt đầu kiểm (chụp số) và lúc xem trước:
+ * kệ đã chọn + cấp con, biến thể của phạm vi sản phẩm, rồi lọc theo cặp WM đã chọn (`selectedLines`) nếu có.
+ */
+const selectStocktakeRows = async (scope, session) => {
+  let expanded = null;
+  if (scope.storageIds?.length) ({ expanded } = await storageScope(scope.locationId, scope.storageIds.map(String)));
+  const selectedVariants = await resolveScopeVariants(scope, session);
+  const scopeFilter = {};
+  if (selectedVariants) scopeFilter.variantId = { $in: [...selectedVariants] };
+  if (expanded) scopeFilter.storageId = { $in: [...expanded] };
+  const { rows, tracking } = await buildSnapshotRows(scope, scopeFilter, session);
+  return { rows: filterRowsByLines(rows, scope.selectedLines), tracking };
+};
+
+const previewSortKey = (item) => `${item.storage?.code || '~'}|${item.variant?.productId?.name || ''}|${item.variant?.sku || ''}`;
+
+/**
+ * Xem trước (chỉ đọc): các cặp (biến thể, vị trí) sẽ có trong phiếu nếu bắt đầu kiểm ngay lúc này,
+ * kèm tồn sổ hiện tại. Body = phạm vi như khi tạo phiếu (`lines` bị bỏ qua).
+ */
+export const previewStocktake = async (payload) => {
+  const scope = await validateScope({ ...(payload || {}), lines: undefined });
+  const { rows, tracking } = await selectStocktakeRows(scope, null);
+  const pairs = groupRowsToPairs(rows, tracking);
+  const [variants, storages] = await Promise.all([
+    ProductVariant.find({ _id: { $in: [...new Set(pairs.map((pair) => pair.variantId))] } })
+      .select('sku size color productId').populate('productId', 'productCode name trackingType').lean(),
+    StorageLocation.find({ _id: { $in: [...new Set(pairs.map((pair) => pair.storageId).filter(Boolean))] } })
+      .select('code name type').lean(),
+  ]);
+  const variantById = new Map(variants.map((row) => [String(row._id), row]));
+  const storageById = new Map(storages.map((row) => [String(row._id), row]));
+  const items = pairs.map((pair) => ({
+    key: stocktakePairKey(pair.variantId, pair.storageId),
+    ...pair,
+    variant: variantById.get(pair.variantId) || null,
+    storage: pair.storageId ? storageById.get(pair.storageId) || null : null,
+  }));
+  items.sort((left, right) => previewSortKey(left).localeCompare(previewSortKey(right), 'vi'));
+  return { items, total: items.length };
 };
 
 /** Quản lý bắt đầu kiểm kê: chụp số hệ thống vào chi tiết phiếu. Không khóa tồn. */
@@ -276,13 +354,7 @@ export const startStocktake = async (stocktakeId, user) => {
       const stocktake = await Stocktake.findOne({ _id: stocktakeId, status: STOCKTAKE_STATUS.DRAFT }).session(session);
       if (!stocktake) throw appError('Phiếu không ở trạng thái nháp.', 409);
       const startedAt = new Date();
-      let expanded = null;
-      if (stocktake.storageIds?.length) ({ expanded } = await storageScope(stocktake.locationId, stocktake.storageIds.map(String)));
-      const selectedVariants = await resolveScopeVariants(stocktake, session);
-      const scopeFilter = {};
-      if (selectedVariants) scopeFilter.variantId = { $in: [...selectedVariants] };
-      if (expanded) scopeFilter.storageId = { $in: [...expanded] };
-      const snapshotRows = await buildSnapshotRows(stocktake, scopeFilter, session);
+      const { rows: snapshotRows } = await selectStocktakeRows(stocktake, session);
       await StocktakeDetail.deleteMany({ stocktakeId }, { session });
       if (snapshotRows.length) await StocktakeDetail.insertMany(snapshotRows, { session });
       stocktake.status = STOCKTAKE_STATUS.IN_PROGRESS;
@@ -312,6 +384,9 @@ const assertCanCount = (stocktake, user, noPermissionMessage) => {
 
 /** Ghi số đếm cho một dòng có sẵn. Món cụ thể: đếm theo tình trạng (mất → 0, còn → 1). */
 const applyCountToDetail = async ({ detail, line, individual, user, timestamp }) => {
+  if (individual && Number(line.damagedQuantity) > 0) {
+    throw appError('Hàng quản lý theo mã ghi hỏng bằng tình trạng của từng món, không nhập số hỏng.');
+  }
   if (individual && detail.itemId) {
     const itemRecord = await InventoryItem.findById(detail.itemId).select('status condition').lean();
     if (!itemRecord) throw appError('Không tìm thấy món hàng của dòng kiểm kê.', 409);
@@ -320,6 +395,11 @@ const applyCountToDetail = async ({ detail, line, individual, user, timestamp })
     detail.countedItemStatus = itemRecord.status;
   } else if (!individual) {
     detail.countedQuantity = normalizeCount(line.countedQuantity, 'Số lượng thực tế');
+    // Không gửi số hỏng → giữ số đã có (số đề xuất lúc chụp hoặc lần ghi trước).
+    if (line.damagedQuantity != null) detail.damagedQuantity = normalizeCount(line.damagedQuantity, 'Số hàng hỏng');
+    if (detail.damagedQuantity != null && detail.damagedQuantity > detail.countedQuantity) {
+      throw appError('Số hàng hỏng không được lớn hơn số lượng thực tế.');
+    }
   } else {
     detail.countedQuantity = normalizeCount(line.countedQuantity, 'Số lượng thực tế', 1);
   }
@@ -393,6 +473,7 @@ const recordFoundExtra = async ({ stocktake, item, variants, tracking, user, tim
     countedSerialNumber: individual ? String(item.serialNumber || '').trim() || null : null,
     countedItemStatus: newItemStatus(item, individual, countedCondition),
     countedCondition,
+    damagedQuantity: individual ? 0 : normalizeCount(item.damagedQuantity ?? 0, 'Số hàng hỏng', countedQuantity),
     note: String(item.note || '').trim(),
   });
 };
@@ -547,7 +628,7 @@ const applyCountedCondition = async (detail, stocktake, session) => {
   await moveItem(itemRecord, change, session);
 };
 
-const adjustmentLineFor = (detail, before, change) => ({
+const adjustmentLineFor = (detail, before, change, damaged = {}) => ({
   adjustmentId: null,
   variantId: detail.variantId,
   itemId: detail.itemId || null,
@@ -560,21 +641,39 @@ const adjustmentLineFor = (detail, before, change) => ({
   itemStatus: detail.countedItemStatus || 'available',
   itemCondition: detail.countedCondition || null,
   reason: detail.note || 'Chênh lệch kiểm kê',
+  damagedQuantity: damaged.damagedQuantity ?? null,
+  unavailableBefore: damaged.unavailableBefore ?? null,
 });
 
+/** Hàng số lượng: dòng balance hiện tại (onHand, unavailable) của cặp biến thể + kệ. */
+const currentQuantityRow = (detail, locationId, session) => InventoryBalance.findOne({
+  locationId, variantId: detail.variantId, storageId: detail.storageId || null,
+}).select('quantityOnHand quantityUnavailable').session(session).lean();
+
 /** Đối chiếu một dòng: cập nhật tình trạng món, lưu số hệ thống lúc đếm, trả về dòng điều chỉnh nếu lệch. */
-const reconcileDetail = async ({ detail, stocktake, individual, session }) => {
+const reconcileDetail = async ({ detail, stocktake, individual, tracksDamaged, session }) => {
   const { untilCount, afterCount } = await movementsAroundCount(detail, stocktake, individual);
   if (individual && detail.itemId && detail.countedQuantity > 0 && detail.countedCondition) {
     await applyCountedCondition(detail, stocktake, session);
   }
   const expectedNow = Math.max(0, detail.countedQuantity + afterCount);
-  const before = await currentQuantity({ ...detail.toObject(), locationId: stocktake.locationId }, individual);
   detail.systemQuantity = Math.max(0, detail.systemQuantity + untilCount);
   detail.movementAfterCount = afterCount;
   await detail.save({ session });
-  const change = expectedNow - before;
-  return change ? adjustmentLineFor(detail, before, change) : null;
+  if (individual || !tracksDamaged) {
+    const before = await currentQuantity({ ...detail.toObject(), locationId: stocktake.locationId }, individual);
+    const change = expectedNow - before;
+    return change ? adjustmentLineFor(detail, before, change) : null;
+  }
+  // Hàng số lượng có ghi số hỏng: tạo dòng điều chỉnh cả khi chỉ số "không khả dụng" thay đổi.
+  const row = await currentQuantityRow(detail, stocktake.locationId, session);
+  const before = row?.quantityOnHand || 0;
+  const unavailableNow = row?.quantityUnavailable || 0;
+  const need = quantityAdjustmentNeed({ expectedNow, before, damagedQuantity: detail.damagedQuantity, unavailableNow });
+  if (!need.needed) return null;
+  return adjustmentLineFor(detail, before, need.change, {
+    damagedQuantity: detail.damagedQuantity, unavailableBefore: unavailableNow,
+  });
 };
 
 const createAdjustmentFromStocktake = async (stocktake, lines, user, session) => {
@@ -613,7 +712,9 @@ export const approveStocktake = async (stocktakeId, user) => {
       const adjustmentLines = [];
       for (const detail of details) {
         const individual = tracking.get(String(detail.variantId)) === 'individual';
-        const line = await reconcileDetail({ detail, stocktake, individual, session });
+        // Dòng chụp trước khi có field (damagedQuantity null) giữ hành vi cũ: không đụng "không khả dụng".
+        const tracksDamaged = detail.damagedQuantity != null;
+        const line = await reconcileDetail({ detail, stocktake, individual, tracksDamaged, session });
         if (line) adjustmentLines.push(line);
       }
       let adjustment = null;
@@ -745,9 +846,21 @@ const applyIndividualAdjustment = async (adjustment, detail, session) => {
   return detail.itemId || null;
 };
 
-/** Hàng quantity: tồn phải đúng như lúc duyệt; giảm chỉ được phần khả dụng, tăng thì upsert. */
+/**
+ * Hàng quantity: tồn phải đúng như lúc duyệt; giảm chỉ được phần khả dụng, tăng thì upsert.
+ * Dòng từ kiểm kê có số hỏng: đổi onHand và đặt "không khả dụng" = min(số hỏng, onHand sau) trong một lệnh.
+ * Trả về { unavailableBefore, unavailableAfter } cho dòng có số hỏng, ngược lại null.
+ */
 const applyQuantityAdjustment = async (adjustment, detail, session) => {
   const place = { locationId: adjustment.locationId, variantId: detail.variantId, storageId: detail.storageId || null };
+  if (detail.damagedQuantity != null) {
+    const unavailableAfter = unavailableAfterStocktake(detail.damagedQuantity, detail.quantityAfter);
+    const unavailableBefore = detail.unavailableBefore || 0;
+    await applyCountedQuantityBalance({
+      ...place, quantityBefore: detail.quantityBefore, unavailableBefore, change: detail.quantityChange, unavailableAfter, session,
+    });
+    return { unavailableBefore, unavailableAfter };
+  }
   const balance = await InventoryBalance.findOne(place).session(session);
   if ((balance?.quantityOnHand || 0) !== detail.quantityBefore) {
     throw appError('Tồn kho đã thay đổi sau khi duyệt điều chỉnh. Hãy kiểm kê lại trước khi áp dụng.', 409);
@@ -759,7 +872,21 @@ const applyQuantityAdjustment = async (adjustment, detail, session) => {
   } else if (detail.quantityChange > 0) {
     await increaseInventoryBalance({ ...place, quantity: detail.quantityChange, session });
   }
+  return null;
 };
+
+/** Sổ biến động khi kiểm kê đổi số hàng hỏng (quantityChange 0: số hỏng không làm đổi onHand). */
+const recordDamagedMovement = (adjustment, detail, damaged, user, session) => recordStockMovement({
+  variantId: detail.variantId,
+  locationId: adjustment.locationId,
+  storageId: detail.storageId || null,
+  movementType: 'adjustment',
+  quantityChange: 0,
+  referenceType: 'stock_adjustment',
+  referenceId: adjustment._id,
+  createdBy: user._id,
+  note: `Hàng hỏng ghi nhận khi kiểm kê: không khả dụng ${damaged.unavailableBefore} → ${damaged.unavailableAfter}.`,
+}, session);
 
 /** Cập nhật cờ hết hàng của sản phẩm sau khi áp dụng điều chỉnh; không chặn nghiệp vụ. */
 const refreshStockStatusAfterAdjustment = async (adjustmentId) => {
@@ -795,8 +922,13 @@ export const applyStockAdjustment = async (adjustmentId, user) => {
           throw appError('Dữ liệu số lượng điều chỉnh không hợp lệ.');
         }
         let movementItemId = detail.itemId || null;
+        let damaged = null;
         if (individual) movementItemId = await applyIndividualAdjustment(adjustment, detail, session);
-        else await applyQuantityAdjustment(adjustment, detail, session);
+        else damaged = await applyQuantityAdjustment(adjustment, detail, session);
+        if (damaged && damaged.unavailableAfter !== damaged.unavailableBefore) {
+          await recordDamagedMovement(adjustment, detail, damaged, user, session);
+        }
+        if (damaged && detail.quantityChange === 0) continue;
         await recordStockMovement({
           variantId: detail.variantId,
           itemId: movementItemId,

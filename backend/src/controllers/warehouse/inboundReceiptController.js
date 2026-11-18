@@ -35,10 +35,9 @@ export const checkReceipt = async (req, res, next) => {
   catch (error) { handleError(error, res, next); }
 };
 export const decideReceipt = async (req, res, next) => {
-  try {
-    if (!['approve', 'reject'].includes(req.body.decision)) return res.status(400).json({ success: false, message: 'Quyết định không hợp lệ.' });
-    res.json({ success: true, data: await approveReceipt(req.params.id, req.user._id, req.body.decision, req.body.note) });
-  } catch (error) { handleError(error, res, next); }
+  // decision: 'approve' | 'recount' (kèm reason). 'reject' → 400 (validateReceiptDecision).
+  try { res.json({ success: true, data: await approveReceipt(req.params.id, req.user._id, req.body) }); }
+  catch (error) { handleError(error, res, next); }
 };
 export const putawayReceiptItems = async (req, res, next) => {
   try { res.json({ success: true, data: await putawayReceipt(req.params.id, req.body, req.user) }); }

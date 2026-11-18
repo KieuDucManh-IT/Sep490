@@ -48,12 +48,19 @@ export function buildCreatePayload({ centralLocation, supplierId, assignedStaffI
 }
 
 /** Dòng ghi nhận thực nhận ban đầu cho từng dòng phiếu. */
-export const initialReceiveLines = (receipt) => receipt.items.map((item) => ({
-  detailId: item._id,
-  quantityReceived: '',
-  quantityDamaged: 0,
-  note: item.note || '',
-}));
+/**
+ * Dòng ghi nhận ban đầu. Phiếu bị yêu cầu kiểm nhận lại (recountCount > 0) điền sẵn số đã nhận / hỏng lần trước
+ * để nhân viên sửa; phiếu mới để trống ô thực nhận.
+ */
+export const initialReceiveLines = (receipt) => {
+  const prefill = receipt.recountCount > 0;
+  return receipt.items.map((item) => ({
+    detailId: item._id,
+    quantityReceived: prefill ? item.quantityReceived ?? '' : '',
+    quantityDamaged: prefill ? item.quantityDamaged ?? 0 : 0,
+    note: item.note || '',
+  }));
+};
 
 /** Số nhận và số hỏng phải là số nguyên không âm; số hỏng không lớn hơn số nhận. */
 export function validateReceive(lines) {

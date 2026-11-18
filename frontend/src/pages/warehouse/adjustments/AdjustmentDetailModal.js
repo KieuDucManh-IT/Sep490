@@ -12,6 +12,13 @@ export function formatChange(value) {
   return String(number);
 }
 
+/** Hàng số lượng từ kiểm kê: "không khả dụng" trước → sau (sau = min(số hỏng, tồn sau)). */
+function damagedLabel(line) {
+  if (line.damagedQuantity == null) return '—';
+  const after = Math.min(Number(line.damagedQuantity), Number(line.quantityAfter || 0));
+  return `${line.unavailableBefore ?? 0} → ${after}`;
+}
+
 function AdjustmentLinesTable({ lines }) {
   return (
     <div className="wm-table-wrap">
@@ -23,6 +30,7 @@ function AdjustmentLinesTable({ lines }) {
             <th>Tồn trước</th>
             <th>Thay đổi</th>
             <th>Tồn sau</th>
+            <th>Không khả dụng (hỏng)</th>
           </tr>
         </thead>
         <tbody>
@@ -41,6 +49,7 @@ function AdjustmentLinesTable({ lines }) {
               <td>{line.quantityBefore}</td>
               <td>{formatChange(line.quantityChange)}</td>
               <td>{line.quantityAfter}</td>
+              <td>{damagedLabel(line)}</td>
             </tr>
           ))}
         </tbody>

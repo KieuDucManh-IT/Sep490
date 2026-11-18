@@ -10,6 +10,7 @@ import SlipListToolbar, { statusOptionsFrom } from '../shared/SlipListToolbar';
 import { codeAndName, isConflict } from '../shared/slipHelpers';
 import InboundReceiptModal from './InboundReceiptModal';
 import useInboundMasterData from './useInboundMasterData';
+import { recountLabel } from './RecountNotice';
 
 const STATUS_OPTIONS = statusOptionsFrom(INBOUND_STATUS_LABELS);
 
@@ -22,7 +23,10 @@ function ReceiptRow({ receipt, onOpen }) {
       <td>{receipt.assignedStaffId?.FullName || '—'}</td>
       <td>{receipt.lineCount ?? 0}</td>
       <td>{receipt.totalQuantity ?? 0}</td>
-      <td><StatusBadge status={receipt.status} labels={INBOUND_STATUS_LABELS} fallback={receipt.status} /></td>
+      <td>
+        <StatusBadge status={receipt.status} labels={INBOUND_STATUS_LABELS} fallback={receipt.status} />
+        {recountLabel(receipt) && <div><small className="text-warning-emphasis">{recountLabel(receipt)}</small></div>}
+      </td>
       <td>
         <Button size="sm" variant="outline-secondary" onClick={() => onOpen(receipt._id)}>Mở phiếu</Button>
       </td>
@@ -32,7 +36,7 @@ function ReceiptRow({ receipt, onOpen }) {
 
 /**
  * Màn nhập kho từ nhà cung cấp.
- * Chủ kho: tạo phiếu, duyệt / từ chối kết quả tiếp nhận, hủy phiếu.
+ * Chủ kho: tạo phiếu, duyệt / yêu cầu kiểm nhận lại kết quả tiếp nhận, hủy phiếu.
  * Nhân viên kho: ghi nhận thực nhận, xếp hàng lên kệ (chỉ thấy phiếu được giao).
  */
 export default function InboundReceiptsPage({ mode = 'manager' }) {
@@ -97,8 +101,9 @@ export default function InboundReceiptsPage({ mode = 'manager' }) {
     }
   };
 
-  const confirmReject = async (note) => {
-    await runOnSelected((id) => inboundReceiptService.approve(id, 'reject', note));
+  /** Yêu cầu nhân viên kiểm nhận lại: phiếu về "chờ tiếp nhận", tồn không đổi. Lý do bắt buộc. */
+  const confirmRecount = async (reason) => {
+    await runOnSelected((id) => inboundReceiptService.approve(id, 'recount', reason));
     closeModal();
   };
 
@@ -195,21 +200,23 @@ export default function InboundReceiptsPage({ mode = 'manager' }) {
           onCreate={saveCreate}
           onReceive={saveReceive}
           onApprove={approve}
-          onReject={() => setDialog('reject')}
+          onRecount={() => setDialog('recount')}
           onPutaway={savePutaway}
           onCancel={isManager ? () => setDialog('cancel') : undefined}
         />
       )}
       <ConfirmModal
-        show={dialog === 'reject' && Boolean(selected)}
-        title={`Từ chối phiếu ${selected?.receiptCode || ''}`}
-        body="Phiếu bị từ chối sẽ dừng quy trình nhập kho."
-        confirmText="Từ chối phiếu"
-        variant="danger"
+        show={dialog === 'recount' && Boolean(selected)}
+        title={`Yêu cầu kiểm nhận lại phiếu ${selected?.receiptCode || ''}`}
+        body={'Phiếu quay về "Chờ tiếp nhận" để nhân viên được giao đếm lại; số đã nhận được giữ làm giá trị '
+          + 'điền sẵn. Tồn kho không thay đổi. Muốn bỏ hẳn lô hàng này thì dùng "Hủy phiếu".'}
+        confirmText="Gửi yêu cầu kiểm nhận lại"
+        variant="warning"
         reasonMode="required"
-        reasonLabel="Lý do từ chối"
+        reasonLabel="Lý do kiểm nhận lại (tối đa 500 ký tự)"
+        reasonPlaceholder="Ví dụ: số hỏng dòng áo vest M chưa khớp biên bản giao hàng"
         onHide={() => setDialog('')}
-        onConfirm={confirmReject}
+        onConfirm={confirmRecount}
       />
       <WarehouseCancelSlipModal
         show={dialog === 'cancel' && Boolean(selected)}

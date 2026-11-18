@@ -6,9 +6,13 @@ import '../styles/WarehouseManager.css';
 const idOf = (value) => (value && typeof value === 'object' ? value._id : value) || '';
 const capacityOf = (value) => Number.isInteger(Number(value)) && value !== null && value !== '' ? Number(value) : 0;
 
-export default function StorageLocationCrudModal({ mode, record, parent, locations, rows, onClose, onSave }) {
+/**
+ * Form tạo / sửa vị trí lưu trữ. Vị trí chỉ thuộc kho tổng (TASK-014 A2): không có ô chọn kho,
+ * backend luôn gán kho tổng.
+ * @param {object} props.warehouse kho tổng (`{ _id, name, maxCapacity }`)
+ */
+export default function StorageLocationCrudModal({ mode, record, parent, warehouse, rows, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
-    locationId: idOf(record?.locationId) || idOf(parent?.locationId) || (locations.length === 1 ? locations[0]._id : ''),
     parentStorageId: idOf(record?.parentStorageId) || parent?._id || '',
     type: record?.type || (!parent ? 'zone' : parent.type === 'zone' ? 'row' : 'shelf'),
     code: record?.code || '',
@@ -20,13 +24,12 @@ export default function StorageLocationCrudModal({ mode, record, parent, locatio
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const readOnly = mode === 'view';
-  const parentLocation = locations.find((location) => location._id === form.locationId);
   const parentDetails = parent || rows.find((row) => row._id === form.parentStorageId);
   const codePrefix = mode === 'create' && parent ? parent.code + '-' : '';
   const minimumCapacity = record ? rows.filter((row) => idOf(row.parentStorageId) === record._id).reduce((sum, row) => sum + capacityOf(row.maxCapacity), 0) : 0;
   const capacityLimit = parentDetails
     ? Math.max(0, capacityOf(parentDetails.maxCapacity) - rows.filter((row) => idOf(row.parentStorageId) === parentDetails._id && row._id !== record?._id).reduce((sum, row) => sum + capacityOf(row.maxCapacity), 0))
-    : Math.max(0, capacityOf(parentLocation?.maxCapacity) - rows.filter((row) => !idOf(row.parentStorageId) && idOf(row.locationId) === form.locationId && row._id !== record?._id).reduce((sum, row) => sum + capacityOf(row.maxCapacity), 0));
+    : Math.max(0, capacityOf(warehouse?.maxCapacity) - rows.filter((row) => !idOf(row.parentStorageId) && row._id !== record?._id).reduce((sum, row) => sum + capacityOf(row.maxCapacity), 0));
 
   const submit = async (event) => {
     event.preventDefault();
@@ -37,7 +40,6 @@ export default function StorageLocationCrudModal({ mode, record, parent, locatio
     setSaving(true);
     const code = usesPrefix ? codePrefix + codeInput : codeInput;
     const payload = {
-      locationId: form.locationId,
       parentStorageId: form.parentStorageId || null,
       type: form.type,
       code,
@@ -65,7 +67,7 @@ export default function StorageLocationCrudModal({ mode, record, parent, locatio
     {readOnly ? <>
       <Modal.Body className="wm-storage-modal">
         <div className="wm-detail-grid">
-          <div><small>Kho / cửa hàng</small><strong>{parentLocation?.name || record?.locationId?.name || '—'}</strong></div>
+          <div><small>Kho</small><strong>{warehouse?.name || record?.locationId?.name || '—'}</strong></div>
           <div><small>Vị trí cha</small><strong>{parentDetails?.code || '—'}</strong></div>
           <div><small>Loại</small><strong>{typeLabel[form.type]}</strong></div>
           <div><small>Mã vị trí</small><strong>{record?.code}</strong></div>
@@ -79,7 +81,7 @@ export default function StorageLocationCrudModal({ mode, record, parent, locatio
       <Modal.Body className="wm-storage-modal">
         {error && <div className="wm-error">{error}</div>}
         <div className="wm-form">
-          <label>Kho / cửa hàng{mode === 'create' && !parent ? <select required value={form.locationId} onChange={(event) => setForm({ ...form, locationId: event.target.value })}><option value="">Chọn kho/cửa hàng</option>{locations.map((location) => <option key={location._id} value={location._id}>{location.code} — {location.name}</option>)}</select> : <input readOnly value={parentLocation?.name || record?.locationId?.name || ''} />}</label>
+          <p className="wm-storage-warehouse mb-0">Kho: <strong>{warehouse?.name || record?.locationId?.name || 'Kho tổng'}</strong></p>
           <label>Vị trí cha<input readOnly value={parentDetails?.code || 'Không có (vị trí gốc)'} /></label>
           <label>Loại<input readOnly value={typeLabel[form.type]} /></label>
           <label>Mã vị trí{codePrefix ? <span className="wm-code-input"><span>{codePrefix}</span><input required value={form.suffix} onChange={(event) => setForm({ ...form, suffix: event.target.value })} /></span> : <input required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} />}</label>

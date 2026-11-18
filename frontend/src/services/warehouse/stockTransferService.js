@@ -20,6 +20,8 @@ export default {
   createRequest: async (payload) => (await api.post('/warehouse/transfers/requests', payload)).data,
   decide: async (id, payload) => (await api.post(`/warehouse/transfers/${id}/decision`, payload)).data,
   pickCandidates: async (id, detailId, storageId) => (await api.get(`/warehouse/transfers/${id}/pick-candidates`, { params: { detailId, storageId: storageId || 'none' } })).data,
+  /** Chỉ đọc: khả dụng kho tổng từng dòng + gợi ý kệ / món lấy hàng. Trả { status, lines: [...] }. */
+  pickSuggestion: async (id) => (await api.get(`/warehouse/transfers/${id}/pick-suggestion`)).data,
   savePick: async (id, payload) => (await api.post(`/warehouse/transfers/${id}/pick`, payload)).data,
   ship: async (id) => (await api.post(`/warehouse/transfers/${id}/ship`)).data,
   receive: async (id, payload) => (await api.post(`/warehouse/transfers/${id}/receive`, payload)).data,

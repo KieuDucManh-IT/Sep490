@@ -26,6 +26,20 @@ export const emptyCreateForm = (locationId = '') => ({
   assignedStaffId: '',
 });
 
+/** Phần phạm vi của form tạo phiếu (body của API xem trước). */
+export const previewScopePayload = (form) => ({
+  locationId: form.locationId,
+  scopeType: form.scopeType,
+  productIds: form.productIds,
+  variantIds: form.variantIds,
+  storageIds: form.storageIds,
+});
+
+/** Các cặp (biến thể, vị trí) còn được chọn trong bảng xem trước → `lines` khi tạo phiếu. */
+export const selectedPreviewLines = (items, excludedKeys) => items
+  .filter((item) => !excludedKeys.has(item.key))
+  .map((item) => ({ variantId: item.variantId, storageId: item.storageId || null }));
+
 export const emptyNewItem = () => ({ variantId: '', storageId: '', itemCode: '', countedQuantity: 1 });
 
 const isWholeWarehouse = (row) => {
@@ -67,19 +81,27 @@ export function lineVariance(line, actual) {
   return actual + Number(line.movementAfterCount || 0) - Number(line.systemQuantity || 0);
 }
 
+/** Số hỏng đang nhập của dòng hàng số lượng (ô trống = 0). */
+export const damagedOf = (line, damaged = {}) => {
+  if (isIndividualLine(line)) return 0;
+  const value = damaged[line._id] ?? line.damagedQuantity;
+  return Number(value || 0);
+};
+
 /** Số liệu tổng của phiếu đang mở cho hàng thẻ KPI. */
-export function countSummary(lines, counts, itemConditions) {
+export function countSummary(lines, counts, itemConditions, damaged = {}) {
   return lines.reduce((summary, line) => {
     const condition = itemConditions[line._id] || line.countedCondition || line.itemId?.condition;
     summary.expected += Number(line.systemQuantity || 0);
     summary.counted += actualQuantity(line, counts, itemConditions);
     if (condition === 'missing') summary.missing += 1;
     if (['damaged', 'unrepairable'].includes(condition)) summary.damaged += 1;
+    summary.damagedQuantity += damagedOf(line, damaged);
     return summary;
-  }, { expected: 0, counted: 0, missing: 0, damaged: 0 });
+  }, { expected: 0, counted: 0, missing: 0, damaged: 0, damagedQuantity: 0 });
 }
 
-/** Số đếm và tình trạng ban đầu khi mở phiếu (lấy theo kết quả đã lưu). */
+/** Số đếm, tình trạng và số hỏng ban đầu khi mở phiếu (lấy theo kết quả đã lưu / số đề xuất lúc chụp). */
 export function initialCounts(stocktake) {
   const lines = stocktake.items || [];
   const counts = Object.fromEntries(lines.map((line) => {
@@ -90,30 +112,10 @@ export function initialCounts(stocktake) {
   const conditions = Object.fromEntries(lines
     .filter((line) => line.itemId)
     .map((line) => [line._id, line.countedCondition || line.itemId.condition || 'good']));
-  return { counts, conditions };
-}
-
-/** Số vị trí nằm trong phạm vi (tính cả cấp con của vị trí được chọn). */
-export function storageScopeSize(storages, selectedStorageIds) {
-  const selectedIds = new Set(selectedStorageIds);
-  const byId = new Map(storages.map((storage) => [idOf(storage), storage]));
-  const isInsideSelection = (storage) => {
-    let cursor = storage;
-    const visited = new Set();
-    while (cursor && !visited.has(idOf(cursor))) {
-      if (selectedIds.has(idOf(cursor))) return true;
-      visited.add(idOf(cursor));
-      cursor = byId.get(idOf(cursor.parentStorageId));
-    }
-    return false;
-  };
-  return storages.filter(isInsideSelection).length;
-}
-
-/** Số biến thể dự kiến: biến thể của các sản phẩm chọn toàn bộ + biến thể chọn riêng. */
-export function variantScopeSize(variants, productIds, variantIds) {
-  const fromProducts = variants.filter((variant) => productIds.includes(idOf(variant.productId))).map(idOf);
-  return new Set([...fromProducts, ...variantIds]).size;
+  const damaged = Object.fromEntries(lines
+    .filter((line) => !line.itemId && line.damagedQuantity != null)
+    .map((line) => [line._id, String(line.damagedQuantity)]));
+  return { counts, conditions, damaged };
 }
 
 /** Biến thể được phép ghi nhận là hàng mới phát hiện: thuộc phạm vi sản phẩm của phiếu (nếu có). */
@@ -134,8 +136,18 @@ export function isIndividualVariant(variants, variantId) {
 const isNonNegativeInteger = (value) => Number.isInteger(Number(value)) && Number(value) >= 0;
 const hasValue = (value) => value !== '' && value !== null && value !== undefined;
 
+/** Lỗi số hỏng của một dòng hàng số lượng: số nguyên ≥ 0 và không quá số đếm. Trả message hoặc ''. */
+export function damagedError(count, damagedValue) {
+  if (!hasValue(damagedValue)) return '';
+  if (!isNonNegativeInteger(damagedValue)) return 'Số hỏng phải là số nguyên không âm.';
+  if (hasValue(count) && Number(damagedValue) > Number(count)) return 'Số hỏng không được lớn hơn số lượng thực tế.';
+  return '';
+}
+
 /** Kiểm tra số đếm và hàng mới trước khi lưu; trả message lỗi hoặc ''. */
-export function validateCounts(lines, counts, newItems, variants) {
+export function validateCounts(lines, counts, newItems, variants, damaged = {}) {
+  const badDamaged = lines.find((line) => !line.itemId && damagedError(counts[line._id], damaged[line._id]));
+  if (badDamaged) return `${damagedError(counts[badDamaged._id], damaged[badDamaged._id])} (dòng ${badDamaged.variantId?.sku || ''}).`;
   const badCount = lines.some((line) => !line.itemId && hasValue(counts[line._id])
     && !isNonNegativeInteger(counts[line._id]));
   const badNewItem = newItems.some((item) => {
@@ -155,12 +167,18 @@ export function hasMissingCount(lines, counts) {
 }
 
 /** Dữ liệu gửi API lưu số đếm (giữ đúng định dạng backend đang nhận). */
-export function buildCountPayload(lines, counts, itemConditions, newItems, variants) {
+export function buildCountPayload(lines, counts, itemConditions, newItems, variants, damaged = {}) {
   const items = lines
     .filter((line) => line.itemId || hasValue(counts[line._id]))
     .map((line) => {
       if (!line.itemId) {
-        return { detailId: line._id, countedQuantity: Number(counts[line._id]), countedCondition: undefined };
+        return {
+          detailId: line._id,
+          countedQuantity: Number(counts[line._id]),
+          countedCondition: undefined,
+          // Phiếu cũ chưa có số hỏng và người dùng không nhập → không gửi (giữ hành vi cũ khi duyệt).
+          damagedQuantity: hasValue(damaged[line._id]) ? Number(damaged[line._id]) : undefined,
+        };
       }
       const condition = itemConditions[line._id];
       return { detailId: line._id, countedQuantity: condition === 'missing' ? 0 : 1, countedCondition: condition };

@@ -19,7 +19,8 @@ import User from '../../models/system/User.js';
 import { decreaseInventoryBalance, increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
 import { moveItem, moveItems } from './itemStateService.js';
-import { availableOf, getAvailable } from './balanceQueryService.js';
+import { availableOf, getAvailable, getBalances, sumAvailable } from './balanceQueryService.js';
+import { buildPickSuggestion } from './pickSuggestionRules.js';
 import { appError } from './shared/errors.js';
 import {
   ROLES, WAREHOUSE_STAFF_ROLE_PATTERN, hasRole, isAdmin, isBranchManager, isSameUser,
@@ -370,25 +371,114 @@ export const getTransferPickCandidates = async (transferId, detailId, storageId,
   return { available: availableOf(balance) };
 };
 
+/** Phiếu ở các bước này mới cần xem khả dụng / gợi ý lấy hàng. */
+const SUGGESTION_STATUSES = [TRANSFER_STATUS.REQUESTED, TRANSFER_STATUS.APPROVED, TRANSFER_STATUS.PREPARING];
+
+const groupBy = (rows, keyOf) => rows.reduce((map, row) => {
+  const key = keyOf(row);
+  if (!map.has(key)) map.set(key, []);
+  map.get(key).push(row);
+  return map;
+}, new Map());
+
+/**
+ * Chỉ đọc: khả dụng kho tổng từng dòng (cho chủ kho khi duyệt) và gợi ý kệ / món lấy hàng (ít kệ nhất,
+ * sắp theo mã vị trí). Không giữ chỗ, không ghi DB. Số cần lấy = số duyệt (chờ duyệt: số yêu cầu).
+ * Đọc tồn bằng một truy vấn balance `$in` + một truy vấn món `$in` cho cả phiếu.
+ * @returns {{ status, lines: { detailId, variantId, trackingType, needed, centralAvailable, picks, shortage }[] }}
+ */
+export const getTransferPickSuggestion = async (transferId, user) => {
+  assertCanPick(user, 'Bạn không có quyền xem gợi ý lấy hàng.');
+  if (!validId(transferId)) throw appError('Mã phiếu điều chuyển không hợp lệ.');
+  const transfer = await StockTransfer.findOne({ _id: transferId, ...NOT_RETURN })
+    .select('status fromLocationId assignedStaffId').lean();
+  if (!transfer) throw appError('Không tìm thấy phiếu điều chuyển.', 404);
+  assertAssignedStaff(transfer, user);
+  if (!SUGGESTION_STATUSES.includes(transfer.status)) throw appError('Phiếu không còn ở bước duyệt / soạn hàng.', 409);
+  const details = await StockTransferDetail.find({ transferId }).sort({ createdAt: 1 })
+    .select('_id variantId quantityRequested quantityApproved').lean();
+  const fromId = transfer.fromLocationId;
+  const variantIds = [...new Set(details.map((detail) => String(detail.variantId)))];
+  const [tracking, storages, balances] = await Promise.all([
+    loadTrackingTypes(details, null),
+    StorageLocation.find({ locationId: fromId, status: 'active' }).select('_id code name type').lean(),
+    getBalances({ locationIds: [fromId], variantIds }),
+  ]);
+  const storageById = new Map(storages.map((storage) => [String(storage._id), storage]));
+  const individualIds = variantIds.filter((id) => tracking.get(id) === 'individual');
+  const shelfIds = storages.filter((storage) => storage.type === 'shelf').map((storage) => storage._id);
+  const items = individualIds.length && shelfIds.length
+    ? await InventoryItem.find({
+      locationId: fromId, variantId: { $in: individualIds }, storageId: { $in: shelfIds }, status: 'available',
+    }).select('_id itemCode variantId storageId').lean()
+    : [];
+  const withCode = (row) => ({ ...row, storageCode: storageById.get(String(row.storageId))?.code || '' });
+  // Hàng số lượng: chỉ các dòng balance nằm trên vị trí đang hoạt động của kho tổng (bỏ dòng "chưa gán vị trí").
+  const shelfRows = balances
+    .filter((row) => row.storageId && storageById.has(String(row.storageId)))
+    .map((row) => withCode({ storageId: String(row.storageId), variantId: String(row.variantId), available: availableOf(row) }));
+  const balancesByVariant = groupBy(balances, (row) => String(row.variantId));
+  const neededOf = (detail) => (transfer.status === TRANSFER_STATUS.REQUESTED
+    ? detail.quantityRequested : detail.quantityApproved) || 0;
+  const lines = details.map((detail) => ({
+    detailId: String(detail._id),
+    variantId: String(detail.variantId),
+    individual: tracking.get(String(detail.variantId)) === 'individual',
+    needed: neededOf(detail),
+  }));
+  const itemRows = items.map((item) => withCode({ ...item, storageId: String(item.storageId) }));
+  const suggestion = buildPickSuggestion(lines, {
+    shelvesByVariant: groupBy(shelfRows, (row) => row.variantId),
+    itemsByVariant: groupBy(itemRows, (item) => String(item.variantId)),
+  });
+  return {
+    status: transfer.status,
+    lines: suggestion.map((line, index) => ({
+      ...line,
+      trackingType: lines[index].individual ? 'individual' : 'quantity',
+      centralAvailable: sumAvailable(balancesByVariant.get(line.variantId) || []),
+      picks: line.picks.map((pick) => ({ ...pick, storageName: storageById.get(String(pick.storageId))?.name || '' })),
+    })),
+  };
+};
+
+/** Mã các món trong danh sách chọn nhưng không còn available tại vị trí (để báo lỗi rõ món nào). */
+const unavailableItemCodes = async (itemIds, place, session) => {
+  const okIds = new Set((await InventoryItem.find({ _id: { $in: itemIds }, ...place, status: 'available' })
+    .select('_id').session(session).lean()).map((item) => String(item._id)));
+  const missing = itemIds.filter((id) => !okIds.has(String(id)));
+  const rows = await InventoryItem.find({ _id: { $in: missing } }).select('itemCode').session(session).lean();
+  return rows.map((item) => item.itemCode).filter(Boolean);
+};
+
 /** Kiểm một vị trí lấy hàng: kệ thuộc kho tổng, món chọn còn available / tồn còn đủ. */
 const checkPickAllocation = async ({ transfer, detail, allocation, individual, session }) => {
+  let storageCode = 'chưa gán vị trí';
   if (allocation.storageId) {
-    const shelfOk = await StorageLocation.exists({ _id: allocation.storageId, locationId: transfer.fromLocationId, status: 'active' })
-      .session(session);
-    if (!shelfOk) throw appError('Vị trí xuất không thuộc kho tổng hoặc đã ngừng hoạt động.');
+    const shelf = await StorageLocation.findOne({ _id: allocation.storageId, locationId: transfer.fromLocationId, status: 'active' })
+      .select('code').session(session).lean();
+    if (!shelf) throw appError('Vị trí xuất không thuộc kho tổng hoặc đã ngừng hoạt động.');
+    storageCode = shelf.code;
   }
   const place = { locationId: transfer.fromLocationId, storageId: allocation.storageId, variantId: detail.variantId };
   if (individual) {
     if (allocation.itemIds.length !== allocation.quantity) throw appError('Chọn đúng số món hàng cho từng vị trí.');
     const count = await InventoryItem.countDocuments({ _id: { $in: allocation.itemIds }, ...place, status: 'available' })
       .session(session);
-    if (count !== allocation.quantity) throw appError('Một số món hàng đã thay đổi vị trí hoặc trạng thái.', 409);
+    if (count !== allocation.quantity) {
+      // TASK-014 D2: gợi ý có thể đã cũ → nói rõ món nào ở vị trí nào không còn sẵn sàng.
+      const codes = await unavailableItemCodes(allocation.itemIds, place, session);
+      const which = codes.length ? `: ${codes.join(', ')}` : '';
+      throw appError(`Một số món hàng tại ${storageCode} đã thay đổi vị trí hoặc trạng thái${which}.`, 409);
+    }
     return;
   }
   if (allocation.itemIds.length) throw appError('Mặt hàng quản lý theo số lượng không cần chọn mã hàng.');
   const balance = await InventoryBalance.findOne(place).session(session);
   const available = availableOf(balance);
-  if (available < allocation.quantity) throw appError(`Vị trí chỉ còn ${Math.max(0, available)} cái khả dụng.`, 409);
+  if (available < allocation.quantity) {
+    throw appError(`Vị trí ${storageCode} chỉ còn ${Math.max(0, available)} cái khả dụng (cần ${allocation.quantity}).`, 409);
+  }
 };
 
 /** Nhân viên kho lưu phân bổ kệ / món cho từng dòng đã duyệt. Chưa trừ tồn (trừ ở bước xuất). */

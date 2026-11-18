@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
+import RecountNotice from './RecountNotice';
 import { buildReceivePayload, initialReceiveLines, lineName, validateReceive } from './inboundHelpers';
 
 /** Nhân viên kho ghi số lượng thực nhận, số hỏng và ghi chú cho từng dòng phiếu nhập. */
@@ -34,6 +35,7 @@ export default function InboundReceiveForm({ receipt, onReceive, onBack, onDone 
   return (
     <form onSubmit={submit}>
       <Modal.Body className="wm-receive-list">
+        <RecountNotice receipt={receipt} />
         {error && <div className="wm-error">{error}</div>}
         <p>Nhập số lượng thực nhận và số lượng hỏng cho từng mặt hàng.</p>
         {receipt.items.map((item, index) => (

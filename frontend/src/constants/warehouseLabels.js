@@ -41,7 +41,7 @@ export const INBOUND_STATUS_LABELS = {
   received: 'Chờ duyệt',
   approved: 'Chờ sắp xếp',
   completed: 'Hoàn tất',
-  rejected: 'Từ chối',
+  rejected: 'Đã từ chối (cũ)',
   cancelled: 'Đã hủy',
 };
 
@@ -51,7 +51,7 @@ export const INBOUND_STATUS_DETAIL_LABELS = {
   received: 'Chờ chủ kho duyệt',
   approved: 'Chờ sắp xếp vào kệ',
   completed: 'Hoàn tất',
-  rejected: 'Đã từ chối',
+  rejected: 'Đã từ chối (cũ)',
   cancelled: 'Đã hủy',
 };
 
@@ -110,8 +110,9 @@ export const ADJUSTMENT_STATUS_LABELS = {
 
 /** Loại phiếu tách / gộp tồn. */
 export const RELOCATION_TYPE_LABELS = {
-  split: 'Tách tồn',
-  merge: 'Gộp tồn',
+  move: 'Di chuyển hàng',
+  split: 'Tách (cũ)',
+  merge: 'Gộp (cũ)',
 };
 
 /** Phiếu tách / gộp tồn. Trang hiện hiển thị mã thô, bảng này mới thêm theo enum của model. */
@@ -233,4 +234,21 @@ export const STORAGE_TYPE_LABELS = {
   row: 'Dãy',
   shelf: 'Kệ',
   temporary_area: 'Khu tạm',
+};
+
+/* ---------------- Sổ biến động (lịch sử mã hàng) ---------------- */
+
+/** Loại dòng sổ biến động; `move` = cặp xuất / nhập cùng phiếu được ghép thành một dòng "từ → đến". */
+export const MOVEMENT_TYPE_LABELS = {
+  inbound: 'Nhập kho',
+  outbound: 'Xuất kho',
+  transfer_out: 'Chuyển đi',
+  transfer_in: 'Chuyển đến',
+  move: 'Di chuyển',
+  sale: 'Bán',
+  rental_out: 'Cho thuê',
+  rental_return: 'Khách trả hàng thuê',
+  sales_return: 'Khách trả hàng mua',
+  adjustment: 'Điều chỉnh tồn',
+  disposal: 'Thanh lý',
 };

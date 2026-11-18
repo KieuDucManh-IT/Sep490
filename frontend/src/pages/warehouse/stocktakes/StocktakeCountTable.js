@@ -1,8 +1,29 @@
 import React from 'react';
 import { formatVariantName, labelOf, CONDITION_LABELS } from '../../../constants/warehouseLabels';
 import {
-  COUNT_CONDITION_OPTIONS, actualQuantity, isIndividualLine, lineCondition, lineVariance,
+  COUNT_CONDITION_OPTIONS, actualQuantity, damagedError, isIndividualLine, lineCondition, lineVariance,
 } from './stocktakeHelpers';
+
+/** "Trong đó hỏng" — chỉ hàng số lượng; hàng theo mã ghi hỏng bằng tình trạng từng món. */
+function DamagedCell({ line, editable, count, value, onChange }) {
+  if (isIndividualLine(line)) return <td>—</td>;
+  if (!editable) return <td>{line.damagedQuantity ?? '—'}</td>;
+  const error = damagedError(count, value);
+  return (
+    <td>
+      <input
+        className={`wm-count-input${error ? ' is-invalid' : ''}`}
+        type="number"
+        min="0"
+        step="1"
+        aria-label="Số hàng hỏng trong số đếm được"
+        value={value ?? ''}
+        onChange={(event) => onChange(line._id, event.target.value)}
+      />
+      {error && <small className="text-danger d-block">{error}</small>}
+    </td>
+  );
+}
 
 function LineName({ line }) {
   const individual = isIndividualLine(line);
@@ -44,7 +65,9 @@ function ConditionCell({ line, editable, condition, onConditionChange }) {
  * Bảng số đếm của phiếu kiểm kê. Khi phiếu đang kiểm (`editable`), dòng số lượng cho nhập số đếm,
  * dòng kiểm từng món cho chọn tình trạng thực tế.
  */
-export default function StocktakeCountTable({ lines, editable, counts, itemConditions, onCountChange, onConditionChange }) {
+export default function StocktakeCountTable({
+  lines, editable, counts, itemConditions, damaged = {}, onCountChange, onConditionChange, onDamagedChange,
+}) {
   return (
     <div className="wm-table-wrap">
       <table>
@@ -55,6 +78,7 @@ export default function StocktakeCountTable({ lines, editable, counts, itemCondi
             <th>Tồn sổ</th>
             <th>Tình trạng thực tế</th>
             <th>SL thực tế</th>
+            <th>Trong đó hỏng</th>
             <th>Chênh lệch</th>
             <th>Ghi nhận</th>
           </tr>
@@ -86,13 +110,20 @@ export default function StocktakeCountTable({ lines, editable, counts, itemCondi
                     />
                   ) : actual}
                 </td>
+                <DamagedCell
+                  line={line}
+                  editable={editable}
+                  count={counts[line._id]}
+                  value={damaged[line._id]}
+                  onChange={onDamagedChange}
+                />
                 <td>{lineVariance(line, actual)}</td>
                 <td>{line.isCounted ? line.countedBy?.FullName || 'Đã kiểm' : 'Chưa kiểm'}</td>
               </tr>
             );
           })}
           {lines.length === 0 && (
-            <tr><td colSpan="7">Không có tồn hệ thống trong phạm vi này.</td></tr>
+            <tr><td colSpan="8">Không có tồn hệ thống trong phạm vi này.</td></tr>
           )}
         </tbody>
       </table>

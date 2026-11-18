@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
-import { Plus, Trash2 } from 'lucide-react';
-import { ProductVariantPicker } from '../../../components/warehouse';
+import { Trash2 } from 'lucide-react';
+import { VariantQuantityPicker, mergeQuantityLines } from '../../../components/warehouse';
+import { formatVariantName } from '../../../constants/warehouseLabels';
 import { codeAndName } from '../shared/slipHelpers';
-import { buildCreatePayload, emptyLine, validateCreate } from './inboundHelpers';
+import { buildCreatePayload, validateCreate } from './inboundHelpers';
 
-function LineRow({ line, index, lines, onChange, onRemove }) {
+/** Dòng mới từ picker; `variant` chỉ để hiển thị, buildCreatePayload chỉ lấy variantId / số lượng / giá. */
+const lineFromPick = (pick) => ({ variantId: pick.variantId, variant: pick.variant, quantityExpected: pick.quantity, unitCost: '' });
+
+function LineRow({ line, index, onChange, onRemove }) {
   return (
     <div className="wm-inbound-line wh-inbound-line">
-      <label>
-        Sản phẩm / biến thể
-        <ProductVariantPicker
-          value={line.variantId}
-          onChange={(variantId) => onChange(index, 'variantId', variantId)}
-        />
-      </label>
+      <div>
+        <small>Sản phẩm / biến thể</small>
+        <strong className="d-block">{formatVariantName(line.variant) || line.variantId}</strong>
+      </div>
       <label>
         Số lượng dự kiến
         <input required type="number" min="1" step="1" value={line.quantityExpected}
@@ -25,24 +26,23 @@ function LineRow({ line, index, lines, onChange, onRemove }) {
         <input required type="number" min="0" step="1" value={line.unitCost}
           onChange={(event) => onChange(index, 'unitCost', event.target.value)} />
       </label>
-      {lines.length > 1 && (
-        <button type="button" className="wm-icon-button danger" aria-label="Xóa dòng hàng" onClick={() => onRemove(index)}>
-          <Trash2 size={16} />
-        </button>
-      )}
+      <button type="button" className="wm-icon-button danger" aria-label="Xóa dòng hàng" onClick={() => onRemove(index)}>
+        <Trash2 size={16} />
+      </button>
     </div>
   );
 }
 
 /**
  * Form tạo phiếu nhập từ nhà cung cấp (chủ kho). Kho nhận luôn là kho tổng duy nhất;
- * mỗi dòng chọn thẳng biến thể bằng một ô tìm theo tên hoặc SKU.
+ * chọn sản phẩm một lần rồi nhập số lượng cho nhiều biến thể (VariantQuantityPicker, TASK-014 B);
+ * biến thể đã có trong phiếu được cộng dồn. Payload tạo phiếu giữ nguyên.
  */
 export default function InboundCreateForm({ centralLocation, suppliers, staff, onCreate, onClose }) {
   const [supplierId, setSupplierId] = useState('');
   const [assignedStaffId, setAssignedStaffId] = useState('');
   const [note, setNote] = useState('');
-  const [lines, setLines] = useState([emptyLine()]);
+  const [lines, setLines] = useState([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -50,11 +50,12 @@ export default function InboundCreateForm({ centralLocation, suppliers, staff, o
     setLines((old) => old.map((line, i) => (i === index ? { ...line, [key]: value } : line)));
   };
   const removeLine = (index) => setLines((old) => old.filter((_, i) => i !== index));
+  const addPicked = (picked) => setLines((old) => mergeQuantityLines(old, picked, { quantityKey: 'quantityExpected', createLine: lineFromPick }));
 
   const submit = async (event) => {
     event.preventDefault();
     const form = { centralLocation, supplierId, assignedStaffId, note, lines };
-    const message = validateCreate(form);
+    const message = lines.length ? validateCreate(form) : 'Hãy thêm ít nhất một mặt hàng vào phiếu.';
     if (message) {
       setError(message);
       return;
@@ -101,12 +102,15 @@ export default function InboundCreateForm({ centralLocation, suppliers, staff, o
           <div className="wm-inbound-lines">
             <div className="wm-inbound-lines-heading">
               <strong>Mặt hàng dự kiến</strong>
-              <button type="button" className="secondary" onClick={() => setLines((old) => [...old, emptyLine()])}>
-                <Plus size={14} />Thêm dòng
-              </button>
+              <small>{lines.length} dòng</small>
             </div>
+            <VariantQuantityPicker
+              onAdd={addPicked}
+              existingLines={lines.map((line) => ({ variantId: line.variantId, quantity: line.quantityExpected }))}
+            />
+            {!lines.length && <small>Chưa có mặt hàng. Chọn sản phẩm, nhập số lượng từng biến thể rồi bấm "Thêm vào phiếu".</small>}
             {lines.map((line, index) => (
-              <LineRow key={index} line={line} index={index} lines={lines} onChange={updateLine} onRemove={removeLine} />
+              <LineRow key={line.variantId} line={line} index={index} onChange={updateLine} onRemove={removeLine} />
             ))}
           </div>
           <label className="wm-full-row">

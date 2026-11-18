@@ -28,7 +28,7 @@ function groupByReceipt(serials) {
   }, {}));
 }
 
-function ReceiptGroup({ group, isOpen, onToggle }) {
+function ReceiptGroup({ group, isOpen, onToggle, onItemClick }) {
   const { detail, items } = group;
   const receipt = detail?.receiptId;
   const receivedAt = receipt?.receivedAt || receipt?.createdAt || detail?.createdAt;
@@ -56,7 +56,11 @@ function ReceiptGroup({ group, isOpen, onToggle }) {
               {items.map((serial) => (
                 <tr key={serial._id}>
                   <td>{[serial.variantId?.sku, serial.variantId?.size, serial.variantId?.color].filter(Boolean).join(' · ')}</td>
-                  <td>{serial.itemCode}</td>
+                  <td>
+                    {onItemClick ? (
+                      <button type="button" className="wm-text-button" onClick={() => onItemClick(serial)}>{serial.itemCode}</button>
+                    ) : serial.itemCode}
+                  </td>
                   <td>{serial.serialNumber || 'Chưa ghi serial'}</td>
                   <td>{labelOf(CONDITION_LABELS, serial.condition, serial.condition)}</td>
                   <td>{labelOf(ITEM_STATUS_LABELS, serial.status, serial.status)}</td>
@@ -73,8 +77,9 @@ function ReceiptGroup({ group, isOpen, onToggle }) {
 /**
  * Danh sách món hàng (mã hàng / serial) tại một dòng báo cáo tồn, gom theo dòng phiếu nhập.
  * Dùng chung cho báo cáo tồn kho tổng và tồn chi nhánh (`item.branchId`).
+ * `onItemClick` (tùy chọn): mã hàng thành nút để mở chi tiết / lịch sử mã hàng.
  */
-export default function InventorySerialsModal({ item, onClose }) {
+export default function InventorySerialsModal({ item, onClose, onItemClick }) {
   const [serials, setSerials] = useState([]);
   const [expanded, setExpanded] = useState({});
   const [loading, setLoading] = useState(true);
@@ -118,7 +123,7 @@ export default function InventorySerialsModal({ item, onClose }) {
           <div className="wm-inventory-receipt-groups">
             {groups.map((group) => (
               <ReceiptGroup key={group.key} group={group} isOpen={expanded[group.key] ?? false}
-                onToggle={() => toggleGroup(group.key)} />
+                onToggle={() => toggleGroup(group.key)} onItemClick={onItemClick} />
             ))}
           </div>
         )}

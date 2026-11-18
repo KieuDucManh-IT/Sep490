@@ -85,6 +85,43 @@ export const releaseReservedBalance = ({
   return updateBalanceOrThrow(filter, increments, session, message);
 };
 
+/**
+ * Kiểm kê hàng số lượng: trong MỘT lệnh có điều kiện, đổi onHand theo chênh lệch và đặt "không khả dụng"
+ * (hàng hỏng) về `unavailableAfter`. Điều kiện: onHand / unavailable vẫn đúng như lúc duyệt kiểm kê và
+ * reserved + unavailableAfter ≤ onHand sau điều chỉnh. Không thỏa → 409, không ghi gì.
+ * Dòng chưa có balance (hàng thừa) → tạo mới bằng increaseInventoryBalance.
+ */
+export const applyCountedQuantityBalance = async ({
+  locationId, storageId = null, variantId, quantityBefore, unavailableBefore, change, unavailableAfter, session,
+}) => {
+  const place = balanceRowFilter({ locationId, storageId, variantId });
+  const existing = await InventoryBalance.findOne(place).session(session || null).lean();
+  if (!existing) {
+    if (quantityBefore !== 0 || (unavailableBefore || 0) !== 0 || change < unavailableAfter) {
+      throw appError('Tồn kho đã thay đổi sau khi duyệt kiểm kê. Hãy kiểm kê lại trước khi áp dụng.', 409);
+    }
+    return increaseInventoryBalance({ ...place, quantity: change, increments: { quantityUnavailable: unavailableAfter }, session });
+  }
+  const onHandAfter = quantityBefore + change;
+  const row = await InventoryBalance.findOneAndUpdate(
+    {
+      ...place,
+      quantityOnHand: quantityBefore,
+      quantityUnavailable: unavailableBefore || 0,
+      $expr: { $gte: [onHandAfter, { $add: [{ $ifNull: ['$quantityReserved', 0] }, unavailableAfter] }] },
+    },
+    { $inc: { quantityOnHand: change }, $set: { quantityUnavailable: unavailableAfter } },
+    { returnDocument: 'after', runValidators: true, ...(session ? { session } : {}) },
+  );
+  if (!row) {
+    const stale = existing.quantityOnHand !== quantityBefore || (existing.quantityUnavailable || 0) !== (unavailableBefore || 0);
+    if (stale) throw appError('Tồn kho đã thay đổi sau khi duyệt kiểm kê. Hãy kiểm kê lại trước khi áp dụng.', 409);
+    throw appError(`Số đang giữ (${existing.quantityReserved || 0}) cộng số hỏng (${unavailableAfter}) vượt tồn sau điều chỉnh (${onHandAfter}). Hãy nhả giữ trước khi áp dụng.`, 409);
+  }
+  assertBalanceInvariant(row.toObject(), 'Tồn kho của biến thể');
+  return row;
+};
+
 /** Ghi một dòng sổ biến động (trong transaction nếu có session). */
 export const recordStockMovement = async (movement, session) => {
   if (session) return (await StockMovement.create([movement], { session }))[0];

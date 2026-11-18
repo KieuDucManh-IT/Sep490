@@ -4,16 +4,18 @@ import inventoryLocationService from '../../../services/warehouse/inventoryLocat
 import storageLocationService from '../../../services/warehouse/storageLocationService';
 import inventoryReportService from '../../../services/warehouse/inventoryReportService';
 import stockRelocationService from '../../../services/warehouse/stockRelocationService';
-import { EmptyState, PageHeader, Pagination, StatusBadge } from '../../../components/warehouse';
+import { ConfirmModal, EmptyState, PageHeader, Pagination, StatusBadge } from '../../../components/warehouse';
 import { RELOCATION_STATUS_LABELS, RELOCATION_TYPE_LABELS, labelOf } from '../../../constants/warehouseLabels';
 import WarehousePageLayout from '../shared/WarehousePageLayout';
 import usePagedList from '../shared/usePagedList';
 import SlipListToolbar, { statusOptionsFrom } from '../shared/SlipListToolbar';
-import { formatDateTime, idOf } from '../shared/slipHelpers';
+import { formatDateTime, idOf, isConflict } from '../shared/slipHelpers';
 import InventoryPickerModal from './InventoryPickerModal';
 import RelocationCreateModal from './RelocationCreateModal';
 import RelocationDetailModal from './RelocationDetailModal';
-import { addRowsToGroups, buildRelocationItems, validateGroups } from './relocationHelpers';
+import {
+  addInventoryRows, buildCompletePayload, buildRelocationItems, validateMoveLines,
+} from './relocationHelpers';
 
 const STATUS_OPTIONS = statusOptionsFrom(RELOCATION_STATUS_LABELS);
 
@@ -23,6 +25,7 @@ const STATUS_OPTIONS = statusOptionsFrom(RELOCATION_STATUS_LABELS);
  */
 function useRelocationMasterData(isManager) {
   const [data, setData] = useState({ shelves: [], staff: [], inventory: [], error: '' });
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     if (!isManager) return undefined;
     let active = true;
@@ -53,8 +56,10 @@ function useRelocationMasterData(isManager) {
     return () => {
       active = false;
     };
-  }, [isManager]);
-  return data;
+  }, [isManager, version]);
+  // Tải lại tồn sau khi tạo / hủy phiếu (khả dụng ở kệ nguồn đã đổi).
+  const reload = useCallback(() => setVersion((value) => value + 1), []);
+  return { ...data, reload };
 }
 
 function RelocationTable({ list, onOpen }) {
@@ -74,11 +79,11 @@ function RelocationTable({ list, onOpen }) {
           </tr>
         </thead>
         <tbody>
-          {list.loading && <tr className="wm-loading-row"><td colSpan="8">Đang tải phiếu tách / gộp tồn...</td></tr>}
+          {list.loading && <tr className="wm-loading-row"><td colSpan="8">Đang tải phiếu di chuyển hàng...</td></tr>}
           {!list.loading && list.items.map((row) => (
             <tr key={row._id}>
               <td><strong>{row.relocationCode}</strong></td>
-              <td>{labelOf(RELOCATION_TYPE_LABELS, row.operationType, '—')}</td>
+              <td>{labelOf(RELOCATION_TYPE_LABELS, row.operationType, 'Di chuyển hàng')}</td>
               <td>{row.assignedStaffId?.FullName || '—'}</td>
               <td>{row.lineCount ?? 0}</td>
               <td>{row.totalQuantity ?? 0}</td>
@@ -93,68 +98,80 @@ function RelocationTable({ list, onOpen }) {
   );
 }
 
-/**
- * Màn tách tồn / gộp tồn trong kho tổng. Chủ kho tạo phiếu (theo `operationType`) và giao nhân viên;
- * nhân viên xem các phiếu được giao.
- */
-export default function WarehouseRelocationsPage({ mode = 'manager', operationType = '' }) {
-  const isManager = mode === 'manager';
-  const master = useRelocationMasterData(isManager);
-  const fetchPage = useCallback(
-    (params) => stockRelocationService.listPage(operationType ? { ...params, operationType } : params),
-    [operationType],
-  );
-  const list = usePagedList(fetchPage);
-  const [showCreate, setShowCreate] = useState(false);
+/** Form tạo phiếu của chủ kho: dòng di chuyển, nhân viên, lỗi form. */
+function useCreateForm(onCreated) {
+  const [show, setShow] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
-  const [groups, setGroups] = useState([]);
+  const [lines, setLines] = useState([]);
   const [assigned, setAssigned] = useState('');
-  const [formError, setFormError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const shelfCode = (storageId) => master.shelves.find((shelf) => idOf(shelf) === idOf(storageId))?.code || 'Không xác định';
-
+  const open = () => {
+    setError('');
+    setShow(true);
+  };
   const addGoods = (rows) => {
-    setGroups((old) => addRowsToGroups(old, rows, operationType));
+    setLines((old) => addInventoryRows(old, rows));
     setShowPicker(false);
   };
-
-  const create = async (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    setFormError('');
+    setError('');
     if (!assigned) {
-      setFormError('Vui lòng chọn nhân viên kho.');
+      setError('Vui lòng chọn nhân viên kho.');
       return;
     }
-    const message = validateGroups(groups, operationType);
+    const message = validateMoveLines(lines);
     if (message) {
-      setFormError(message);
+      setError(message);
       return;
     }
     setBusy(true);
     try {
-      await stockRelocationService.create({
-        assignedStaffId: assigned,
-        operationType,
-        items: buildRelocationItems(groups, operationType),
-      });
-      setShowCreate(false);
-      setGroups([]);
+      await stockRelocationService.create({ assignedStaffId: assigned, operationType: 'move', items: buildRelocationItems(lines) });
+      setShow(false);
+      setLines([]);
       setAssigned('');
-      setNotice('Đã tạo phiếu và giao nhân viên.');
-      await list.reload();
+      await onCreated();
     } catch (createError) {
-      setFormError(createError.message);
+      setError(createError.message);
     } finally {
       setBusy(false);
     }
   };
+  return {
+    show, showPicker, setShowPicker, lines, setLines, assigned, setAssigned, error, busy, open, close: () => setShow(false),
+    addGoods, submit,
+  };
+}
+
+/**
+ * Màn "Di chuyển hàng giữa các kệ" của kho tổng (thay hai màn tách / gộp cũ).
+ * Chủ kho tạo phiếu và giao nhân viên, hủy khi chưa hoàn tất; nhân viên được giao bắt đầu và hoàn tất.
+ * Phiếu tách / gộp cũ vẫn hiện trong danh sách với nhãn "Tách (cũ)" / "Gộp (cũ)".
+ */
+export default function WarehouseRelocationsPage({ mode = 'manager' }) {
+  const isManager = mode === 'manager';
+  const isStaff = mode === 'staff';
+  const master = useRelocationMasterData(isManager);
+  const fetchPage = useCallback((params) => stockRelocationService.listPage(params), []);
+  const list = usePagedList(fetchPage);
+  const [selected, setSelected] = useState(null);
+  const [showCancel, setShowCancel] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [detailError, setDetailError] = useState('');
+  const [notice, setNotice] = useState('');
+  const form = useCreateForm(async () => {
+    setNotice('Đã tạo phiếu và giao nhân viên.');
+    master.reload();
+    await list.reload();
+  });
 
   const openDetail = async (id) => {
     setError('');
+    setDetailError('');
     try {
       setSelected(await stockRelocationService.get(id));
     } catch (openError) {
@@ -162,18 +179,61 @@ export default function WarehouseRelocationsPage({ mode = 'manager', operationTy
     }
   };
 
-  const title = labelOf(RELOCATION_TYPE_LABELS, operationType, 'Tách / gộp tồn');
+  /** Chạy một thao tác trên phiếu đang mở; luôn tải lại phiếu và danh sách (kể cả khi 409). */
+  const runAction = async (action, message) => {
+    setBusy(true);
+    setDetailError('');
+    setNotice('');
+    try {
+      const result = await action();
+      setSelected(result?._id ? result : await stockRelocationService.get(selected._id));
+      setNotice(message);
+      await list.reload();
+    } catch (actionError) {
+      setDetailError(actionError.message);
+      if (isConflict(actionError)) {
+        await list.reload();
+        setSelected(await stockRelocationService.get(selected._id).catch(() => selected));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const start = () => runAction(() => stockRelocationService.start(selected._id), 'Đã bắt đầu thực hiện phiếu.');
+  const complete = (confirmations) => runAction(
+    () => stockRelocationService.complete(selected._id, buildCompletePayload(selected, confirmations)),
+    'Đã hoàn tất di chuyển hàng.',
+  );
+  const confirmCancel = async () => {
+    try {
+      await stockRelocationService.cancel(selected._id);
+    } catch (cancelError) {
+      // Phiếu vừa hoàn tất / hủy ở nơi khác: tải lại, giữ lỗi trong hộp thoại.
+      if (isConflict(cancelError)) {
+        await list.reload();
+        setSelected(await stockRelocationService.get(selected._id).catch(() => selected));
+      }
+      throw cancelError;
+    }
+    setShowCancel(false);
+    setNotice('Đã hủy phiếu và nhả hàng đang giữ ở kệ nguồn.');
+    master.reload();
+    await list.reload();
+    setSelected(await stockRelocationService.get(selected._id).catch(() => null));
+  };
+
   const pageError = error || list.error || master.error;
 
   return (
     <WarehousePageLayout mode={mode}>
       <PageHeader
-        eyebrow="KHO TỔNG / KIỂM SOÁT TỒN KHO"
-        title={operationType ? `${title} kho` : title}
-        description="Chuyển hàng giữa các kệ trong kho tổng: tách một kệ ra nhiều kệ, hoặc gộp nhiều kệ về một kệ."
-        actions={isManager && (
-          <Button variant="dark" onClick={() => { setFormError(''); setShowCreate(true); }}>Tạo phiếu</Button>
-        )}
+        eyebrow="KHO TỔNG / VẬN HÀNH"
+        title="Di chuyển hàng giữa các kệ"
+        description={isManager
+          ? 'Chuyển hàng từ kệ này sang kệ khác trong kho tổng: tách một kệ ra nhiều kệ hoặc gộp nhiều kệ về một kệ.'
+          : 'Các phiếu di chuyển hàng được giao cho bạn: bắt đầu, chuyển hàng rồi xác nhận hoàn tất.'}
+        actions={isManager && <Button variant="dark" onClick={form.open}>Tạo phiếu</Button>}
       />
       {pageError && <div className="wm-error">{pageError}</div>}
       {notice && <div className="wm-success">{notice}</div>}
@@ -188,33 +248,53 @@ export default function WarehouseRelocationsPage({ mode = 'manager', operationTy
           statusOptions={STATUS_OPTIONS}
         />
         <RelocationTable list={list} onOpen={openDetail} />
-        {!list.loading && !list.items.length && <EmptyState title="Chưa có phiếu tách / gộp tồn kho." />}
+        {!list.loading && !list.items.length && <EmptyState title="Chưa có phiếu di chuyển hàng." />}
         <Pagination page={list.page} limit={list.limit} total={list.total} onChange={list.setPage}
           onLimitChange={list.setLimit} disabled={list.loading} />
       </section>
 
       {isManager && (
         <RelocationCreateModal
-          show={showCreate && !showPicker}
-          operationType={operationType}
+          show={form.show && !form.showPicker}
           staff={master.staff}
-          assigned={assigned}
-          setAssigned={setAssigned}
-          groups={groups}
-          setGroups={setGroups}
+          assigned={form.assigned}
+          setAssigned={form.setAssigned}
+          lines={form.lines}
+          setLines={form.setLines}
           shelves={master.shelves}
-          shelfCode={shelfCode}
-          error={formError}
-          busy={busy}
-          onPickGoods={() => { setFormError(''); setShowPicker(true); }}
-          onSubmit={create}
-          onHide={() => setShowCreate(false)}
+          error={form.error}
+          busy={form.busy}
+          onPickGoods={() => form.setShowPicker(true)}
+          onSubmit={form.submit}
+          onHide={form.close}
         />
       )}
-      {showPicker && (
-        <InventoryPickerModal inventory={master.inventory} onHide={() => setShowPicker(false)} onAdd={addGoods} />
+      {form.showPicker && (
+        <InventoryPickerModal inventory={master.inventory} onHide={() => form.setShowPicker(false)} onAdd={form.addGoods} />
       )}
-      {selected && <RelocationDetailModal relocation={selected} onClose={() => setSelected(null)} />}
+      {selected && !showCancel && (
+        <RelocationDetailModal
+          key={`${selected._id}-${selected.status}`}
+          relocation={selected}
+          isManager={isManager}
+          isStaff={isStaff}
+          busy={busy}
+          error={detailError}
+          onStart={start}
+          onComplete={complete}
+          onCancel={() => setShowCancel(true)}
+          onClose={() => setSelected(null)}
+        />
+      )}
+      <ConfirmModal
+        show={showCancel && Boolean(selected)}
+        title={`Hủy phiếu ${selected?.relocationCode || ''}`}
+        body="Hàng đang giữ ở kệ nguồn sẽ được nhả lại thành khả dụng. Nếu nhân viên đã bắt đầu chuyển, hãy báo họ đưa hàng về kệ nguồn."
+        confirmText="Hủy phiếu"
+        variant="danger"
+        onHide={() => setShowCancel(false)}
+        onConfirm={confirmCancel}
+      />
     </WarehousePageLayout>
   );
 }

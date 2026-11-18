@@ -11,3 +11,9 @@
 
 /* Ô tìm biến thể trong form tạo yêu cầu. */
 .wm-transfer-request-item > label { color: #555; font-size: 12px; margin-bottom: -4px; }
+
+/* TASK-014 D: dòng thiếu hàng khi duyệt, gợi ý lấy hàng. */
+.wm-transfer-row-short > td { background: #fdecea; }
+.wm-transfer-short-label { display: inline-block; margin-top: 2px; color: #a12620; font-size: 11px; font-weight: 600; }
+.wm-pick-suggestion-list { margin: 0; padding-left: 16px; color: #444; font-size: 12px; }
+.wm-pick-suggestion-list li { margin: 2px 0; }

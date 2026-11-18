@@ -11,15 +11,18 @@ import { itemCodeOf, lineName } from './transferHelpers';
  * @param {string} [props.receivedHeader] tiêu đề cột nhận
  * @param {{ header: string, render: (line: object) => React.ReactNode }} [props.extraColumn] cột thêm ở cuối
  * @param {string} [props.className]
+ * @param {(line: object) => string} [props.rowClassName] class thêm cho từng dòng (vd tô đỏ dòng thiếu hàng)
  */
-export default function TransferLinesTable({ transfer, renderApproved, renderReceived, receivedHeader = 'Đã nhận', extraColumn, className = '' }) {
+export default function TransferLinesTable({
+  transfer, renderApproved, renderReceived, receivedHeader = 'Đã nhận', extraColumn, className = '', rowClassName,
+}) {
   const damagedHeader = transfer.status === 'received' ? 'Hỏng / thiếu' : 'Hỏng';
   return <div className="wm-table-wrap"><table className={className}>
     <thead><tr>
       <th>Sản phẩm / SKU</th><th>Yêu cầu</th><th>Được duyệt</th><th>Đã xuất</th><th>{receivedHeader}</th><th>{damagedHeader}</th>
       {extraColumn && <th>{extraColumn.header}</th>}
     </tr></thead>
-    <tbody>{(transfer.items || []).map((line) => <tr key={line._id}>
+    <tbody>{(transfer.items || []).map((line) => <tr key={line._id} className={rowClassName?.(line) || undefined}>
       <td>
         {lineName(line)}
         {line.itemIds?.length > 0 && <small className="wm-stock-subline">Mã hàng: {line.itemIds.map(itemCodeOf).join(', ')}</small>}

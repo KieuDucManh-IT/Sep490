@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Shop } from '../../models/shop/Shop.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { getIndividualItemDetails, getInventoryReport } from './inventoryReportService.js';
+import { availableOf, getBalances } from './balanceQueryService.js';
 
 import { appError as fail } from './shared/errors.js';
 import { isBranchManager } from './shared/roles.js';
@@ -27,4 +28,21 @@ export const getBranchInventoryReport = async (user, { branchId = '' } = {}) => 
 export const getBranchInventoryItemDetails = async (user, query) => {
   const { location } = await getManagedBranchLocation(user, query.branchId || '');
   return getIndividualItemDetails({ ...query, locationId: String(location._id) });
+};
+
+/**
+ * Khả dụng của nhiều biến thể tại chi nhánh của quản lý chi nhánh (TASK-014 B, cột tồn của picker).
+ * Một truy vấn balance `$in` qua balanceQueryService. `variantIds`: chuỗi phân cách dấu phẩy hoặc mảng, tối đa 200.
+ * Trả `{ locationId, availability: { [variantId]: number } }` (biến thể không có balance → 0).
+ */
+export const getBranchAvailability = async (user, { branchId = '', variantIds = '' } = {}) => {
+  const ids = [...new Set((Array.isArray(variantIds) ? variantIds : String(variantIds || '').split(','))
+    .map((id) => String(id).trim()).filter(Boolean))];
+  if (ids.length > 200) throw fail('Tối đa 200 biến thể mỗi lần.');
+  if (ids.some((id) => !mongoose.isValidObjectId(id))) throw fail('Biến thể không hợp lệ.');
+  const { location } = await getManagedBranchLocation(user, branchId);
+  const availability = Object.fromEntries(ids.map((id) => [id, 0]));
+  const balances = ids.length ? await getBalances({ locationIds: [location._id], variantIds: ids }) : [];
+  for (const row of balances) availability[String(row.variantId)] += availableOf(row);
+  return { locationId: location._id, availability };
 };

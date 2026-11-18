@@ -3,6 +3,7 @@
 // Quy tắc quy đổi nằm ở itemBalanceRules.js (hàm thuần, có unit test).
 import { InventoryItem as InventoryItemModel } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryBalance as InventoryBalanceModel } from '../../models/warehouse/inventory/InventoryBalance.js';
+import { StockMovement as StockMovementModel } from '../../models/warehouse/inventory/StockMovement.js';
 import {
   assertBalanceInvariant, bucketOf, computeBalanceDeltas, idOf, mergeBalanceDeltas,
 } from './itemBalanceRules.js';
@@ -120,6 +121,29 @@ export const createItemStateService = ({ InventoryItem, InventoryBalance, hasRen
   };
 
   return { moveItems, moveItem, createItems, applyDeltas };
+};
+
+/**
+ * TASK-014 G1: sổ biến động của hàng `individual` luôn ghi MỖI MÓN MỘT DÒNG có `itemId`, để xem lịch sử
+ * di chuyển của từng mã hàng. `movement` là phần chung (variantId, locationId, storageId, movementType,
+ * referenceType, referenceId, createdBy...); `quantityChange` mặc định ±1 theo dấu của movement.quantityChange.
+ */
+export const itemMovementDocs = (items, movement) => {
+  const sign = Number(movement.quantityChange) < 0 ? -1 : 1;
+  return (items || []).filter(Boolean).map((item) => ({
+    ...movement,
+    variantId: movement.variantId ?? (item.variantId?._id ?? item.variantId),
+    itemId: item._id,
+    quantityChange: sign,
+  }));
+};
+
+/** Ghi sổ biến động cho từng món (trong transaction). */
+export const recordItemMovements = async (items, movement, session) => {
+  if (!session) throw new Error('recordItemMovements phải chạy trong transaction: thiếu session.');
+  const docs = itemMovementDocs(items, movement);
+  if (!docs.length) return [];
+  return StockMovementModel.insertMany(docs, { session });
 };
 
 const defaultService = createItemStateService({ InventoryItem: InventoryItemModel, InventoryBalance: InventoryBalanceModel });

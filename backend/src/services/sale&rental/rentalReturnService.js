@@ -17,6 +17,7 @@ import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js
 import { RentalOrderItem } from '../../models/sale&rental/RentalOrderItem.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { returnItems, withStatus } from '../warehouse/orderStockService.js';
+import { refreshOutOfStockStatus } from '../warehouse/productStockStatusService.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
 import { readyWallet, changeFunds } from '../walletService.js';
@@ -255,6 +256,25 @@ export const createReturnReceiptAndSettle = async ({
     await order.save({ session });
 
     if (isInternal) await session.commitTransaction();
+
+    // TASK-012: Trả hàng → tồn kho thay đổi → kiểm tra lại hết hàng
+    // - Hàng new/good: available tăng → isOutOfStock có thể thành false
+    // - Hàng worn/damaged/unrepairable: unavailable tăng → không ảnh hưởng available, nhưng vẫn refresh để chắc chắn
+    if (isInternal) {
+      try {
+        const variantIds = [...new Set(entries.map((e) => String(e.item.variantId)).filter(Boolean))];
+        if (variantIds.length) {
+          const { ProductVariant: PV } = await import('../../models/masterdata/ProductVariant.js');
+          const variants = await PV.find({ _id: { $in: variantIds } }).select('productId').lean();
+          const productIds = [...new Set(variants.map((v) => String(v.productId)).filter(Boolean))];
+          if (productIds.length) {
+            refreshOutOfStockStatus(productIds).catch((err) =>
+              console.error('[TASK-012] rental return refresh lỗi:', err.message)
+            );
+          }
+        }
+      } catch (_) { /* non-blocking */ }
+    }
 
     return {
       success: true,

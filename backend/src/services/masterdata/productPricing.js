@@ -38,16 +38,22 @@ export const missingRequiredPrices = (product = {}) => {
 
 export const hasRequiredPrices = (product) => Boolean(product) && missingRequiredPrices(product).length === 0;
 
-export const isCustomerVisibleProduct = (product) => isActiveProduct(product) && product.isSetPrice === true;
+export const isCustomerVisibleProduct = (product) => isActiveProduct(product) && product.isSetPrice === true && product.isOutOfStock !== true;
 
 /**
  * Điều kiện Mongo dùng chung cho mọi truy vấn sản phẩm khách nhìn thấy.
  * Dùng hàm (trả object mới mỗi lần) khi đưa vào query, vì Mongoose có thể sửa filter tại chỗ khi cast.
+ *
+ * TASK-012: Thêm điều kiện isOutOfStock !== true để ẩn sản phẩm hết hàng toàn hệ thống.
+ * Sản phẩm sẽ hiện lại khi:
+ *   1. Branch manager tạo phiếu nhập hàng (restockRequestedAt được ghi, isOutOfStock = false).
+ *   2. Hàng thực tế vào chi nhánh sau bước putaway (refreshOutOfStockStatus cập nhật lại).
  */
 export const customerVisibleProductFilter = () => ({
   isDeleted: { $ne: true },
   status: { $nin: ['inactive', 'INACTIVE', 'discontinued', 'DISCONTINUED'] },
   isSetPrice: true,
+  isOutOfStock: { $ne: true },
 });
 
 export const CUSTOMER_VISIBLE_PRODUCT_FILTER = Object.freeze(customerVisibleProductFilter());

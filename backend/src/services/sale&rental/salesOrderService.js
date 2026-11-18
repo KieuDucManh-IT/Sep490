@@ -1,4 +1,5 @@
 import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
+import { refreshOutOfStockStatus } from '../warehouse/productStockStatusService.js';
 /**
  * Sales Order Core Service
  * Layered Monolith Service handling Sales / Purchase Lifecycle
@@ -737,6 +738,16 @@ export const updateSalesOrderStatus = async ({
     );
 
     await session.commitTransaction();
+
+    // TASK-012: Sau khi bán (delivered) → kiểm tra lại tồn kho, có thể hết hàng
+    if (orderStatus === 'delivered') {
+      try {
+        const updatedDetails = await SalesOrderDetail.find({ salesOrderId: order._id }).populate({ path: 'variantId', select: 'productId' }).lean();
+        const productIds = [...new Set(updatedDetails.map((d) => String(d.variantId?.productId)).filter(Boolean))];
+        if (productIds.length) refreshOutOfStockStatus(productIds).catch((err) => console.error('[TASK-012] sales refresh lỗi:', err.message));
+      } catch (err) { /* không block kết quả */ }
+    }
+
     return updatedOrder;
   } catch (error) {
     await session.abortTransaction();

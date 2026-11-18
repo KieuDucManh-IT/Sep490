@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { refreshOutOfStockStatus } from './productStockStatusService.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
@@ -552,5 +553,22 @@ export const applyStockAdjustment = async (adjustmentId, user) => {
   } finally {
     await session.endSession();
   }
+  // TASK-012: Điều chỉnh kho → tồn thay đổi → kiểm tra lại hết hàng
+  try {
+    const adj = await StockAdjustment.findById(adjustmentId).select('_id').lean();
+    if (adj) {
+      const details = await StockAdjustmentDetail.find({ adjustmentId: adj._id }).select('variantId').lean();
+      const variantIds = [...new Set(details.map((d) => String(d.variantId)).filter(Boolean))];
+      if (variantIds.length) {
+        const pvs = await ProductVariant.find({ _id: { $in: variantIds } }).select('productId').lean();
+        const productIds = [...new Set(pvs.map((v) => String(v.productId)).filter(Boolean))];
+        if (productIds.length) {
+          refreshOutOfStockStatus(productIds).catch((err) =>
+            console.error('[TASK-012] stock adjustment refresh lỗi:', err.message)
+          );
+        }
+      }
+    }
+  } catch (_) { /* non-blocking */ }
   return getStockAdjustment(adjustmentId);
 };

@@ -10,6 +10,7 @@ import { StockRelocation } from '../../models/warehouse/transfer/StockRelocation
 import { StockRelocationDetail } from '../../models/warehouse/transfer/StockRelocationDetail.js';
 import User from '../../models/system/User.js';
 import { recordStockMovement } from '../warehouse/inventoryLedgerService.js';
+import { moveItem } from '../warehouse/itemStateService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const roleOf = (user) => String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
@@ -76,15 +77,12 @@ const loadEligibleItem = async (itemId, centralId, session) => {
   return item;
 };
 
-// Chuyển món sang maintenance bằng lệnh có điều kiện để tránh tranh chấp.
+// Chuyển món sang maintenance qua itemStateService (ghi có điều kiện theo trạng thái/vị trí vừa đọc → 409 nếu tranh chấp).
+// Balance: maintenance vẫn tính onHand nhưng là không khả dụng (unavailable +1 nếu món đang available).
 const lockItemForProcessing = async (item, centralId, session) => {
-  const locked = await InventoryItem.findOneAndUpdate(
-    { _id: item._id, locationId: centralId, status: item.status, condition: { $ne: 'missing' } },
-    { $set: { status: 'maintenance' } },
-    { new: true, session },
-  );
-  if (!locked) throw fail('Món hàng vừa thay đổi trạng thái, vui lòng tải lại.', 409);
-  return locked;
+  if (String(item.locationId) !== String(centralId) || item.condition === 'missing') throw fail('Món hàng vừa thay đổi trạng thái, vui lòng tải lại.', 409);
+  // Truyền bản sao để `item` của caller giữ trạng thái cũ (dùng cho previousItemStatus).
+  return moveItem({ ...item }, { status: 'maintenance' }, session);
 };
 
 const duplicateGuard = (error, message) => {
@@ -193,7 +191,8 @@ export const startMaintenance = async (id, user) => {
 };
 
 // Kiểm tra sức chứa kệ đích và các cấp cha khi xếp 1 món từ fromStorageId sang toStorageId.
-// Cách tính "đã dùng" giống stockRelocationService.checkCapacity: hàng số lượng tính theo InventoryBalance, hàng từng món tính theo InventoryItem.
+// TASK-009: "đã dùng" chỉ đọc InventoryBalance.quantityOnHand cho mọi loại hàng (balance individual đã đồng bộ với món),
+// giống stockRelocationService.checkCapacity.
 const assertShelfCapacity = async (locationId, fromStorageId, toStorageId, session) => {
   const storages = await StorageLocation.find({ locationId }).select('_id code parentStorageId maxCapacity').session(session).lean();
   const byId = new Map(storages.map((row) => [String(row._id), row]));
@@ -206,20 +205,10 @@ const assertShelfCapacity = async (locationId, fromStorageId, toStorageId, sessi
   const affected = chainOf(toStorageId).filter((row) => !fromIds.has(String(row._id)) && row.maxCapacity != null);
   if (!affected.length) return;
   const affectedIds = new Set(affected.map((row) => String(row._id)));
-  const variants = await ProductVariant.find({}).select('productId').populate('productId', 'trackingType').session(session).lean();
-  const quantityIds = variants.filter((row) => row.productId?.trackingType !== 'individual').map((row) => row._id);
-  const individualIds = variants.filter((row) => row.productId?.trackingType === 'individual').map((row) => row._id);
-  const [balances, itemRows] = await Promise.all([
-    quantityIds.length ? InventoryBalance.find({ locationId, storageId: { $ne: null }, variantId: { $in: quantityIds } }).select('storageId quantityOnHand').session(session).lean() : [],
-    individualIds.length ? InventoryItem.aggregate([
-      { $match: { locationId: new mongoose.Types.ObjectId(String(locationId)), variantId: { $in: individualIds }, storageId: { $ne: null }, status: { $nin: ['disposed', 'in_transit'] }, condition: { $ne: 'missing' } } },
-      { $group: { _id: '$storageId', count: { $sum: 1 } } },
-    ]).session(session) : [],
-  ]);
+  const balances = await InventoryBalance.find({ locationId, storageId: { $ne: null } }).select('storageId quantityOnHand').session(session).lean();
   const used = new Map();
   const add = (storageId, amount) => { for (const node of chainOf(storageId)) if (affectedIds.has(String(node._id))) used.set(String(node._id), (used.get(String(node._id)) || 0) + amount); };
   for (const row of balances) add(row.storageId, Math.max(0, row.quantityOnHand || 0));
-  for (const row of itemRows) add(row._id, row.count);
   // Phiếu tách/gộp đang mở sẽ đưa thêm hàng vào kệ đích.
   const pendingIds = await StockRelocation.find({ locationId, status: { $in: ['assigned', 'in_progress'] } }).distinct('_id').session(session);
   if (pendingIds.length) {
@@ -232,23 +221,11 @@ const assertShelfCapacity = async (locationId, fromStorageId, toStorageId, sessi
   }
 };
 
-// Đổi kệ cho món đã sửa xong. Theo quy ước stockRelocationService: ghi cặp transfer_out/transfer_in
-// và dời InventoryBalance của món theo kệ nếu kệ cũ có balance cho món (hàng nhập qua phiếu nhập).
-const moveItemToShelf = async ({ item, toStorageId, locationId, recordId, user, session }) => {
-  const fromStorageId = item.storageId || null;
+// Ghi cặp movement transfer_out/transfer_in khi món đã sửa được xếp sang kệ khác (balance do itemStateService dời).
+const recordShelfMove = async ({ item, fromStorageId, toStorageId, locationId, recordId, user, session }) => {
   if (fromStorageId && String(fromStorageId) === String(toStorageId)) return;
-  const source = await InventoryBalance.findOne({ locationId, storageId: fromStorageId, variantId: item.variantId }).session(session);
-  // Chỉ dời khi balance nguồn còn phần dư cho món này (không đụng phần đang giữ chỗ/không khả dụng của món khác).
-  if (source && source.quantityOnHand - 1 >= source.quantityReserved + source.quantityUnavailable) {
-    source.quantityOnHand -= 1; await source.save({ session });
-    await InventoryBalance.findOneAndUpdate(
-      { locationId, storageId: toStorageId, variantId: item.variantId },
-      { $inc: { quantityOnHand: 1 } },
-      { upsert: true, new: true, session, setDefaultsOnInsert: true, runValidators: true },
-    );
-  }
   const base = { variantId: item.variantId, itemId: item._id, locationId, referenceType: 'item_maintenance', referenceId: recordId, createdBy: user._id };
-  await recordStockMovement({ ...base, storageId: fromStorageId, movementType: 'transfer_out', quantityChange: -1 }, session);
+  await recordStockMovement({ ...base, storageId: fromStorageId || null, movementType: 'transfer_out', quantityChange: -1 }, session);
   await recordStockMovement({ ...base, storageId: toStorageId, movementType: 'transfer_in', quantityChange: 1 }, session);
 };
 
@@ -269,30 +246,17 @@ export const completeMaintenance = async (id, user, validated) => {
         const shelf = await StorageLocation.findOne({ _id: validated.targetStorageId, locationId: central._id, type: 'shelf', status: 'active' }).session(session).lean();
         if (!shelf) throw fail('Vị trí xếp lại phải là kệ đang hoạt động thuộc kho tổng.');
         await assertShelfCapacity(central._id, item.storageId, shelf._id, session);
-        await moveItemToShelf({ item, toStorageId: shelf._id, locationId: central._id, recordId: record._id, user, session });
-        const updated = await InventoryItem.findOneAndUpdate(
-          { _id: item._id, status: 'maintenance' },
-          { $set: { status: 'available', condition: validated.afterCondition, storageId: shelf._id } },
-          { new: true, session },
-        );
-        if (!updated) throw fail('Món hàng vừa thay đổi trạng thái, vui lòng tải lại.', 409);
+        const fromStorageId = item.storageId || null;
+        // TASK-009: maintenance (kệ cũ) → available (kệ mới) qua itemStateService; balance hai kệ dời đúng 1 món.
+        await moveItem(item, { status: 'available', condition: validated.afterCondition, storageId: shelf._id }, session);
+        await recordShelfMove({ item, fromStorageId, toStorageId: shelf._id, locationId: central._id, recordId: record._id, user, session });
         record.afterCondition = validated.afterCondition;
         record.targetStorageId = shelf._id;
       } else if (validated.repairResult === 'failed') {
-        const updated = await InventoryItem.findOneAndUpdate(
-          { _id: item._id, status: 'maintenance' },
-          { $set: { status: 'unavailable', condition: 'damaged' } },
-          { new: true, session },
-        );
-        if (!updated) throw fail('Món hàng vừa thay đổi trạng thái, vui lòng tải lại.', 409);
+        await moveItem(item, { status: 'unavailable', condition: 'damaged' }, session);
         record.afterCondition = 'damaged';
       } else {
-        const updated = await InventoryItem.findOneAndUpdate(
-          { _id: item._id, status: 'maintenance' },
-          { $set: { condition: 'unrepairable' } },
-          { new: true, session },
-        );
-        if (!updated) throw fail('Món hàng vừa thay đổi trạng thái, vui lòng tải lại.', 409);
+        await moveItem(item, { condition: 'unrepairable' }, session);
         record.afterCondition = 'unrepairable';
         await ItemDisposal.create([{
           itemId: item._id, locationId: central._id, maintenanceRecordId: record._id,
@@ -327,12 +291,9 @@ export const cancelMaintenance = async (id, user, validated = {}) => {
       );
       if (!record) throw fail('Chỉ có thể hủy phiếu đang chờ làm hoặc đang làm.', 409);
       const restoreStatus = ELIGIBLE_STATUSES.includes(record.previousItemStatus) ? record.previousItemStatus : 'unavailable';
-      const item = await InventoryItem.findOneAndUpdate(
-        { _id: record.itemId, status: 'maintenance' },
-        { $set: { status: restoreStatus } },
-        { new: true, session },
-      );
+      const item = await InventoryItem.findOne({ _id: record.itemId, status: 'maintenance' }).session(session);
       if (!item) throw fail('Món hàng không còn ở trạng thái đang xử lý.', 409);
+      await moveItem(item, { status: restoreStatus }, session);
     });
   } finally { await session.endSession(); }
   return getMaintenanceRecord(id, user);
@@ -394,14 +355,11 @@ export const decideDisposal = async (id, user, validated) => {
       const disposal = await ItemDisposal.findOneAndUpdate({ _id: id, status: 'requested', isPending: true }, { $set: set }, { new: true, session });
       if (!disposal) throw fail('Đề xuất thanh lý đã được xử lý trước đó.', 409);
       if (String(disposal.locationId) !== String(central._id)) throw fail('Đề xuất thanh lý không thuộc kho tổng.', 409);
-      const item = await InventoryItem.findOneAndUpdate(
-        { _id: disposal.itemId, locationId: central._id, status: 'maintenance' },
-        { $set: { status: approve ? 'disposed' : 'unavailable' } },
-        { new: true, session },
-      );
+      const item = await InventoryItem.findOne({ _id: disposal.itemId, locationId: central._id, status: 'maintenance' }).session(session);
       if (!item) throw fail('Món hàng không còn ở trạng thái chờ thanh lý.', 409);
+      // TASK-009: duyệt → disposed (onHand -1, unavailable -1); từ chối → unavailable (balance không đổi).
+      await moveItem(item, { status: approve ? 'disposed' : 'unavailable' }, session);
       if (approve) {
-        // Theo quy ước applyStockAdjustment: hàng từng món khi loại bỏ chỉ đổi trạng thái + ghi StockMovement, không trừ InventoryBalance.
         await recordStockMovement({
           variantId: item.variantId, itemId: item._id, locationId: central._id, storageId: item.storageId || null,
           movementType: 'disposal', quantityChange: -1, referenceType: 'item_disposal', referenceId: disposal._id, createdBy: user._id,

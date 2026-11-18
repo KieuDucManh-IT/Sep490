@@ -16,7 +16,7 @@ import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { RentalOrderItem } from '../../models/sale&rental/RentalOrderItem.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
+import { returnItems, withStatus } from '../warehouse/orderStockService.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
 import { readyWallet, changeFunds } from '../walletService.js';
@@ -151,53 +151,48 @@ export const createReturnReceiptAndSettle = async ({
     }));
     await RentalReturnDetail.insertMany(returnDetails, { session });
 
-    // 3. Cập nhật trạng thái từng hiện vật kho InventoryItem & RentalOrderItem
-    for (const it of items) {
-      let nextItemStatus = 'available';
-      if (['damaged', 'worn'].includes(it.conditionOnReturn)) {
-        nextItemStatus = 'maintenance';
-      } else if (it.conditionOnReturn === 'unrepairable') {
-        nextItemStatus = 'damaged';
-      }
-
-      const invItem = await InventoryItem.findById(it.itemId).session(session);
-      if (invItem) {
-        invItem.status = nextItemStatus;
-        await invItem.save({ session });
-
-        // Ghi nhận StockMovement nhập trả kho thuê
-        await StockMovement.create(
-          [
-            {
-              variantId: invItem.variantId,
-              itemId: invItem._id,
-              locationId: order.locationId,
-              movementType: 'rental_return',
-              quantityChange: 1,
-              referenceType: 'rental_return',
-              referenceId: rentalReturn._id,
-              createdBy: receivedBy || order.createdBy,
-            },
-          ],
-          { session }
-        );
-
-        // Khôi phục InventoryBalance nếu đồ có thể tái sử dụng
-        if (nextItemStatus === 'available') {
-          await InventoryBalance.updateOne(
-            { locationId: order.locationId, variantId: invItem.variantId },
-            { $inc: { quantityOnHand: 1 } },
-            { session }
-          );
-        }
-      }
-
-      await RentalOrderItem.updateMany(
-        { itemId: it.itemId },
-        { $set: { status: 'returned' } },
-        { session }
-      );
+    // 3. TASK-010: cập nhật hiện vật qua itemStateService theo bảng quy đổi (người dùng chốt 17/11):
+    //    new/good → available; worn/damaged → unavailable; unrepairable → unavailable + condition unrepairable.
+    //    Không dùng `maintenance` ở chi nhánh (bảo trì chỉ ở kho tổng). Helper: renting −1, onHand +1, unavailable +1 nếu cần.
+    const orderDetails = await RentalOrderDetail.find({ rentalOrderId: order._id }).select('_id').session(session);
+    const handedOver = await RentalOrderItem.find({
+      rentalOrderDetailId: { $in: orderDetails.map((d) => d._id) },
+      itemId: { $in: items.map((it) => it.itemId) },
+      status: 'handed_over',
+    }).session(session);
+    const handedOverIds = new Set(handedOver.map((row) => String(row.itemId)));
+    const uniqueReturnIds = new Set(items.map((it) => String(it.itemId)));
+    if (uniqueReturnIds.size !== items.length) {
+      throw new ServiceError(422, 'Biên bản trả đồ có hiện vật bị trùng');
     }
+    const invItems = await InventoryItem.find({ _id: { $in: [...uniqueReturnIds] } }).session(session);
+    const invById = new Map(invItems.map((item) => [String(item._id), item]));
+    const entries = items.map((it) => {
+      const invItem = invById.get(String(it.itemId));
+      if (!invItem || !handedOverIds.has(String(it.itemId))) {
+        throw new ServiceError(422, `Hiện vật ${invItem?.itemCode || it.itemId} không thuộc đơn thuê này hoặc chưa được bàn giao`);
+      }
+      return { item: invItem, conditionOnReturn: it.conditionOnReturn };
+    });
+    await returnItems(entries, session);
+
+    await StockMovement.insertMany(entries.map(({ item }) => ({
+      variantId: item.variantId,
+      itemId: item._id,
+      locationId: item.locationId,
+      storageId: null,
+      movementType: 'rental_return',
+      quantityChange: 1,
+      referenceType: 'rental_return',
+      referenceId: rentalReturn._id,
+      createdBy: receivedBy || order.createdBy,
+    })), { session });
+
+    await RentalOrderItem.updateMany(
+      { _id: { $in: handedOver.map((row) => row._id) } },
+      { $set: { status: 'returned' } },
+      { session }
+    );
 
     // 4. Quyết toán Tiền cọc trong Ví nội bộ (ACID)
     if (order.depositStatus === 'held') {
@@ -278,7 +273,7 @@ export const createReturnReceiptAndSettle = async ({
     };
   } catch (err) {
     if (isInternal) await session.abortTransaction();
-    throw err;
+    throw withStatus(err);
   } finally {
     if (isInternal) session.endSession();
   }

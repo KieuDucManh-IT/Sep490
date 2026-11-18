@@ -84,6 +84,9 @@ export async function submitCheckoutGroups(groups, createOrder, onCreated) {
       const failure = new Error(definiteRejection ? error.message : uncertainMessage);
       failure.orders = orders;
       failure.uncertain = !definiteRejection;
+      // Giữ mã lỗi nghiệp vụ (vd ERR_OUT_OF_STOCK) để trang checkout hiển thị đúng.
+      failure.code = definiteRejection ? (error.data?.code || error.code || null) : null;
+      failure.data = definiteRejection ? error.data : undefined;
       throw failure;
     }
   }

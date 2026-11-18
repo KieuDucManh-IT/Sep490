@@ -4,7 +4,6 @@ import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundRece
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
-import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Supplier } from '../../models/masterdata/Supplier.js';
@@ -12,6 +11,7 @@ import User from '../../models/system/User.js';
 import { validateCancelReason, validateCreateInboundReceipt, validatePutaway, validateReceiptCheck } from '../../validations/warehouse/inboundReceiptValidation.js';
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
+import { createItems } from './itemStateService.js';
 
 const openStatuses = ['awaiting_receiving', 'received', 'approved'];
 const receiptStatuses = [...openStatuses, 'completed', 'rejected', 'cancelled'];
@@ -35,29 +35,22 @@ const loadDetails = async (receiptId) => InboundReceiptDetail.find({ receiptId }
   .populate('storageAllocations.storageId', 'code name type')
   .populate('storageId', 'code name type');
 
+// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho MỌI loại hàng. Balance của hàng individual
+// đã đồng bộ với các món (itemStateService), nên không đếm InventoryItem riêng nữa để tránh đếm hai lần.
 const getPhysicalCapacity = async (locationId, session = null) => {
   const location = await InventoryLocation.findById(locationId).session(session).lean();
   if (!location) throw fail('Không tìm thấy kho/cửa hàng.', 404);
   const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity type status').session(session).lean();
   const storageById = new Map(storageLocations.map((storage) => [String(storage._id), storage]));
   const balanceRows = await InventoryBalance.aggregate([
-    { $match: { locationId: new mongoose.Types.ObjectId(locationId) } },
-    { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: '$quantityOnHand' } } },
+    { $match: { locationId: new mongoose.Types.ObjectId(String(locationId)) } },
+    { $group: { _id: '$storageId', quantity: { $sum: '$quantityOnHand' } } },
   ]).session(session);
-  const itemRows = await InventoryItem.aggregate([
-    { $match: { locationId: new mongoose.Types.ObjectId(locationId), status: { $nin: ['disposed', 'renting', 'in_transit'] } } },
-    { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: 1 } } },
-  ]).session(session);
-  const variantIds = [...new Set([...balanceRows, ...itemRows].map((row) => String(row._id.variantId)))];
-  const variants = await ProductVariant.find({ _id: { $in: variantIds } }).select('productId').populate('productId', 'trackingType').session(session).lean();
-  const trackingByVariant = new Map(variants.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
   const directByStorage = new Map();
-  const addDirect = (storageId, quantity) => {
-    const key = storageId ? String(storageId) : '';
-    directByStorage.set(key, (directByStorage.get(key) || 0) + quantity);
-  };
-  for (const row of balanceRows) if (trackingByVariant.get(String(row._id.variantId)) !== 'individual') addDirect(row._id.storageId, row.quantity);
-  for (const row of itemRows) if (trackingByVariant.get(String(row._id.variantId)) === 'individual') addDirect(row._id.storageId, row.quantity);
+  for (const row of balanceRows) {
+    const key = row._id ? String(row._id) : '';
+    directByStorage.set(key, (directByStorage.get(key) || 0) + Math.max(0, row.quantity || 0));
+  }
 
   const usedByStorage = new Map();
   for (const [storageId, quantity] of directByStorage.entries()) {
@@ -244,8 +237,8 @@ export const putawayReceipt = async (receiptId, payload, user) => {
         .select('productId').populate('productId', 'trackingType').session(session).lean();
       const trackingByVariant = new Map(variantTracking.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
       for (const line of toStore) {
-        await increaseInventoryBalance({ locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId, quantity: line.quantity, session });
         if (trackingByVariant.get(String(line.detail.variantId)) === 'individual') {
+          // TASK-009: hàng individual tạo món qua itemStateService, balance kệ được cộng đúng theo số món.
           const items = Array.from({ length: line.quantity }, () => ({
             variantId: line.detail.variantId,
             locationId: receipt.locationId,
@@ -255,7 +248,9 @@ export const putawayReceipt = async (receiptId, payload, user) => {
             condition: 'new',
             status: 'available',
           }));
-          await InventoryItem.insertMany(items, { session });
+          await createItems(items, session);
+        } else {
+          await increaseInventoryBalance({ locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId, quantity: line.quantity, session });
         }
         await recordStockMovement({
           variantId: line.detail.variantId,

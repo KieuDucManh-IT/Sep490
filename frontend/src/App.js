@@ -77,6 +77,7 @@ import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
+import { NotificationProvider } from './context/NotificationContext';
 
 function TrackingRedirect() {
   const { trackingCode } = useParams();
@@ -87,7 +88,8 @@ function TrackingRedirect() {
 function App() {
   return (
     <Router>
-      <ForceChangePasswordModal />
+      <NotificationProvider>
+        <ForceChangePasswordModal />
       <CartDrawer />
       <Routes>
         {/* ========================================================
@@ -122,7 +124,7 @@ function App() {
         <Route path="/policy/:tab" element={<PolicyPage />} />
         <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
-        <Route path="/stylist" element={<StylistPage />} />
+        <Route path="/stylist" element={<Navigate to="/" replace />} />
         <Route path="/lookbook/:shareCode" element={<SharedLookbookPage />} />
 
         <Route path="/login" element={<LoginPage />} />
@@ -494,6 +496,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <AiStylistWidget />
+      </NotificationProvider>
     </Router>
   );
 }

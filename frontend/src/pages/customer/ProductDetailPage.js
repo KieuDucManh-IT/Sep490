@@ -1,4 +1,4 @@
-import { activeVariants, matchVariant, variantStock, variantPricing, selectionImages } from '../../services/cart/productSelection';
+import { activeVariants, matchVariant, variantStock, variantPricing, selectionImages, variantSelectable } from '../../services/cart/productSelection';
 import { formatLocalDate, parseDateOnly, calculateRentalDays } from '../../services/cart/cartCalculations';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
@@ -247,10 +247,6 @@ export default function ProductDetailPage() {
   const currentPrice = isRental ? rentalPricePerDay : pricing.salePrice;
   const depositAmount = isRental ? pricing.deposit : 0;
   const hasValidPrice = Number.isFinite(currentPrice) && currentPrice > 0 && Number.isFinite(depositAmount) && depositAmount >= 0;
-  const colorOptions = [...new Set(activeVariants(product).map(v => v.color || ''))];
-  const sizeOptions = [...new Set(activeVariants(product).filter(v => String(v.color || '').trim().toLowerCase() === String(selectedColor).trim().toLowerCase()).map(v => v.size || ''))].map(name => ({
-    name, available: Boolean(matchVariant(product, name, selectedColor)),
-  }));
 
   // Giới hạn ngày nhận đồ: Chặn ngày quá khứ, tối đa trước 60 ngày
   const todayStr = useMemo(() => {
@@ -438,6 +434,15 @@ export default function ProductDetailPage() {
     );
   }, [sortedBranches, selectedBranchId]);
 
+  // TASK-011: nút màu/size mờ khi biến thể có nhưng khả dụng = 0 tại chi nhánh đang chọn (số từ InventoryBalance).
+  const branchLocationId = currentSelectedBranch?.locationId || '';
+  const colorOptions = [...new Set(activeVariants(product).map(v => v.color || ''))].map(name => ({
+    name,
+    available: activeVariants(product).some(v => String(v.color || '').trim().toLowerCase() === String(name).trim().toLowerCase() && variantSelectable(product, v, branchLocationId)),
+  }));
+  const sizeOptions = [...new Set(activeVariants(product).filter(v => String(v.color || '').trim().toLowerCase() === String(selectedColor).trim().toLowerCase()).map(v => v.size || ''))].map(name => ({
+    name, available: variantSelectable(product, matchVariant(product, name, selectedColor), branchLocationId),
+  }));
   const availableStock = variantStock(currentSelectedBranch, matchedVariant?._id);
   const isOutOfStock = availableStock === null || availableStock <= 0;
   const canAdd = Boolean(matchedVariant && currentSelectedBranch?.locationId && !isOutOfStock && hasValidPrice);
@@ -883,7 +888,9 @@ export default function ProductDetailPage() {
           <div className="pdetail-section-group">
             <span className="pdetail-section-title">Chọn màu sắc</span>
             <div className="pdetail-size-buttons-row">
-              {colorOptions.map(color => <button key={color} type="button"
+              {colorOptions.map(({ name: color, available }) => <button key={color} type="button"
+                disabled={!available}
+                title={available ? `Chọn màu ${color || 'Mặc định'}` : 'Hết hàng'}
                 className={`pdetail-size-btn ${selectedColor === color ? 'active' : ''}`}
                 onClick={() => { setSelectedColor(color); setSelectedSize(''); setQuantity(1); setSelectedImgIndex(0); }}>{color || 'Mặc định'}</button>)}
             </div>
@@ -906,7 +913,7 @@ export default function ProductDetailPage() {
                   disabled={!sz.available}
                   className={`pdetail-size-btn ${selectedSize === sz.name ? 'active' : ''}`}
                   onClick={() => { setSelectedSize(sz.name); setQuantity(1); setSelectedImgIndex(0); }}
-                  title={sz.available ? `Chọn size ${sz.name}` : `Size ${sz.name} hiện hết hàng`}
+                  title={sz.available ? `Chọn size ${sz.name}` : 'Hết hàng'}
                 >
                   {sz.name}
                 </button>

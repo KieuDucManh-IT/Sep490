@@ -5,13 +5,12 @@ import {
   Store,
   Building2,
   ChevronDown,
-  Bell,
-  CheckCircle2,
   Check,
   Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getAssignedBranchApi } from '../services/shopApi';
+import NotificationBell from './common/NotificationBell';
 import '../styles/ShopDashboard.css';
 
 export default function OwnerTopHeader({
@@ -22,15 +21,11 @@ export default function OwnerTopHeader({
   const location = useLocation();
   const { user } = useAuth();
 
-  const [showNotif, setShowNotif] = useState(false);
   const [showBranchSwitcher, setShowBranchSwitcher] = useState(false);
-
-  const notifRef = useRef(null);
   const branchSwitcherRef = useRef(null);
 
   // Auto dismiss popovers on route change
   useEffect(() => {
-    setShowNotif(false);
     setShowBranchSwitcher(false);
   }, [location.pathname]);
 
@@ -38,14 +33,10 @@ export default function OwnerTopHeader({
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        setShowNotif(false);
         setShowBranchSwitcher(false);
       }
     };
     const handleClickOutside = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) {
-        setShowNotif(false);
-      }
       if (branchSwitcherRef.current && !branchSwitcherRef.current.contains(e.target)) {
         setShowBranchSwitcher(false);
       }
@@ -270,7 +261,6 @@ export default function OwnerTopHeader({
               className="owner-branch-switcher-pill"
               onClick={() => {
                 setShowBranchSwitcher((prev) => !prev);
-                setShowNotif(false);
               }}
               aria-expanded={showBranchSwitcher}
               aria-haspopup="listbox"
@@ -437,54 +427,7 @@ export default function OwnerTopHeader({
         </div>
 
         {/* Notifications Button & Popover */}
-        <div style={{ position: 'relative' }} ref={notifRef}>
-          <button
-            type="button"
-            className="owner-topbar-icon-btn"
-            onClick={() => {
-              setShowNotif((prev) => !prev);
-            }}
-            title="Thông báo vận hành chuỗi"
-            aria-expanded={showNotif}
-            aria-label="Thông báo hệ thống"
-          >
-            <Bell size={17} strokeWidth={1.8} />
-            <span className="owner-topbar-badge-dot" />
-          </button>
-
-          {showNotif && (
-            <div className="owner-notif-dropdown" role="region" aria-label="Thông báo mới nhất">
-              <div className="owner-notif-header">
-                <span className="owner-notif-title">THÔNG BÁO VẬN HÀNH</span>
-                <span className="owner-notif-badge-count">2 Mới</span>
-              </div>
-              <div className="owner-notif-list">
-                <div className="owner-notif-item">
-                  <div className="owner-notif-icon-circle">
-                    <CheckCircle2 size={13} />
-                  </div>
-                  <div className="owner-notif-content">
-                    <p className="owner-notif-text">
-                      Hệ thống đồng bộ tọa độ GPS và giờ mở cửa chi nhánh thành công.
-                    </p>
-                    <span className="owner-notif-time">Vừa xong</span>
-                  </div>
-                </div>
-                <div className="owner-notif-item">
-                  <div className="owner-notif-icon-circle">
-                    <Store size={13} />
-                  </div>
-                  <div className="owner-notif-content">
-                    <p className="owner-notif-text">
-                      Chi nhánh Cầu Giấy đã hoàn tất kiểm định trang phục hoàn trả.
-                    </p>
-                    <span className="owner-notif-time">15 phút trước</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <NotificationBell />
       </div>
     </header>
   );

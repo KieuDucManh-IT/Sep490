@@ -15,7 +15,8 @@ import { RentalOrderItem } from '../../models/sale&rental/RentalOrderItem.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
+import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
+import { returnItems, withStatus } from '../warehouse/orderStockService.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
 import { readyWallet, changeFunds } from '../walletService.js';
 import {
@@ -322,18 +323,37 @@ export const completeDisputeKCS = async ({
         );
       }
 
-      // Khôi phục trạng thái hiện vật kho sang maintenance/available
-      const details = await RentalOrderDetail.find({ rentalOrderId: order._id });
-      const items = await RentalOrderItem.find({
+      // TASK-010: đồ lỗi ban đầu khách gửi về → nhận lại tại chi nhánh qua itemStateService.
+      // Trước đây updateMany → `maintenance` trực tiếp (balance không đổi, lệch onHand/renting). Theo quy tắc nhận trả
+      // (không dùng `maintenance` ở chi nhánh; bảo trì chỉ tạo ở kho tổng): món `renting` → `unavailable` + condition `damaged`
+      // (renting −1, onHand +1, unavailable +1), chờ chuyển về kho tổng xử lý. Món không còn `renting` (đã trả/khác) bỏ qua.
+      const details = await RentalOrderDetail.find({ rentalOrderId: order._id }).session(session);
+      const orderItems = await RentalOrderItem.find({
         rentalOrderDetailId: { $in: details.map((d) => d._id) },
-      });
-      const itemIds = items.map((it) => it.itemId);
-
-      await InventoryItem.updateMany(
-        { _id: { $in: itemIds } },
-        { $set: { status: 'maintenance' } }, // Trang phục lỗi chuyển sang bảo trì/giặt là
-        { session }
-      );
+        status: 'handed_over',
+      }).session(session);
+      const invItems = orderItems.length
+        ? await InventoryItem.find({ _id: { $in: orderItems.map((it) => it.itemId) }, status: 'renting' }).session(session)
+        : [];
+      await returnItems(invItems.map((item) => ({ item, conditionOnReturn: 'damaged' })), session);
+      if (invItems.length) {
+        await StockMovement.insertMany(invItems.map((item) => ({
+          variantId: item.variantId,
+          itemId: item._id,
+          locationId: item.locationId,
+          storageId: null,
+          movementType: 'rental_return',
+          quantityChange: 1,
+          referenceType: 'rental_order',
+          referenceId: order._id,
+          createdBy: operatorId || order.createdBy,
+        })), { session });
+        await RentalOrderItem.updateMany(
+          { _id: { $in: orderItems.filter((row) => invItems.some((item) => String(item._id) === String(row.itemId))).map((row) => row._id) } },
+          { $set: { status: 'returned' } },
+          { session }
+        );
+      }
     } else {
       // Khiếu nại không hợp lệ (không phát hiện lỗi hoặc do lỗi người dùng)
       dispute.status = 'rejected';
@@ -353,7 +373,7 @@ export const completeDisputeKCS = async ({
     };
   } catch (err) {
     if (isInternal) await session.abortTransaction();
-    throw err;
+    throw withStatus(err);
   } finally {
     if (isInternal) session.endSession();
   }

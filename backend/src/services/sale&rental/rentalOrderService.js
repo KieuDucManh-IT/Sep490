@@ -24,8 +24,11 @@ import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Product } from '../../models/masterdata/Product.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
+import {
+  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes,
+  reserveItemsForOrder, releaseItemsFromOrder, handoverItems, UNUSABLE_CONDITIONS, withStatus,
+} from '../warehouse/orderStockService.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
@@ -255,8 +258,10 @@ export const createRentalOrder = async ({
     if (!stockCheck.available) {
       throw new ServiceError(
         409,
-        `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`,
-        stockCheck.code || 'ERR_INSUFFICIENT_STOCK',
+        stockCheck.code === 'ERR_OUT_OF_STOCK'
+          ? `Sản phẩm ${it.sku || it.variantId} chỉ còn ${stockCheck.availableQty ?? 0}.`
+          : `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`,
+        stockCheck.code || 'ERR_OUT_OF_STOCK',
         { requestedQuantity: it.quantity, availableQuantity: stockCheck.availableQty ?? 0 }
       );
     }
@@ -270,6 +275,10 @@ export const createRentalOrder = async ({
   }
 
   try {
+    // TASK-010: giữ chỗ NGUYÊN TỬ trên dòng (locationId, storageId: null, variantId), không upsert.
+    // Không đủ (kể cả hai request giành món cuối) → 409 ERR_OUT_OF_STOCK, transaction rollback.
+    await reserveStock({ locationId, lines: itemsToCheck }, session);
+
     let orderStatus = 'draft';
     let paymentStatus = 'unpaid';
     let depositStatus = 'pending';
@@ -375,14 +384,7 @@ export const createRentalOrder = async ({
     const createdDetails = await RentalOrderDetail.insertMany(detailDocs, { session });
     await InventoryReservation.insertMany(reservationDocs, { session });
 
-    // 8. Tăng quantityReserved trong InventoryBalance
-    for (const it of itemsToCheck) {
-      await InventoryBalance.updateOne(
-        { locationId: order.locationId, variantId: it.variantId },
-        { $inc: { quantityReserved: it.quantity } },
-        { session, upsert: true }
-      );
-    }
+    // 8. quantityReserved đã tăng ở bước giữ chỗ nguyên tử đầu transaction (reserveStock).
 
     if (isInternalSession) {
       await session.commitTransaction();
@@ -397,7 +399,7 @@ export const createRentalOrder = async ({
     if (isInternalSession) {
       await session.abortTransaction();
     }
-    throw error;
+    throw withStatus(error);
   } finally {
     if (isInternalSession) {
       session.endSession();
@@ -467,12 +469,22 @@ export const assignPhysicalItems = async ({
         );
       }
 
-      // Xác thực từng hiện vật
-      const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session);
-      if (items.length !== itemIds.length) {
+      // Xác thực từng hiện vật (đọc trong session để itemStateService ghi có điều kiện)
+      const uniqueIds = [...new Set(itemIds.map(String))];
+      if (uniqueIds.length !== itemIds.length) {
+        throw new ServiceError(422, 'Danh sách hiện vật gán bị trùng mã');
+      }
+      const items = await InventoryItem.find({ _id: { $in: uniqueIds } }).session(session);
+      if (items.length !== uniqueIds.length) {
         throw new ServiceError(404, 'Một hoặc nhiều hiện vật kho không tồn tại');
       }
 
+      // Món đã gán cho CHÍNH dòng này từ lần gán trước (gán lại) thì giữ nguyên; món cũ bị bỏ khỏi danh sách thì nhả.
+      const previous = await RentalOrderItem.find({ rentalOrderDetailId: detail._id, status: 'assigned' }).session(session);
+      const previousIds = new Set(previous.map((row) => String(row.itemId)));
+      const requestedIds = new Set(uniqueIds);
+
+      const toReserve = [];
       for (const item of items) {
         if (String(item.variantId) !== String(detail.variantId)) {
           throw new ServiceError(
@@ -486,14 +498,33 @@ export const assignPhysicalItems = async ({
             `Hiện vật [${item.itemCode || item._id}] không nằm tại chi nhánh của đơn thuê`
           );
         }
-        if (!['available', 'reserved'].includes(item.status)) {
+        const alreadyMine = previousIds.has(String(item._id)) && item.status === 'reserved';
+        // TASK-010: chỉ nhận món `available` (không lấy món `reserved` đang bị phiếu kho/đơn khác giữ).
+        if (!alreadyMine && item.status !== 'available') {
           throw new ServiceError(
             422,
-            `Hiện vật [${item.itemCode || item._id}] không ở trạng thái khả dụng (hiện tại: ${item.status})`
+            `Hiện vật [${item.itemCode || item._id}] không ở trạng thái sẵn sàng (hiện tại: ${item.status})`
           );
         }
+        if (!alreadyMine && UNUSABLE_CONDITIONS.includes(item.condition)) {
+          throw new ServiceError(
+            422,
+            `Hiện vật [${item.itemCode || item._id}] đang hỏng/thiếu (${item.condition}), không thể cho thuê`
+          );
+        }
+        if (!alreadyMine) toReserve.push(item);
+      }
 
-        // Tạo hoặc cập nhật RentalOrderItem
+      const dropped = previous.filter((row) => !requestedIds.has(String(row.itemId)));
+      if (dropped.length) {
+        const droppedItems = await InventoryItem.find({ _id: { $in: dropped.map((row) => row.itemId) } }).session(session);
+        await releaseItemsFromOrder(droppedItems, session);
+        await RentalOrderItem.deleteMany({ _id: { $in: dropped.map((row) => row._id) } }, { session });
+      }
+
+      // Khóa hiện vật: available → reserved qua itemStateService (không warehouseHold; giữ chỗ của đơn đã nằm trên balance).
+      await reserveItemsForOrder(toReserve, session);
+      for (const item of toReserve) {
         await RentalOrderItem.findOneAndUpdate(
           { rentalOrderDetailId: detail._id, itemId: item._id },
           {
@@ -504,10 +535,6 @@ export const assignPhysicalItems = async ({
           },
           { upsert: true, session }
         );
-
-        // Khóa hiện vật sang reserved
-        item.status = 'reserved';
-        await item.save({ session });
       }
 
       assignedResults.push({
@@ -520,7 +547,7 @@ export const assignPhysicalItems = async ({
     return { success: true, assignedResults };
   } catch (err) {
     if (isInternal) await session.abortTransaction();
-    throw err;
+    throw withStatus(err);
   } finally {
     if (isInternal) session.endSession();
   }
@@ -573,10 +600,15 @@ export const handoverRentalOrder = async ({
     const itemIds = assignedItems.map((a) => a.itemId);
     const now = new Date();
 
-    // 1. Cập nhật RentalOrder
+    // 1. Cập nhật RentalOrder (có điều kiện trạng thái: hai lần bàn giao đồng thời → lần sau 409)
+    const claimed = await RentalOrder.updateOne(
+      { _id: order._id, rentalStatus: 'confirmed' },
+      { $set: { rentalStatus: 'renting', ...(note ? { note: order.note ? `${order.note}; ${note}` : note } : {}) } },
+      { session }
+    );
+    if (claimed.matchedCount !== 1) throw new ServiceError(409, 'Đơn thuê vừa được cập nhật bởi người khác, vui lòng tải lại.');
     order.rentalStatus = 'renting';
     if (note) order.note = order.note ? `${order.note}; ${note}` : note;
-    await order.save({ session });
 
     // 2. Cập nhật RentalOrderItem sang handed_over
     await RentalOrderItem.updateMany(
@@ -585,46 +617,66 @@ export const handoverRentalOrder = async ({
       { session }
     );
 
-    // 3. Cập nhật InventoryItem sang renting
-    await InventoryItem.updateMany(
-      { _id: { $in: itemIds } },
-      { $set: { status: 'renting' } },
-      { session }
-    );
+    // 3. TASK-010: nhả giữ chỗ của đơn (InventoryReservation active → consumed) và lấy số đã giữ theo biến thể.
+    const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'rental' }, 'consumed', session);
+    const tracking = await trackingTypes(details.map((d) => d.variantId), session);
 
-    // 4. Ghi StockMovement xuất kho thuê
-    const movementDocs = [];
+    // 4. Món reserved → renting qua itemStateService, GỘP với reserved −qty trong cùng bước (onHand −1, renting +1 mỗi món).
+    const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session);
+    if (items.length !== itemIds.length) {
+      throw new ServiceError(409, 'Một hoặc nhiều hiện vật đã gán không còn tồn tại, vui lòng gán lại.');
+    }
+    for (const item of items) {
+      if (item.status !== 'reserved' || String(item.locationId) !== String(order.locationId)) {
+        throw new ServiceError(409, `Hiện vật [${item.itemCode || item._id}] không còn ở trạng thái đã gán cho đơn (hiện tại: ${item.status}).`);
+      }
+    }
+    const individualReserved = new Map([...reservedByVariant].filter(([variantId]) => tracking.get(variantId) === 'individual'));
+    await handoverItems({ locationId: order.locationId, items, reservedByVariant: individualReserved }, session);
+
+    // Hàng `quantity` (không có món): giữ hành vi cũ — onHand −qty, reserved −(số đang giữ).
     for (const d of details) {
+      const variantId = String(d.variantId);
+      if (tracking.get(variantId) === 'individual') continue;
+      await incBranchBalance({
+        locationId: order.locationId,
+        variantId: d.variantId,
+        inc: { quantityOnHand: -d.quantity, quantityReserved: -(reservedByVariant.get(variantId) || 0) },
+      }, session);
+      reservedByVariant.delete(variantId);
+    }
+
+    // 5. Ghi StockMovement xuất kho thuê (individual: mỗi món một dòng có itemId)
+    const itemById = new Map(items.map((item) => [String(item._id), item]));
+    const movementDocs = [];
+    for (const a of assignedItems) {
+      const item = itemById.get(String(a.itemId));
+      movementDocs.push({
+        variantId: item.variantId,
+        itemId: item._id,
+        locationId: order.locationId,
+        storageId: null,
+        movementType: 'rental_out',
+        quantityChange: -1,
+        referenceType: 'rental_order',
+        referenceId: order._id,
+        createdBy: operatorId || order.createdBy,
+      });
+    }
+    for (const d of details) {
+      if (tracking.get(String(d.variantId)) === 'individual') continue;
       movementDocs.push({
         variantId: d.variantId,
         locationId: order.locationId,
+        storageId: null,
         movementType: 'rental_out',
         quantityChange: -d.quantity,
         referenceType: 'rental_order',
         referenceId: order._id,
         createdBy: operatorId || order.createdBy,
       });
-
-      // Điều chỉnh InventoryBalance: giảm quantityOnHand & quantityReserved
-      await InventoryBalance.updateOne(
-        { locationId: order.locationId, variantId: d.variantId },
-        {
-          $inc: {
-            quantityOnHand: -d.quantity,
-            quantityReserved: -d.quantity,
-          },
-        },
-        { session }
-      );
     }
-    await StockMovement.insertMany(movementDocs, { session });
-
-    // 5. Cập nhật InventoryReservation sang consumed
-    await InventoryReservation.updateMany(
-      { orderId: order._id, status: 'active' },
-      { $set: { status: 'consumed' } },
-      { session }
-    );
+    if (movementDocs.length) await StockMovement.insertMany(movementDocs, { session });
 
     if (isInternal) await session.commitTransaction();
 
@@ -635,7 +687,7 @@ export const handoverRentalOrder = async ({
     };
   } catch (err) {
     if (isInternal) await session.abortTransaction();
-    throw err;
+    throw withStatus(err);
   } finally {
     if (isInternal) session.endSession();
   }
@@ -700,6 +752,14 @@ export const cancelRentalOrder = async ({
   if (isInternal) session.startTransaction();
 
   try {
+    // 0. Chốt trạng thái có điều kiện: hủy và bàn giao đồng thời → chỉ một bên thành công.
+    const claimed = await RentalOrder.updateOne(
+      { _id: order._id, rentalStatus: order.rentalStatus },
+      { $set: { rentalStatus: 'cancelled' } },
+      { session }
+    );
+    if (claimed.matchedCount !== 1) throw new ServiceError(409, 'Đơn thuê vừa được cập nhật bởi người khác, vui lòng tải lại.');
+
     // 1. Hoàn tiền và giải phóng tiền cọc trong Ví nếu đã thanh toán
     if (order.paymentStatus === 'paid' && order.depositStatus === 'held') {
       const wallet = await getWallet(order.customerId);
@@ -733,33 +793,18 @@ export const cancelRentalOrder = async ({
       );
     }
 
-    // 2. Giải phóng giữ chỗ kho (InventoryReservation)
-    await InventoryReservation.updateMany(
-      { orderId: order._id, status: 'active' },
-      { $set: { status: 'released' } },
-      { session }
-    );
+    // 2. TASK-010: giải phóng giữ chỗ — đúng bằng số InventoryReservation đang active (→ released) của đơn.
+    const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'rental' }, 'released', session);
+    await releaseReserved({ locationId: order.locationId, reservedByVariant }, session);
 
-    // 3. Giảm quantityReserved trong InventoryBalance
-    const details = await RentalOrderDetail.find({ rentalOrderId: order._id });
-    for (const d of details) {
-      await InventoryBalance.updateOne(
-        { locationId: order.locationId, variantId: d.variantId },
-        { $inc: { quantityReserved: -d.quantity } },
-        { session }
-      );
-    }
-
-    // 4. Giải phóng hiện vật kho nếu đã gán
+    // 3. Giải phóng hiện vật kho đã gán: reserved → available qua itemStateService (balance không đổi).
+    const details = await RentalOrderDetail.find({ rentalOrderId: order._id }).session(session);
     const assignedItems = await RentalOrderItem.find({
       rentalOrderDetailId: { $in: details.map((d) => d._id) },
-    });
+    }).session(session);
     if (assignedItems.length > 0) {
-      await InventoryItem.updateMany(
-        { _id: { $in: assignedItems.map((a) => a.itemId) }, status: 'reserved' },
-        { $set: { status: 'available' } },
-        { session }
-      );
+      const items = await InventoryItem.find({ _id: { $in: assignedItems.map((a) => a.itemId) } }).session(session);
+      await releaseItemsFromOrder(items, session);
       await RentalOrderItem.deleteMany(
         { _id: { $in: assignedItems.map((a) => a._id) } },
         { session }
@@ -790,7 +835,7 @@ export const cancelRentalOrder = async ({
     };
   } catch (err) {
     if (isInternal) await session.abortTransaction();
-    throw err;
+    throw withStatus(err);
   } finally {
     if (isInternal) session.endSession();
   }

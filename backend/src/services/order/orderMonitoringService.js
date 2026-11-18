@@ -16,6 +16,7 @@ import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
 import { readBalances } from '../walletService.js';
 import { encryptValue } from '../../utils/walletSecurity.js';
 import { syncSingleShipmentFromGHN } from '../shipping/shipmentSyncService.js';
+import { createNotification, notifyRoles } from '../system/notificationService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
@@ -1304,6 +1305,36 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
     } catch (walletErr) {
       console.error('[Checkout] Lỗi trừ tiền ví hoặc tạo WalletTransaction:', walletErr);
     }
+  }
+
+  // Tự động phát thông báo tới Khách hàng và Quản trị viên / Chủ shop
+  try {
+    const targetOrder = createdRentalOrder || createdSalesOrder;
+    const isRental = Boolean(createdRentalOrder);
+    const orderTitle = isRental ? 'Đặt đơn thuê thành công' : 'Đặt mua trang phục thành công';
+
+    // 1. Thông báo cho Khách hàng
+    createNotification({
+      userId: user._id,
+      type: 'order_created',
+      title: orderTitle,
+      message: 'Đơn hàng của bạn đã được khởi tạo thành công. VESTORA sẽ sớm chuẩn bị và giao hàng cho bạn!',
+      link: '/customer/orders',
+      referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
+      referenceId: targetOrder?._id
+    }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho khách hàng:', err.message));
+
+    // 2. Thông báo cho Admin, Shop Owner và Quản lý chi nhánh
+    notifyRoles([ 'shopOwner', 'branch_manager'], {
+      type: 'order_created',
+      title: 'Đơn hàng mới từ khách',
+      message: `Khách hàng ${user.FullName || user.email || 'Khách'} vừa đặt ${isRental ? 'đơn thuê' : 'đơn mua'}. Vui lòng kiểm tra và xử lý.`,
+      link: '/owner/orders',
+      referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
+      referenceId: targetOrder?._id
+    }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho quản trị:', err.message));
+  } catch (notifErr) {
+    console.error('[Notification] Lỗi trong checkout:', notifErr.message);
   }
 
   return {

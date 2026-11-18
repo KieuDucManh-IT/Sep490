@@ -7,6 +7,7 @@ import { discrepancyStatuses, validateResolveDiscrepancy } from '../../validatio
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { assertBranchCapacity } from './stockTransferService.js';
 import { capacitySnapshot } from './branchReturnService.js';
+import { moveItem, moveItems } from './itemStateService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const roleOf = (user) => String(user?.Role || user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
@@ -47,11 +48,12 @@ export const openTransferDiscrepancies = async ({ transfer, details, tracking, u
     if (individual) {
       const received = new Set((detail.receivedItemIds || []).map(String));
       const missingIds = (detail.itemIds || []).map(String).filter((id) => !received.has(id));
-      const items = await InventoryItem.find({ _id: { $in: missingIds }, status: 'in_transit' }).select('_id condition').session(session).lean();
+      const items = await InventoryItem.find({ _id: { $in: missingIds }, status: 'in_transit' }).select('_id itemCode variantId locationId storageId status condition').session(session).lean();
       if (items.length !== missing) throw fail('Số món thiếu không khớp với danh sách mã hàng đang điều chuyển.', 409);
       itemIds = items.map((item) => item._id);
       itemPreviousConditions = items.map((item) => ({ itemId: item._id, condition: item.condition || 'good' }));
-      await InventoryItem.updateMany({ _id: { $in: itemIds }, status: 'in_transit' }, { $set: { condition: 'missing' } }, { session });
+      // Món vẫn in_transit (không nằm trong balance), chỉ đổi tình trạng; đi qua itemStateService cho thống nhất.
+      await moveItems(items, { condition: 'missing' }, session);
     }
     const [discrepancy] = await StockDiscrepancy.create([{
       discrepancyCode: makeCode(),
@@ -189,8 +191,10 @@ export const resolveDiscrepancy = async (id, payload, user) => {
       if (data.outcome === 'lost') {
         // Mất: không ghi StockMovement vì số lượng đã ra khỏi sổ lúc xuất.
         if (individual) {
-          const result = await InventoryItem.updateMany({ _id: { $in: itemIds }, status: 'in_transit' }, { $set: { status: 'disposed', condition: 'missing' } }, { session });
-          if (result.modifiedCount !== itemIds.length) throw fail('Một số món hàng không còn ở trạng thái đang điều tra.', 409);
+          // TASK-009: in_transit → disposed qua itemStateService. Món đang in_transit nên balance không đổi.
+          const items = await InventoryItem.find({ _id: { $in: itemIds }, status: 'in_transit' }).session(session);
+          if (items.length !== itemIds.length) throw fail('Một số món hàng không còn ở trạng thái đang điều tra.', 409);
+          await moveItems(items, { status: 'disposed', condition: 'missing' }, session);
         }
         return;
       }
@@ -205,16 +209,16 @@ export const resolveDiscrepancy = async (id, payload, user) => {
         movementType: 'transfer_in', referenceType: 'stock_discrepancy', referenceId: discrepancy._id, createdBy: user._id,
       };
       if (individual) {
-        // Giống chiều nhận bình thường của điều chuyển: hàng individual chỉ đổi InventoryItem, không cộng InventoryBalance.
+        // TASK-009: món tìm thấy in_transit → available/unavailable tại nơi nhập lại; balance cộng qua itemStateService.
         const previous = new Map(discrepancy.itemPreviousConditions.map((row) => [String(row.itemId), row.condition]));
         for (const itemId of itemIds) {
           const condition = previous.get(itemId) || 'good';
-          const item = await InventoryItem.findOneAndUpdate(
-            { _id: itemId, status: 'in_transit' },
-            { $set: { status: ['damaged', 'unrepairable'].includes(condition) ? 'unavailable' : 'available', condition, locationId: location._id, storageId } },
-            { new: true, session },
-          );
+          const item = await InventoryItem.findOne({ _id: itemId, status: 'in_transit' }).session(session);
           if (!item) throw fail('Một số món hàng không còn ở trạng thái đang điều tra.', 409);
+          await moveItem(item, {
+            status: ['damaged', 'unrepairable'].includes(condition) ? 'unavailable' : 'available',
+            condition, locationId: location._id, storageId,
+          }, session);
           await recordStockMovement({ ...movementBase, itemId: item._id, quantityChange: 1 }, session);
         }
       } else {

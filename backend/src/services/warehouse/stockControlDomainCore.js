@@ -14,6 +14,7 @@ import { StockAdjustmentDetail } from '../../models/warehouse/adjustment/StockAd
 import { validateCancelReason, validateCreateStocktakeInput, validateStocktakeCountInput } from '../../validations/warehouse/stockControlValidation.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
+import { createItems, moveItem } from './itemStateService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const idValid = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -151,7 +152,7 @@ export const startStocktake = async (stocktakeId, user) => {
       const storageFilter = expanded ? { storageId: { $in: [...expanded] } } : {};
       const [balances, items] = await Promise.all([
         InventoryBalance.find({ locationId: stocktake.locationId, ...variantFilter, ...storageFilter }).session(session).lean(),
-        InventoryItem.find({ locationId: stocktake.locationId, status: { $nin: ['disposed', 'renting', 'in_transit'] }, ...variantFilter, ...storageFilter }).session(session).lean(),
+        InventoryItem.find({ locationId: stocktake.locationId, status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] }, ...variantFilter, ...storageFilter }).session(session).lean(),
       ]);
       const variants = await ProductVariant.find({ _id: { $in: [...balances.map((row) => row.variantId), ...items.map((row) => row.variantId)] } })
         .select('productId').populate('productId', 'trackingType').session(session).lean();
@@ -324,30 +325,26 @@ const movementTotal = async (detail, stocktake, { after, before } = {}) => {
 const currentQuantity = async (detail, individual) => {
   if (individual) {
     if (!detail.itemId) return 0;
-    const item = await InventoryItem.findOne({ _id: detail.itemId, locationId: detail.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).select('_id');
+    const item = await InventoryItem.findOne({ _id: detail.itemId, locationId: detail.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] } }).select('_id');
     return item ? 1 : 0;
   }
   const balance = await InventoryBalance.findOne({ locationId: detail.locationId, variantId: detail.variantId, storageId: detail.storageId || null }).select('quantityOnHand');
   return balance?.quantityOnHand || 0;
 };
 
+// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho mọi loại hàng (balance individual đã đồng bộ với món).
 const getCapacitySnapshot = async (locationId, session) => {
-  const [location, storages, balances, items] = await Promise.all([
+  const [location, storages, balances] = await Promise.all([
     InventoryLocation.findById(locationId).session(session).lean(),
     StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity').session(session).lean(),
-    InventoryBalance.find({ locationId }).select('storageId variantId quantityOnHand').session(session).lean(),
-    InventoryItem.find({ locationId, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).select('storageId variantId').session(session).lean(),
+    InventoryBalance.find({ locationId }).select('storageId quantityOnHand').session(session).lean(),
   ]);
-  const variants = await ProductVariant.find({ _id: { $in: [...balances.map((row) => row.variantId), ...items.map((row) => row.variantId)] } })
-    .select('productId').populate('productId', 'trackingType').session(session).lean();
-  const tracking = new Map(variants.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
   const direct = new Map();
   const add = (storageId, amount) => {
     const key = String(storageId || '');
     direct.set(key, (direct.get(key) || 0) + amount);
   };
-  for (const row of balances) if (tracking.get(String(row.variantId)) !== 'individual') add(row.storageId, row.quantityOnHand || 0);
-  for (const item of items) if (tracking.get(String(item.variantId)) === 'individual') add(item.storageId, 1);
+  for (const row of balances) add(row.storageId, Math.max(0, row.quantityOnHand || 0));
   const storageById = new Map(storages.map((storage) => [String(storage._id), storage]));
   const usedByStorage = new Map();
   for (const [storageId, amount] of direct) {
@@ -413,18 +410,19 @@ export const approveStocktake = async (stocktakeId, user) => {
           const itemState = await InventoryItem.findById(detail.itemId).select('locationId storageId status').lean();
           const stillPresent = itemState && String(itemState.locationId) === String(stocktake.locationId)
             && String(itemState.storageId || '') === String(detail.storageId || '')
-            && !['disposed', 'renting', 'in_transit'].includes(itemState.status);
+            && !['disposed', 'renting', 'in_transit', 'sold'].includes(itemState.status);
           if (!stillPresent) afterCount = -detail.countedQuantity;
         }
         if (individual && detail.itemId && detail.countedQuantity > 0 && detail.countedCondition) {
           const itemRecord = await InventoryItem.findOne({
             _id: detail.itemId, locationId: stocktake.locationId, storageId: detail.storageId || null,
-            status: { $nin: ['disposed', 'renting', 'in_transit'] },
+            status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] },
           }).session(session);
           if (!itemRecord) throw fail('InventoryItem đã đổi vị trí hoặc trạng thái trong lúc kiểm kê. Tạo lại phiếu kiểm kê.', 409);
-          itemRecord.condition = detail.countedCondition;
-          if (['damaged', 'unrepairable'].includes(detail.countedCondition) && itemRecord.status !== 'reserved') itemRecord.status = 'unavailable';
-          await itemRecord.save({ session });
+          // TASK-009: đổi tình trạng/trạng thái qua itemStateService. Chỉ món available mới chuyển unavailable
+          // (món reserved đang bị giữ, món maintenance đang có phiếu giặt/sửa thì giữ nguyên trạng thái).
+          const markUnavailable = ['damaged', 'unrepairable'].includes(detail.countedCondition) && itemRecord.status === 'available';
+          await moveItem(itemRecord, { condition: detail.countedCondition, ...(markUnavailable ? { status: 'unavailable' } : {}) }, session);
         }
         const systemAtCount = Math.max(0, detail.systemQuantity + movementUntilCount);
         const expectedNow = Math.max(0, detail.countedQuantity + afterCount);
@@ -513,15 +511,20 @@ export const applyStockAdjustment = async (adjustmentId, user) => {
         }
         if (individual) {
           if (detail.itemId && detail.quantityChange === -1) {
-            const item = await InventoryItem.findOneAndUpdate({ _id: detail.itemId, locationId: adjustment.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit'] } }, { $set: { status: 'disposed', ...(detail.itemCondition ? { condition: detail.itemCondition } : {}) } }, { new: true, session });
+            const item = await InventoryItem.findOne({ _id: detail.itemId, locationId: adjustment.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] } }).session(session);
             if (!item) throw fail('Mã hàng cá thể đã thay đổi vị trí/trạng thái sau khi duyệt. Tạo lại phiếu kiểm kê.', 409);
+            if (item.status === 'reserved') throw fail(`Món ${item.itemCode} đang được giữ cho phiếu kho hoặc đơn hàng. Hãy nhả giữ trước khi áp dụng điều chỉnh.`, 409);
+            // TASK-009: thanh lý qua itemStateService → onHand -1 (và unavailable -1 nếu món đang không khả dụng) ở đúng kệ.
+            await moveItem(item, { status: 'disposed', ...(detail.itemCondition ? { condition: detail.itemCondition } : {}) }, session);
           } else if (!detail.itemId && detail.quantityChange > 0) {
             if (!detail.itemCode) throw fail('Thiếu mã hàng cho cá thể phát hiện thừa.');
-            const [createdItem] = await InventoryItem.create([{
-              variantId: detail.variantId, locationId: adjustment.locationId, storageId: detail.storageId,
+            if (detail.itemStatus === 'reserved') throw fail('Không thể tạo món mới ở trạng thái giữ chỗ.', 409);
+            // TASK-009: tạo món thừa qua itemStateService → balance cộng đúng theo trạng thái món.
+            const [createdItem] = await createItems([{
+              variantId: detail.variantId, locationId: adjustment.locationId, storageId: detail.storageId || null,
               itemCode: detail.itemCode, serialNumber: detail.serialNumber || undefined,
               condition: detail.itemCondition || 'new', status: detail.itemStatus || 'available',
-            }], { session });
+            }], session);
             movementItemId = createdItem._id;
           } else if (detail.quantityChange !== 0) throw fail('Chênh lệch cá thể phải là một mã hàng cụ thể.');
         }

@@ -40,9 +40,25 @@ export const getGHNWardsByProvinceApi = async (provinceId) => {
   return await api.get(`/shipping/master-data/wards-by-province/${provinceId}`);
 };
 
-export const trackPublicShipmentApi = async (trackingCode, options = {}) => {
+export const trackShipmentApi = async (trackingCode, options = {}) => {
   const params = options?.force ? { force: 'true' } : {};
-  return await api.get(`/public/shipping/track/${encodeURIComponent(trackingCode)}`, { params });
+  return await api.get(`/shipping/track/${encodeURIComponent(trackingCode)}`, { params });
+};
+
+export const trackPublicShipmentApi = trackShipmentApi;
+
+export const updateManualShipmentStatusApi = async (id, payload) => {
+  return await api.put(`/shipping/${id}/manual-status`, payload);
+};
+
+export const uploadShipmentProofApi = async (file) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  return await api.post('/shipping/upload-proof', formData);
+};
+
+export const simulateGhnApi = async (payload) => {
+  return await api.post('/shipping/dev/simulate-ghn', payload);
 };
 
 const shippingApi = {
@@ -50,12 +66,16 @@ const shippingApi = {
   createOutboundShipmentApi,
   createReturnShipmentApi,
   cancelShipmentApi,
+  updateManualShipmentStatusApi,
+  simulateGhnApi,
+  uploadShipmentProofApi,
   getShipmentsByOrderApi,
   getPrintTokenApi,
   getGHNProvincesApi,
   getGHNDistrictsApi,
   getGHNWardsApi,
   getGHNWardsByProvinceApi,
+  trackShipmentApi,
   trackPublicShipmentApi,
 };
 

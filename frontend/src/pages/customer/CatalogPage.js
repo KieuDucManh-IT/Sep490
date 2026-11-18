@@ -947,13 +947,30 @@ export default function CatalogPage() {
                             <span className="meta-separator">•</span>
                           </>
                         ) : null}
-                        {/* TASK-011: số khả dụng lấy từ API (InventoryBalance, chỉ chi nhánh); không còn fallback "|| 1". */}
+                        {/* TASK-011 & TASK-012: số khả dụng lấy từ API; hiển thị Sắp có hàng khi có restock request */}
                         {(() => {
                           const availableQty = Math.max(0, Number(item.quantityAvailable ?? 0) || 0);
+                          const isRestockPending = Boolean(item.restockRequestedAt);
+                          if (availableQty > 0) {
+                            return (
+                              <span className="stock-indicator">
+                                <span className="stock-dot"></span>
+                                <span>Còn hàng ({availableQty})</span>
+                              </span>
+                            );
+                          }
+                          if (isRestockPending) {
+                            return (
+                              <span className="stock-indicator">
+                                <span className="stock-dot" style={{ backgroundColor: '#3B82F6' }}></span>
+                                <span style={{ color: '#2563EB', fontWeight: 500 }}>Sắp có hàng</span>
+                              </span>
+                            );
+                          }
                           return (
                             <span className="stock-indicator">
-                              <span className={`stock-dot ${availableQty > 0 ? '' : 'out-of-stock'}`}></span>
-                              <span>{availableQty > 0 ? `Còn hàng (${availableQty})` : 'Hết hàng'}</span>
+                              <span className="stock-dot out-of-stock"></span>
+                              <span>Hết hàng</span>
                             </span>
                           );
                         })()}

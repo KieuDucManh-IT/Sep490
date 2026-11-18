@@ -9,14 +9,24 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
+const MODAL_SIZES = {
+  sm: '480px',
+  md: '580px',
+  lg: '920px',
+  xl: '1080px',
+  full: '96vw',
+};
+
 export default function HauteCoutureModal({
   isOpen,
   onClose,
   title,
   subtitle,
   children,
-  maxWidth = '560px',
+  maxWidth,
+  size = 'md',
 }) {
+  const resolvedMaxWidth = maxWidth || MODAL_SIZES[size] || '620px';
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen) {
@@ -58,14 +68,14 @@ export default function HauteCoutureModal({
       <div
         style={{
           width: '100%',
-          maxWidth,
+          maxWidth: resolvedMaxWidth,
           backgroundColor: '#FFFFFF',
           borderRadius: '12px',
           border: '1px solid #E5E0D8',
           boxShadow: '0 20px 45px -10px rgba(0, 0, 0, 0.15)',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '90vh',
+          maxHeight: '92vh',
           overflow: 'hidden',
         }}
       >

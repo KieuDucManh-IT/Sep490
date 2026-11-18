@@ -1,3 +1,5 @@
+import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
+import { refreshOutOfStockStatus } from '../warehouse/productStockStatusService.js';
 /**
  * Sales Order Core Service
  * Layered Monolith Service handling Sales / Purchase Lifecycle
@@ -11,7 +13,6 @@ import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Product } from '../../models/masterdata/Product.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
@@ -22,15 +23,20 @@ import {
 } from '../walletService.js';
 import { checkSalesAvailability } from '../warehouse/productInventoryHelper.js';
 import {
+  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes, sellItems, withStatus,
+} from '../warehouse/orderStockService.js';
+import {
   createSalesOrderSchema,
   updateSalesOrderStatusSchema,
 } from '../../validations/sale&rental/salesOrderValidation.js';
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
 
 export class ServiceError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code = null, details = null) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.details = details;
     this.name = 'ServiceError';
   }
 }
@@ -79,18 +85,33 @@ export const calculateSalesOrderPrice = async (items) => {
     if (!variant) {
       throw new ServiceError(404, `Không tìm thấy biến thể sản phẩm: ${item.variantId}`);
     }
-    if (variant.status === 'inactive') {
-      throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`);
+    if (!isActiveVariant(variant)) {
+      throw new ServiceError(422, `Biến thể sản phẩm [${variant.sku || variant._id}] hiện đang tạm ngưng`, 'ERR_ITEM_INACTIVE');
     }
 
     const product = variant.productId || {};
-    const rawPrice =
-      variant.attributes?.salePrice ??
-      variant.attributes?.price ??
-      product.salePrice ??
-      product.price ??
-      0;
-    const unitPrice = Number(rawPrice);
+
+    if (!isActiveProduct(variant.productId)) {
+      throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] đã ngừng kinh doanh`, 'ERR_ITEM_INACTIVE');
+    }
+    // TASK-008: sản phẩm chưa được Shop Owner định giá thì chưa mở bán.
+    if (product.isSetPrice !== true) {
+      throw new ServiceError(422, `Sản phẩm [${product.name || variant.sku}] chưa được mở bán`, 'ERR_ITEM_NOT_PRICED');
+    }
+
+    // Kiểm tra type mismatch: sản phẩm chỉ dành cho thuê không thể mua
+    // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
+    if (String(product.tag).toLowerCase() === 'rental') {
+      throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chỉ dành cho thuê, không thể mua`, 'ERR_ITEM_TYPE_MISMATCH');
+    }
+
+    const unitPrice = resolveProductPricing(product, variant).salePrice;
+
+    // Kiểm tra giá bán hợp lệ
+    // @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-020
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      throw new ServiceError(400, `Sản phẩm [${product.name || variant.sku}] chưa được thiết lập giá bán hợp lệ`, 'ERR_INVALID_PRICE');
+    }
 
     const qty = Math.max(1, Number(item.quantity) || 1);
     const lineTotal = unitPrice * qty;
@@ -134,6 +155,7 @@ export const createSalesOrder = async ({
   paymentMethod = 'cod',
   shippingAddress,
   note = '',
+  expectedTotalAmount,
   session: externalSession = null,
   deps = {},
 }) => {
@@ -164,9 +186,26 @@ export const createSalesOrder = async ({
 
   // 2. Tính toán giá authoritative từ database
   const priceCalc = await calculateSalesOrderPrice(items);
+  // Reject price changes between the read-only quote and order submission, before payment.
+  if (expectedTotalAmount !== undefined && (!Number.isFinite(expectedTotalAmount) || expectedTotalAmount !== priceCalc.totalAmount)) {
+    throw new ServiceError(409, 'Giá đã thay đổi. Vui lòng kiểm tra lại tổng tiền trước khi xác nhận.', 'ERR_PRICE_CHANGED');
+  }
+
 
   // 3. Kiểm tra khả dụng tồn kho tại chi nhánh chỉ định
+  // Aggregate duplicate variantIds trước khi kiểm tra kho — REQ-CART-021 / REQ-CART-023
+  const aggregatedItems = new Map();
   for (const it of priceCalc.itemsDetail) {
+    const key = String(it.variantId);
+    if (aggregatedItems.has(key)) {
+      aggregatedItems.get(key).quantity += it.quantity;
+    } else {
+      aggregatedItems.set(key, { ...it });
+    }
+  }
+  const itemsToCheck = [...aggregatedItems.values()];
+
+  for (const it of itemsToCheck) {
     const stockCheck = await stockChecker(
       it.variantId,
       locationId,
@@ -175,7 +214,11 @@ export const createSalesOrder = async ({
     if (!stockCheck.available) {
       throw new ServiceError(
         409,
-        `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`
+        stockCheck.code === 'ERR_OUT_OF_STOCK'
+          ? `Sản phẩm ${it.sku || it.variantId} chỉ còn ${stockCheck.availableQty ?? 0}.`
+          : `Chi nhánh không đủ số lượng khả dụng cho sản phẩm [${it.sku || it.variantId}]: ${stockCheck.message}`,
+        stockCheck.code || 'ERR_OUT_OF_STOCK',
+        { requestedQuantity: it.quantity, availableQuantity: stockCheck.availableQty ?? 0 }
       );
     }
   }
@@ -188,6 +231,9 @@ export const createSalesOrder = async ({
   }
 
   try {
+    // TASK-010: giữ chỗ NGUYÊN TỬ trên dòng (locationId, storageId: null, variantId), không upsert → 409 ERR_OUT_OF_STOCK.
+    await reserveStock({ locationId, lines: itemsToCheck }, session);
+
     let orderStatus = 'confirmed';
     let paymentStatus = 'unpaid';
     let paymentRefId = null;
@@ -202,7 +248,8 @@ export const createSalesOrder = async ({
       if (availableBalance < requiredAmount) {
         throw new ServiceError(
           409,
-          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán đơn mua (${priceCalc.totalAmount.toLocaleString('vi-VN')} đ)`
+          `Số dư khả dụng trong Ví (${availableBalance.toLocaleString('vi-VN')} đ) không đủ để thanh toán đơn mua (${priceCalc.totalAmount.toLocaleString('vi-VN')} đ)`,
+          'ERR_INSUFFICIENT_WALLET_BALANCE'
         );
       }
 
@@ -286,14 +333,7 @@ export const createSalesOrder = async ({
     }));
     await InventoryReservation.insertMany(reservationDocs, { session });
 
-    // Cập nhật quantityReserved trong InventoryBalance
-    for (const it of priceCalc.itemsDetail) {
-      await InventoryBalance.updateOne(
-        { locationId, variantId: it.variantId },
-        { $inc: { quantityReserved: it.quantity } },
-        { session, upsert: true }
-      );
-    }
+    // quantityReserved đã tăng ở bước giữ chỗ nguyên tử đầu transaction (reserveStock).
 
     if (isInternalSession) {
       await session.commitTransaction();
@@ -307,7 +347,7 @@ export const createSalesOrder = async ({
     if (isInternalSession) {
       await session.abortTransaction();
     }
-    throw error;
+    throw withStatus(error);
   } finally {
     if (isInternalSession) {
       session.endSession();
@@ -575,6 +615,14 @@ export const updateSalesOrderStatus = async ({
   session.startTransaction();
 
   try {
+    // Chốt trạng thái có điều kiện: hai lần hoàn tất/hủy đồng thời → lần sau 409 (không trừ kho hai lần).
+    const claimed = await SalesOrder.updateOne(
+      { _id: order._id, orderStatus: order.orderStatus },
+      { $set: { orderStatus } },
+      { session }
+    );
+    if (claimed.matchedCount !== 1) throw new ServiceError(409, 'Đơn mua vừa được cập nhật bởi người khác, vui lòng tải lại.');
+
     const updateFields = { orderStatus };
     if (note) {
       updateFields.note = order.note ? `${order.note} | ${note}` : note;
@@ -589,59 +637,65 @@ export const updateSalesOrderStatus = async ({
         updateFields.paymentStatus = 'paid';
       }
 
-      // Giải phóng reservation và trừ thật vào tồn kho qua StockMovement
-      const details = await SalesOrderDetail.find({ salesOrderId: order._id }).session(session);
+      // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật.
+      // - individual: chọn FIFO món `available` (condition dùng được) → `sold` qua itemStateService, gộp reserved −qty;
+      //   StockMovement mỗi món một dòng có itemId.
+      // - quantity: giữ hành vi cũ (onHand −qty, reserved −qty) trên dòng chi nhánh, có chặn âm.
+      const details = await SalesOrderDetail.find({ salesOrderId: order._id }).populate('variantId', 'sku').session(session);
+      const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'sale' }, 'consumed', session);
+      const lines = new Map();
       for (const it of details) {
-        await InventoryBalance.updateOne(
-          { locationId: order.locationId, variantId: it.variantId },
-          {
-            $inc: {
-              quantityOnHand: -it.quantity,
-              quantityReserved: -it.quantity,
-            },
-          },
-          { session }
-        );
-
-        await StockMovement.create(
-          [
-            {
-              variantId: it.variantId,
-              locationId: order.locationId,
-              movementType: 'sale',
-              quantityChange: -it.quantity,
-              referenceType: 'sales_order',
-              referenceId: order._id,
-              createdBy: user._id,
-            },
-          ],
-          { session }
-        );
+        const variantId = String(it.variantId?._id || it.variantId);
+        if (!lines.has(variantId)) lines.set(variantId, { variantId: it.variantId?._id || it.variantId, sku: it.variantId?.sku, quantity: 0 });
+        lines.get(variantId).quantity += it.quantity;
       }
-
-      await InventoryReservation.updateMany(
-        { orderId: order._id, status: 'active' },
-        { status: 'consumed' },
-        { session }
-      );
+      const tracking = await trackingTypes([...lines.keys()], session);
+      for (const [variantId, line] of lines) {
+        const reservedQuantity = reservedByVariant.get(variantId) || 0;
+        if (tracking.get(variantId) === 'individual') {
+          const soldItems = await sellItems({
+            locationId: order.locationId, variantId: line.variantId, quantity: line.quantity, reservedQuantity, sku: line.sku,
+          }, session);
+          await StockMovement.insertMany(soldItems.map((item) => ({
+            variantId: line.variantId,
+            itemId: item._id,
+            locationId: order.locationId,
+            storageId: item.storageId ?? null,
+            movementType: 'sale',
+            quantityChange: -1,
+            referenceType: 'sales_order',
+            referenceId: order._id,
+            createdBy: user._id,
+          })), { session });
+        } else {
+          await incBranchBalance({
+            locationId: order.locationId,
+            variantId: line.variantId,
+            inc: { quantityOnHand: -line.quantity, quantityReserved: -reservedQuantity },
+          }, session);
+          await StockMovement.create(
+            [
+              {
+                variantId: line.variantId,
+                locationId: order.locationId,
+                storageId: null,
+                movementType: 'sale',
+                quantityChange: -line.quantity,
+                referenceType: 'sales_order',
+                referenceId: order._id,
+                createdBy: user._id,
+              },
+            ],
+            { session }
+          );
+        }
+      }
     } else if (orderStatus === 'cancelled') {
       updateFields.cancelledAt = new Date();
 
-      // Giải phóng hàng giữ chỗ
-      const details = await SalesOrderDetail.find({ salesOrderId: order._id }).session(session);
-      for (const it of details) {
-        await InventoryBalance.updateOne(
-          { locationId: order.locationId, variantId: it.variantId },
-          { $inc: { quantityReserved: -it.quantity } },
-          { session }
-        );
-      }
-
-      await InventoryReservation.updateMany(
-        { orderId: order._id, status: 'active' },
-        { status: 'released' },
-        { session }
-      );
+      // TASK-010: giải phóng giữ chỗ đúng bằng số InventoryReservation đang active (→ released). Món không đổi.
+      const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'sale' }, 'released', session);
+      await releaseReserved({ locationId: order.locationId, reservedByVariant }, session);
 
       // Nếu đã thanh toán bằng ví, hoàn tiền lại cho khách hàng
       if (order.paymentStatus === 'paid' && order.paymentMethod === 'wallet' && order.customerId) {
@@ -684,10 +738,20 @@ export const updateSalesOrderStatus = async ({
     );
 
     await session.commitTransaction();
+
+    // TASK-012: Sau khi bán (delivered) → kiểm tra lại tồn kho, có thể hết hàng
+    if (orderStatus === 'delivered') {
+      try {
+        const updatedDetails = await SalesOrderDetail.find({ salesOrderId: order._id }).populate({ path: 'variantId', select: 'productId' }).lean();
+        const productIds = [...new Set(updatedDetails.map((d) => String(d.variantId?.productId)).filter(Boolean))];
+        if (productIds.length) refreshOutOfStockStatus(productIds).catch((err) => console.error('[TASK-012] sales refresh lỗi:', err.message));
+      } catch (err) { /* không block kết quả */ }
+    }
+
     return updatedOrder;
   } catch (error) {
     await session.abortTransaction();
-    throw error;
+    throw withStatus(error);
   } finally {
     session.endSession();
   }

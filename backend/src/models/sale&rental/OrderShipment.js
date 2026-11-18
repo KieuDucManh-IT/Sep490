@@ -6,6 +6,8 @@ const statusHistorySchema = new mongoose.Schema({
   description: { type: String, trim: true },
   location: { type: String, trim: true },
   timestamp: { type: Date, default: Date.now },
+  evidenceImage: { type: String, trim: true, default: null }, // Ảnh chụp xác nhận giao hàng
+  failReason: { type: String, trim: true, default: null },    // Lý do chưa giao được hàng (nếu có)
 }, { _id: false });
 
 const addressInfoSchema = new mongoose.Schema({
@@ -14,8 +16,9 @@ const addressInfoSchema = new mongoose.Schema({
   address: { type: String, trim: true },
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
-  provinceId: { type: Number },
-  wardCode: { type: String, trim: true },
+  provinceId: { type: Number, default: null },
+  districtId: { type: Number, default: null },
+  wardCode: { type: String, trim: true, default: null },
 }, { _id: false });
 
 const orderShipmentSchema = new mongoose.Schema({
@@ -43,6 +46,8 @@ const orderShipmentSchema = new mongoose.Schema({
   statusHistory: [statusHistorySchema],
   lastSyncedAt: { type: Date, default: null },
   cancellationReason: { type: String, trim: true },
+  deliveryProofImage: { type: String, trim: true, default: null }, // Ảnh chụp xác nhận giao hàng thành công
+  failureReason: { type: String, trim: true, default: null },      // Lý do giao hàng không thành công
   note: { type: String, trim: true },
   shippedAt: { type: Date, default: null },
   deliveredAt: { type: Date, default: null },

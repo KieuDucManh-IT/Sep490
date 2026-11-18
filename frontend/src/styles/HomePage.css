@@ -271,9 +271,11 @@
   0% {
     box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.7);
   }
+
   70% {
     box-shadow: 0 0 0 8px rgba(39, 174, 96, 0);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(39, 174, 96, 0);
   }
@@ -787,11 +789,30 @@
   display: block;
 }
 
-.pin-1 { top: 20%; left: 18%; }
-.pin-2 { top: 16%; left: 45%; }
-.pin-3 { top: 58%; left: 24%; }
-.pin-4 { top: 32%; left: 74%; }
-.pin-5 { top: 62%; left: 82%; }
+.pin-1 {
+  top: 20%;
+  left: 18%;
+}
+
+.pin-2 {
+  top: 16%;
+  left: 45%;
+}
+
+.pin-3 {
+  top: 58%;
+  left: 24%;
+}
+
+.pin-4 {
+  top: 32%;
+  left: 74%;
+}
+
+.pin-5 {
+  top: 62%;
+  left: 82%;
+}
 
 /* Customer Location on Map Preview */
 .map-user-pin {
@@ -896,6 +917,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .showroom-item-card {
@@ -908,6 +930,7 @@
   background: #fdfcfb;
   cursor: pointer;
   transition: all 0.2s ease;
+  min-width: 0;
 }
 
 .showroom-item-card:hover {
@@ -1348,11 +1371,22 @@
   .products-carousel-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+
   .sustainability-card-container {
     grid-template-columns: 1fr 1fr;
   }
+
   .sustain-media-col {
     display: none;
+  }
+
+  .showroom-content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .interactive-map-card {
+    min-height: 150px;
+    height: 150px;
   }
 }
 
@@ -1360,19 +1394,24 @@
   .hero-layout-grid {
     grid-template-columns: 1fr;
   }
+
   .hero-main-title {
     font-size: 38px;
   }
+
   .dual-split-section {
     grid-template-columns: 1fr;
   }
+
   .style-cards-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
   .steps-flow-container {
     flex-direction: column;
     gap: 14px;
   }
+
   .step-flow-arrow {
     transform: rotate(90deg);
   }
@@ -1382,15 +1421,19 @@
   .vestora-main-content {
     padding: 0 16px;
   }
+
   .hero-main-title {
     font-size: 30px;
   }
+
   .products-carousel-grid {
     grid-template-columns: 1fr;
   }
+
   .style-cards-grid {
     grid-template-columns: 1fr;
   }
+
   .showroom-content-grid {
     grid-template-columns: 1fr;
   }

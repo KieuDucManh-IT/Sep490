@@ -8,6 +8,7 @@ import { InventoryLocation } from '../../models/warehouse/location/InventoryLoca
 import { Shop } from '../../models/shop/Shop.js';
 import User from '../../models/system/User.js';
 import { ProductImage } from '../../models/masterdata/ProductImages.js';
+import { groupImagesByProduct, imageUrlForColor, orderedImageUrls } from '../masterdata/productImageHelper.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Product } from '../../models/masterdata/Product.js';
 import { Wallet } from '../../models/finance/Wallet.js';
@@ -15,6 +16,7 @@ import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
 import { readBalances } from '../walletService.js';
 import { encryptValue } from '../../utils/walletSecurity.js';
 import { syncSingleShipmentFromGHN } from '../shipping/shipmentSyncService.js';
+import { createNotification, notifyRoles } from '../system/notificationService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
@@ -27,68 +29,33 @@ export const resolvePrimaryShipment = (list = []) => {
   if (!Array.isArray(list) || !list.length) return null;
   const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
   if (active.length > 0) {
-    const withCode = active.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
-    return withCode || active[0];
+    // Sắp xếp theo ngày tạo mới nhất lên đầu
+    const sorted = [...active].sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+    const withCode = sorted.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
+    return withCode || sorted[0];
   }
   return null;
 };
 
+// Ảnh của dòng đơn: ảnh theo màu của biến thể → ảnh đại diện sản phẩm (TASK-007).
 const attachProductImages = async (details = []) => {
   if (!details || !details.length) return details;
-  const productIds = [];
-  const variantIds = [];
-  for (const d of details) {
-    if (d.variantId?._id) variantIds.push(d.variantId._id);
-    const pId = d.variantId?.productId?._id || d.variantId?.productId;
-    if (pId) productIds.push(pId);
-  }
+  const productIdOf = (d) => {
+    const pId = d.variantId?.productId?._id || d.variantId?.productId || d.productId?._id || d.productId;
+    return pId ? String(pId) : '';
+  };
+  const productIds = [...new Set(details.map(productIdOf).filter(Boolean))];
+  if (!productIds.length) return details;
 
-  if (!productIds.length && !variantIds.length) return details;
-
-  const images = await ProductImage.find({
-    $or: [
-      { productId: { $in: productIds } },
-      { variantId: { $in: variantIds } },
-    ],
-  })
-    .sort({ isPrimary: -1, displayOrder: 1, createdAt: 1 })
-    .lean();
-
-  const imageByProduct = new Map();
-  const imageByVariant = new Map();
-  const allImagesByProduct = new Map();
-
-  for (const img of images) {
-    const url = img.imageUrl || img.image_url || '';
-    if (!url) continue;
-    const vId = img.variantId || img.variant_id;
-    const pId = img.productId || img.product_id;
-
-    if (vId && !imageByVariant.has(String(vId))) {
-      imageByVariant.set(String(vId), url);
-    }
-    if (pId) {
-      const pIdStr = String(pId);
-      if (!imageByProduct.has(pIdStr)) {
-        imageByProduct.set(pIdStr, url);
-      }
-      if (!allImagesByProduct.has(pIdStr)) {
-        allImagesByProduct.set(pIdStr, []);
-      }
-      allImagesByProduct.get(pIdStr).push(url);
-    }
-  }
+  const images = await ProductImage.find({ productId: { $in: productIds } }).lean();
+  const recordsByProduct = groupImagesByProduct(images.filter((img) => img.imageUrl));
 
   for (const d of details) {
-    const vId = d.variantId?._id ? String(d.variantId._id) : (d.variantId ? String(d.variantId) : '');
-    const pId = d.variantId?.productId?._id
-      ? String(d.variantId.productId._id)
-      : (d.variantId?.productId ? String(d.variantId.productId) : (d.productId?._id ? String(d.productId._id) : (d.productId ? String(d.productId) : '')));
-
-    const productImagesList = (pId && allImagesByProduct.get(pId)) || [];
+    const pId = productIdOf(d);
+    const records = (pId && recordsByProduct.get(pId)) || [];
+    const productImagesList = orderedImageUrls(records);
     const itemImage =
-      (vId && imageByVariant.get(vId)) ||
-      (pId && imageByProduct.get(pId)) ||
+      (records.length && imageUrlForColor(records, d.variantId?.color)) ||
       (Array.isArray(d.variantId?.productId?.images) && d.variantId.productId.images[0]) ||
       d.variantId?.productId?.image ||
       d.variantId?.image ||
@@ -494,6 +461,7 @@ export const getRentalOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'rental', orderId: order._id })
+      .sort({ createdAt: -1 })
       .populate({ path: 'createdBy', select: 'FullName Email' }),
   ]);
 
@@ -745,6 +713,7 @@ export const getSalesOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'sale', orderId: order._id })
+      .sort({ createdAt: -1 })
       .populate({ path: 'createdBy', select: 'FullName Email' }),
   ]);
 
@@ -1336,6 +1305,36 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
     } catch (walletErr) {
       console.error('[Checkout] Lỗi trừ tiền ví hoặc tạo WalletTransaction:', walletErr);
     }
+  }
+
+  // Tự động phát thông báo tới Khách hàng và Quản trị viên / Chủ shop
+  try {
+    const targetOrder = createdRentalOrder || createdSalesOrder;
+    const isRental = Boolean(createdRentalOrder);
+    const orderTitle = isRental ? 'Đặt đơn thuê thành công' : 'Đặt mua trang phục thành công';
+
+    // 1. Thông báo cho Khách hàng
+    createNotification({
+      userId: user._id,
+      type: 'order_created',
+      title: orderTitle,
+      message: 'Đơn hàng của bạn đã được khởi tạo thành công. VESTORA sẽ sớm chuẩn bị và giao hàng cho bạn!',
+      link: '/customer/orders',
+      referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
+      referenceId: targetOrder?._id
+    }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho khách hàng:', err.message));
+
+    // 2. Thông báo cho Admin, Shop Owner và Quản lý chi nhánh
+    notifyRoles([ 'shopOwner', 'branch_manager'], {
+      type: 'order_created',
+      title: 'Đơn hàng mới từ khách',
+      message: `Khách hàng ${user.FullName || user.email || 'Khách'} vừa đặt ${isRental ? 'đơn thuê' : 'đơn mua'}. Vui lòng kiểm tra và xử lý.`,
+      link: '/owner/orders',
+      referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
+      referenceId: targetOrder?._id
+    }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho quản trị:', err.message));
+  } catch (notifErr) {
+    console.error('[Notification] Lỗi trong checkout:', notifErr.message);
   }
 
   return {

@@ -1,3 +1,5 @@
+import CheckoutBranchPicker from '../../components/customer/cart/CheckoutBranchPicker';
+import { quoteCheckout, groupCheckoutItems, submitCheckoutGroups, checkoutFingerprint } from '../../services/cart/checkoutFlow';
 /**
  * Checkout Page — Rental-only checkout flow
  * Haute Couture design tokens, zero native dialogs, zero emoji, zero axios.
@@ -23,16 +25,16 @@ import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import { useCartStore } from '../../stores/useCartStore';
 import { ORDER_TYPES } from '../../services/cart/cartTypes';
-import { formatCurrencyVND } from '../../services/cart/cartCalculations';
+import { formatCurrencyVND, validateRentalDates } from '../../services/cart/cartCalculations';
 import { createRentalOrder } from '../../services/rentalOrderApi';
-import productService from '../../services/productService';
-import { getUserLocation } from '../../utils/userLocation';
-import { calculateHaversineDistanceKm } from '../../utils/geoUtils';
+import GhnAddressSelector from '../../components/common/GhnAddressSelector';
 import '../../styles/Cart.css';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { items, clearCart, updateItemBranch, removeItems } = useCartStore();
+  const submissionLock = useRef(false);
+  const [createdOrders, setCreatedOrders] = useState([]);
+  const { items, removeItems } = useCartStore();
 
   // All rental items from cart (memoized)
   const rentalItems = useMemo(
@@ -44,6 +46,13 @@ export default function CheckoutPage() {
     [items]
   );
   const hasSaleItems = saleItems.length > 0;
+
+  // Khi giỏ hàng chỉ có sản phẩm mua đứt -> tự động chuyển sang trang thanh toán mua hàng
+  useEffect(() => {
+    if (!submissionLock.current && createdOrders.length === 0 && rentalItems.length === 0 && saleItems.length > 0) {
+      navigate('/checkout/sale', { replace: true });
+    }
+  }, [rentalItems.length, saleItems.length, navigate, createdOrders.length]);
 
   // ── Selection state (using unselectedIds to prevent infinite render loops) ──
   const [unselectedIds, setUnselectedIds] = useState(() => new Set());
@@ -82,123 +91,7 @@ export default function CheckoutPage() {
   const allSelected = rentalItems.length > 0 && unselectedIds.size === 0;
   const someSelected = unselectedIds.size > 0 && selectedCount > 0;
 
-  // ── Auto-resolve branch & repair variantId if needed ────────────────────────
-  const [resolvingBranches, setResolvingBranches] = useState(false);
-  const attemptedItemsRef = useRef(new Set());
-
-  useEffect(() => {
-    const unassigned = rentalItems.filter(
-      (it) =>
-        (!it.selectedBranch?.locationId ||
-          !/^[0-9a-fA-F]{24}$/.test(String(it.selectedBranch.locationId)) ||
-          !it.variantId ||
-          !/^[0-9a-fA-F]{24}$/.test(String(it.variantId))) &&
-        !attemptedItemsRef.current.has(it.cartItemId)
-    );
-
-    if (unassigned.length === 0) return;
-
-    // Đánh dấu ngay lập tức để không bao giờ chạy lại cho cùng item
-    unassigned.forEach((it) => attemptedItemsRef.current.add(it.cartItemId));
-
-    let isMounted = true;
-    setResolvingBranches(true);
-
-    const resolveBranches = async () => {
-      const userLoc = getUserLocation();
-      try {
-        for (const it of unassigned) {
-          try {
-            const res = await productService.getProductById(it.productId);
-            const pData = res?.data || res;
-            let rawBranches = Array.isArray(pData?.branches) ? pData.branches : [];
-
-            // Bỏ kho tổng, chỉ lấy ở các chi nhánh (store / showroom)
-            rawBranches = rawBranches.filter((b) => {
-              const name = String(b.name || '').toLowerCase();
-              const type = String(b.type || '').toLowerCase();
-              return (
-                type !== 'warehouse' &&
-                !name.includes('kho tổng') &&
-                !name.includes('kho tong') &&
-                !name.includes('kho trung tâm')
-              );
-            });
-
-            // Sửa variantId nếu variantId cũ không phải ObjectId 24 ký tự
-            let repairedVariantId = it.variantId;
-            if (!/^[0-9a-fA-F]{24}$/.test(String(it.variantId))) {
-              const variants = Array.isArray(pData?.variants) ? pData.variants : [];
-              const matched =
-                variants.find(
-                  (v) =>
-                    String(v.size || '').toLowerCase() === String(it.size || '').toLowerCase() &&
-                    String(v.color || '').toLowerCase() === String(it.color || '').toLowerCase()
-                ) ||
-                variants.find(
-                  (v) => String(v.size || '').toLowerCase() === String(it.size || '').toLowerCase()
-                ) ||
-                variants[0];
-              if (matched?._id) {
-                repairedVariantId = String(matched._id);
-              }
-            }
-
-            if (rawBranches.length > 0) {
-              const withDist = rawBranches.map((b) => {
-                let distanceKm = null;
-                if (
-                  userLoc?.latitude != null &&
-                  userLoc?.longitude != null &&
-                  b.latitude != null &&
-                  b.longitude != null
-                ) {
-                  distanceKm = calculateHaversineDistanceKm(
-                    userLoc.latitude,
-                    userLoc.longitude,
-                    b.latitude,
-                    b.longitude
-                  );
-                }
-                return { ...b, distanceKm };
-              });
-
-              withDist.sort((a, b) => {
-                if (a.distanceKm == null && b.distanceKm == null) return 0;
-                if (a.distanceKm == null) return 1;
-                if (b.distanceKm == null) return -1;
-                return a.distanceKm - b.distanceKm;
-              });
-
-              const best = withDist[0];
-              const locId = best.locationId || best._id;
-              if (locId && /^[0-9a-fA-F]{24}$/.test(String(locId))) {
-                updateItemBranch(it.cartItemId, {
-                  locationId: String(locId),
-                  name: best.name,
-                  address: best.address,
-                  ...(repairedVariantId !== it.variantId ? { variantId: repairedVariantId } : {}),
-                });
-                setValidationError('');
-              }
-            } else if (repairedVariantId !== it.variantId) {
-              updateItemBranch(it.cartItemId, { variantId: repairedVariantId });
-            }
-          } catch (e) {
-            console.warn('Lỗi tự động xác định chi nhánh cho:', it.name, e);
-          }
-        }
-      } finally {
-        if (isMounted) setResolvingBranches(false);
-      }
-    };
-
-    resolveBranches();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [rentalItems, updateItemBranch]);
+  const resolvingBranches = false;
 
   // ── Summary totals for selected items only ─────────────────────────────────
   const { rentalFeeSubtotal, depositSubtotal } = useMemo(() => {
@@ -229,11 +122,26 @@ export default function CheckoutPage() {
     ward: '',
     district: '',
     city: '',
+    provinceId: null,
+    districtId: null,
+    wardCode: '',
   });
 
   const handleAddressChange = (field, value) => {
     setShippingAddress((prev) => ({ ...prev, [field]: value }));
   };
+
+  const handleDivisionsChange = useCallback((divisionData) => {
+    setShippingAddress((prev) => ({
+      ...prev,
+      provinceId: divisionData.provinceId,
+      city: divisionData.city,
+      districtId: divisionData.districtId,
+      district: divisionData.district,
+      wardCode: divisionData.wardCode,
+      ward: divisionData.ward,
+    }));
+  }, []);
 
   // Lấy chi nhánh từ các selected items
   const branchesInCart = useMemo(() => {
@@ -253,11 +161,8 @@ export default function CheckoutPage() {
       if (!item.startDate || !item.dueDate) {
         return 'Vui lòng quay lại giỏ hàng để chọn ngày thuê cho tất cả sản phẩm đã chọn.';
       }
-      const start = new Date(item.startDate).getTime();
-      const due = new Date(item.dueDate).getTime();
-      if (isNaN(start) || isNaN(due) || due <= start) {
-        return 'Ngày trả đồ phải sau ngày nhận đồ.';
-      }
+      const validation = validateRentalDates(item.startDate, item.dueDate);
+      if (!validation.isValid) return validation.errorMessage;
     }
     return '';
   }, [selectedItems]);
@@ -278,6 +183,7 @@ export default function CheckoutPage() {
 
   // Submit handler
   const handleSubmit = async () => {
+    if (submissionLock.current) return;
     setSubmitError('');
     setValidationError('');
 
@@ -303,38 +209,40 @@ export default function CheckoutPage() {
       setValidationError('Vui lòng nhập số điện thoại người nhận hợp lệ.');
       return;
     }
-    if (!shippingAddress.street.trim()) {
-      setValidationError('Vui lòng nhập địa chỉ cụ thể nhận trang phục.');
+    if (!shippingAddress.provinceId) {
+      setValidationError('Vui lòng chọn Tỉnh/Thành phố nhận trang phục.');
       return;
     }
-    if (!shippingAddress.city.trim()) {
-      setValidationError('Vui lòng nhập tỉnh/thành phố nhận trang phục.');
+    if (!shippingAddress.districtId) {
+      setValidationError('Vui lòng chọn Quận/Huyện nhận trang phục.');
+      return;
+    }
+    if (!shippingAddress.wardCode) {
+      setValidationError('Vui lòng chọn Phường/Xã nhận trang phục.');
+      return;
+    }
+    if (!shippingAddress.street.trim()) {
+      setValidationError('Vui lòng nhập số nhà, tên đường chi tiết nhận trang phục.');
       return;
     }
 
+    submissionLock.current = true;
     setSubmitting(true);
 
     try {
-      // Group by locationId + startDate + dueDate → mỗi nhóm = 1 đơn thuê
-      const groupMap = new Map();
-      for (const it of selectedItems) {
-        const locId = String(it.selectedBranch?.locationId || '');
-        const key = `${locId}|${it.startDate || ''}|${it.dueDate || ''}`;
-        if (!groupMap.has(key)) {
-          groupMap.set(key, {
-            locationId: locId,
-            startDate: it.startDate,
-            dueDate: it.dueDate,
-            items: [],
-          });
-        }
-        groupMap.get(key).items.push(it);
-      }
-
-      let lastOrderId = null;
-      for (const group of groupMap.values()) {
+      const snapshot = selectedItems;
+      const fingerprint = checkoutFingerprint(snapshot);
+      const quote = await quoteCheckout(snapshot);
+      const ids = new Set(snapshot.map(it => it.cartItemId));
+      const current = useCartStore.getState().items.filter(it => ids.has(it.cartItemId));
+      if (checkoutFingerprint(current) !== fingerprint) throw new Error('Giỏ hàng đã thay đổi. Vui lòng kiểm tra và xác nhận lại.');
+      useCartStore.getState().applyQuote(quote.rows);
+      if (!quote.valid) { setValidationError(quote.errors.join(' ')); return; }
+      if (quote.changed) { setValidationError('Giá đã cập nhật. Vui lòng kiểm tra tổng tiền mới và bấm đặt hàng lần nữa để xác nhận.'); return; }
+      const orders = await submitCheckoutGroups(groupCheckoutItems(snapshot), async (group) => {
         const payload = {
           locationId: String(group.locationId),
+          expectedTotalAmount: group.items.reduce((sum, it) => { const price = quote.rows.find(row => row.cartItemId === it.cartItemId).authoritative; return sum + price.lineTotal + price.lineDeposit; }, 0),
           startDate: String(group.startDate),
           dueDate: String(group.dueDate),
           items: group.items.map((it) => ({
@@ -350,27 +258,27 @@ export default function CheckoutPage() {
             ward: shippingAddress.ward.trim(),
             district: shippingAddress.district.trim(),
             city: shippingAddress.city.trim(),
+            provinceId: shippingAddress.provinceId ? Number(shippingAddress.provinceId) : null,
+            districtId: shippingAddress.districtId ? Number(shippingAddress.districtId) : null,
+            wardCode: shippingAddress.wardCode ? String(shippingAddress.wardCode).trim() : null,
           },
           ...(note.trim() ? { note: note.trim() } : {}),
         };
-
-        const data = await createRentalOrder(payload);
-        lastOrderId = data?.data?._id || lastOrderId;
-      }
-
-      // Xóa các sản phẩm đã đặt khỏi giỏ
-      if (selectedItems.length === rentalItems.length) {
-        clearCart();
-      } else {
-        removeItems(selectedItems.map((it) => it.cartItemId));
-      }
-
-      setConfirmedOrderId(lastOrderId);
+        return createRentalOrder(payload);
+      }, (group, order) => {
+        removeItems(group.items.map(it => it.cartItemId));
+        setCreatedOrders(previous => [...previous, order]);
+      });
+      setConfirmedOrderId(orders[orders.length - 1]?._id);
       setSuccessModal(true);
     } catch (err) {
       console.error('Lỗi đặt thuê:', err);
-      setSubmitError(err.message || 'Không thể tạo đơn thuê. Vui lòng thử lại sau.');
+      // TASK-010: hết hàng khi giữ chỗ (409 ERR_OUT_OF_STOCK) — message dạng "Sản phẩm … chỉ còn N."
+      setSubmitError((err.code || err.data?.code) === 'ERR_OUT_OF_STOCK'
+        ? `${err.message} Vui lòng giảm số lượng hoặc chọn chi nhánh khác.`
+        : (err.message || 'Không thể tạo đơn thuê. Vui lòng thử lại sau.'));
     } finally {
+      submissionLock.current = false;
       setSubmitting(false);
     }
   };
@@ -654,6 +562,7 @@ export default function CheckoutPage() {
   return (
     <div style={styles.pageContainer}>
       <Navbar />
+      {createdOrders.length > 0 && <p className="cart-checkout-progress" role="status">Đã tạo thành công: {createdOrders.map(order => order.orderCode || order._id).join(', ')}. Các sản phẩm tương ứng đã được bỏ khỏi giỏ.</p>}
 
       {/* Page Header */}
       <div style={styles.headerHero}>
@@ -676,20 +585,30 @@ export default function CheckoutPage() {
           {hasSaleItems && (
             <div style={styles.warningBanner}>
               <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1, color: '#D97706' }} />
-              <span>
-                Giỏ hàng của bạn có {saleItems.length} sản phẩm mua đứt.{' '}
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <span>
+                  Giỏ hàng của bạn có <strong>{saleItems.length} sản phẩm mua đứt</strong>.
+                </span>
                 <Link
                   to="/checkout/sale"
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 12px',
+                    backgroundColor: '#FAF5EE',
                     color: '#96723D',
+                    border: '1px solid #C5A880',
+                    borderRadius: 6,
                     fontWeight: 600,
-                    textDecoration: 'underline',
+                    fontSize: 12.5,
+                    textDecoration: 'none',
                   }}
                 >
-                  Bấm vào đây để thanh toán đơn mua ngay
+                  <span>Chuyển sang thanh toán đơn mua</span>
+                  <ArrowLeft size={14} style={{ transform: 'rotate(180deg)' }} />
                 </Link>
-                .
-              </span>
+              </div>
             </div>
           )}
 
@@ -701,9 +620,31 @@ export default function CheckoutPage() {
             </h3>
 
             {rentalItems.length === 0 ? (
-              <p style={{ fontSize: 14, color: '#71717A', textAlign: 'center', padding: '24px 0' }}>
-                Giỏ hàng không có sản phẩm thuê nào. Vui lòng quay lại giỏ hàng.
-              </p>
+              <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+                <Package size={36} color="#A1A1AA" style={{ margin: '0 auto 12px auto' }} />
+                <p style={{ fontSize: 14, color: '#71717A', margin: '0 0 16px 0' }}>
+                  Giỏ hàng hiện không có sản phẩm thuê nào.
+                </p>
+                {hasSaleItems && (
+                  <Link
+                    to="/checkout/sale"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '10px 20px',
+                      background: '#171717',
+                      color: '#F8F7F4',
+                      borderRadius: 8,
+                      fontWeight: 600,
+                      fontSize: 13.5,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <span>Thanh toán {saleItems.length} sản phẩm mua ngay</span>
+                  </Link>
+                )}
+              </div>
             ) : (
               <>
                 {/* Select-all bar */}
@@ -854,38 +795,22 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div>
-                  <label style={styles.label}>Tỉnh / Thành phố *</label>
-                  <input
-                    type="text"
-                    required
-                    value={shippingAddress.city}
-                    onChange={(e) => handleAddressChange('city', e.target.value)}
-                    placeholder="TP. Hồ Chí Minh"
-                    style={styles.input}
-                  />
-                </div>
-                <div>
-                  <label style={styles.label}>Quận / Huyện</label>
-                  <input
-                    type="text"
-                    value={shippingAddress.district}
-                    onChange={(e) => handleAddressChange('district', e.target.value)}
-                    placeholder="Quận 1"
-                    style={styles.input}
-                  />
-                </div>
-              </div>
+              <GhnAddressSelector
+                provinceId={shippingAddress.provinceId}
+                districtId={shippingAddress.districtId}
+                wardCode={shippingAddress.wardCode}
+                onChange={handleDivisionsChange}
+                required
+              />
 
               <div>
-                <label style={styles.label}>Địa chỉ đường / số nhà cụ thể *</label>
+                <label style={styles.label}>Số nhà, tên đường chi tiết *</label>
                 <input
                   type="text"
                   required
                   value={shippingAddress.street}
                   onChange={(e) => handleAddressChange('street', e.target.value)}
-                  placeholder="Số 72 Lê Thánh Tôn, Phường Bến Nghé"
+                  placeholder="Ví dụ: Số 72 Lê Thánh Tôn"
                   style={styles.input}
                 />
               </div>
@@ -1019,6 +944,7 @@ export default function CheckoutPage() {
             )}
 
             {/* Submit Error */}
+            <CheckoutBranchPicker items={selectedItems} disabled={submitting} />
             {submitError && (
               <div style={styles.errorBox}>
                 <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1, color: '#DC2626' }} />

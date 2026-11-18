@@ -20,7 +20,9 @@ import { getRentalOrderDetailApi } from '../../services/orderApi';
 import {
   formatCurrency,
   formatDate,
+  formatDateOnly,
   DEPOSIT_STATUS_MAP,
+  PAYMENT_STATUS_MAP,
   resolveOrderDisplayStatus,
 } from './orderUtils';
 import {
@@ -45,6 +47,7 @@ export default function RentalOrderDetailModal({
   const [error, setError] = useState('');
   const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
   const [isReturnShipmentOpen, setIsReturnShipmentOpen] = useState(false);
+  const [retryShipment, setRetryShipment] = useState(null);
 
   const refetchOrder = () => {
     if (orderId) {
@@ -118,10 +121,21 @@ export default function RentalOrderDetailModal({
     if (match) noteDeliveryAddress = match[3].trim();
   }
   const customerAddress = order.shippingAddress?.street
-    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
-    : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
+    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.district, order.shippingAddress.city].filter(Boolean).join(', ')
+    : (order.shippingAddress?.address || noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
-  const shipments = detailData?.shipments || order.shipments || [];
+  const rawShipments = detailData?.shipments || order.shipments || [];
+  const shipments = Array.isArray(rawShipments)
+    ? [...rawShipments].sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+      const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+      return timeB - timeA; // Vận đơn mới nhất lên trên đầu
+    })
+    : [];
+
+  const rentalStart = order.startDate || order.rentalStartDate;
+  const rentalDue = order.dueDate || order.rentalEndDate;
+  const actualReturned = order.actualReturnedAt || order.actualReturnDate;
 
   const statusDef = resolveOrderDisplayStatus(
     { ...order, shipments, shipment: detailData?.shipment || order.shipment },
@@ -132,6 +146,11 @@ export default function RentalOrderDetailModal({
   const depositDef = DEPOSIT_STATUS_MAP[order.depositStatus] || {
     text: order.depositStatus || 'Chưa đặt cọc',
     chipClass: 'pending',
+  };
+
+  const paymentDef = PAYMENT_STATUS_MAP[order.paymentStatus] || {
+    text: order.paymentStatus || 'Chưa thanh toán',
+    chipClass: 'cancelled',
   };
 
   const branchName =
@@ -175,8 +194,13 @@ export default function RentalOrderDetailModal({
                 <span className="order-badge-dot" />
                 {statusDef.text}
               </span>
+              <span className={`order-badge ${depositDef.chipClass}`}>
+                <ShieldCheck size={12} className="me-1" />
+                {depositDef.text}
+              </span>
               {isReadOnly ? (
                 <span className="order-readonly-badge">
+                  <ShieldCheck size={12} />
                 </span>
               ) : (
                 <span className="order-active-branch-badge">
@@ -229,7 +253,7 @@ export default function RentalOrderDetailModal({
 
               <div className="row g-3">
                 <div className="col-12 col-md-6 border-end">
-                  <div className="small text-muted mb-1">Thông tin liên hệ</div>
+                  <div className="small text-muted mb-1">Người nhận</div>
                   <div className="fw-semibold text-dark fs-6">
                     {customerName}
                   </div>
@@ -243,37 +267,38 @@ export default function RentalOrderDetailModal({
                       <span>{customerEmail}</span>
                     </div>
                   )}
-                  {customerAddress && (
-                    <div className="small text-muted d-flex align-items-center gap-1 mt-1">
-                      <MapPin size={13} />
-                      <span className="text-truncate">{customerAddress}</span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="col-12 col-md-6 ps-md-3">
-                  <div className="small text-muted mb-1">Thời gian thuê trang phục</div>
-                  <div className="d-flex align-items-center gap-2">
-                    <Clock size={16} className="text-primary" />
+                  <div className="small text-muted mb-1">Địa chỉ giao nhận</div>
+                  <div className="d-flex align-items-start gap-2 mb-2">
+                    <MapPin size={16} className="text-primary mt-1 flex-shrink-0" />
+                    <div className="text-dark fw-medium small">
+                      {customerAddress}
+                    </div>
+                  </div>
+
+                  <div className="d-flex align-items-start gap-2 pt-2 border-top">
+                    <Clock size={15} className="text-primary mt-1 flex-shrink-0" />
                     <div>
                       <div className="small">
                         Bắt đầu:{' '}
                         <strong>
-                          {order.rentalStartDate ? formatDate(order.rentalStartDate) : 'Chưa giao đồ'}
+                          {rentalStart ? formatDateOnly(rentalStart) : 'Chưa giao đồ'}
                         </strong>
                       </div>
                       <div className="small mt-1">
                         Hạn trả:{' '}
                         <strong className="text-danger">
-                          {order.rentalEndDate ? formatDate(order.rentalEndDate) : 'Chưa ấn định'}
+                          {rentalDue ? formatDateOnly(rentalDue) : 'Chưa ấn định'}
                         </strong>
                       </div>
                     </div>
                   </div>
 
-                  {order.actualReturnDate && (
+                  {actualReturned && (
                     <div className="small text-success mt-2 pt-2 border-top">
-                      Đã trả ngày: {formatDate(order.actualReturnDate)}
+                      Đã trả ngày: {formatDate(actualReturned)}
                     </div>
                   )}
                 </div>
@@ -327,10 +352,20 @@ export default function RentalOrderDetailModal({
                             {it.quantity || 1}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                            {formatCurrency(it.rentalPrice || it.price || it.variantId?.productId?.rentalPricePerDay)}
+                            {formatCurrency(
+                              it.unitRentalFee ??
+                              it.rentalPrice ??
+                              it.price ??
+                              it.variantId?.productId?.rentalPricePerDay
+                            )}
                           </td>
                           <td style={{ textAlign: 'right', color: '#D97706', fontWeight: 600 }}>
-                            {formatCurrency(it.depositAmount || it.deposit || it.variantId?.productId?.deposit)}
+                            {formatCurrency(
+                              it.depositPerUnit ??
+                              it.depositAmount ??
+                              it.deposit ??
+                              it.variantId?.productId?.deposit
+                            )}
                           </td>
                         </tr>
                       ))
@@ -356,6 +391,20 @@ export default function RentalOrderDetailModal({
               <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
                   <div className="small text-muted">
+                    Phương thức thanh toán:{' '}
+                    <strong>
+                      {order.paymentMethod === 'wallet'
+                        ? 'Ví Vestora'
+                        : order.paymentMethod === 'bank_transfer'
+                          ? 'Chuyển khoản / PayOS'
+                          : order.paymentMethod || 'Ví Vestora'}
+                    </strong>
+                  </div>
+                  <div className="small text-muted mt-1">
+                    Trạng thái thanh toán:{' '}
+                    <strong className="text-dark">{paymentDef.text}</strong>
+                  </div>
+                  <div className="small text-muted mt-1">
                     Trạng thái tiền cọc: <strong>{depositDef.text}</strong>
                   </div>
                   {order.note && (
@@ -390,101 +439,139 @@ export default function RentalOrderDetailModal({
 
             {/* Section 4: Vận Chuyển & Giao Nhận */}
             {(() => {
-              const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
-              const hasActiveOutbound = shipments.some(
-                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus) && s.trackingCode && !s.trackingCode.startsWith('SHP-') && !s.trackingCode.startsWith('TRK-')
-              );
-              const hasActiveReturn = shipments.some(
-                (s) => s.shipmentType === 'return' && ['preparing', 'shipped'].includes(s.shipmentStatus) && s.trackingCode && !s.trackingCode.startsWith('SHP-') && !s.trackingCode.startsWith('TRK-')
-              );
-              const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
-              const canCreateReturn = !isReadOnly && !hasActiveReturn && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);
+              const orderStatus = order.rentalStatus || order.status;
+
+              const isPickup =
+                order.deliveryMethod === 'pickup' ||
+                (typeof order.note === 'string' &&
+                  order.note.includes('Nhận tại'));
+
+              const hasActiveShipment = (shipmentType) =>
+                shipments.some((shipment) => {
+                  const trackingCode = shipment.trackingCode;
+
+                  return (
+                    shipment.shipmentType === shipmentType &&
+                    ['preparing', 'shipped'].includes(shipment.shipmentStatus) &&
+                    typeof trackingCode === 'string' &&
+                    trackingCode.length > 0 &&
+                    !trackingCode.startsWith('SHP-') &&
+                    !trackingCode.startsWith('TRK-')
+                  );
+                });
+
+              const hasActiveOutbound = hasActiveShipment('outbound');
+              const hasActiveReturn = hasActiveShipment('return');
+
+              const canCreateOutbound =
+                !isReadOnly &&
+                !isPickup &&
+                !hasActiveOutbound &&
+                ['draft', 'confirmed'].includes(orderStatus);
+
+              const canCreateReturn =
+                !isReadOnly &&
+                !hasActiveReturn &&
+                ['renting', 'partially_returned', 'overdue'].includes(orderStatus);
 
               return (
-                <>
-                  {/* 4. Vận chuyển và giao nhận */}
-                  <div className="modal-section-card">
-                    <div className="modal-section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                      <span className="modal-section-title">
-                        <Truck
-                          size={16}
-                          className="text-primary me-2"
-                        />
+                <div className="modal-section-card">
+                  <div className="modal-section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span className="modal-section-title">
+                      <Truck size={16} className="text-primary me-2" />
+                      <span>4. Vận Chuyển & Giao Nhận (GHN)</span>
+                    </span>
 
-                        <span>
-                          4. Vận Chuyển & Giao Nhận (GHN)
+                    <div className="d-flex align-items-center flex-wrap gap-2">
+                      {isPickup && (
+                        <span className="badge bg-light text-secondary border px-2 py-1 d-flex align-items-center gap-1">
+                          <Store size={13} />
+                          <span>Nhận tại Showroom</span>
                         </span>
-                      </span>
+                      )}
 
-                      <div className="d-flex align-items-center gap-2">
-                        {isPickup && (
-                          <span className="badge bg-light text-secondary border px-2 py-1 d-flex align-items-center gap-1">
-                            <Store size={13} />
-                            <span>Nhận tại Showroom</span>
-                          </span>
-                        )}
+                      {canCreateOutbound && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsReturnShipmentOpen(false);
+                            setIsCreateShipmentOpen(true);
+                          }}
+                        >
+                          <Truck size={14} />
+                          <span>+ Tạo vận đơn GHN</span>
+                        </button>
+                      )}
 
-                        {canCreateOutbound && (
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                            onClick={() => setIsCreateShipmentOpen(true)}
-                          >
-                            <Truck size={14} />
-                            <span>+ Tạo vận đơn GHN</span>
-                          </button>
-                        )}
-
-                        {canCreateReturn && (
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
-                            onClick={() => setIsReturnShipmentOpen(true)}
-                          >
-                            <Truck size={14} />
-                            <span>+ Thu hồi đồ thuê</span>
-                          </button>
-                        )}
-                      </div>
+                      {canCreateReturn && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsCreateShipmentOpen(false);
+                            setIsReturnShipmentOpen(true);
+                          }}
+                        >
+                          <Truck size={14} />
+                          <span>+ Thu hồi đồ thuê</span>
+                        </button>
+                      )}
                     </div>
-
-                    {shipments.length > 0 ? (
-                      <div className="mt-3">
-                        {shipments.map((s) => (
-                          <ShipmentTrackingTimeline
-                            key={s._id}
-                            shipment={s}
-                            onCancel={handleCancelShipment}
-                            onRetry={(targetShipment) => {
-                              if (
-                                (targetShipment || s)?.shipmentType === 'return'
-                              ) {
-                                setIsReturnShipmentOpen(true);
-                              } else {
-                                setIsCreateShipmentOpen(true);
-                              }
-                            }}
-                            isBranchManager={!isReadOnly}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="small text-muted py-2 fst-italic">
-                        Đơn hàng chưa tạo vận đơn chuyển phát nào qua GHN.
-                      </div>
-                    )}
                   </div>
 
-                  {/* 5. Video bằng chứng giao nhận */}
-                  {(orderId || order._id) && (
-                    <RentalEvidenceSection
-                      key={orderId || order._id}
-                      orderId={orderId || order._id}
-                    />
+                  {shipments.length > 0 ? (
+                    <div className="mt-3">
+                      {shipments.map((shipment, index) => {
+                        const canRetryThis =
+                          !isReadOnly &&
+                          (shipment.shipmentType === 'return'
+                            ? !hasActiveReturn
+                            : !hasActiveOutbound);
+
+                        return (
+                          <ShipmentTrackingTimeline
+                            key={shipment._id || index}
+                            shipment={shipment}
+                            isLatest={index === 0}
+                            onCancel={handleCancelShipment}
+                            onStatusUpdated={refetchOrder}
+                            onRetry={
+                              canRetryThis
+                                ? (targetShipment) => {
+                                  const target = targetShipment || shipment;
+                                  const isReturn =
+                                    target.shipmentType === 'return';
+
+                                  setRetryShipment(target);
+                                  setIsCreateShipmentOpen(!isReturn);
+                                  setIsReturnShipmentOpen(isReturn);
+                                }
+                                : null
+                            }
+                            isBranchManager={!isReadOnly}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="small text-muted py-2 fst-italic">
+                      Đơn hàng chưa tạo vận đơn chuyển phát nào qua GHN.
+                    </div>
                   )}
-                </>
+                </div>
               );
             })()}
+
+            {/* Section 5: Video bằng chứng giao nhận */}
+            {(orderId || order._id) && (
+              <RentalEvidenceSection
+                key={orderId || order._id}
+                orderId={orderId || order._id}
+              />
+            )}
           </>
         )}
       </div>
@@ -551,8 +638,12 @@ export default function RentalOrderDetailModal({
       {/* Shipment Create Modal */}
       <ShipmentCreateModal
         show={isCreateShipmentOpen}
-        onClose={() => setIsCreateShipmentOpen(false)}
+        onClose={() => {
+          setIsCreateShipmentOpen(false);
+          setRetryShipment(null);
+        }}
         order={order}
+        initialShipment={retryShipment}
         orderType="rental"
         onSuccess={() => refetchOrder()}
       />
@@ -560,8 +651,12 @@ export default function RentalOrderDetailModal({
       {/* Shipment Return Modal */}
       <ShipmentReturnModal
         show={isReturnShipmentOpen}
-        onClose={() => setIsReturnShipmentOpen(false)}
+        onClose={() => {
+          setIsReturnShipmentOpen(false);
+          setRetryShipment(null);
+        }}
         order={order}
+        initialShipment={retryShipment}
         onSuccess={() => refetchOrder()}
       />
     </Modal>

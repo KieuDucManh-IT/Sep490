@@ -193,7 +193,13 @@ export default function HomePage() {
           sort: 'newest',
         });
         if (isMounted && res?.data && Array.isArray(res.data) && res.data.length > 0) {
-          const mapped = res.data.map((p) => {
+          const availableList = res.data.filter((p) => {
+            if (p.inStock === false) return false;
+            if (p.quantityAvailable != null && p.quantityAvailable <= 0) return false;
+            if (p.quantity != null && p.quantity <= 0) return false;
+            return true;
+          });
+          const mapped = availableList.map((p) => {
             const isRental =
               p.tag === 'rental' ||
               (p.rentalPricePer3Days && p.rentalPricePer3Days > 0) ||
@@ -226,8 +232,9 @@ export default function HomePage() {
               title: p.name,
               rating: typeof p.rating === 'number' ? Number(p.rating).toFixed(1) : '4.9',
               reviews: typeof p.reviewsCount === 'number' ? p.reviewsCount : 95,
-              inStock: p.inStock !== false && (p.quantity == null || p.quantity > 0),
-              quantity: p.quantity,
+              // TASK-011: số khả dụng từ API (InventoryBalance, chỉ chi nhánh); không tự suy ra khi thiếu.
+              inStock: p.inStock !== false && Number(p.quantityAvailable ?? p.quantity ?? 0) > 0,
+              quantity: p.quantityAvailable ?? p.quantity,
               quantityOnHand: p.quantityOnHand,
               branchAddress: p.branchAddress,
               branchName: p.branchName,

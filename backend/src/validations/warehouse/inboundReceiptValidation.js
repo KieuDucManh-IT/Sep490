@@ -53,3 +53,12 @@ export const validatePutaway = (payload, detailIds) => {
     return { detailId: item.detailId, allocations };
   });
 };
+
+export const validateCancelReason = (payload) => {
+  const raw = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload.reason : undefined;
+  if (raw != null && typeof raw !== 'string') throw badRequest('Lý do hủy phiếu không hợp lệ.');
+  const reason = String(raw || '').trim();
+  if (!reason) throw badRequest('Vui lòng nhập lý do hủy phiếu.');
+  if (reason.length > 500) throw badRequest('Lý do hủy phiếu tối đa 500 ký tự.');
+  return { reason };
+};

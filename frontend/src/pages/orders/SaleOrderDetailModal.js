@@ -44,6 +44,7 @@ export default function SaleOrderDetailModal({
   const [detailData, setDetailData] = useState(null);
   const [error, setError] = useState('');
   const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
+  const [retryShipment, setRetryShipment] = useState(null);
 
   const refetchOrder = () => {
     if (orderId) {
@@ -120,7 +121,14 @@ export default function SaleOrderDetailModal({
     ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
     : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
-  const shipments = detailData?.shipments || order.shipments || [];
+  const rawShipments = detailData?.shipments || order.shipments || [];
+  const shipments = Array.isArray(rawShipments)
+    ? [...rawShipments].sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+        const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+        return timeB - timeA; // Vận đơn mới nhất lên trên đầu
+      })
+    : [];
 
   const statusDef = resolveOrderDisplayStatus(
     { ...order, shipments, shipment: detailData?.shipment || order.shipment },
@@ -403,7 +411,10 @@ export default function SaleOrderDetailModal({
                         <button
                           type="button"
                           className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                          onClick={() => setIsCreateShipmentOpen(true)}
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsCreateShipmentOpen(true);
+                          }}
                         >
                           <Truck size={14} />
                           <span>+ Tạo vận đơn GHN</span>
@@ -414,12 +425,21 @@ export default function SaleOrderDetailModal({
 
                   {shipments.length > 0 ? (
                     <div className="mt-3">
-                      {shipments.map((s) => (
+                      {shipments.map((s, idx) => (
                         <ShipmentTrackingTimeline
                           key={s._id}
                           shipment={s}
+                          isLatest={idx === 0}
                           onCancel={handleCancelShipment}
-                          onRetry={() => setIsCreateShipmentOpen(true)}
+                          onStatusUpdated={refetchOrder}
+                          onRetry={
+                            !hasActiveOutbound
+                              ? (targetShipment) => {
+                                  setRetryShipment(targetShipment || s);
+                                  setIsCreateShipmentOpen(true);
+                                }
+                              : null
+                          }
                           isBranchManager={!isReadOnly}
                         />
                       ))}
@@ -507,8 +527,12 @@ export default function SaleOrderDetailModal({
       {/* Shipment Create Modal */}
       <ShipmentCreateModal
         show={isCreateShipmentOpen}
-        onClose={() => setIsCreateShipmentOpen(false)}
+        onClose={() => {
+          setIsCreateShipmentOpen(false);
+          setRetryShipment(null);
+        }}
         order={order}
+        initialShipment={retryShipment}
         orderType="sale"
         onSuccess={() => refetchOrder()}
       />

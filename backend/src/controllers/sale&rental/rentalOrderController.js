@@ -25,6 +25,7 @@ export const createOrder = async (req, res, next) => {
       note,
       paymentMethod = 'wallet',
       shippingAddress,
+      expectedTotalAmount,
     } = req.body;
 
     const result = await service.createRentalOrder({
@@ -37,6 +38,7 @@ export const createOrder = async (req, res, next) => {
       note,
       paymentMethod,
       shippingAddress,
+      expectedTotalAmount,
     });
 
     return res.status(201).json({
@@ -51,6 +53,8 @@ export const createOrder = async (req, res, next) => {
       return res.status(error.status).json({
         success: false,
         message: error.message,
+        code: error.code,
+        details: error.details,
       });
     }
     next(error);

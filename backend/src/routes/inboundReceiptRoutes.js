@@ -1,6 +1,7 @@
 import express from 'express';
 import { authMiddleware, requireRoles } from '../middlewares/errorMiddleware.js';
 import {
+  cancelReceipt,
   checkReceipt,
   createReceipt,
   decideReceipt,
@@ -19,4 +20,5 @@ router.get('/:id', requireRoles('warehouse_manager', 'warehouse_staff'), getRece
 router.post('/:id/receive', requireRoles('warehouse_staff'), checkReceipt);
 router.post('/:id/approve', requireRoles('warehouse_manager'), decideReceipt);
 router.post('/:id/putaway', requireRoles('warehouse_staff'), putawayReceiptItems);
+router.post('/:id/cancel', requireRoles('warehouse_manager'), cancelReceipt);
 export default router;

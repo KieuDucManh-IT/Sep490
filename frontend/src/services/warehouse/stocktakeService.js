@@ -9,4 +9,5 @@ export default {
   saveCounts: (id, payload) => unwrap(api.post(`/warehouse/stocktakes/${id}/counts`, payload)),
   submit: (id) => unwrap(api.post(`/warehouse/stocktakes/${id}/submit`)),
   approve: (id) => unwrap(api.post(`/warehouse/stocktakes/${id}/approve`)),
+  cancel: (id, reason) => unwrap(api.post(`/warehouse/stocktakes/${id}/cancel`, { reason })),
 };

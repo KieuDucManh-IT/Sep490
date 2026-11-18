@@ -1,12 +1,6 @@
-import mongoose from 'mongoose';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
-import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import '../../models/shop/Shop.js';
+import { getBalances, sumAvailable, sumByVariantLocation } from './balanceQueryService.js';
 
-/**
- * Format địa chỉ chi nhánh/kho từ InventoryLocation hoặc Shop liên kết
- */
 export const formatLocationAddress = (loc) => {
   if (!loc) return '';
   if (loc.address && loc.address.trim()) {
@@ -21,118 +15,58 @@ export const formatLocationAddress = (loc) => {
   return loc.name || '';
 };
 
-/**
- * Làm giàu danh sách sản phẩm với số lượng và địa chỉ chi nhánh
- * dựa trên bảng InventoryBalance và InventoryItem
- * @param {Array} products - Danh sách sản phẩm
- * @param {Array} variants - Danh sách biến thể thuộc các sản phẩm
- * @returns {Promise<Array>} Danh sách sản phẩm đã được bổ sung tồn kho & chi nhánh
- */
+
+const idOf = (value) => String(value?._id || value || '');
+/** TASK-011: nhận diện kho tổng chỉ theo `type` (bỏ đoán theo tên "kho tổng"/"kho trung tâm"). */
+export const isWarehouseLocation = (loc) => String(loc?.type || '').toLowerCase() === 'warehouse';
+/** Màn khách chỉ tính chi nhánh: InventoryLocation `type: 'store'`, `status: 'active'`, shop (nếu có) còn hoạt động. */
+export const isActiveStoreLocation = (loc) => Boolean(loc && loc.type === 'store' && loc.status === 'active' && !loc.isDeleted &&
+  (!loc.shopId || !loc.shopId._id ||
+    (!loc.shopId.isDeleted && (!loc.shopId.status || String(loc.shopId.status).toLowerCase() === 'active'))));
+export const validateActiveStoreLocation = async (locationId, session = null) => {
+  const query = locationId ? InventoryLocation.findById(locationId) : null;
+  if (query && session) query.session(session);
+  const location = query ? await query.lean() : null;
+  return isActiveStoreLocation(location)
+    ? { valid: true, location, code: null }
+    : { valid: false, location, code: 'ERR_BRANCH_UNAVAILABLE', message: 'Chi nhánh không tồn tại, ngừng hoạt động hoặc là kho tổng.' };
+};
+
+/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025
+ * TASK-011: chỉ đọc balance qua balanceQueryService (mọi loại hàng), chỉ chi nhánh `store` + `active`.
+ * Trả thêm `variantAvailability: { [variantId]: { total, byLocation } }`; giữ nguyên các field cũ cho giao diện. */
 export const enrichProductsWithInventory = async (products = [], variants = []) => {
-  if (!products || !products.length) return [];
-
-  const variantIds = variants.map((v) => v._id).filter(Boolean);
-
-  let balances = [];
-  let items = [];
-
-  if (variantIds.length > 0) {
-    try {
-      [balances, items] = await Promise.all([
-        InventoryBalance.find({ variantId: { $in: variantIds } })
-          .populate({
-            path: 'locationId',
-            populate: { path: 'shopId' },
-          })
-          .lean(),
-        InventoryItem.find({
-          variantId: { $in: variantIds },
-          status: { $nin: ['disposed', 'in_transit'] },
-        })
-          .populate({
-            path: 'locationId',
-            populate: { path: 'shopId' },
-          })
-          .lean(),
-      ]);
-    } catch (err) {
-      console.warn('Lỗi truy vấn tồn kho InventoryBalance / InventoryItem:', err.message);
-    }
-  }
-
-  // Nhóm balances theo variantId
-  const balancesByVariant = new Map();
-  for (const b of balances) {
-    const vid = String(b.variantId);
-    if (!balancesByVariant.has(vid)) balancesByVariant.set(vid, []);
-    balancesByVariant.get(vid).push(b);
-  }
-
-  // Nhóm items theo variantId
-  const itemsByVariant = new Map();
-  for (const it of items) {
-    const vid = String(it.variantId);
-    if (!itemsByVariant.has(vid)) itemsByVariant.set(vid, []);
-    itemsByVariant.get(vid).push(it);
-  }
-
-  // Nhóm variants theo productId
-  const variantsByProduct = new Map();
-  for (const v of variants) {
-    const pid = String(v.productId);
-    if (!variantsByProduct.has(pid)) variantsByProduct.set(pid, []);
-    variantsByProduct.get(pid).push(v);
-  }
-
-  return products.map((product) => {
-    const pid = String(product._id);
-    const pVariants = variantsByProduct.get(pid) || [];
-    const pBalances = pVariants.flatMap((v) => balancesByVariant.get(String(v._id)) || []);
-    const pItems = pVariants.flatMap((v) => itemsByVariant.get(String(v._id)) || []);
-
-    const isIndividual = product.trackingType === 'individual';
-    const locationMap = new Map();
-
-    const getOrInitLocation = (loc) => {
-      const locId = loc ? String(loc._id || loc) : 'unknown';
-      if (!locationMap.has(locId)) {
-        locationMap.set(locId, {
-          locationId: loc ? (loc._id || loc) : null,
-          name: loc?.name || 'Chi nhánh kho',
-          type: loc?.type || 'store',
-          address: formatLocationAddress(loc),
-          city: loc?.shopId?.city || '',
-          latitude: loc?.shopId?.latitude ?? null,
-          longitude: loc?.shopId?.longitude ?? null,
-          balanceOnHand: 0,
-          balanceAvailable: 0,
-          itemsOnHand: 0,
-          itemsAvailable: 0,
+  if (!products.length) return [];
+  const variantIds = variants.map(v => v._id);
+  const stores = variantIds.length
+    ? (await InventoryLocation.find({ type: 'store', status: 'active' }).populate('shopId').lean()).filter(isActiveStoreLocation)
+    : [];
+  const storeById = new Map(stores.map(loc => [idOf(loc), loc]));
+  const balances = stores.length ? await getBalances({ locationIds: stores.map(loc => loc._id), variantIds }) : [];
+  const availability = sumByVariantLocation(balances);
+  return products.map(product => {
+    const pVariants = variants.filter(v => idOf(v.productId) === idOf(product));
+    const variantAvailability = {};
+    const locations = new Map();
+    for (const v of pVariants) {
+      const vid = idOf(v);
+      const entry = availability[vid] || { total: 0, byLocation: {} };
+      variantAvailability[vid] = entry;
+      for (const [lid, cell] of Object.entries(entry.byLocation)) {
+        const loc = storeById.get(lid);
+        if (!loc) continue;
+        if (!locations.has(lid)) locations.set(lid, {
+          locationId: lid, shopId: loc.shopId?._id || loc.shopId || null, name: loc.name,
+          type: loc.type, status: loc.status, address: formatLocationAddress(loc),
+          city: loc.shopId?.city || loc.city || '', latitude: loc.shopId?.latitude ?? loc.latitude ?? null,
+          longitude: loc.shopId?.longitude ?? loc.longitude ?? null,
+          quantityOnHand: 0, quantityAvailable: 0, quantity: 0, variantQuantities: {},
         });
-      }
-      return locationMap.get(locId);
-    };
-
-    // Gom số lượng từ InventoryBalance
-    for (const b of pBalances) {
-      const entry = getOrInitLocation(b.locationId);
-      const onHand = Number(b.quantityOnHand) || 0;
-      const reserved = Number(b.quantityReserved) || 0;
-      const unavailable = Number(b.quantityUnavailable) || 0;
-      const available = Math.max(0, onHand - reserved - unavailable);
-      entry.balanceOnHand += onHand;
-      entry.balanceAvailable += available;
-    }
-
-    // Gom số lượng từ InventoryItem
-    for (const it of pItems) {
-      const entry = getOrInitLocation(it.locationId);
-      entry.itemsOnHand += 1;
-      const isAvailable =
-        it.status === 'available' &&
-        !['damaged', 'unrepairable', 'missing'].includes(it.condition);
-      if (isAvailable) {
-        entry.itemsAvailable += 1;
+        const branch = locations.get(lid);
+        branch.quantityOnHand += cell.onHand;
+        branch.quantityAvailable += cell.available;
+        branch.quantity += cell.available;
+        branch.variantQuantities[vid] = cell.available;
       }
     }
 

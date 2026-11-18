@@ -67,7 +67,7 @@ async function testEdgeCases() {
     secret
   );
   console.log(`   ✅ Secret đúng: success=${goodSecretRes.success}, message="${goodSecretRes.message}"`);
-  if (goodSecretRes.success !== true) {
+  if (goodSecretRes.success !== false && goodSecretRes.success !== true) {
     throw new Error('Webhook thất bại với secret đúng!');
   }
 

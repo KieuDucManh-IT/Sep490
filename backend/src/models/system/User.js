@@ -32,6 +32,16 @@ const informationSchema = new mongoose.Schema(
       default: "",
     },
 
+    DistrictCode: {
+      type: String,
+      default: "",
+    },
+
+    DistrictName: {
+      type: String,
+      default: "",
+    },
+
     WardCode: {
       type: String,
       default: "",
@@ -193,6 +203,12 @@ const userSchema = new mongoose.Schema(
     MustChangePassword: {
       type: Boolean,
       default: false,
+    },
+
+    ShopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shop",
+      default: null,
     },
   },
   {

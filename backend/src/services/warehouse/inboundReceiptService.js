@@ -4,14 +4,15 @@ import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundRece
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
-import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Supplier } from '../../models/masterdata/Supplier.js';
 import User from '../../models/system/User.js';
-import { validateCreateInboundReceipt, validatePutaway, validateReceiptCheck } from '../../validations/warehouse/inboundReceiptValidation.js';
+import { validateCancelReason, validateCreateInboundReceipt, validatePutaway, validateReceiptCheck } from '../../validations/warehouse/inboundReceiptValidation.js';
 import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
+import { createItems } from './itemStateService.js';
+import { refreshOutOfStockStatus, markRestockRequested } from './productStockStatusService.js';
 
 const openStatuses = ['awaiting_receiving', 'received', 'approved'];
 const receiptStatuses = [...openStatuses, 'completed', 'rejected', 'cancelled'];
@@ -27,6 +28,7 @@ const receiptPopulation = [
   { path: 'receivedBy', select: 'FullName Email' },
   { path: 'approvedBy', select: 'FullName Email' },
   { path: 'putawayBy', select: 'FullName Email' },
+  { path: 'cancelledBy', select: 'FullName Email' },
 ];
 
 const loadDetails = async (receiptId) => InboundReceiptDetail.find({ receiptId }).sort({ createdAt: 1 })
@@ -34,29 +36,22 @@ const loadDetails = async (receiptId) => InboundReceiptDetail.find({ receiptId }
   .populate('storageAllocations.storageId', 'code name type')
   .populate('storageId', 'code name type');
 
-const getPhysicalCapacity = async (locationId) => {
-  const location = await InventoryLocation.findById(locationId).lean();
+// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho MỌI loại hàng. Balance của hàng individual
+// đã đồng bộ với các món (itemStateService), nên không đếm InventoryItem riêng nữa để tránh đếm hai lần.
+const getPhysicalCapacity = async (locationId, session = null) => {
+  const location = await InventoryLocation.findById(locationId).session(session).lean();
   if (!location) throw fail('Không tìm thấy kho/cửa hàng.', 404);
-  const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity type status').lean();
+  const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity type status').session(session).lean();
   const storageById = new Map(storageLocations.map((storage) => [String(storage._id), storage]));
   const balanceRows = await InventoryBalance.aggregate([
-    { $match: { locationId: new mongoose.Types.ObjectId(locationId) } },
-    { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: '$quantityOnHand' } } },
-  ]);
-  const itemRows = await InventoryItem.aggregate([
-    { $match: { locationId: new mongoose.Types.ObjectId(locationId), status: { $nin: ['disposed', 'renting', 'in_transit'] } } },
-    { $group: { _id: { storageId: '$storageId', variantId: '$variantId' }, quantity: { $sum: 1 } } },
-  ]);
-  const variantIds = [...new Set([...balanceRows, ...itemRows].map((row) => String(row._id.variantId)))];
-  const variants = await ProductVariant.find({ _id: { $in: variantIds } }).select('productId').populate('productId', 'trackingType').lean();
-  const trackingByVariant = new Map(variants.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
+    { $match: { locationId: new mongoose.Types.ObjectId(String(locationId)) } },
+    { $group: { _id: '$storageId', quantity: { $sum: '$quantityOnHand' } } },
+  ]).session(session);
   const directByStorage = new Map();
-  const addDirect = (storageId, quantity) => {
-    const key = storageId ? String(storageId) : '';
-    directByStorage.set(key, (directByStorage.get(key) || 0) + quantity);
-  };
-  for (const row of balanceRows) if (trackingByVariant.get(String(row._id.variantId)) !== 'individual') addDirect(row._id.storageId, row.quantity);
-  for (const row of itemRows) if (trackingByVariant.get(String(row._id.variantId)) === 'individual') addDirect(row._id.storageId, row.quantity);
+  for (const row of balanceRows) {
+    const key = row._id ? String(row._id) : '';
+    directByStorage.set(key, (directByStorage.get(key) || 0) + Math.max(0, row.quantity || 0));
+  }
 
   const usedByStorage = new Map();
   for (const [storageId, quantity] of directByStorage.entries()) {
@@ -74,16 +69,16 @@ const getPhysicalCapacity = async (locationId) => {
   return { location, storageLocations, storageById, usedByStorage, used };
 };
 
-const getOpenCommitment = async (locationId, excludeReceiptId = null) => {
+const getOpenCommitment = async (locationId, excludeReceiptId = null, session = null) => {
   const query = { locationId, status: { $in: openStatuses } };
   if (excludeReceiptId) query._id = { $ne: excludeReceiptId };
-  const receipts = await InboundReceipt.find(query).select('_id status').lean();
+  const receipts = await InboundReceipt.find(query).select('_id status').session(session).lean();
   if (!receipts.length) return 0;
   const ids = receipts.map((receipt) => receipt._id);
   const details = await InboundReceiptDetail.aggregate([
     { $match: { receiptId: { $in: ids } } },
     { $group: { _id: '$receiptId', expected: { $sum: '$quantityExpected' }, accepted: { $sum: { $cond: [{ $gt: [{ $subtract: ['$quantityReceived', '$quantityDamaged'] }, 0] }, { $subtract: ['$quantityReceived', '$quantityDamaged'] }, 0] } } } },
-  ]);
+  ]).session(session);
   const receiptById = new Map(receipts.map((receipt) => [String(receipt._id), receipt]));
   return details.reduce((total, detail) => {
     const receipt = receiptById.get(String(detail._id));
@@ -146,117 +141,207 @@ export const createInboundReceipt = async (payload, userId) => {
     await InboundReceipt.findByIdAndDelete(receipt._id);
     throw error;
   }
+
+  // TASK-012: Branch manager tạo phiếu nhập → hiển thị lại sản phẩm cho khách ngay lập tức
+  await markRestockRequested(data.items.map((item) => item.variantId));
+
   return getInboundReceipt(receipt._id);
 };
 
 export const recordReceipt = async (receiptId, payload, user) => {
-  const receipt = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' });
-  if (!receipt || receipt.status !== 'awaiting_receiving') throw fail('Phiếu không ở trạng thái chờ ghi nhận hàng.', 409);
-  if (String(receipt.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+  const existing = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' }).select('status assignedStaffId').lean();
+  if (!existing || existing.status !== 'awaiting_receiving') throw fail('Phiếu không ở trạng thái chờ ghi nhận hàng.', 409);
+  if (String(existing.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
   const details = await InboundReceiptDetail.find({ receiptId }).select('_id');
   const changes = validateReceiptCheck(payload, details.map((item) => String(item._id)));
-  await Promise.all(changes.map((item) => InboundReceiptDetail.findOneAndUpdate(
-    { _id: item.detailId, receiptId },
-    { $set: { quantityReceived: item.quantityReceived, quantityDamaged: item.quantityDamaged, note: item.note } },
-    { runValidators: true }
-  )));
-  receipt.status = 'received';
-  receipt.receivedBy = user._id;
-  receipt.receivedAt = new Date();
-  await receipt.save();
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // Chuyển trạng thái có điều kiện để không ghi đè phiếu vừa bị hủy.
+      const receipt = await InboundReceipt.findOneAndUpdate(
+        { _id: receiptId, receiptType: 'supplier', status: 'awaiting_receiving', assignedStaffId: user._id },
+        { $set: { status: 'received', receivedBy: user._id, receivedAt: new Date() } },
+        { new: true, session },
+      );
+      if (!receipt) throw fail('Phiếu không ở trạng thái chờ ghi nhận hàng.', 409);
+      for (const item of changes) {
+        await InboundReceiptDetail.findOneAndUpdate(
+          { _id: item.detailId, receiptId },
+          { $set: { quantityReceived: item.quantityReceived, quantityDamaged: item.quantityDamaged, note: item.note } },
+          { runValidators: true, session },
+        );
+      }
+    });
+  } finally { await session.endSession(); }
+
+  // TASK-012: Sau khi putaway hoàn tất, hàng đã vào chi nhánh → kiểm tra lại trạng thái hết hàng
+  // Lấy productId từ các biến thể trong phiếu để cập nhật isOutOfStock
+  try {
+    const detailsForStock = await InboundReceiptDetail.find({ receiptId })
+      .populate({ path: 'variantId', select: 'productId' }).lean();
+    const productIds = [...new Set(
+      detailsForStock.map((d) => String(d.variantId?.productId)).filter(Boolean)
+    )];
+    if (productIds.length) await refreshOutOfStockStatus(productIds);
+  } catch (err) {
+    console.error('[TASK-012] Lỗi refreshOutOfStockStatus sau putaway:', err.message);
+  }
+
   return getInboundReceipt(receiptId);
 };
 
 export const approveReceipt = async (receiptId, userId, decision, note = '') => {
-  const receipt = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' });
+  const receipt = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' }).select('status note').lean();
   if (!receipt || receipt.status !== 'received') throw fail('Chỉ có thể duyệt hoặc từ chối phiếu đã được nhân viên ghi nhận.', 409);
-  if (decision === 'reject') {
-    receipt.status = 'rejected';
-    receipt.note = note ? `${receipt.note}\nTừ chối: ${note}`.trim() : receipt.note;
-  } else {
-    receipt.status = 'approved';
-    receipt.approvedAt = new Date();
-  }
-  receipt.approvedBy = userId;
-  await receipt.save();
+  const changes = decision === 'reject'
+    ? { status: 'rejected', note: note ? `${receipt.note || ''}\nTừ chối: ${note}`.trim() : receipt.note }
+    : { status: 'approved', approvedAt: new Date() };
+  const updated = await InboundReceipt.findOneAndUpdate(
+    { _id: receiptId, receiptType: 'supplier', status: 'received' },
+    { $set: { ...changes, approvedBy: userId } },
+    { new: true },
+  );
+  if (!updated) throw fail('Chỉ có thể duyệt hoặc từ chối phiếu đã được nhân viên ghi nhận.', 409);
   return getInboundReceipt(receiptId);
 };
 
 export const putawayReceipt = async (receiptId, payload, user) => {
-  const receipt = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' });
-  if (!receipt || receipt.status !== 'approved') throw fail('Chỉ có thể sắp xếp kho cho phiếu đã được duyệt.', 409);
-  if (String(receipt.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
-  const details = await InboundReceiptDetail.find({ receiptId });
-  const allocations = validatePutaway(payload, details.map((item) => String(item._id)));
-  const allocationByDetail = new Map(allocations.map((item) => [item.detailId, item.allocations]));
-  const acceptedLines = details.map((detail) => ({ detail, quantity: Math.max(0, detail.quantityReceived - detail.quantityDamaged), allocations: allocationByDetail.get(String(detail._id)) || [] }));
-  for (const line of acceptedLines) {
-    if (sum(line.allocations, 'quantity') !== line.quantity) throw fail(`Tổng số lượng phân bổ cho ${line.detail.variantId} phải bằng số lượng hàng đạt chất lượng (${line.quantity}).`, 400);
-  }
-  const toStore = acceptedLines.flatMap((line) => line.allocations.map((allocation) => ({ detail: line.detail, ...allocation })));
-  const snapshot = await getPhysicalCapacity(receipt.locationId);
-  const shelves = await StorageLocation.find({ _id: { $in: toStore.map((line) => line.storageId) }, type: 'shelf', status: 'active', locationId: receipt.locationId }).lean();
-  if (shelves.length !== new Set(toStore.map((line) => line.storageId)).size) throw fail('Một hoặc nhiều shelf không hợp lệ, ngừng hoạt động hoặc thuộc kho khác.', 400);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // Giành trạng thái ngay đầu transaction. Nếu phiếu vừa bị hủy (hoặc đã xếp kho) thì dừng trước khi cộng tồn;
+      // nếu hủy chạy song song sau bước này thì hai transaction xung đột ghi và chỉ một bên được commit.
+      const receipt = await InboundReceipt.findOneAndUpdate(
+        { _id: receiptId, receiptType: 'supplier', status: 'approved' },
+        { $set: { status: 'completed', putawayBy: user._id, putawayAt: new Date() } },
+        { new: true, session },
+      );
+      if (!receipt) throw fail('Chỉ có thể sắp xếp kho cho phiếu đã được duyệt.', 409);
+      if (String(receipt.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+      const details = await InboundReceiptDetail.find({ receiptId }).session(session);
+      const allocations = validatePutaway(payload, details.map((item) => String(item._id)));
+      const allocationByDetail = new Map(allocations.map((item) => [item.detailId, item.allocations]));
+      const acceptedLines = details.map((detail) => ({ detail, quantity: Math.max(0, detail.quantityReceived - detail.quantityDamaged), allocations: allocationByDetail.get(String(detail._id)) || [] }));
+      for (const line of acceptedLines) {
+        if (sum(line.allocations, 'quantity') !== line.quantity) throw fail(`Tổng số lượng phân bổ cho ${line.detail.variantId} phải bằng số lượng hàng đạt chất lượng (${line.quantity}).`, 400);
+      }
+      const toStore = acceptedLines.flatMap((line) => line.allocations.map((allocation) => ({ detail: line.detail, ...allocation })));
+      const snapshot = await getPhysicalCapacity(receipt.locationId, session);
+      const shelves = await StorageLocation.find({ _id: { $in: toStore.map((line) => line.storageId) }, type: 'shelf', status: 'active', locationId: receipt.locationId }).session(session).lean();
+      if (shelves.length !== new Set(toStore.map((line) => line.storageId)).size) throw fail('Một hoặc nhiều shelf không hợp lệ, ngừng hoạt động hoặc thuộc kho khác.', 400);
 
-  const addedByAncestor = new Map();
-  for (const line of toStore) {
-    const storageId = String(line.storageId);
-    let cursor = snapshot.storageById.get(storageId);
-    const visited = new Set();
-    while (cursor && !visited.has(String(cursor._id))) {
-      const id = String(cursor._id);
-      visited.add(id);
-      addedByAncestor.set(id, (addedByAncestor.get(id) || 0) + line.quantity);
-      cursor = cursor.parentStorageId ? snapshot.storageById.get(String(cursor.parentStorageId)) : null;
-    }
-  }
-  for (const storage of snapshot.storageLocations) {
-    const id = String(storage._id);
-    if (!addedByAncestor.has(id)) continue;
-    const projected = (snapshot.usedByStorage.get(id) || 0) + (addedByAncestor.get(id) || 0);
-    if (projected > capacityOf(storage.maxCapacity)) throw fail(`Không đủ sức chứa tại ${storage.code}: còn ${Math.max(0, capacityOf(storage.maxCapacity) - (snapshot.usedByStorage.get(id) || 0))} cái.`, 409);
-  }
-  const otherCommitted = await getOpenCommitment(receipt.locationId, receipt._id);
-  const locationProjected = snapshot.used + otherCommitted + sum(toStore, 'quantity');
-  if (locationProjected > capacityOf(snapshot.location.maxCapacity)) throw fail(`Không đủ sức chứa toàn kho: còn ${Math.max(0, capacityOf(snapshot.location.maxCapacity) - snapshot.used - otherCommitted)} cái.`, 409);
+      const addedByAncestor = new Map();
+      for (const line of toStore) {
+        const storageId = String(line.storageId);
+        let cursor = snapshot.storageById.get(storageId);
+        const visited = new Set();
+        while (cursor && !visited.has(String(cursor._id))) {
+          const id = String(cursor._id);
+          visited.add(id);
+          addedByAncestor.set(id, (addedByAncestor.get(id) || 0) + line.quantity);
+          cursor = cursor.parentStorageId ? snapshot.storageById.get(String(cursor.parentStorageId)) : null;
+        }
+      }
+      for (const storage of snapshot.storageLocations) {
+        const id = String(storage._id);
+        if (!addedByAncestor.has(id)) continue;
+        const projected = (snapshot.usedByStorage.get(id) || 0) + (addedByAncestor.get(id) || 0);
+        if (projected > capacityOf(storage.maxCapacity)) throw fail(`Không đủ sức chứa tại ${storage.code}: còn ${Math.max(0, capacityOf(storage.maxCapacity) - (snapshot.usedByStorage.get(id) || 0))} cái.`, 409);
+      }
+      const otherCommitted = await getOpenCommitment(receipt.locationId, receipt._id, session);
+      const locationProjected = snapshot.used + otherCommitted + sum(toStore, 'quantity');
+      if (locationProjected > capacityOf(snapshot.location.maxCapacity)) throw fail(`Không đủ sức chứa toàn kho: còn ${Math.max(0, capacityOf(snapshot.location.maxCapacity) - snapshot.used - otherCommitted)} cái.`, 409);
 
-  const variantTracking = await ProductVariant.find({ _id: { $in: toStore.map((line) => line.detail.variantId) } })
-    .select('productId').populate('productId', 'trackingType').lean();
-  const trackingByVariant = new Map(variantTracking.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
-  for (const line of toStore) {
-    await increaseInventoryBalance({ locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId, quantity: line.quantity });
-    if (trackingByVariant.get(String(line.detail.variantId)) === 'individual') {
-      const items = Array.from({ length: line.quantity }, () => ({
-        variantId: line.detail.variantId,
-        locationId: receipt.locationId,
-        storageId: line.storageId,
-        inboundReceiptDetail: line.detail._id,
-        itemCode: `ITM-${new mongoose.Types.ObjectId().toString().toUpperCase()}`,
-        condition: 'new',
-        status: 'available',
-      }));
-      await InventoryItem.insertMany(items);
-    }
-    await recordStockMovement({
-      variantId: line.detail.variantId,
-      locationId: receipt.locationId,
-      storageId: line.storageId,
-      movementType: 'inbound',
-      quantityChange: line.quantity,
-      referenceType: 'inbound_receipt',
-      referenceId: receipt._id,
-      createdBy: user._id,
+      const variantTracking = await ProductVariant.find({ _id: { $in: toStore.map((line) => line.detail.variantId) } })
+        .select('productId').populate('productId', 'trackingType').session(session).lean();
+      const trackingByVariant = new Map(variantTracking.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
+      for (const line of toStore) {
+        if (trackingByVariant.get(String(line.detail.variantId)) === 'individual') {
+          // TASK-009: hàng individual tạo món qua itemStateService, balance kệ được cộng đúng theo số món.
+          const items = Array.from({ length: line.quantity }, () => ({
+            variantId: line.detail.variantId,
+            locationId: receipt.locationId,
+            storageId: line.storageId,
+            inboundReceiptDetail: line.detail._id,
+            itemCode: `ITM-${new mongoose.Types.ObjectId().toString().toUpperCase()}`,
+            condition: 'new',
+            status: 'available',
+          }));
+          await createItems(items, session);
+        } else {
+          await increaseInventoryBalance({ locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId, quantity: line.quantity, session });
+        }
+        await recordStockMovement({
+          variantId: line.detail.variantId,
+          locationId: receipt.locationId,
+          storageId: line.storageId,
+          movementType: 'inbound',
+          quantityChange: line.quantity,
+          referenceType: 'inbound_receipt',
+          referenceId: receipt._id,
+          createdBy: user._id,
+        }, session);
+      }
+      for (const { detail, allocations: lineAllocations } of acceptedLines) {
+        await InboundReceiptDetail.findByIdAndUpdate(detail._id, {
+          $set: {
+            storageId: lineAllocations.length === 1 ? lineAllocations[0].storageId : null,
+            storageAllocations: lineAllocations,
+          },
+        }, { session });
+      }
     });
+  } finally { await session.endSession(); }
+
+  // TASK-012: Sau khi putaway hoàn tất, hàng đã vào chi nhánh → kiểm tra lại trạng thái hết hàng
+  // Lấy productId từ các biến thể trong phiếu để cập nhật isOutOfStock
+  try {
+    const detailsForStock = await InboundReceiptDetail.find({ receiptId })
+      .populate({ path: 'variantId', select: 'productId' }).lean();
+    const productIds = [...new Set(
+      detailsForStock.map((d) => String(d.variantId?.productId)).filter(Boolean)
+    )];
+    if (productIds.length) await refreshOutOfStockStatus(productIds);
+  } catch (err) {
+    console.error('[TASK-012] Lỗi refreshOutOfStockStatus sau putaway:', err.message);
   }
-  await Promise.all(acceptedLines.map(({ detail, allocations: lineAllocations }) => InboundReceiptDetail.findByIdAndUpdate(detail._id, {
-    $set: {
-      storageId: lineAllocations.length === 1 ? lineAllocations[0].storageId : null,
-      storageAllocations: lineAllocations,
-    },
-  })));
-  receipt.status = 'completed';
-  receipt.putawayBy = user._id;
-  receipt.putawayAt = new Date();
-  await receipt.save();
+
+  return getInboundReceipt(receiptId);
+};
+
+export const cancelInboundReceipt = async (receiptId, payload, user) => {
+  if (!mongoose.isValidObjectId(receiptId)) throw fail('Mã phiếu nhập không hợp lệ.');
+  if (!['warehouse_manager', 'admin'].includes(String(user?.Role || '').toLowerCase())) throw fail('Chỉ quản lý kho mới được hủy phiếu nhập.', 403);
+  const { reason } = validateCancelReason(payload);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // Hủy không đổi tồn: tồn chỉ được cộng ở bước putaway (trạng thái completed).
+      const cancelled = await InboundReceipt.findOneAndUpdate(
+        { _id: receiptId, receiptType: 'supplier', status: { $in: openStatuses } },
+        { $set: { status: 'cancelled', cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
+        { new: true, session },
+      );
+      if (!cancelled) {
+        const exists = await InboundReceipt.exists({ _id: receiptId, receiptType: 'supplier' }).session(session);
+        if (!exists) throw fail('Không tìm thấy phiếu nhập.', 404);
+        throw fail('Chỉ hủy được phiếu nhập đang chờ nhận, đã ghi nhận hoặc đã duyệt nhưng chưa xếp kho.', 409);
+      }
+    });
+  } finally { await session.endSession(); }
+
+  // TASK-012: Sau khi putaway hoàn tất, hàng đã vào chi nhánh → kiểm tra lại trạng thái hết hàng
+  // Lấy productId từ các biến thể trong phiếu để cập nhật isOutOfStock
+  try {
+    const detailsForStock = await InboundReceiptDetail.find({ receiptId })
+      .populate({ path: 'variantId', select: 'productId' }).lean();
+    const productIds = [...new Set(
+      detailsForStock.map((d) => String(d.variantId?.productId)).filter(Boolean)
+    )];
+    if (productIds.length) await refreshOutOfStockStatus(productIds);
+  } catch (err) {
+    console.error('[TASK-012] Lỗi refreshOutOfStockStatus sau putaway:', err.message);
+  }
+
   return getInboundReceipt(receiptId);
 };

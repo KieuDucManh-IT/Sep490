@@ -1,16 +1,33 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Sparkles, Cpu, Leaf, ShieldCheck, Truck, Lock } from "lucide-react";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import "../../styles/AboutPage.css";
 
 export default function AboutPage() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const hash = location.hash;
+    if (hash) {
+      setTimeout(() => {
+        const element = document.querySelector(hash);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [location.hash, location.pathname]);
+
   return (
     <div className="vestora-page-wrapper">
       <Navbar />
       <main className="about-main-container">
         {/* Hero Section */}
-        <section className="about-hero-section">
+        <section className="about-hero-section" id="story">
           <span className="about-subtitle">VỀ CHÚNG TÔI</span>
           <h1 className="about-title">Câu Chuyện Về VESTORA</h1>
           <p className="about-lead">
@@ -20,7 +37,7 @@ export default function AboutPage() {
         </section>
 
         {/* Brand Mission & Vision Grid */}
-        <section className="about-grid-section">
+        <section className="about-grid-section" id="mission">
           <div className="about-card">
             <div className="about-card-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Sparkles size={24} color="#C5A880" />
@@ -56,7 +73,7 @@ export default function AboutPage() {
         </section>
 
         {/* Commitment */}
-        <section className="about-commitment-section">
+        <section className="about-commitment-section" id="commitment">
           <h2>Cam Kết Dịch Vụ</h2>
           <div className="commitment-list">
             <div className="commitment-item">

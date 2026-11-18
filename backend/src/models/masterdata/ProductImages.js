@@ -9,12 +9,13 @@ const productImageSchema = new mongoose.Schema(
             index: true,
             alias: 'product_id',
         },
-        variantId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'ProductVariant',
+        // Ảnh thuộc về một màu (dùng cho mọi size của màu đó); null = ảnh chung của sản phẩm.
+        // Trường variantId cũ đã bỏ — chạy scripts/migrateProductImageColor.js để chuyển dữ liệu.
+        color: {
+            type: String,
+            trim: true,
             default: null,
-            index: true,
-            alias: 'variant_id',
+            maxlength: 80,
         },
         imageUrl: {
             type: String,
@@ -49,6 +50,8 @@ const productImageSchema = new mongoose.Schema(
         toObject: { virtuals: true },
     }
 );
+
+productImageSchema.index({ productId: 1, color: 1, displayOrder: 1 });
 
 // Virtual alias cho image_id và created_at
 productImageSchema.virtual('image_id').get(function () {

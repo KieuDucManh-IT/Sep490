@@ -1,3 +1,4 @@
+import { resolveProductPricing, isCustomerVisibleProduct, customerVisibleProductFilter } from '../../services/masterdata/productPricing.js';
 
 import mongoose from 'mongoose';
 import { Product } from '../../models/masterdata/Product.js';
@@ -7,6 +8,13 @@ import { ProductImage } from '../../models/masterdata/ProductImages.js';
 import { productService } from '../../services/masterdata/productService.js';
 import { createCrudController } from '../../generic/crudController.js';
 import { enrichProductsWithInventory } from '../../services/warehouse/productInventoryHelper.js';
+import { visibleImageRecords, orderedImageUrls, colorImageMap } from '../../services/masterdata/productImageHelper.js';
+
+// Ảnh gửi cho khách: bỏ trường variantId cũ (dữ liệu chưa migrate) và ẩn ảnh của màu không còn biến thể đang bán.
+const customerImageRecords = (records, variants) => visibleImageRecords(
+  records.map(({ variantId, variant_id, ...record }) => record),
+  variants.map((variant) => variant.color).filter(Boolean),
+);
 
 /**
  * Lấy danh sách sản phẩm theo bộ lọc, tìm kiếm, phân trang và sắp xếp
@@ -26,13 +34,11 @@ export const getProducts = async (req, res, next) => {
       aiTryOn,
       sort = 'newest',
       page = 1,
-      limit = 12,
+      limit = 8,
     } = req.query;
 
-    const query = {
-      isDeleted: { $ne: true },
-      status: { $nin: ['inactive', 'INACTIVE', 'discontinued', 'DISCONTINUED'] },
-    };
+    // Khách chỉ thấy sản phẩm đang bán và đã được Shop Owner định giá (TASK-008).
+    const query = customerVisibleProductFilter();
 
     // Tìm kiếm theo từ khóa
     if (search && search.trim()) {
@@ -52,6 +58,7 @@ export const getProducts = async (req, res, next) => {
       query.$and = query.$and || [];
       if (type === 'rental') {
         query.$and.push({
+          tag: { $nin: ['sale', 'SALE'] },
           $or: [
             { tag: { $in: ['rental', 'both', 'RENTAL', 'BOTH'] } },
             { rentalPricePerDay: { $gt: 0 } },
@@ -60,6 +67,7 @@ export const getProducts = async (req, res, next) => {
         });
       } else if (type === 'sale') {
         query.$and.push({
+          tag: { $nin: ['rental', 'RENTAL'] },
           $or: [
             { tag: { $in: ['sale', 'both', 'SALE', 'BOTH'] } },
             { salePrice: { $gt: 0 } },
@@ -118,9 +126,16 @@ export const getProducts = async (req, res, next) => {
         return { [field]: cond };
       };
 
-      priceConditions.push(makeRange('rentalPricePer3Days'));
-      priceConditions.push(makeRange('rentalPricePerDay'));
-      priceConditions.push(makeRange('salePrice'));
+      if (type === 'sale') {
+        priceConditions.push(makeRange('salePrice'));
+      } else if (type === 'rental') {
+        priceConditions.push(makeRange('rentalPricePer3Days'));
+        priceConditions.push(makeRange('rentalPricePerDay'));
+      } else {
+        priceConditions.push(makeRange('rentalPricePer3Days'));
+        priceConditions.push(makeRange('rentalPricePerDay'));
+        priceConditions.push(makeRange('salePrice'));
+      }
 
       query.$and = query.$and || [];
       query.$and.push({ $or: priceConditions });
@@ -175,8 +190,10 @@ export const getProducts = async (req, res, next) => {
       sortObj = { createdAt: -1 };
     }
 
+    // Stable tie-breaker, including imported rows without createdAt.
+    sortObj._id = 1;
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit, 10) || 12);
+    const limitNum = Math.max(1, parseInt(limit, 10) || 8);
     const skip = (pageNum - 1) * limitNum;
 
     let products = [];
@@ -234,7 +251,7 @@ export const getProducts = async (req, res, next) => {
       variantsByProduct[pid].push(v);
     });
 
-    // Làm giàu dữ liệu tồn kho và địa chỉ chi nhánh từ InventoryBalance & InventoryItem
+    // Làm giàu dữ liệu tồn kho và địa chỉ chi nhánh từ InventoryBalance (TASK-011: chỉ balance, chỉ chi nhánh)
     let inventoryEnriched = [];
     try {
       inventoryEnriched = await enrichProductsWithInventory(products, variants);
@@ -276,8 +293,8 @@ export const getProducts = async (req, res, next) => {
       let deposit = p.deposit || 0;
 
       // Hình ảnh thực tế từ database
-      const imageRecords = imagesByProduct[String(p._id)] || [];
-      let images = imageRecords.length ? imageRecords.map((image) => image.imageUrl) : Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+      const imageRecords = customerImageRecords(imagesByProduct[String(p._id)] || [], pVariants);
+      let images = imageRecords.length ? orderedImageUrls(imageRecords) : Array.isArray(p.images) ? p.images.filter(Boolean) : [];
       if (images.length === 0 && p.image) {
         images = [p.image];
       }
@@ -308,6 +325,7 @@ export const getProducts = async (req, res, next) => {
         image: images[0] || p.image || '',
         images,
         imageRecords,
+        colorImages: colorImageMap(imageRecords),
         shopId: p.shopId || { name: p.brand || 'Vestora Fashion Store' },
         categoryName,
         quantity,
@@ -316,17 +334,41 @@ export const getProducts = async (req, res, next) => {
         branchAddress,
         branchName,
         branches,
+        variantAvailability: inv.variantAvailability,
         rating: typeof p.rating === 'number' ? p.rating : null,
         reviewsCount: typeof p.reviewsCount === 'number' ? p.reviewsCount : 0,
-        inStock: inv.inStock != null ? inv.inStock : (quantity > 0),
-          // inStock
-          // pVariants
+        inStock: inv.inStock != null ? inv.inStock : (quantityAvailable > 0),
       };
+    });
+
+    // TASK-012: Phát hiện sản phẩm hết hàng ở tất cả chi nhánh nhưng chưa được đánh dấu isOutOfStock trong DB
+    const outOfStockToMark = [];
+    enrichedProducts.forEach((item) => {
+      const isZeroStock = Number(item.quantityAvailable ?? 0) <= 0;
+      const isRestockRequested = Boolean(item.restockRequestedAt);
+      if (isZeroStock && !isRestockRequested && item.isOutOfStock !== true) {
+        outOfStockToMark.push(item._id);
+      }
+    });
+    if (outOfStockToMark.length) {
+      Product.updateMany(
+        { _id: { $in: outOfStockToMark } },
+        { $set: { isOutOfStock: true, outOfStockAt: new Date() } }
+      ).catch((err) => console.error('[TASK-012] Auto-update outOfStock error:', err.message));
+    }
+
+    // TASK-012: Ẩn sản phẩm hết hàng ở tất cả chi nhánh, trừ khi có yêu cầu nhập hàng từ Branch Manager (restockRequestedAt)
+    const customerVisibleProducts = enrichedProducts.filter((item) => {
+      if (item.isOutOfStock === true) return false;
+      const isZeroStock = Number(item.quantityAvailable ?? 0) <= 0;
+      const isRestockRequested = Boolean(item.restockRequestedAt);
+      if (isZeroStock && !isRestockRequested) return false;
+      return true;
     });
 
     res.json({
       success: true,
-      data: enrichedProducts,
+      data: customerVisibleProducts,
       pagination: {
         total,
         page: pageNum,
@@ -344,7 +386,7 @@ export const getProducts = async (req, res, next) => {
         total: 0,
         page: 1,
         totalPages: 1,
-        limit: 12,
+        limit: 8,
       },
     });
   }
@@ -389,7 +431,8 @@ export const getProductById = async (req, res, next) => {
       }
     }
 
-    if (!product) {
+    // Chưa định giá → 404 như sản phẩm không tồn tại (TASK-008).
+    if (!isCustomerVisibleProduct(product)) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm.' });
     }
 
@@ -420,6 +463,15 @@ export const getProductById = async (req, res, next) => {
     const branches = invData.branches || [];
     const inv = invData;
 
+    // TASK-012: Hết hàng ở tất cả chi nhánh và không có yêu cầu nhập hàng -> ẩn với khách hàng (404)
+    if (quantityAvailable <= 0 && !product.restockRequestedAt) {
+      Product.updateOne(
+        { _id: product._id, isOutOfStock: { $ne: true } },
+        { $set: { isOutOfStock: true, outOfStockAt: new Date() } }
+      ).catch(() => {});
+      return res.status(404).json({ success: false, message: 'Sản phẩm hiện đang hết hàng tại tất cả chi nhánh.' });
+    }
+
     let imageRecords = [];
     try {
       imageRecords = await ProductImage.find({ productId: product._id }).sort({ displayOrder: 1 }).lean();
@@ -427,8 +479,9 @@ export const getProductById = async (req, res, next) => {
       console.warn('Lỗi lấy imageRecords:', e.message);
     }
 
+    imageRecords = customerImageRecords(imageRecords, variants);
     const images = imageRecords.length
-      ? imageRecords.map((img) => img.imageUrl)
+      ? orderedImageUrls(imageRecords)
       : Array.isArray(product.images) && product.images.length
       ? product.images.filter(Boolean)
       : product.image
@@ -489,7 +542,8 @@ export const getProductById = async (req, res, next) => {
       data: {
         ...product,
         shopId,
-        variants,
+        variants: variants.map(v => ({ ...v, pricing: resolveProductPricing(product, v) })),
+        inventoryKnown: invData.inventoryKnown === true,
         sizes,
         colors,
         rentalPricePerDay,
@@ -499,6 +553,7 @@ export const getProductById = async (req, res, next) => {
         image: images[0] || product.image || '',
         images,
         imageRecords,
+        colorImages: colorImageMap(imageRecords),
         categoryName,
         quantity,
         quantityOnHand,
@@ -506,6 +561,7 @@ export const getProductById = async (req, res, next) => {
         branchAddress,
         branchName,
         branches,
+        variantAvailability: inv.variantAvailability,
         rating: typeof product.rating === 'number' ? product.rating : 5,
         reviewsCount: typeof product.reviewsCount === 'number' ? product.reviewsCount : 0,
         inStock: inv.inStock != null ? inv.inStock : (quantity > 0),
@@ -528,11 +584,14 @@ export const getFilterMeta = async (req, res, next) => {
   try {
     const [categories, products, variants] = await Promise.all([
       Category.find({ status: { $nin: ['inactive', 'INACTIVE'] }, isDeleted: { $ne: true } }).lean(),
-      Product.find({ isDeleted: { $ne: true }, status: { $nin: ['inactive', 'INACTIVE'] } })
+      Product.find(customerVisibleProductFilter())
         .populate('categoryId')
         .lean(),
       ProductVariant.find({ status: { $nin: ['inactive', 'INACTIVE'] }, isDeleted: { $ne: true } }).select('-variantName').lean(),
     ]);
+    // Chỉ đếm biến thể của sản phẩm khách nhìn thấy (TASK-008).
+    const visibleProductIds = new Set(products.map((p) => String(p._id)));
+    const visibleVariants = variants.filter((v) => visibleProductIds.has(String(v.productId)));
 
     const categoryCounts = {};
     categories.forEach((cat) => {
@@ -584,7 +643,7 @@ export const getFilterMeta = async (req, res, next) => {
     });
 
     // Bổ sung kích cỡ và màu sắc từ bảng ProductVariant
-    variants.forEach((v) => {
+    visibleVariants.forEach((v) => {
       if (v.size) {
         const sz = String(v.size).toUpperCase();
         sizeCounts[sz] = (sizeCounts[sz] || 0) + 1;

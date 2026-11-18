@@ -3,11 +3,18 @@ import User from "../models/system/User.js";
 
 export async function authMiddleware(req, res, next) {
   const authHeader = req.get?.('Authorization') || req.headers?.authorization || '';
-  const token = (typeof authHeader === 'string' && /^Bearer\s+/i.test(authHeader)
-    ? authHeader.replace(/^Bearer\s+/i, '').trim()
-    : null) || req.cookies?.vestora_token || null;
+  const headerToken =
+    typeof authHeader === 'string' && /^Bearer\s+/i.test(authHeader)
+      ? authHeader.replace(/^Bearer\s+/i, '').trim()
+      : null;
+  const cookieToken = req.cookies?.vestora_token || null;
 
-  if (!token) {
+  // Lấy danh sách các token ứng viên (ưu tiên token hợp lệ từ Cookie hoặc Header)
+  const candidateTokens = [headerToken, cookieToken].filter(
+    (t) => t && typeof t === 'string' && t !== 'undefined' && t !== 'null'
+  );
+
+  if (candidateTokens.length === 0) {
     return res.status(401).json({
       success: false,
       message: "Bạn chưa đăng nhập",
@@ -21,28 +28,27 @@ export async function authMiddleware(req, res, next) {
     });
   }
 
-  let payload;
+  let payload = null;
+  for (const token of candidateTokens) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        algorithms: ["HS256"],
+        issuer: "vestora",
+        audience: "vestora-web",
+      });
+      if (typeof decoded.sub === "string" && /^[a-f0-9]{24}$/i.test(decoded.sub)) {
+        payload = decoded;
+        break; // Tìm thấy token hợp lệ
+      }
+    } catch {
+      // Thử token tiếp theo (ví dụ cookie nếu header bị cũ/hết hạn)
+    }
+  }
 
-  try {
-    payload = jwt.verify(token, process.env.JWT_SECRET, {
-      algorithms: ["HS256"],
-      issuer: "vestora",
-      audience: "vestora-web",
-    });
-  } catch {
+  if (!payload) {
     return res.status(401).json({
       success: false,
       message: "Thông tin đăng nhập không hợp lệ hoặc đã hết hạn",
-    });
-  }
-
-  if (
-    typeof payload.sub !== "string" ||
-    !/^[a-f0-9]{24}$/i.test(payload.sub)
-  ) {
-    return res.status(401).json({
-      success: false,
-      message: "Thông tin đăng nhập không hợp lệ",
     });
   }
 

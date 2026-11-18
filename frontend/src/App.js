@@ -1,5 +1,11 @@
+﻿<<<<<<< HEAD
 ﻿import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+=======
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import './styles/WarehouseUx.css';
+>>>>>>> origin/main2
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -22,13 +28,17 @@ import UserProfilePage from './pages/customer/UserProfilePage';
 import PhotoTryOnPage from './pages/customer/PhotoTryOnPage';
 import WebcamTryOnPage from './pages/customer/WebcamTryOnPage';
 import AboutPage from './pages/customer/AboutPage';
-import BlogPage from './pages/customer/BlogPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
+<<<<<<< HEAD
 import StylistPage from './pages/customer/StylistPage';
+=======
+import WardrobePage from './pages/customer/WardrobePage';
+>>>>>>> origin/main2
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
-import CustomerOrderTrackingPage from './pages/customer/CustomerOrderTrackingPage';
+import ChatPage from './pages/customer/ChatPage';
+import BranchChatPage from './pages/branch/BranchChatPage';
 import SharedLookbookPage from './pages/customer/SharedLookbookPage';
 import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
 
@@ -53,6 +63,10 @@ import InventoryReportPage from './pages/warehouse/InventoryReportPage';
 import WarehouseStocktakePage from './pages/warehouse/WarehouseStocktakePage';
 import WarehouseAdjustmentPage from './pages/warehouse/WarehouseAdjustmentPage';
 import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
+import WarehouseBranchReturnsPage from './pages/warehouse/BranchReturnsPage';
+import WarehouseRelocationsPage from './pages/warehouse/WarehouseRelocationsPage';
+import WarehouseDiscrepanciesPage from './pages/warehouse/WarehouseDiscrepanciesPage';
+import WarehouseMaintenancePage from './pages/warehouse/WarehouseMaintenancePage';
 import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
 import ProductManagementPage from './pages/warehouse/ProductManagementPage';
 import SupplierManagementPage from './pages/warehouse/SupplierManagementPage';
@@ -72,11 +86,19 @@ import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
+import { NotificationProvider } from './context/NotificationContext';
+
+function TrackingRedirect() {
+  const { trackingCode } = useParams();
+  const target = trackingCode ? `/rental-orders?code=${encodeURIComponent(trackingCode)}` : '/rental-orders';
+  return <Navigate to={target} replace />;
+}
 
 function App() {
   return (
     <Router>
-      <ForceChangePasswordModal />
+      <NotificationProvider>
+        <ForceChangePasswordModal />
       <CartDrawer />
       <Routes>
         {/* ========================================================
@@ -99,12 +121,11 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/try-on" element={<PhotoTryOnPage />} />
         <Route path="/try-on/photo" element={<PhotoTryOnPage />} />
         <Route path="/try-on/webcam" element={<WebcamTryOnPage />} />
 
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/blog" element={<BlogPage />} />
-        <Route path="/blog/:id" element={<BlogPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/policy" element={<PolicyPage />} />
         <Route path="/policy/:tab" element={<PolicyPage />} />
@@ -125,19 +146,30 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+        <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
-        <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
+        <Route path="/tracking/:trackingCode" element={<TrackingRedirect />} />
         <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
         <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)
             ======================================================== */}
+
         <Route
-          path="/branch/dashboard"
+          path="/branch/chat"
           element={
-            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
-              <BranchDashboardPage />
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER']}>
+              <BranchChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/chat/:conversationId"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER']}>
+              <BranchChatPage />
             </ProtectedRoute>
           }
         />
@@ -174,6 +206,14 @@ function App() {
           }
         />
         <Route
+          path="/branch/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchAnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/branch/analytics"
           element={
             <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
@@ -190,6 +230,7 @@ function App() {
           }
         />
         <Route path="/branch/stock-requests" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><WarehouseTransfersPage mode="branch" /></ProtectedRoute>} />
+        <Route path="/branch/stock-returns" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><WarehouseBranchReturnsPage mode="branch" /></ProtectedRoute>} />
         <Route path="/branch/inventory" element={<ProtectedRoute allowedRoles={['BRANCH_MANAGER']}><BranchInventoryPage /></ProtectedRoute>} />
         <Route
           path="/branch/showroom"
@@ -227,6 +268,11 @@ function App() {
         <Route path="/warehousemanager/adjustments" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseAdjustmentPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/transfers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/relocations/split" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="split" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/relocations/merge" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="merge" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/discrepancies" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseDiscrepanciesPage /></ProtectedRoute>} />
+        <Route path="/warehousemanager/maintenance" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseMaintenancePage mode="manager" /></ProtectedRoute>} />
         <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/products" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><ProductManagementPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/suppliers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN']}><SupplierManagementPage /></ProtectedRoute>} />
@@ -278,6 +324,9 @@ function App() {
         <Route path="/warehousestaff/stocktakes" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseStocktakePage /></ProtectedRoute>} />
         <Route path="/warehousestaff/reports/inventory" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><InventoryReportPage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehousestaff/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="staff" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="staff" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/relocations" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'ADMIN']}><WarehouseRelocationsPage mode="staff" /></ProtectedRoute>} />
+        <Route path="/warehousestaff/maintenance" element={<ProtectedRoute allowedRoles={['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseMaintenancePage mode="staff" /></ProtectedRoute>} />
         <Route path="/warehouse/products" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/products/new" element={<Navigate to="/warehousemanager/products" replace />} />
         <Route path="/warehouse/inventory" element={<Navigate to="/branch/inventory" replace />} />
@@ -461,6 +510,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <AiStylistWidget />
+      </NotificationProvider>
     </Router>
   );
 }

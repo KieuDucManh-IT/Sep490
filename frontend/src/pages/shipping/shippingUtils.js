@@ -29,6 +29,16 @@ export const formatDate = (dateStr) => {
   });
 };
 
+export const sanitizeTimelineText = (text) => {
+  if (!text) return 'Cập nhật tiến trình';
+  return String(text)
+    .replace(/\s*\(Cập nhật trạng thái vận chuyển qua Sandbox\)/gi, '')
+    .replace(/\s*\(Sandbox\)/gi, '')
+    .replace(/trên Shop (ID )?\d+/gi, 'tại cửa hàng')
+    .replace(/sang Shop (ID )?\d+/gi, 'sang thông tin mới')
+    .trim();
+};
+
 /**
  * Chuẩn hóa chuỗi tiếng Việt phục vụ so khớp danh mục hành chính GHN
  */

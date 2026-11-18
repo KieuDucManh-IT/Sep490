@@ -3,7 +3,8 @@ import mongoose from 'mongoose';
 const stocktakeSchema = new mongoose.Schema({
   stocktakeCode: { type: String, required: true, unique: true, trim: true },
   locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', required: true },
-  scopeType: { type: String, required: true, enum: ['full', 'product', 'storage_location'] },
+  scopeType: { type: String, required: true, enum: ['full', 'product', 'storage_location', 'custom'] },
+  productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
   variantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' }],
   storageIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation' }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -12,6 +13,9 @@ const stocktakeSchema = new mongoose.Schema({
   status: { type: String, default: 'draft', enum: ['draft', 'in_progress', 'counted', 'approved', 'cancelled'] },
   startedAt: { type: Date, default: null },
   completedAt: { type: Date, default: null },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  cancelledAt: { type: Date, default: null },
+  cancelReason: { type: String, trim: true, maxlength: 500, default: '' },
 }, { timestamps: true });
 
 export const Stocktake = mongoose.models.Stocktake || mongoose.model('Stocktake', stocktakeSchema);

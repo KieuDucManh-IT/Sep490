@@ -103,6 +103,27 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
     const mapped = mapGhnStatus(ghnData.status);
     let hasChanged = false;
 
+    // Rollback Guard: Không để API GHN (vốn có độ trễ hoặc trên Sandbox chưa đổi) kéo lùi trạng thái nếu DB đã ở rank cao hơn
+    const STATUS_RANK = { preparing: 1, shipped: 2, failed: 2, delivered: 3, cancelled: 3 };
+    const currentRank = STATUS_RANK[shipment.shipmentStatus] ?? 0;
+    const incomingRank = STATUS_RANK[mapped.internalStatus] ?? 0;
+
+    if (incomingRank < currentRank) {
+      await OrderShipment.updateOne({ _id: shipment._id }, { $set: { lastSyncedAt: new Date() } });
+      return shipment;
+    }
+
+    // Nếu đơn vừa mới có cập nhật trong vòng 10 phút và rank GHN <= rank hiện tại, không để GHN polling ghi đè
+    const recentHistory = shipment.statusHistory?.[shipment.statusHistory.length - 1];
+    if (
+      recentHistory &&
+      incomingRank <= currentRank &&
+      Date.now() - new Date(recentHistory.timestamp || 0).getTime() < 600000
+    ) {
+      await OrderShipment.updateOne({ _id: shipment._id }, { $set: { lastSyncedAt: new Date() } });
+      return shipment;
+    }
+
     if (mapped.internalStatus !== shipment.shipmentStatus) {
       shipment.shipmentStatus = mapped.internalStatus;
       hasChanged = true;

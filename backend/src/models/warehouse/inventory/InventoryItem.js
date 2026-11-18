@@ -8,7 +8,7 @@ const inventoryItemSchema = new mongoose.Schema({
   itemCode: { type: String, required: true, unique: true, trim: true },
   serialNumber: { type: String, trim: true },
   condition: { type: String, default: 'good', enum: ['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'] },
-  status: { type: String, default: 'available', enum: ['available', 'reserved', 'renting', 'maintenance', 'unavailable', 'in_transit', 'disposed'] },
+  status: { type: String, default: 'available', enum: ['available', 'reserved', 'renting', 'maintenance', 'unavailable', 'in_transit', 'disposed', 'sold'] },
   
 }, { timestamps: true });
 

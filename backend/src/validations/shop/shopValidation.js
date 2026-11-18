@@ -296,3 +296,83 @@ export const validateReverseGeocodeQuery = (query) => {
   return { targetLat, targetLng };
 };
 
+const ALLOWED_REPORT_PRESETS = ['TODAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR', 'CUSTOM'];
+
+const parseLocalCalendarDate = (rawValue, isEndOfDay = false) => {
+  const str = String(rawValue || '').trim();
+  if (!str) return null;
+
+  const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (ymdMatch) {
+    const year = Number(ymdMatch[1]);
+    const month = Number(ymdMatch[2]) - 1;
+    const day = Number(ymdMatch[3]);
+    const parsed = isEndOfDay
+      ? new Date(year, month, day, 23, 59, 59, 999)
+      : new Date(year, month, day, 0, 0, 0, 0);
+    if (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() === month &&
+      parsed.getDate() === day
+    ) {
+      return parsed;
+    }
+    return null;
+  }
+
+  const parsed = new Date(str);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (isEndOfDay) {
+    parsed.setHours(23, 59, 59, 999);
+  }
+  return parsed;
+};
+
+/**
+ * Validate query parameters for branch performance report
+ * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-001
+ * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-004
+ */
+export const validateBranchPerformanceQuery = (query = {}) => {
+  const rawBranchId = query.branchId ? String(query.branchId).trim() : '';
+  if (rawBranchId) {
+    validateObjectId(rawBranchId, 'chi nhánh');
+  }
+
+  const preset = String(query.timeRange || 'MONTH').trim().toUpperCase();
+  if (!ALLOWED_REPORT_PRESETS.includes(preset)) {
+    throw validationError(
+      `Khoảng thời gian thống kê không hợp lệ. Cho phép: ${ALLOWED_REPORT_PRESETS.join(', ')}.`,
+      400
+    );
+  }
+
+  let parsedStart = null;
+  let parsedEnd = null;
+
+  if (preset === 'CUSTOM') {
+    if (!query.startDate || !query.endDate) {
+      throw validationError('Vui lòng chọn đầy đủ ngày bắt đầu và ngày kết thúc khi lọc tùy chỉnh.', 400);
+    }
+
+    parsedStart = parseLocalCalendarDate(query.startDate, false);
+    parsedEnd = parseLocalCalendarDate(query.endDate, true);
+
+    if (!parsedStart || !parsedEnd) {
+      throw validationError('Định dạng ngày bắt đầu hoặc ngày kết thúc không hợp lệ.', 400);
+    }
+
+    if (parsedStart.getTime() > parsedEnd.getTime()) {
+      throw validationError('Ngày bắt đầu không được lớn hơn ngày kết thúc.', 400);
+    }
+  }
+
+  return {
+    branchId: rawBranchId || null,
+    timeRange: preset,
+    startDate: parsedStart,
+    endDate: parsedEnd,
+  };
+};
+
+

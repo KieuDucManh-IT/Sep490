@@ -1,5 +1,6 @@
 import {
   approveReceipt,
+  cancelInboundReceipt,
   createInboundReceipt,
   getInboundReceipt,
   listInboundReceipts,
@@ -40,6 +41,11 @@ export const decideReceipt = async (req, res, next) => {
 };
 export const putawayReceiptItems = async (req, res, next) => {
   try { res.json({ success: true, data: await putawayReceipt(req.params.id, req.body, req.user) }); }
+  catch (error) { handleError(error, res, next); }
+};
+
+export const cancelReceipt = async (req, res, next) => {
+  try { res.json({ success: true, data: await cancelInboundReceipt(req.params.id, req.body, req.user) }); }
   catch (error) { handleError(error, res, next); }
 };
 

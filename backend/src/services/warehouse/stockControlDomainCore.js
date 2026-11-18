@@ -1,18 +1,21 @@
 import mongoose from 'mongoose';
+import { refreshOutOfStockStatus } from './productStockStatusService.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
+import { Product } from '../../models/masterdata/Product.js';
 import User from '../../models/system/User.js';
 import { Stocktake } from '../../models/warehouse/stocktake/Stocktake.js';
 import { StocktakeDetail } from '../../models/warehouse/stocktake/StocktakeDetail.js';
 import { StockAdjustment } from '../../models/warehouse/adjustment/StockAdjustment.js';
 import { StockAdjustmentDetail } from '../../models/warehouse/adjustment/StockAdjustmentDetail.js';
-import { validateCreateStocktakeInput, validateStocktakeCountInput } from '../../validations/warehouse/stockControlValidation.js';
+import { validateCancelReason, validateCreateStocktakeInput, validateStocktakeCountInput } from '../../validations/warehouse/stockControlValidation.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
+import { createItems, moveItem } from './itemStateService.js';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const idValid = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -25,7 +28,7 @@ const isStorageInScope = (storageId, scopedStorageIds) => !scopedStorageIds || s
 
 const storageScope = async (locationId, requestedIds) => {
   if (!requestedIds?.length) throw fail('Chọn ít nhất một vị trí lưu trữ để kiểm kê.');
-  const all = await StorageLocation.find({ locationId }).select('_id parentStorageId status').lean();
+  const all = await StorageLocation.find({ locationId, status: 'active' }).select('_id parentStorageId status').lean();
   const allById = new Map(all.map((item) => [String(item._id), item]));
   const requested = cleanIds(requestedIds);
   if (requested.some((id) => !idValid(id) || !allById.has(id) || allById.get(id).status !== 'active')) throw fail('Vị trí kiểm kê không thuộc kho hoặc không hoạt động.');
@@ -47,9 +50,13 @@ const storageScope = async (locationId, requestedIds) => {
 
 const stocktakePopulation = [
   { path: 'locationId', select: 'code name type' },
+  { path: 'storageIds', select: 'code name type parentStorageId' },
+  { path: 'productIds', select: 'productCode name' },
+  { path: 'variantIds', select: 'sku size color productId', populate: { path: 'productId', select: 'productCode name' } },
   { path: 'createdBy', select: 'FullName Email' },
   { path: 'assignedStaffId', select: 'FullName Email' },
   { path: 'approvedBy', select: 'FullName Email' },
+  { path: 'cancelledBy', select: 'FullName Email' },
 ];
 
 const detailsForStocktake = (stocktakeId) => StocktakeDetail.find({ stocktakeId }).sort({ createdAt: 1 })
@@ -80,22 +87,28 @@ const loadStocktake = async (id, requester) => {
 export const listWarehouseStaffForStocktake = () => User.find({ Role: /^warehouse_staff$/i, Status: /^active$/i }).select('FullName Email').sort({ FullName: 1 }).lean();
 
 export const createStocktake = async (payload, user) => {
-  const { locationId, scopeType, variantIds, storageIds, assignedStaffId } = validateCreateStocktakeInput(payload);
+  const { locationId, scopeType, productIds, variantIds, storageIds, assignedStaffId } = validateCreateStocktakeInput(payload);
   const location = await InventoryLocation.findOne({ _id: locationId, status: 'active' }).lean();
   if (!location) throw fail('Kho/cửa hàng không tồn tại hoặc không hoạt động.');
   await assertCentralWarehouse(location._id);
-  if (scopeType === 'storage_location') await storageScope(locationId, storageIds);
+  if (storageIds.length) await storageScope(locationId, storageIds);
+  if (productIds.length) {
+    const count = await Product.countDocuments({ _id: { $in: productIds }, status: 'active', isDeleted: { $ne: true } });
+    if (count !== productIds.length) throw fail('Một hoặc nhiều sản phẩm không tồn tại hoặc đã ngừng hoạt động.');
+  }
   if (variantIds.length) {
-    const count = await ProductVariant.countDocuments({ _id: { $in: variantIds }, status: 'active' });
-    if (count !== variantIds.length) throw fail('Một hoặc nhiều biến thể không tồn tại hoặc đã ngừng hoạt động.');
+    const selectedVariantRows = await ProductVariant.find({ _id: { $in: variantIds }, status: 'active', isDeleted: { $ne: true } }).select('productId').lean();
+    if (selectedVariantRows.length !== variantIds.length) throw fail('Một hoặc nhiều biến thể không tồn tại hoặc đã ngừng hoạt động.');
+    const variantProductIds = [...new Set(selectedVariantRows.map((variant) => String(variant.productId)))];
+    const activeProductCount = await Product.countDocuments({ _id: { $in: variantProductIds }, status: 'active', isDeleted: { $ne: true } });
+    if (activeProductCount !== variantProductIds.length) throw fail('Một hoặc nhiều sản phẩm chứa biến thể đã ngừng hoạt động.');
   }
   if (assignedStaffId) {
     if (!await User.exists({ _id: assignedStaffId, Role: /^warehouse_staff$/i, Status: /^active$/i })) throw fail('Nhân viên được giao không hợp lệ.');
   }
   const stocktake = await Stocktake.create({
     stocktakeCode: makeCode('KK'), locationId, scopeType,
-    variantIds: scopeType === 'product' ? variantIds : [],
-    storageIds: scopeType === 'storage_location' ? storageIds : [],
+    productIds, variantIds, storageIds,
     createdBy: user._id, assignedStaffId, status: 'draft',
   });
   return loadStocktake(stocktake._id, user);
@@ -120,14 +133,27 @@ export const startStocktake = async (stocktakeId, user) => {
       const stocktake = await Stocktake.findOne({ _id: stocktakeId, status: 'draft' }).session(session);
       if (!stocktake) throw fail('Phiếu không ở trạng thái nháp.', 409);
       const startedAt = new Date();
-      const { expanded } = stocktake.scopeType === 'storage_location'
+      const { expanded } = stocktake.storageIds?.length
         ? await storageScope(stocktake.locationId, stocktake.storageIds.map(String))
         : { expanded: null };
-      const variantFilter = stocktake.scopeType === 'product' ? { variantId: { $in: stocktake.variantIds } } : {};
+      const selectedVariants = new Set((stocktake.variantIds || []).map(String));
+      if (stocktake.productIds?.length) {
+        const activeProductCount = await Product.countDocuments({ _id: { $in: stocktake.productIds }, status: 'active', isDeleted: { $ne: true } }).session(session);
+        if (activeProductCount !== stocktake.productIds.length) throw fail('Một hoặc nhiều sản phẩm trong phạm vi đã ngừng hoạt động; hãy tạo lại phiếu với phạm vi mới.');
+        const productVariants = await ProductVariant.find({ productId: { $in: stocktake.productIds }, status: 'active', isDeleted: { $ne: true } }).distinct('_id').session(session);
+        productVariants.forEach((id) => selectedVariants.add(String(id)));
+      }
+      const hasProductScope = stocktake.productIds?.length || stocktake.variantIds?.length;
+      if (hasProductScope && selectedVariants.size === 0) throw fail('Không tìm thấy biến thể đang hoạt động trong phạm vi sản phẩm đã chọn.');
+      if (hasProductScope) {
+        const activeCount = await ProductVariant.countDocuments({ _id: { $in: [...selectedVariants] }, status: 'active', isDeleted: { $ne: true } }).session(session);
+        if (activeCount !== selectedVariants.size) throw fail('Một hoặc nhiều biến thể trong phạm vi đã ngừng hoạt động; hãy tạo lại phiếu với phạm vi mới.');
+      }
+      const variantFilter = hasProductScope ? { variantId: { $in: [...selectedVariants] } } : {};
       const storageFilter = expanded ? { storageId: { $in: [...expanded] } } : {};
       const [balances, items] = await Promise.all([
         InventoryBalance.find({ locationId: stocktake.locationId, ...variantFilter, ...storageFilter }).session(session).lean(),
-        InventoryItem.find({ locationId: stocktake.locationId, status: { $nin: ['disposed', 'renting', 'in_transit'] }, ...variantFilter, ...storageFilter }).session(session).lean(),
+        InventoryItem.find({ locationId: stocktake.locationId, status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] }, ...variantFilter, ...storageFilter }).session(session).lean(),
       ]);
       const variants = await ProductVariant.find({ _id: { $in: [...balances.map((row) => row.variantId), ...items.map((row) => row.variantId)] } })
         .select('productId').populate('productId', 'trackingType').session(session).lean();
@@ -199,10 +225,16 @@ export const recordStocktakeCounts = async (stocktakeId, payload, user) => {
     if (!storageId) throw fail('Cần chọn vị trí cho mã hàng cá thể mới.');
     const variant = variants.find((row) => String(row._id) === variantId);
     if (!variant || variant.status !== 'active') throw fail('Biến thể kiểm kê không hợp lệ hoặc đã ngừng hoạt động.');
-    if (stocktake.scopeType === 'product' && !stocktake.variantIds.some((id) => String(id) === variantId)) throw fail('Biến thể mới nằm ngoài phạm vi kiểm kê.');
+    const hasProductScope = stocktake.productIds?.length || stocktake.variantIds?.length;
+    if (hasProductScope) {
+      const allowedByVariant = (stocktake.variantIds || []).some((id) => String(id) === variantId);
+      const variantProduct = variant.productId?._id ? String(variant.productId._id) : String(variant.productId);
+      const allowedByProduct = (stocktake.productIds || []).some((id) => String(id) === variantProduct);
+      if (!allowedByVariant && !allowedByProduct) throw fail('Biến thể mới nằm ngoài phạm vi kiểm kê.');
+    }
     if (storageId && !idValid(storageId)) throw fail('Vị trí lưu trữ không hợp lệ.');
     if (storageId && !await StorageLocation.exists({ _id: storageId, locationId: stocktake.locationId, status: 'active' })) throw fail('Vị trí lưu trữ không thuộc kho hoặc không hoạt động.');
-    if (stocktake.scopeType === 'storage_location') {
+    if (stocktake.storageIds?.length) {
       const { expanded } = await storageScope(stocktake.locationId, stocktake.storageIds.map(String));
       if (!isStorageInScope(storageId, expanded)) throw fail('Vị trí của mã hàng nằm ngoài phạm vi kiểm kê.');
     }
@@ -240,9 +272,36 @@ export const submitStocktake = async (stocktakeId, user) => {
   if (!isStaff(user) && !isManager(user)) throw fail('Bạn không có quyền gửi kết quả kiểm kê.', 403);
   const uncounted = await StocktakeDetail.countDocuments({ stocktakeId, isCounted: false });
   if (uncounted) throw fail(`Còn ${uncounted} dòng chưa được kiểm đếm.`);
-  stocktake.status = 'counted';
-  stocktake.completedAt = new Date();
-  await stocktake.save();
+  // Chuyển trạng thái có điều kiện để không ghi đè phiếu vừa bị hủy.
+  const updated = await Stocktake.findOneAndUpdate(
+    { _id: stocktakeId, status: 'in_progress' },
+    { $set: { status: 'counted', completedAt: new Date() } },
+    { new: true },
+  );
+  if (!updated) throw fail('Phiếu kiểm kê không ở trạng thái đang kiểm.', 409);
+  return loadStocktake(stocktakeId, user);
+};
+
+export const cancelStocktake = async (stocktakeId, payload, user) => {
+  if (!isManager(user)) throw fail('Chỉ quản lý kho mới được hủy phiếu kiểm kê.', 403);
+  if (!idValid(stocktakeId)) throw fail('Mã phiếu kiểm kê không hợp lệ.');
+  const { reason } = validateCancelReason(payload);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // startStocktake chỉ chụp số hệ thống vào StocktakeDetail, không khóa tồn, nên hủy không cần nhả gì.
+      const cancelled = await Stocktake.findOneAndUpdate(
+        { _id: stocktakeId, status: { $in: ['draft', 'in_progress', 'counted'] } },
+        { $set: { status: 'cancelled', cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
+        { new: true, session },
+      );
+      if (!cancelled) {
+        const exists = await Stocktake.exists({ _id: stocktakeId }).session(session);
+        if (!exists) throw fail('Không tìm thấy phiếu kiểm kê.', 404);
+        throw fail('Chỉ hủy được phiếu kiểm kê ở trạng thái nháp, đang kiểm hoặc đã đếm xong.', 409);
+      }
+    });
+  } finally { await session.endSession(); }
   return loadStocktake(stocktakeId, user);
 };
 
@@ -267,30 +326,26 @@ const movementTotal = async (detail, stocktake, { after, before } = {}) => {
 const currentQuantity = async (detail, individual) => {
   if (individual) {
     if (!detail.itemId) return 0;
-    const item = await InventoryItem.findOne({ _id: detail.itemId, locationId: detail.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).select('_id');
+    const item = await InventoryItem.findOne({ _id: detail.itemId, locationId: detail.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] } }).select('_id');
     return item ? 1 : 0;
   }
   const balance = await InventoryBalance.findOne({ locationId: detail.locationId, variantId: detail.variantId, storageId: detail.storageId || null }).select('quantityOnHand');
   return balance?.quantityOnHand || 0;
 };
 
+// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho mọi loại hàng (balance individual đã đồng bộ với món).
 const getCapacitySnapshot = async (locationId, session) => {
-  const [location, storages, balances, items] = await Promise.all([
+  const [location, storages, balances] = await Promise.all([
     InventoryLocation.findById(locationId).session(session).lean(),
     StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity').session(session).lean(),
-    InventoryBalance.find({ locationId }).select('storageId variantId quantityOnHand').session(session).lean(),
-    InventoryItem.find({ locationId, status: { $nin: ['disposed', 'renting', 'in_transit'] } }).select('storageId variantId').session(session).lean(),
+    InventoryBalance.find({ locationId }).select('storageId quantityOnHand').session(session).lean(),
   ]);
-  const variants = await ProductVariant.find({ _id: { $in: [...balances.map((row) => row.variantId), ...items.map((row) => row.variantId)] } })
-    .select('productId').populate('productId', 'trackingType').session(session).lean();
-  const tracking = new Map(variants.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
   const direct = new Map();
   const add = (storageId, amount) => {
     const key = String(storageId || '');
     direct.set(key, (direct.get(key) || 0) + amount);
   };
-  for (const row of balances) if (tracking.get(String(row.variantId)) !== 'individual') add(row.storageId, row.quantityOnHand || 0);
-  for (const item of items) if (tracking.get(String(item.variantId)) === 'individual') add(item.storageId, 1);
+  for (const row of balances) add(row.storageId, Math.max(0, row.quantityOnHand || 0));
   const storageById = new Map(storages.map((storage) => [String(storage._id), storage]));
   const usedByStorage = new Map();
   for (const [storageId, amount] of direct) {
@@ -333,8 +388,13 @@ export const approveStocktake = async (stocktakeId, user) => {
   let result;
   try {
     await session.withTransaction(async () => {
-      const stocktake = await Stocktake.findOne({ _id: stocktakeId, status: 'counted' }).session(session);
-      if (!stocktake) throw fail('Phiếu kiểm kê chưa gửi kết quả hoặc đã được xử lý.', 409);
+      // Giành trạng thái ngay đầu transaction để duyệt và hủy loại trừ nhau.
+      const stocktake = await Stocktake.findOneAndUpdate(
+        { _id: stocktakeId, status: 'counted' },
+        { $set: { status: 'approved', approvedBy: user._id } },
+        { new: true, session },
+      );
+      if (!stocktake) throw fail('Phiếu kiểm kê chưa gửi kết quả, đã được xử lý hoặc đã bị hủy.', 409);
       const details = await StocktakeDetail.find({ stocktakeId }).session(session);
       if (details.some((detail) => !detail.isCounted)) throw fail('Tất cả dòng phải được kiểm đếm trước khi duyệt.');
       const variantRows = await ProductVariant.find({ _id: { $in: details.map((detail) => detail.variantId) } }).select('productId').populate('productId', 'trackingType').lean();
@@ -351,18 +411,19 @@ export const approveStocktake = async (stocktakeId, user) => {
           const itemState = await InventoryItem.findById(detail.itemId).select('locationId storageId status').lean();
           const stillPresent = itemState && String(itemState.locationId) === String(stocktake.locationId)
             && String(itemState.storageId || '') === String(detail.storageId || '')
-            && !['disposed', 'renting', 'in_transit'].includes(itemState.status);
+            && !['disposed', 'renting', 'in_transit', 'sold'].includes(itemState.status);
           if (!stillPresent) afterCount = -detail.countedQuantity;
         }
         if (individual && detail.itemId && detail.countedQuantity > 0 && detail.countedCondition) {
           const itemRecord = await InventoryItem.findOne({
             _id: detail.itemId, locationId: stocktake.locationId, storageId: detail.storageId || null,
-            status: { $nin: ['disposed', 'renting', 'in_transit'] },
+            status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] },
           }).session(session);
           if (!itemRecord) throw fail('InventoryItem đã đổi vị trí hoặc trạng thái trong lúc kiểm kê. Tạo lại phiếu kiểm kê.', 409);
-          itemRecord.condition = detail.countedCondition;
-          if (['damaged', 'unrepairable'].includes(detail.countedCondition) && itemRecord.status !== 'reserved') itemRecord.status = 'unavailable';
-          await itemRecord.save({ session });
+          // TASK-009: đổi tình trạng/trạng thái qua itemStateService. Chỉ món available mới chuyển unavailable
+          // (món reserved đang bị giữ, món maintenance đang có phiếu giặt/sửa thì giữ nguyên trạng thái).
+          const markUnavailable = ['damaged', 'unrepairable'].includes(detail.countedCondition) && itemRecord.status === 'available';
+          await moveItem(itemRecord, { condition: detail.countedCondition, ...(markUnavailable ? { status: 'unavailable' } : {}) }, session);
         }
         const systemAtCount = Math.max(0, detail.systemQuantity + movementUntilCount);
         const expectedNow = Math.max(0, detail.countedQuantity + afterCount);
@@ -384,9 +445,6 @@ export const approveStocktake = async (stocktakeId, user) => {
           });
         }
       }
-      stocktake.status = 'approved';
-      stocktake.approvedBy = user._id;
-      await stocktake.save({ session });
       let adjustment = null;
       if (adjustmentLines.length) {
         adjustment = await StockAdjustment.create([{
@@ -454,15 +512,20 @@ export const applyStockAdjustment = async (adjustmentId, user) => {
         }
         if (individual) {
           if (detail.itemId && detail.quantityChange === -1) {
-            const item = await InventoryItem.findOneAndUpdate({ _id: detail.itemId, locationId: adjustment.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit'] } }, { $set: { status: 'disposed', ...(detail.itemCondition ? { condition: detail.itemCondition } : {}) } }, { new: true, session });
+            const item = await InventoryItem.findOne({ _id: detail.itemId, locationId: adjustment.locationId, storageId: detail.storageId || null, status: { $nin: ['disposed', 'renting', 'in_transit', 'sold'] } }).session(session);
             if (!item) throw fail('Mã hàng cá thể đã thay đổi vị trí/trạng thái sau khi duyệt. Tạo lại phiếu kiểm kê.', 409);
+            if (item.status === 'reserved') throw fail(`Món ${item.itemCode} đang được giữ cho phiếu kho hoặc đơn hàng. Hãy nhả giữ trước khi áp dụng điều chỉnh.`, 409);
+            // TASK-009: thanh lý qua itemStateService → onHand -1 (và unavailable -1 nếu món đang không khả dụng) ở đúng kệ.
+            await moveItem(item, { status: 'disposed', ...(detail.itemCondition ? { condition: detail.itemCondition } : {}) }, session);
           } else if (!detail.itemId && detail.quantityChange > 0) {
             if (!detail.itemCode) throw fail('Thiếu mã hàng cho cá thể phát hiện thừa.');
-            const [createdItem] = await InventoryItem.create([{
-              variantId: detail.variantId, locationId: adjustment.locationId, storageId: detail.storageId,
+            if (detail.itemStatus === 'reserved') throw fail('Không thể tạo món mới ở trạng thái giữ chỗ.', 409);
+            // TASK-009: tạo món thừa qua itemStateService → balance cộng đúng theo trạng thái món.
+            const [createdItem] = await createItems([{
+              variantId: detail.variantId, locationId: adjustment.locationId, storageId: detail.storageId || null,
               itemCode: detail.itemCode, serialNumber: detail.serialNumber || undefined,
               condition: detail.itemCondition || 'new', status: detail.itemStatus || 'available',
-            }], { session });
+            }], session);
             movementItemId = createdItem._id;
           } else if (detail.quantityChange !== 0) throw fail('Chênh lệch cá thể phải là một mã hàng cụ thể.');
         }
@@ -490,5 +553,22 @@ export const applyStockAdjustment = async (adjustmentId, user) => {
   } finally {
     await session.endSession();
   }
+  // TASK-012: Điều chỉnh kho → tồn thay đổi → kiểm tra lại hết hàng
+  try {
+    const adj = await StockAdjustment.findById(adjustmentId).select('_id').lean();
+    if (adj) {
+      const details = await StockAdjustmentDetail.find({ adjustmentId: adj._id }).select('variantId').lean();
+      const variantIds = [...new Set(details.map((d) => String(d.variantId)).filter(Boolean))];
+      if (variantIds.length) {
+        const pvs = await ProductVariant.find({ _id: { $in: variantIds } }).select('productId').lean();
+        const productIds = [...new Set(pvs.map((v) => String(v.productId)).filter(Boolean))];
+        if (productIds.length) {
+          refreshOutOfStockStatus(productIds).catch((err) =>
+            console.error('[TASK-012] stock adjustment refresh lỗi:', err.message)
+          );
+        }
+      }
+    }
+  } catch (_) { /* non-blocking */ }
   return getStockAdjustment(adjustmentId);
 };

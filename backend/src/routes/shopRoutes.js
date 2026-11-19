@@ -8,6 +8,7 @@ import {
   getShopById,
   getMyShop,
   getAssignedBranch,
+  getBranchPerformanceReport,
   updateShopAddress,
   updateShopInfo,
   reverseGeocodeAddress,
@@ -15,7 +16,6 @@ import {
   deleteBranch,
   getBranchManagers,
   uploadShopImage,
-  getBranchPerformanceReport,
 } from '../controllers/shop/shopController.js';
 import {
   getMyPolicy,
@@ -87,13 +87,13 @@ router.get(
   requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
   getAssignedBranch
 );
-router.get('/reverse-geocode', reverseGeocodeAddress);
 router.get(
   '/reports/branch-performance',
   authMiddleware,
-  requireRole('branch_manager'),
+  requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
   getBranchPerformanceReport
 );
+router.get('/reverse-geocode', reverseGeocodeAddress);
 
 // ==========================================
 // BUSINESS POLICIES (Chain Management)

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, X, CheckCircle2 } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 
 const TryOnOutfitPairing = ({
   pairedGarment,
@@ -7,13 +7,8 @@ const TryOnOutfitPairing = ({
   pairedGarmentSize,
   setPairedGarmentSize,
   handleRemovePairedGarment,
-  pairedAccessory,
-  setPairedAccessory,
-  handleRemovePairedAccessory,
   handleClearAllPaired,
   category,
-  pairingTab,
-  setPairingTab,
   currentOutfitSuggestions = [],
   currentAccessorySuggestions = [],
   fallbackGarmentImage,
@@ -27,7 +22,7 @@ const TryOnOutfitPairing = ({
 }) => {
   return (
     <>
-      {/* Khối Gợi Ý Phối Đồ & Combo Set */}
+      {/* Khối 1: GỢI Ý PHỐI TRANG PHỤC CÙNG SET (Áo / Quần / Chân váy ghép bằng AI IDM-VTON) */}
       <div
         style={{
           border: '1.5px dashed var(--color-gold, #5b6e4e)',
@@ -37,7 +32,7 @@ const TryOnOutfitPairing = ({
           marginTop: '2px',
         }}
       >
-        {/* Header của khối gợi ý */}
+        {/* Header của khối phối trang phục */}
         <div
           style={{
             display: 'flex',
@@ -56,9 +51,9 @@ const TryOnOutfitPairing = ({
                 letterSpacing: '0.4px',
               }}
             >
-              GỢI Ý PHỐI CẢ SET HOÀN CHỈNH
+              GỢI Ý PHỐI TRANG PHỤC
             </span>
-            {(pairedGarment || pairedAccessory) && (
+            {pairedGarment && (
               <span
                 style={{
                   fontSize: '9px',
@@ -69,12 +64,12 @@ const TryOnOutfitPairing = ({
                   fontWeight: 700,
                 }}
               >
-                {(pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0)} món phối
+                1 món phối
               </span>
             )}
           </div>
 
-          {(pairedGarment || pairedAccessory) && (
+          {pairedGarment && (
             <button
               type="button"
               onClick={handleClearAllPaired}
@@ -88,252 +83,118 @@ const TryOnOutfitPairing = ({
                 padding: 0,
               }}
             >
-              ✕ Bỏ tất cả phối
+              ✕ Bỏ phối
             </button>
           )}
         </div>
 
-        {/* Các món ĐÃ ĐƯỢC CHỌN trong set */}
-        {(pairedGarment || pairedAccessory) && (
+        {/* Món trang phục ĐÃ ĐƯỢC CHỌN để ghép cùng */}
+        {pairedGarment && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '8px' }}>
-            {/* 1. Món quần / chân váy hoặc áo phối kèm */}
-            {pairedGarment && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '7px',
-                  alignItems: 'center',
-                  background: '#ffffff',
-                  border: '1px solid var(--color-border, #e2e6dc)',
-                  borderRadius: '6px',
-                  padding: '4px 6px',
-                  position: 'relative',
+            <div
+              style={{
+                display: 'flex',
+                gap: '7px',
+                alignItems: 'center',
+                background: '#ffffff',
+                border: '1px solid var(--color-border, #e2e6dc)',
+                borderRadius: '6px',
+                padding: '4px 6px',
+                position: 'relative',
+              }}
+            >
+              <img
+                src={
+                  pairedGarment.primaryImageUrl ||
+                  pairedGarment.image ||
+                  (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
+                  fallbackGarmentImage
+                }
+                alt={pairedGarment.name}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = fallbackGarmentImage;
                 }}
-              >
-                <img
-                  src={
-                    pairedGarment.primaryImageUrl ||
-                    pairedGarment.image ||
-                    (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
-                    fallbackGarmentImage
-                  }
-                  alt={pairedGarment.name}
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = fallbackGarmentImage;
-                  }}
+                style={{
+                  width: '34px',
+                  height: '42px',
+                  borderRadius: '4px',
+                  objectFit: 'cover',
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
                   style={{
-                    width: '34px',
-                    height: '42px',
-                    borderRadius: '4px',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                  }}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: '10px',
-                      fontWeight: 700,
-                      color: '#1f2421',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {pairedGarment.name}
-                  </div>
-                  <div style={{ fontSize: '9.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
-                    +{(pairedGarment.rentalPricePerDay || 200000).toLocaleString('vi-VN')} đ/ngày
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                    <span style={{ fontSize: '8.5px', color: '#6e7569', fontWeight: 600 }}>Size:</span>
-                    {['XS', 'S', 'M', 'L'].map((bsz) => (
-                      <button
-                        key={bsz}
-                        type="button"
-                        onClick={() => setPairedGarmentSize(bsz)}
-                        style={{
-                          padding: '1px 4px',
-                          fontSize: '8.5px',
-                          borderRadius: '3px',
-                          border:
-                            pairedGarmentSize === bsz
-                              ? '1px solid var(--color-gold, #5b6e4e)'
-                              : '1px solid #dce1d5',
-                          background:
-                            pairedGarmentSize === bsz ? 'var(--color-gold, #5b6e4e)' : '#f4f6f1',
-                          color: pairedGarmentSize === bsz ? '#fff' : '#1f2421',
-                          cursor: 'pointer',
-                          fontWeight: pairedGarmentSize === bsz ? 700 : 500,
-                        }}
-                      >
-                        {bsz}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRemovePairedGarment}
-                  title="Bỏ món này"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#9ca3af',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    color: '#1f2421',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                   }}
                 >
-                  <X size={12} />
-                </button>
+                  {pairedGarment.name}
+                </div>
+                <div style={{ fontSize: '9.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
+                  +{(pairedGarment.rentalPricePerDay || 200000).toLocaleString('vi-VN')} đ/ngày
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                  <span style={{ fontSize: '8.5px', color: '#6e7569', fontWeight: 600 }}>Size:</span>
+                  {['XS', 'S', 'M', 'L'].map((bsz) => (
+                    <button
+                      key={bsz}
+                      type="button"
+                      onClick={() => setPairedGarmentSize(bsz)}
+                      style={{
+                        padding: '1px 4px',
+                        fontSize: '8.5px',
+                        borderRadius: '3px',
+                        border:
+                          pairedGarmentSize === bsz
+                            ? '1px solid var(--color-gold, #5b6e4e)'
+                            : '1px solid #dce1d5',
+                        background:
+                          pairedGarmentSize === bsz ? 'var(--color-gold, #5b6e4e)' : '#f4f6f1',
+                        color: pairedGarmentSize === bsz ? '#fff' : '#1f2421',
+                        cursor: 'pointer',
+                        fontWeight: pairedGarmentSize === bsz ? 700 : 500,
+                      }}
+                    >
+                      {bsz}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-
-            {/* 2. Món phụ kiện túi xách phối kèm */}
-            {pairedAccessory && (
-              <div
+              <button
+                type="button"
+                onClick={handleRemovePairedGarment}
+                title="Bỏ món này"
                 style={{
-                  display: 'flex',
-                  gap: '7px',
-                  alignItems: 'center',
-                  background: '#ffffff',
-                  border: '1px solid var(--color-border, #e2e6dc)',
-                  borderRadius: '6px',
-                  padding: '4px 6px',
-                  position: 'relative',
+                  background: 'none',
+                  border: 'none',
+                  color: '#9ca3af',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  padding: '2px 4px',
                 }}
               >
-                <img
-                  src={
-                    pairedAccessory.primaryImageUrl ||
-                    pairedAccessory.image ||
-                    (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
-                    fallbackGarmentImage
-                  }
-                  alt={pairedAccessory.name}
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = fallbackGarmentImage;
-                  }}
-                  style={{
-                    width: '34px',
-                    height: '42px',
-                    borderRadius: '4px',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                  }}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: '10px',
-                      fontWeight: 700,
-                      color: '#1f2421',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {pairedAccessory.name}
-                  </div>
-                  <div style={{ fontSize: '9.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
-                    +{(pairedAccessory.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ/ngày
-                  </div>
-                  <span
-                    style={{
-                      fontSize: '8px',
-                      background: '#f0f5ec',
-                      color: 'var(--color-gold, #5b6e4e)',
-                      padding: '1px 5px',
-                      borderRadius: '3px',
-                      fontWeight: 600,
-                      display: 'inline-block',
-                      marginTop: '2px',
-                    }}
-                  >
-                    Túi xách phối kèm
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRemovePairedAccessory}
-                  title="Bỏ món này"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#9ca3af',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
-                  }}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            )}
+                <X size={12} />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Tabs chuyển đổi danh mục gợi ý */}
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-          <button
-            type="button"
-            onClick={() => setPairingTab('outfit')}
-            style={{
-              flex: 1,
-              padding: '4px 6px',
-              fontSize: '9px',
-              fontWeight: pairingTab === 'outfit' ? 700 : 500,
-              borderRadius: '4px',
-              border: pairingTab === 'outfit' ? '1px solid var(--color-gold, #5b6e4e)' : '1px solid #dce1d5',
-              background: pairingTab === 'outfit' ? 'var(--color-gold, #5b6e4e)' : '#ffffff',
-              color: pairingTab === 'outfit' ? '#ffffff' : '#4a5246',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '3px',
-            }}
-          >
-            {category === 'upper_body'
-              ? ' Chân váy / Quần'
-              : category === 'lower_body'
-                ? ' Áo / Blazer'
-                : ' Trang phục phối'}
-            {pairedGarment && (
-              <CheckCircle2 size={10} color={pairingTab === 'outfit' ? '#fff' : 'var(--color-gold, #5b6e4e)'} />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setPairingTab('accessory')}
-            style={{
-              flex: 1,
-              padding: '4px 6px',
-              fontSize: '9px',
-              fontWeight: pairingTab === 'accessory' ? 700 : 500,
-              borderRadius: '4px',
-              border: pairingTab === 'accessory' ? '1px solid var(--color-gold, #5b6e4e)' : '1px solid #dce1d5',
-              background: pairingTab === 'accessory' ? 'var(--color-gold, #5b6e4e)' : '#ffffff',
-              color: pairingTab === 'accessory' ? '#ffffff' : '#4a5246',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '3px',
-            }}
-          >
-            Túi xách phối kèm
-            {pairedAccessory && (
-              <CheckCircle2 size={10} color={pairingTab === 'accessory' ? '#fff' : 'var(--color-gold, #5b6e4e)'} />
-            )}
-          </button>
+        {/* Tiêu đề danh mục trang phục phối */}
+        <div style={{ fontSize: '9px', fontWeight: 700, color: '#4a5246', marginBottom: '5px' }}>
+          {category === 'upper_body'
+            ? 'Chọn Chân váy / Quần phối cùng:'
+            : category === 'lower_body'
+              ? 'Chọn Áo / Blazer phối cùng:'
+              : 'Trang phục phối kèm gợi ý:'}
         </div>
 
-        {/* Danh sách sản phẩm gợi ý cuộn ngang */}
+        {/* Danh sách trang phục gợi ý cuộn ngang */}
         <div
           style={{
             display: 'flex',
@@ -343,64 +204,172 @@ const TryOnOutfitPairing = ({
             scrollbarWidth: 'none',
           }}
         >
-          {(pairingTab === 'outfit' ? currentOutfitSuggestions : currentAccessorySuggestions)
-            .slice(0, 15)
-            .map((item) => {
-              const itemImg = item.image || (Array.isArray(item.images) && item.images[0]) || '';
-              const isSelected = pairedGarment?._id === item._id || pairedAccessory?._id === item._id;
+          {currentOutfitSuggestions.slice(0, 15).map((item) => {
+            const itemImg = item.image || (Array.isArray(item.images) && item.images[0]) || '';
+            const isSelected = pairedGarment?._id === item._id;
 
-              return (
-                <div
-                  key={item._id || item.name}
-                  onClick={() => {
-                    if (pairingTab === 'outfit') {
-                      if (pairedGarment?._id === item._id) {
-                        handleRemovePairedGarment();
-                      } else {
-                        setPairedGarment(item);
-                        setPairedGarmentSize('S');
-                      }
-                    } else {
-                      if (pairedAccessory?._id === item._id) {
-                        handleRemovePairedAccessory();
-                      } else {
-                        setPairedAccessory(item);
-                      }
-                    }
+            return (
+              <div
+                key={item._id || item.name}
+                onClick={() => {
+                  if (pairedGarment?._id === item._id) {
+                    handleRemovePairedGarment();
+                  } else {
+                    setPairedGarment(item);
+                    setPairedGarmentSize('S');
+                  }
+                }}
+                style={{
+                  flex: '0 0 68px',
+                  cursor: 'pointer',
+                  background: isSelected ? '#edf3e9' : '#ffffff',
+                  border: isSelected
+                    ? '1.5px solid var(--color-gold, #5b6e4e)'
+                    : '1px solid var(--color-border, #e2e6dc)',
+                  borderRadius: '5px',
+                  padding: '3px',
+                  textAlign: 'center',
+                  position: 'relative',
+                  transition: 'all 0.15s ease',
+                  boxShadow: isSelected ? '0 1px 4px rgba(91,110,78,0.2)' : 'none',
+                }}
+                title={`Bấm để ${isSelected ? 'bỏ chọn' : 'thêm vào set'}: ${item.name}`}
+              >
+                <img
+                  src={itemImg || fallbackGarmentImage}
+                  alt={item.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = fallbackGarmentImage;
                   }}
                   style={{
-                    flex: '0 0 68px',
-                    cursor: 'pointer',
-                    background: isSelected ? '#edf3e9' : '#ffffff',
-                    border: isSelected
-                      ? '1.5px solid var(--color-gold, #5b6e4e)'
-                      : '1px solid var(--color-border, #e2e6dc)',
+                    width: '100%',
+                    height: '44px',
+                    objectFit: 'cover',
+                    borderRadius: '3px',
+                  }}
+                />
+                <div
+                  style={{
+                    fontSize: '8.5px',
+                    fontWeight: 600,
+                    color: '#1f2421',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    marginTop: '2px',
+                  }}
+                >
+                  {item.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: '8px',
+                    color: isSelected ? 'var(--color-gold, #5b6e4e)' : '#6e7569',
+                    fontWeight: 700,
+                  }}
+                >
+                  {isSelected
+                    ? '✓ Đang phối'
+                    : `+ ${(item.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Khối 2: GỢI Ý PHỤ KIỆN LOOKBOOK (Ảnh nhỏ Lookbook tham khảo - Không ghép thử đồ) */}
+      {currentAccessorySuggestions && currentAccessorySuggestions.length > 0 && (
+        <div
+          style={{
+            border: '1px solid var(--color-border, #e2e6dc)',
+            background: '#fafbf9',
+            borderRadius: '9px',
+            padding: '7px 9px',
+            marginTop: '4px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '5px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ fontSize: '12px' }}>👜</span>
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: 'var(--color-gold, #5b6e4e)',
+                  letterSpacing: '0.3px',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Phụ kiện Lookbook gợi ý
+              </span>
+            </div>
+            <span style={{ fontSize: '8.5px', color: '#6e7569', fontStyle: 'italic' }}>
+              Ảnh nhỏ Lookbook
+            </span>
+          </div>
+
+          {/* Dải ảnh nhỏ phụ kiện lookbook cuộn ngang */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '6px',
+              overflowX: 'auto',
+              paddingBottom: '2px',
+              scrollbarWidth: 'none',
+            }}
+          >
+            {currentAccessorySuggestions.slice(0, 12).map((acc) => {
+              const accImg =
+                acc.primaryImageUrl ||
+                acc.image ||
+                (Array.isArray(acc.images) && acc.images[0]) ||
+                fallbackGarmentImage;
+              return (
+                <a
+                  key={acc._id || acc.id}
+                  href={`/product/${acc._id || acc.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    flex: '0 0 58px',
+                    background: '#ffffff',
+                    border: '1px solid #e2e6dc',
                     borderRadius: '5px',
                     padding: '3px',
                     textAlign: 'center',
-                    position: 'relative',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    display: 'block',
                     transition: 'all 0.15s ease',
-                    boxShadow: isSelected ? '0 1px 4px rgba(91,110,78,0.2)' : 'none',
                   }}
-                  title={`Bấm để ${isSelected ? 'bỏ chọn' : 'thêm vào set'}: ${item.name}`}
+                  title={`Xem chi tiết phụ kiện: ${acc.name}`}
                 >
                   <img
-                    src={itemImg || fallbackGarmentImage}
-                    alt={item.name}
+                    src={accImg}
+                    alt={acc.name}
                     onError={(e) => {
                       e.currentTarget.onerror = null;
                       e.currentTarget.src = fallbackGarmentImage;
                     }}
                     style={{
                       width: '100%',
-                      height: '44px',
+                      height: '40px',
                       objectFit: 'cover',
                       borderRadius: '3px',
                     }}
                   />
                   <div
                     style={{
-                      fontSize: '8.5px',
+                      fontSize: '8px',
                       fontWeight: 600,
                       color: '#1f2421',
                       whiteSpace: 'nowrap',
@@ -409,24 +378,17 @@ const TryOnOutfitPairing = ({
                       marginTop: '2px',
                     }}
                   >
-                    {item.name}
+                    {acc.name}
                   </div>
-                  <div
-                    style={{
-                      fontSize: '8px',
-                      color: isSelected ? 'var(--color-gold, #5b6e4e)' : '#6e7569',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {isSelected
-                      ? '✓ Đang phối'
-                      : `+ ${(item.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ`}
+                  <div style={{ fontSize: '7.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 700 }}>
+                    {(acc.rentalPricePerDay || 100000).toLocaleString('vi-VN')} đ/ng
                   </div>
-                </div>
+                </a>
               );
             })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Auto crop checkbox */}
       <div

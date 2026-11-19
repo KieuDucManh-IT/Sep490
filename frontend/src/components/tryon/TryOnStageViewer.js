@@ -8,7 +8,6 @@ export default function TryOnStageViewer({
   resultImage,
   isGenerating,
   generationStep,
-  pairedAccessory,
   pairedGarment,
   pairedGarmentSize,
   selectedSize,
@@ -16,7 +15,7 @@ export default function TryOnStageViewer({
   fallbackImage,
 }) {
   const [viewMode, setViewMode] = useState('model'); // 'model' | 'lookbook'
-  const totalItems = 1 + (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0);
+  const totalItems = 1 + (pairedGarment ? 1 : 0);
 
   const mainProductImg =
     product?.primaryImageUrl ||
@@ -28,13 +27,6 @@ export default function TryOnStageViewer({
     ? pairedGarment.primaryImageUrl ||
       pairedGarment.image ||
       (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
-      fallbackImage
-    : null;
-
-  const pairedAccessoryImg = pairedAccessory
-    ? pairedAccessory.primaryImageUrl ||
-      pairedAccessory.image ||
-      (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
       fallbackImage
     : null;
 
@@ -85,7 +77,7 @@ export default function TryOnStageViewer({
                   AI TRY-ON (KẾT QUẢ)
                 </div>
 
-                {pairedAccessory && (
+                {pairedGarment && (
                   <div
                     style={{
                       display: 'flex',
@@ -134,7 +126,7 @@ export default function TryOnStageViewer({
                         gap: '4px',
                         transition: 'all 0.15s ease',
                       }}
-                      title="Xem toàn bộ bảng phối phong cách bao gồm trang phục và phụ kiện"
+                      title="Xem toàn bộ bảng phối phong cách trang phục"
                     >
                       <Layers size={11} /> Set Lookbook
                     </button>
@@ -144,89 +136,11 @@ export default function TryOnStageViewer({
 
               {/* View Mode 1: Model Full Image */}
               {viewMode === 'model' && (
-                <>
-                  <img
-                    src={resultImage}
-                    alt="AI Try-On Result"
-                    className="stage-split-image"
-                  />
-
-                  {/* Floating Luxury Complete-The-Look Badge */}
-                  {pairedAccessory && (
-                    <div
-                      className="stage-accessory-card"
-                      onClick={() => setViewMode('lookbook')}
-                      style={{
-                        position: 'absolute',
-                        bottom: '42px',
-                        right: '10px',
-                        background: 'rgba(255, 255, 255, 0.96)',
-                        backdropFilter: 'blur(10px)',
-                        border: '1.5px solid var(--color-gold, #5b6e4e)',
-                        borderRadius: '10px',
-                        padding: '6px 9px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        boxShadow: '0 6px 18px rgba(31, 36, 33, 0.22)',
-                        zIndex: 10,
-                        maxWidth: '210px',
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s ease',
-                      }}
-                      title="Bấm để xem Bảng phối Lookbook hoàn chỉnh"
-                    >
-                      <img
-                        src={pairedAccessoryImg}
-                        alt={pairedAccessory.name}
-                        onError={(e) => {
-                          e.currentTarget.onerror = null;
-                          e.currentTarget.src = fallbackImage;
-                        }}
-                        style={{
-                          width: '38px',
-                          height: '38px',
-                          borderRadius: '6px',
-                          objectFit: 'cover',
-                          border: '1px solid #e2e6dc',
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: '8px',
-                            color: 'var(--color-gold, #5b6e4e)',
-                            fontWeight: 800,
-                            letterSpacing: '0.4px',
-                            textTransform: 'uppercase',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                          }}
-                        >
-                          <Sparkles size={9} /> Complete The Look
-                        </div>
-                        <div
-                          style={{
-                            fontSize: '9.5px',
-                            fontWeight: 700,
-                            color: '#1f2421',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={pairedAccessory.name}
-                        >
-                          {pairedAccessory.name}
-                        </div>
-                        <div style={{ fontSize: '8.5px', color: '#6e7569', fontWeight: 600 }}>
-                          +{(pairedAccessory.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ/ngày
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
+                <img
+                  src={resultImage}
+                  alt="AI Try-On Result"
+                  className="stage-split-image"
+                />
               )}
 
               {/* View Mode 2: Editorial Set Lookbook Moodboard Studio */}
@@ -374,39 +288,6 @@ export default function TryOnStageViewer({
                           </div>
                         </div>
                       )}
-
-                      {/* Highlighted Accessory Card */}
-                      {pairedAccessory && (
-                        <div
-                          style={{
-                            background: 'linear-gradient(135deg, #ffffff 0%, #f4f6f1 100%)',
-                            border: '1.5px solid var(--color-gold, #5b6e4e)',
-                            borderRadius: '6px',
-                            padding: '6px',
-                            display: 'flex',
-                            gap: '6px',
-                            alignItems: 'center',
-                            boxShadow: '0 2px 6px rgba(91, 110, 78, 0.1)',
-                          }}
-                        >
-                          <img
-                            src={pairedAccessoryImg}
-                            alt={pairedAccessory.name}
-                            style={{ width: '36px', height: '44px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #e2e6dc' }}
-                          />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '7.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              <Check size={9} /> Phụ kiện phối
-                            </div>
-                            <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#1f2421', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {pairedAccessory.name}
-                            </div>
-                            <div style={{ fontSize: '9px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 700 }}>
-                              +{(pairedAccessory.rentalPricePerDay || 150000).toLocaleString('vi-VN')} đ/ngày
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -421,22 +302,6 @@ export default function TryOnStageViewer({
               <div style={{ fontSize: '10.5px', color: '#6e7569', maxWidth: '190px', lineHeight: 1.4 }}>
                 Bấm <strong>"BẮT ĐẦU GHÉP ĐỒ AI"</strong> để xem trang phục kết xuất lên cơ thể
               </div>
-              {pairedAccessory && (
-                <div
-                  style={{
-                    marginTop: '10px',
-                    padding: '5px 8px',
-                    background: '#fcf8f2',
-                    border: '1px solid #e8dfd0',
-                    borderRadius: '6px',
-                    fontSize: '9.5px',
-                    color: '#8b6938',
-                    maxWidth: '200px',
-                  }}
-                >
-                  👜 Kèm phụ kiện: <strong>{pairedAccessory.name}</strong> trong Set Lookbook
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -467,9 +332,6 @@ export default function TryOnStageViewer({
           <span>Kích cỡ: <strong>Size {selectedSize}</strong></span>
           {pairedGarment && (
             <> &bull; <span>Món phối: <strong>Size {pairedGarmentSize}</strong></span></>
-          )}
-          {pairedAccessory && (
-            <> &bull; <span>Phụ kiện: <strong>{pairedAccessory.name}</strong></span></>
           )} &bull;{' '}
           <span>Phân loại: <strong>
             {totalItems > 1

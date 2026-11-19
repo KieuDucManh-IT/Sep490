@@ -176,6 +176,7 @@ export const getMyShop = async (req, res) => {
   }
 };
 
+
 /**
  * Lấy chi nhánh được chỉ định cho tài khoản đã xác thực
  * GET /api/shops/assigned-branch
@@ -401,10 +402,10 @@ export const getBranchPerformanceReport = async (req, res) => {
       .replace(/[\s_-]/g, '')
       .replace('brandmanager', 'branchmanager');
 
-    if (normalizedRole !== 'branchmanager' && normalizedRole !== 'admin') {
+    if (!['branchmanager', 'admin', 'shopowner', 'owner'].includes(normalizedRole)) {
       return res.status(403).json({
         success: false,
-        message: 'Chức năng báo cáo hiệu suất chi nhánh chỉ dành riêng cho Quản lý chi nhánh.',
+        message: 'Chức năng báo cáo hiệu suất chi nhánh chỉ dành cho Quản lý chi nhánh hoặc Ban quản trị.',
       });
     }
 

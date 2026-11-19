@@ -947,7 +947,7 @@ export default function CatalogPage() {
                             <span className="meta-separator">•</span>
                           </>
                         ) : null}
-                        {/* TASK-011 & TASK-012: số khả dụng lấy từ API; hiển thị Sắp có hàng khi có restock request */}
+                        {/* TASK-011: số khả dụng lấy từ API (InventoryBalance, chỉ chi nhánh); không còn fallback "|| 1". */}
                         {(() => {
                           const availableQty = Math.max(0, Number(item.quantityAvailable ?? 0) || 0);
                           const isRestockPending = Boolean(item.restockRequestedAt);

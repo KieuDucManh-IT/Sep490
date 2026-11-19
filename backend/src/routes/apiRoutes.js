@@ -14,6 +14,7 @@ import warehouseTransferRoutes from './warehouseTransferRoutes.js';
 import warehouseBranchReturnRoutes from './warehouseBranchReturnRoutes.js';
 import warehouseRelocationRoutes from './warehouseRelocationRoutes.js';
 import warehouseDiscrepancyRoutes from './warehouseDiscrepancyRoutes.js';
+import warehouseInsightRoutes from './warehouseInsightRoutes.js';
 import { maintenanceRouter as warehouseMaintenanceRoutes, disposalRouter as warehouseDisposalRoutes } from './warehouseMaintenanceRoutes.js';
 import orderRoutes from './orderRoutes.js';
 import shipmentRoutes from './shipmentRoutes.js';
@@ -54,6 +55,8 @@ router.use('/warehouse/relocations', warehouseRelocationRoutes);
 router.use('/warehouse/discrepancies', warehouseDiscrepancyRoutes);
 router.use('/warehouse/maintenance', warehouseMaintenanceRoutes);
 router.use('/warehouse/disposals', warehouseDisposalRoutes);
+// /warehouse/items/:id/history, /warehouse/capacity (TASK-014 G)
+router.use('/warehouse', warehouseInsightRoutes);
 router.use('/orders', orderRoutes);
 router.use('/shipping', shipmentRoutes);
 router.get('/public/shipping/track/:trackingCode', authMiddleware, trackPublicShipmentHandler);

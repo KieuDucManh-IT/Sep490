@@ -48,14 +48,14 @@ import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
 import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 import CartDrawer from './components/customer/cart/CartDrawer';
-import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
+import InboundReceiptsPage from './pages/warehouse/inboundReceipts/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
-import WarehouseStocktakePage from './pages/warehouse/WarehouseStocktakePage';
-import WarehouseAdjustmentPage from './pages/warehouse/WarehouseAdjustmentPage';
-import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
-import WarehouseBranchReturnsPage from './pages/warehouse/BranchReturnsPage';
-import WarehouseRelocationsPage from './pages/warehouse/WarehouseRelocationsPage';
-import WarehouseDiscrepanciesPage from './pages/warehouse/WarehouseDiscrepanciesPage';
+import WarehouseStocktakePage from './pages/warehouse/stocktakes/WarehouseStocktakePage';
+import WarehouseAdjustmentPage from './pages/warehouse/adjustments/WarehouseAdjustmentPage';
+import WarehouseTransfersPage from './pages/warehouse/transfers/WarehouseTransfersPage';
+import WarehouseBranchReturnsPage from './pages/warehouse/branchReturns/BranchReturnsPage';
+import WarehouseRelocationsPage from './pages/warehouse/relocations/WarehouseRelocationsPage';
+import WarehouseDiscrepanciesPage from './pages/warehouse/discrepancies/WarehouseDiscrepanciesPage';
 import WarehouseMaintenancePage from './pages/warehouse/WarehouseMaintenancePage';
 import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
 import ProductManagementPage from './pages/warehouse/ProductManagementPage';
@@ -254,8 +254,10 @@ function App() {
         <Route path="/warehousemanager/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/transfers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="warehouse" /></ProtectedRoute>} />
-        <Route path="/warehousemanager/relocations/split" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="split" /></ProtectedRoute>} />
-        <Route path="/warehousemanager/relocations/merge" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="merge" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/relocations" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" /></ProtectedRoute>} />
+        {/* Hai màn tách / gộp cũ gộp thành "Di chuyển hàng". */}
+        <Route path="/warehousemanager/relocations/split" element={<Navigate to="/warehousemanager/relocations" replace />} />
+        <Route path="/warehousemanager/relocations/merge" element={<Navigate to="/warehousemanager/relocations" replace />} />
         <Route path="/warehousemanager/discrepancies" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseDiscrepanciesPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/maintenance" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseMaintenancePage mode="manager" /></ProtectedRoute>} />
         <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />

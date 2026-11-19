@@ -18,7 +18,7 @@ import { encryptValue } from '../../utils/walletSecurity.js';
 import { syncSingleShipmentFromGHN } from '../shipping/shipmentSyncService.js';
 import { createNotification, notifyRoles } from '../system/notificationService.js';
 
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
 
 /**
  * Chọn ra vận đơn đại diện đang hoạt động cho đơn hàng

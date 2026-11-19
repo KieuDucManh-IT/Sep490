@@ -28,3 +28,26 @@
 .wm-pick-allocation-list{display:flex;min-width:300px;flex-direction:column;gap:8px}.wm-pick-allocation{display:grid;grid-template-columns:minmax(130px,1fr) 75px auto auto;gap:6px;align-items:center;padding:8px;border:1px solid #e8e5dd;border-radius:8px}.wm-pick-allocation small{grid-column:1/-1;color:#666}.wm-pick-allocation .wm-transfer-picker-list{grid-column:1/-1;max-height:180px;overflow:auto}.wm-staff-assign{display:flex;align-items:center;gap:10px;margin:12px 0;font-weight:600}.wm-staff-assign select{min-width:260px}
 .wm-crud-modal{width:min(1000px,96vw);max-height:92vh;overscroll-behavior:contain}.wm-crud-modal .wm-table-wrap{max-width:100%;overflow:auto}.wm-storage-modal{width:min(1000px,96vw)}.wm-inbound-modal,.wm-product-variants-modal{width:min(1100px,96vw)}.wm-transfer-modal{width:min(1480px,98vw)}.wm-transfer-modal .wm-table-wrap{max-height:62vh}.wm-transfer-modal .wm-table-wrap table{min-width:0;table-layout:fixed}.wm-transfer-modal .wm-table-wrap td{white-space:normal;overflow-wrap:anywhere;vertical-align:top}.wm-transfer-modal .wm-pick-allocation-list{min-width:0}.wm-transfer-picker{width:min(760px,94vw);display:flex;flex-direction:column;max-height:88vh}.wm-transfer-picker .wm-transfer-picker-list{min-height:100px;max-height:60vh;overflow:auto;overscroll-behavior:contain}.wm-modal-backdrop{overflow:auto}.wm-stock-detail{box-sizing:border-box}@media(max-width:760px){.wm-crud-modal{width:calc(100vw - 20px);max-height:94vh;padding:16px}.wm-transfer-modal .wm-table-wrap{max-height:55vh}.wm-transfer-picker .wm-transfer-picker-list{max-height:55vh}}
 .wm-transfer-picking-table th:nth-child(1),.wm-transfer-picking-table td:nth-child(1){width:30%}.wm-transfer-picking-table th:nth-child(2),.wm-transfer-picking-table td:nth-child(2){width:7%}.wm-transfer-picking-table th:nth-child(3),.wm-transfer-picking-table td:nth-child(3){width:9%}.wm-transfer-picking-table th:nth-child(4),.wm-transfer-picking-table td:nth-child(4){width:7%}.wm-transfer-picking-table th:nth-child(5),.wm-transfer-picking-table td:nth-child(5){width:13%}.wm-transfer-picking-table th:nth-child(6),.wm-transfer-picking-table td:nth-child(6){width:9%}.wm-transfer-picking-table th:nth-child(7),.wm-transfer-picking-table td:nth-child(7){width:25%}.wm-pick-allocation{grid-template-columns:minmax(0,1fr) 64px;align-items:center}.wm-pick-allocation select,.wm-pick-allocation input{width:100%;min-width:0;box-sizing:border-box}.wm-pick-allocation button.secondary{grid-column:1/-1;white-space:nowrap}.wm-pick-allocation button.danger{grid-column:2;grid-row:3}.wm-transfer-modal .wm-pick-allocation-list>button.secondary{width:100%;white-space:normal}
+
+/* TASK-014 E: "Lấy danh sách hàng hóa" ở form tạo phiếu kiểm kê */
+.wm-stock-preview-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;grid-column:1/-1}
+.wm-stock-preview{grid-column:1/-1;min-width:0}
+/* TASK-014 F: nút trên từng dòng "Di chuyển hàng" */
+.wm-relocation-line-actions{display:flex;flex-wrap:wrap;gap:6px;min-width:160px}
+/* TASK-014 G: lịch sử mã hàng + sức chứa kho tổng */
+.wm-item-history.offcanvas{width:min(720px,100vw)}
+.wm-item-history-info{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin-bottom:12px}
+.wm-item-history-info dt{color:#777;font-weight:500}
+.wm-item-history-info dd{margin:0}
+.wm-capacity-panel{display:flex;flex-direction:column;gap:8px}
+.wm-capacity-header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px}
+.wm-capacity-usage{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.wm-capacity-usage .progress{flex:1;min-width:80px;height:10px}
+.wm-capacity-text{font-size:12px;white-space:nowrap}
+.wm-capacity-warning{color:#9a6b00;font-weight:600}
+.wm-capacity-danger{color:#b42318;font-weight:700}
+.wm-capacity-tree{list-style:none;margin:0;padding-left:16px}
+.wm-capacity-panel>.wm-capacity-tree{padding-left:0}
+.wm-capacity-row{display:flex;align-items:center;gap:8px;padding:4px 0;flex-wrap:wrap}
+.wm-capacity-name{min-width:140px}
+.wm-capacity-leaf{display:inline-block;width:14px}

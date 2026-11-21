@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import HauteCoutureModal from '../HauteCoutureModal';
 import { trackShipmentApi } from '../../services/shippingApi';
 import { cancelRentalOrder } from '../../services/rentalOrderApi';
@@ -433,15 +433,18 @@ function CancelOrderForm({ cancelReason, setCancelReason, isSubmitting, onBack, 
   return (
     <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ fontSize: '13px', color: '#57534E', lineHeight: 1.6 }}>
-        Quý khách chỉ có thể hủy đơn khi trang phục chưa được bàn giao cho đơn vị vận chuyển GHN. Số tiền thuê và tiền cọc (nếu đã trừ qua ví) sẽ được hoàn trả tự động vào ví Vestora.
+        Đơn đã xác nhận và chưa bàn giao được hủy tự động. Hủy trước thời điểm bắt đầu thuê từ 24 giờ trở lên: hoàn toàn bộ tiền thuê và tiền cọc vào ví Vestora. Hủy khi còn dưới 24 giờ: giữ phí một ngày thuê, hoàn phần tiền thuê còn lại và toàn bộ tiền cọc.
       </div>
       <div>
-        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
+        <label htmlFor="rental-cancel-reason" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '6px' }}>
           Lý Do Hủy Đơn: <span style={{ color: '#DC2626' }}>*</span>
         </label>
         <textarea
+          id="rental-cancel-reason"
           rows={3}
           required
+          minLength={3}
+          maxLength={500}
           value={cancelReason}
           onChange={(e) => setCancelReason(e.target.value)}
           placeholder="VD: Thay đổi kế hoạch sự kiện, chọn nhầm kích thước..."
@@ -459,7 +462,7 @@ function CancelOrderForm({ cancelReason, setCancelReason, isSubmitting, onBack, 
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || cancelReason.trim().length < 3 || cancelReason.trim().length > 500}
           style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#DC2626', color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
         >
           {isSubmitting ? 'Đang Hủy...' : 'Xác Nhận Hủy Đơn'}
@@ -629,6 +632,9 @@ export default function OrderTrackingDetailModal({
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
   const [selectedEvidenceImage, setSelectedEvidenceImage] = useState(null);
+  const cancellationInFlight = useRef(false);
+  const cancellationContext = useRef(0);
+  const cancelCloseTimer = useRef(null);
 
   // Nạp dữ liệu vận chuyển thời gian thực từ GHN
   const fetchTracking = useCallback(async (code, force = false) => {
@@ -655,10 +661,13 @@ export default function OrderTrackingDetailModal({
   }, []);
 
   useEffect(() => {
+    cancellationContext.current += 1;
     if (isOpen && order) {
       setViewMode('tracking');
       setActionError('');
       setActionSuccess('');
+      cancellationInFlight.current = false;
+      setIsSubmitting(false);
       setCancelReason('');
       setDisputeDesc('');
       const targetCode = order.orderCode || order.shipment?.trackingCode || order._id;
@@ -667,6 +676,10 @@ export default function OrderTrackingDetailModal({
       setTrackingData(null);
       setErrorMsg('');
     }
+    return () => {
+      cancellationContext.current += 1;
+      clearTimeout(cancelCloseTimer.current);
+    };
   }, [isOpen, order, fetchTracking]);
 
   if (!isOpen || !order) return null;
@@ -685,23 +698,34 @@ export default function OrderTrackingDetailModal({
 
   const handleCancelSubmit = async (e) => {
     e.preventDefault();
-    if (!cancelReason.trim()) {
-      setActionError('Vui lòng nhập lý do hủy đơn thuê');
+    if (cancellationInFlight.current || actionSuccess) return;
+    const reason = cancelReason.trim();
+    if (reason.length < 3 || reason.length > 500) {
+      setActionError('Lý do hủy đơn cần từ 3 đến 500 ký tự');
       return;
     }
+    cancellationInFlight.current = true;
+    const requestContext = cancellationContext.current;
     setIsSubmitting(true);
     setActionError('');
     try {
-      await cancelRentalOrder(order._id, cancelReason);
-      setActionSuccess('Hủy đơn thuê thành công!');
-      setTimeout(() => {
-        if (onOrderUpdated) onOrderUpdated();
-        onClose();
-      }, 1200);
+      const result = await cancelRentalOrder(order._id, reason);
+      if (onOrderUpdated) onOrderUpdated();
+      if (requestContext !== cancellationContext.current) return;
+      const summary = result?.data?.refundSummary;
+      setActionSuccess(summary
+        ? `Hủy đơn thuê thành công! Hoàn vào ví ${formatCurrencyVND(summary.rentalFeeRefunded + summary.totalDepositRefunded)}. Phí hủy: ${formatCurrencyVND(summary.cancellationFee)}.`
+        : 'Hủy đơn thuê thành công!');
+      cancelCloseTimer.current = setTimeout(onClose, 1200);
     } catch (err) {
-      setActionError(err?.response?.data?.message || err?.message || 'Không thể hủy đơn thuê.');
+      if (requestContext === cancellationContext.current) {
+        setActionError(err?.response?.data?.message || err?.message || 'Không thể hủy đơn thuê.');
+      }
     } finally {
-      setIsSubmitting(false);
+      if (requestContext === cancellationContext.current) {
+        cancellationInFlight.current = false;
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -769,7 +793,7 @@ export default function OrderTrackingDetailModal({
       {/* ========================================================
           MODE 1: HỦY ĐƠN THUÊ
           ======================================================== */}
-      {viewMode === 'cancel' && (
+      {viewMode === 'cancel' && !actionSuccess && (
         <CancelOrderForm
           cancelReason={cancelReason}
           setCancelReason={setCancelReason}
@@ -810,7 +834,7 @@ export default function OrderTrackingDetailModal({
             <div style={{ padding: '16px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', color: '#DC2626', fontSize: '13px' }}>
               {errorMsg}
             </div>
-          ) : (
+          ) : null}
             <>
               {/* KHỐI 1: FORM TIẾN TRÌNH VẬN CHUYỂN & TRẠNG THÁI GHN */}
               {trackingData && (
@@ -856,7 +880,7 @@ export default function OrderTrackingDetailModal({
               {/* KHỐI 4: CÁC NÚT HÀNH ĐỘNG */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingTop: '8px' }}>
                 <div>
-                  {isRental && ['confirmed', 'preparing', 'pending_payment'].includes(order.rentalStatus) && (
+                  {isRental && order.rentalStatus === 'confirmed' && (
                     <button
                       type="button"
                       onClick={() => setViewMode('cancel')}
@@ -921,7 +945,6 @@ export default function OrderTrackingDetailModal({
                 </button>
               </div>
             </>
-          )}
         </div>
       )}
 

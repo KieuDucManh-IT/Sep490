@@ -30,6 +30,7 @@ const RENTAL_TABS = [
   { id: 'all', label: 'Tất Cả Đơn Thuê' },
   { id: 'renting', label: 'Đang Trải Nghiệm' },
   { id: 'confirmed', label: 'Đã Đặt / Chuẩn Bị' },
+  { id: 'overdue', label: 'Quá Hạn Trả' },
   { id: 'returned', label: 'Đã Hoàn Tất' },
   { id: 'cancelled', label: 'Đã Hủy' },
 ];
@@ -44,17 +45,20 @@ const SALE_TABS = [
 ];
 
 const RENTAL_STATUS_MAP = {
+  draft:            { label: 'Bản Nháp',         color: '#6B7280', bg: '#F3F4F6' },
   pending_payment: { label: 'Chờ Thanh Toán', color: '#D97706', bg: '#FFFBEB' },
   confirmed:       { label: 'Đã Xác Nhận',    color: '#2563EB', bg: '#EFF6FF' },
   preparing:       { label: 'Đang Chuẩn Bị',  color: '#7C3AED', bg: '#F5F3FF' },
   ready_for_pickup:{ label: 'Chờ Nhận Đồ',    color: '#059669', bg: '#ECFDF5' },
   renting:         { label: 'Đang Trải Nghiệm',color: '#0284C7', bg: '#F0F9FF' },
   overdue:         { label: 'Quá Hạn Trả',    color: '#DC2626', bg: '#FEF2F2' },
+  partially_returned: { label: 'Đang Trả Một Phần', color: '#B45309', bg: '#FFF7ED' },
   returned:        { label: 'Đã Hoàn Trả',    color: '#16A34A', bg: '#F0FDF4' },
   cancelled:       { label: 'Đã Hủy',         color: '#6B7280', bg: '#F3F4F6' },
 };
 
 const SALE_STATUS_MAP = {
+  draft:       { label: 'Bản Nháp', color: '#6B7280', bg: '#F3F4F6' },
   confirmed:  { label: 'Chờ Đóng Gói', color: '#2563EB', bg: '#EFF6FF' },
   processing: { label: 'Đang Chuẩn Bị', color: '#96723D', bg: '#FAF5EE' },
   shipped:    { label: 'Đang Giao Hàng', color: '#7C3AED', bg: '#F5F3FF' },
@@ -115,7 +119,7 @@ export default function RentalOrdersHistoryPage() {
     setRentalError('');
     try {
       const params = {};
-      if (activeRentalTab !== 'all') params.status = activeRentalTab;
+      if (activeRentalTab !== 'all') params.rentalStatus = activeRentalTab;
       const res = await getRentalOrders(params);
       setRentalOrders(res.data || []);
     } catch (err) {
@@ -165,6 +169,9 @@ export default function RentalOrdersHistoryPage() {
       if (match) setSelectedSaleOrder(match);
     }
   }, [targetCode, category, rentalOrders, saleOrders]);
+
+  const displayedRentalOrders = rentalOrders.filter((o) => o.rentalStatus !== 'draft');
+  const displayedSaleOrders = saleOrders.filter((o) => o.orderStatus !== 'draft');
 
   return (
     <div className="rental-history-page">
@@ -237,7 +244,7 @@ export default function RentalOrdersHistoryPage() {
                 <Loader2 size={32} className="roh-spin" />
                 <p>Đang nạp danh sách đơn thuê của quý khách...</p>
               </div>
-            ) : rentalOrders.length === 0 ? (
+            ) : displayedRentalOrders.length === 0 ? (
               <div className="rental-history-empty">
                 <Package size={42} className="rental-history-empty__icon" />
                 <h3>Chưa có đơn thuê nào</h3>
@@ -248,7 +255,7 @@ export default function RentalOrdersHistoryPage() {
               </div>
             ) : (
               <div className="rental-history-list">
-                {rentalOrders.map((o) => {
+                {displayedRentalOrders.map((o) => {
                   const statusInfo = getRentalStatusInfo(o.rentalStatus);
                   const items = o.items || o.orderDetails || [];
                   const orderLabel = o.orderCode || o._id?.slice(-6).toUpperCase();
@@ -352,7 +359,7 @@ export default function RentalOrdersHistoryPage() {
                 <Loader2 size={32} className="roh-spin" />
                 <p>Đang nạp danh sách đơn mua của quý khách...</p>
               </div>
-            ) : saleOrders.length === 0 ? (
+            ) : displayedSaleOrders.length === 0 ? (
               <div className="rental-history-empty">
                 <ShoppingBag size={42} className="rental-history-empty__icon" />
                 <h3>Chưa có đơn mua sắm nào</h3>
@@ -363,7 +370,7 @@ export default function RentalOrdersHistoryPage() {
               </div>
             ) : (
               <div className="rental-history-list">
-                {saleOrders.map((o) => {
+                {displayedSaleOrders.map((o) => {
                   const statusInfo = getSaleStatusInfo(o.orderStatus);
                   const items = o.items || [];
                   const firstItem = items[0];

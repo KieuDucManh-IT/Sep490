@@ -103,8 +103,8 @@ export default function PolicyPage() {
       return policies
         .filter((p) => p.isActive !== false)
         .map((p) => ({
-          key: p.key || p._id,
-          label: p.title || p.key,
+          key: p._id || p.key,
+          label: p.title || 'Chính sách',
           title: p.title,
           summary: p.summary,
           content: p.content,
@@ -115,8 +115,8 @@ export default function PolicyPage() {
     return Object.entries(policies)
       .filter(([_, p]) => p?.isActive !== false)
       .map(([k, p]) => ({
-        key: k,
-        label: p?.title || k,
+        key: p?._id || k,
+        label: p?.title || 'Chính sách',
         title: p?.title,
         summary: p?.summary,
         content: p?.content,

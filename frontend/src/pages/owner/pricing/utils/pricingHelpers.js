@@ -66,3 +66,16 @@ export const requiredPriceText = (tag) => {
   if (value === 'both') return 'Sản phẩm vừa thuê vừa bán: bắt buộc giá thuê mỗi ngày > 0 và giá bán > 0.';
   return 'Sản phẩm chưa có hình thức: cần ít nhất giá thuê mỗi ngày hoặc giá bán > 0.';
 };
+
+/**
+ * Kiểm tra xem sản phẩm đã được cấu hình giá thuê và tiền cọc hay chưa
+ * @param {Object} item
+ * @returns {boolean}
+ */
+export const isRentalConfigured = (item) => {
+  if (!item) return false;
+  const rent = Number(item.rentalPricePerDay || 0);
+  const deposit = Number(item.deposit || 0);
+  return rent > 0 && deposit > 0;
+};
+

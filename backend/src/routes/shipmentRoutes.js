@@ -9,8 +9,10 @@ import {
   getShipmentsByOrderHandler,
   getPrintTokenHandler,
   getProvincesHandler,
+  getNewProvincesHandler,
   getDistrictsHandler,
   getWardsHandler,
+  getNewWardsHandler,
   getWardsByProvinceHandler,
   ghnWebhookHandler,
   updateManualStatusHandler,
@@ -32,8 +34,10 @@ router.post('/webhook/ghn', ghnWebhookHandler);
 
 // 2. Tra cứu địa giới hành chính GHN (công khai / phục vụ khách hàng checkout tra cứu địa chỉ)
 router.get('/master-data/provinces', getProvincesHandler);
+router.get('/master-data/provinces-new', getNewProvincesHandler);
 router.get('/master-data/districts/:provinceId', getDistrictsHandler);
 router.get('/master-data/wards/:districtId', getWardsHandler);
+router.get('/master-data/wards-new/:provinceId', getNewWardsHandler);
 router.get('/master-data/wards-by-province/:provinceId', getWardsByProvinceHandler);
 
 // 3. Tra cứu tiến trình vận chuyển cho người dùng đã xác thực (Customer chính chủ hoặc Quản lý)

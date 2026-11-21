@@ -26,6 +26,7 @@ const rentalOrderSchema = new mongoose.Schema({
     provinceId: { type: Number, default: null },
     districtId: { type: Number, default: null },
     wardCode: { type: String, trim: true, default: null },
+    isNewAddress: { type: Boolean, default: false },
   },
   paymentMethod: { type: String, default: 'wallet' },
   paidAmount: { type: Number, default: 0 },

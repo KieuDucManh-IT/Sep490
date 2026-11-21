@@ -135,8 +135,8 @@ function App() {
         <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
         <Route path="/tracking/:trackingCode" element={<TrackingRedirect />} />
-        <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
-        <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
+        <Route path="/rental-orders" element={<ProtectedRoute allowedRoles={['CUSTOMER']} allowAdmin={false}><RentalOrdersHistoryPage /></ProtectedRoute>} />
+        <Route path="/customer/rental-orders" element={<ProtectedRoute allowedRoles={['CUSTOMER']} allowAdmin={false}><RentalOrdersHistoryPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)

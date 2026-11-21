@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapPin, Loader2, ChevronDown, Check, X, Search } from 'lucide-react';
 import {
-  getGHNProvincesApi,
-  getGHNDistrictsApi,
-  getGHNWardsApi,
+  getGHNNewProvincesApi,
+  getGHNNewWardsApi,
 } from '../../services/shippingApi';
 
 export function normalizeVietnamese(str) {
@@ -357,115 +356,70 @@ function AutocompleteField({
 }
 
 /**
- * GhnAddressSelector — Bộ chọn địa giới hành chính GHN gõ gợi ý thông minh
+ * GhnAddressSelector — checkout dùng API GHN v3 (địa chỉ 2 cấp).
+ * Checkout chỉ phục vụ Hà Nội nên khách không thể đổi tỉnh/thành.
  */
 export default function GhnAddressSelector({
   provinceId = '',
-  districtId = '',
   wardCode = '',
   onChange,
   disabled = false,
   required = true,
 }) {
-  const [provinces, setProvinces] = useState([]);
-  const [districts, setDistricts] = useState([]);
+  const [province, setProvince] = useState(null);
   const [wards, setWards] = useState([]);
-
-  const [loadingProvinces, setLoadingProvinces] = useState(false);
-  const [loadingDistricts, setLoadingDistricts] = useState(false);
+  const [loadingProvince, setLoadingProvince] = useState(false);
   const [loadingWards, setLoadingWards] = useState(false);
-
-  const districtsCache = useRef(new Map());
-  const wardsCache = useRef(new Map());
-
-  const districtInputRef = useRef(null);
   const wardInputRef = useRef(null);
+  const initializedRef = useRef(false);
 
-  // 1. Tải danh mục Tỉnh/Thành phố từ GHN API
   useEffect(() => {
     let isMounted = true;
-    setLoadingProvinces(true);
-
-    getGHNProvincesApi()
+    setLoadingProvince(true);
+    getGHNNewProvincesApi()
       .then((res) => {
         if (!isMounted) return;
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-        setProvinces(list);
+        const hanoi = list.find((item) => normalizeVietnamese(item.name).includes('ha noi'));
+        setProvince(hanoi || null);
+        if (hanoi && !initializedRef.current) {
+          initializedRef.current = true;
+          onChange?.({
+            provinceId: Number(hanoi._id),
+            city: hanoi.name,
+            districtId: null,
+            district: '',
+            wardCode: '',
+            ward: '',
+            isNewAddress: true,
+          });
+        }
       })
-      .catch((err) => {
-        console.error('Lỗi khi tải danh sách Tỉnh/Thành từ GHN:', err);
-      })
+      .catch((err) => console.error('Lỗi khi tải danh sách Tỉnh/Thành mới từ GHN:', err))
       .finally(() => {
-        if (isMounted) setLoadingProvinces(false);
+        if (isMounted) setLoadingProvince(false);
       });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [onChange]);
 
-  // 2. Tải danh mục Quận/Huyện khi provinceId thay đổi
   useEffect(() => {
-    if (!provinceId) {
-      setDistricts([]);
+    if (!province?._id) {
       setWards([]);
-      return;
-    }
-
-    const pId = Number(provinceId);
-    if (districtsCache.current.has(pId)) {
-      setDistricts(districtsCache.current.get(pId));
-      return;
-    }
-
-    let isMounted = true;
-    setLoadingDistricts(true);
-
-    getGHNDistrictsApi(pId)
-      .then((res) => {
-        if (!isMounted) return;
-        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-        districtsCache.current.set(pId, list);
-        setDistricts(list);
-      })
-      .catch((err) => {
-        console.error(`Lỗi khi tải Quận/Huyện của tỉnh ${provinceId}:`, err);
-        if (isMounted) setDistricts([]);
-      })
-      .finally(() => {
-        if (isMounted) setLoadingDistricts(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [provinceId]);
-
-  // 3. Tải danh mục Phường/Xã khi districtId thay đổi
-  useEffect(() => {
-    if (!districtId) {
-      setWards([]);
-      return;
-    }
-
-    const dId = Number(districtId);
-    if (wardsCache.current.has(dId)) {
-      setWards(wardsCache.current.get(dId));
-      return;
+      return undefined;
     }
 
     let isMounted = true;
     setLoadingWards(true);
-
-    getGHNWardsApi(dId)
+    getGHNNewWardsApi(province._id)
       .then((res) => {
         if (!isMounted) return;
-        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-        wardsCache.current.set(dId, list);
-        setWards(list);
+        setWards(Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []);
       })
       .catch((err) => {
-        console.error(`Lỗi khi tải Phường/Xã của quận ${districtId}:`, err);
+        console.error(`Lỗi khi tải Phường/Xã mới của ${province.name}:`, err);
         if (isMounted) setWards([]);
       })
       .finally(() => {
@@ -475,186 +429,59 @@ export default function GhnAddressSelector({
     return () => {
       isMounted = false;
     };
-  }, [districtId]);
-
-  // Format options
-  const provinceOptions = useMemo(
-    () =>
-      provinces.map((p) => ({
-        value: String(p.ProvinceID),
-        label: p.ProvinceName,
-        raw: p,
-      })),
-    [provinces]
-  );
-
-  const districtOptions = useMemo(
-    () =>
-      districts.map((d) => ({
-        value: String(d.DistrictID),
-        label: d.DistrictName,
-        raw: d,
-      })),
-    [districts]
-  );
+  }, [province]);
 
   const wardOptions = useMemo(
-    () =>
-      wards.map((w) => ({
-        value: String(w.WardCode),
-        label: w.WardName,
-        raw: w,
-      })),
+    () => wards.map((ward) => ({ value: String(ward._id), label: ward.name, raw: ward })),
     [wards]
   );
 
-  // Xử lý khi chọn Tỉnh/Thành
-  const handleProvinceSelect = useCallback(
-    (opt) => {
-      if (!opt) {
-        onChange?.({
-          provinceId: null,
-          city: '',
-          districtId: null,
-          district: '',
-          wardCode: '',
-          ward: '',
-        });
-        return;
-      }
-
-      const pId = Number(opt.value);
-      onChange?.({
-        provinceId: pId,
-        city: opt.label,
-        districtId: null,
-        district: '',
-        wardCode: '',
-        ward: '',
-      });
-
-      // Tự động focus sang ô Quận/Huyện để khách gõ tiếp
-      setTimeout(() => {
-        districtInputRef.current?.focus();
-      }, 50);
-    },
-    [onChange]
-  );
-
-  // Xử lý khi chọn Quận/Huyện
-  const handleDistrictSelect = useCallback(
-    (opt) => {
-      const currentCity =
-        provinces.find((p) => Number(p.ProvinceID) === Number(provinceId))
-          ?.ProvinceName || '';
-
-      if (!opt) {
-        onChange?.({
-          provinceId: Number(provinceId) || null,
-          city: currentCity,
-          districtId: null,
-          district: '',
-          wardCode: '',
-          ward: '',
-        });
-        return;
-      }
-
-      const dId = Number(opt.value);
-      onChange?.({
-        provinceId: Number(provinceId) || null,
-        city: currentCity,
-        districtId: dId,
-        district: opt.label,
-        wardCode: '',
-        ward: '',
-      });
-
-      // Tự động focus sang ô Phường/Xã để khách gõ tiếp
-      setTimeout(() => {
-        wardInputRef.current?.focus();
-      }, 50);
-    },
-    [provinceId, provinces, onChange]
-  );
-
-  // Xử lý khi chọn Phường/Xã
   const handleWardSelect = useCallback(
     (opt) => {
-      const currentCity =
-        provinces.find((p) => Number(p.ProvinceID) === Number(provinceId))
-          ?.ProvinceName || '';
-      const currentDistrict =
-        districts.find((d) => Number(d.DistrictID) === Number(districtId))
-          ?.DistrictName || '';
-
-      if (!opt) {
-        onChange?.({
-          provinceId: Number(provinceId) || null,
-          city: currentCity,
-          districtId: Number(districtId) || null,
-          district: currentDistrict,
-          wardCode: '',
-          ward: '',
-        });
-        return;
-      }
-
       onChange?.({
-        provinceId: Number(provinceId) || null,
-        city: currentCity,
-        districtId: Number(districtId) || null,
-        district: currentDistrict,
-        wardCode: String(opt.value),
-        ward: opt.label,
+        provinceId: province?._id ? Number(province._id) : Number(provinceId) || null,
+        city: province?.name || 'Hà Nội',
+        districtId: null,
+        district: '',
+        wardCode: opt ? String(opt.value) : '',
+        ward: opt?.label || '',
+        isNewAddress: true,
       });
     },
-    [provinceId, districtId, provinces, districts, onChange]
+    [onChange, province, provinceId]
   );
+
+  const provinceOptions = province
+    ? [{ value: String(province._id), label: province.name, raw: province }]
+    : [];
 
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
         gap: 12,
         width: '100%',
       }}
     >
-      {/* 1. Tỉnh / Thành phố */}
       <AutocompleteField
         label="Tỉnh / Thành phố"
         icon={<MapPin size={12} style={{ color: '#C5A880' }} />}
-        value={provinceId}
+        value={provinceId || province?._id || ''}
         options={provinceOptions}
-        placeholder="Gõ tìm Tỉnh/Thành..."
-        disabled={disabled}
-        loading={loadingProvinces}
-        onSelect={handleProvinceSelect}
+        placeholder="Đang tải Hà Nội..."
+        disabled
+        loading={loadingProvince}
+        onSelect={() => {}}
         required={required}
       />
-
-      {/* 2. Quận / Huyện */}
-      <AutocompleteField
-        inputRef={districtInputRef}
-        label="Quận / Huyện"
-        value={districtId}
-        options={districtOptions}
-        placeholder={!provinceId ? 'Chọn Tỉnh/Thành trước' : 'Gõ tìm Quận/Huyện...'}
-        disabled={disabled || !provinceId}
-        loading={loadingDistricts}
-        onSelect={handleDistrictSelect}
-        required={required}
-      />
-
-      {/* 3. Phường / Xã */}
       <AutocompleteField
         inputRef={wardInputRef}
         label="Phường / Xã"
         value={wardCode}
         options={wardOptions}
-        placeholder={!districtId ? 'Chọn Quận/Huyện trước' : 'Gõ tìm Phường/Xã...'}
-        disabled={disabled || !districtId}
+        placeholder={!province ? 'Đang tải Tỉnh/Thành...' : 'Gõ tìm Phường/Xã...'}
+        disabled={disabled || !province}
         loading={loadingWards}
         onSelect={handleWardSelect}
         required={required}

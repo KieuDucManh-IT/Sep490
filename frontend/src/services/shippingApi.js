@@ -28,6 +28,15 @@ export const getGHNProvincesApi = async () => {
   return await api.get('/shipping/master-data/provinces');
 };
 
+// GHN v3 master data (mô hình địa chỉ 2 cấp sau 01/07/2025).
+export const getGHNNewProvincesApi = async () => {
+  return await api.get('/shipping/master-data/provinces-new');
+};
+
+export const getGHNNewWardsApi = async (provinceId) => {
+  return await api.get(`/shipping/master-data/wards-new/${provinceId}`);
+};
+
 export const getGHNDistrictsApi = async (provinceId) => {
   return await api.get(`/shipping/master-data/districts/${provinceId}`);
 };
@@ -72,6 +81,8 @@ const shippingApi = {
   getShipmentsByOrderApi,
   getPrintTokenApi,
   getGHNProvincesApi,
+  getGHNNewProvincesApi,
+  getGHNNewWardsApi,
   getGHNDistrictsApi,
   getGHNWardsApi,
   getGHNWardsByProvinceApi,

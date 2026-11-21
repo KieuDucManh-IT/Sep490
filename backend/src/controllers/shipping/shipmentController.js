@@ -105,6 +105,15 @@ export const getProvincesHandler = async (req, res, next) => {
   }
 };
 
+export const getNewProvincesHandler = async (req, res, next) => {
+  try {
+    const result = await ghnService.getNewProvinces();
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
 export const getDistrictsHandler = async (req, res, next) => {
   try {
     const result = await ghnService.getDistricts(req.params.provinceId);
@@ -124,6 +133,15 @@ export const getWardsHandler = async (req, res, next) => {
       success: true,
       data: result,
     });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
+export const getNewWardsHandler = async (req, res, next) => {
+  try {
+    const result = await ghnService.getNewWards(req.params.provinceId);
+    return res.json({ success: true, data: result });
   } catch (error) {
     handleError(error, res, next);
   }

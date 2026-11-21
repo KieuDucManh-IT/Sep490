@@ -283,13 +283,16 @@ export const createRentalOrder = async ({
     let orderStatus = 'draft';
     let paymentStatus = 'unpaid';
     let depositStatus = 'pending';
+    const rentalOrderId = new mongoose.Types.ObjectId();
+    let depositHoldTransactionId = null;
 
     // 5. Nếu thanh toán qua Ví nội bộ Vestora
     if (paymentMethod === 'wallet') {
       const wallet = await getWallet(customerId);
       const balances = getBalances(wallet);
-      const requiredAmount = priceCalc.totalPayable; // rentalFee + depositAmount
-      const availableBalance = balances.availableBalance ?? balances.available ?? 0;
+      const requiredAmount = priceCalc.totalPayable;
+      const availableBalance =
+        balances.availableBalance ?? balances.available ?? 0;
 
       if (availableBalance < requiredAmount) {
         throw new ServiceError(
@@ -301,48 +304,96 @@ export const createRentalOrder = async ({
 
       orderStatus = 'confirmed';
       paymentStatus = 'paid';
-      depositStatus = 'held';
+      depositStatus =
+        priceCalc.totalDeposit > 0 ? 'held' : 'pending';
 
-      // Trừ tiền thuê (balanceDelta = -totalRentalFee) và Khóa tiền cọc (lockedDelta = +totalDeposit)
-      const [walletTx] = await WalletTransaction.create(
-        [
-          {
-            walletId: wallet._id,
-            userId: customerId,
-            code: generateWalletTxCode('PAY-RNT'),
-            transactionType: 'rental_payment',
-            direction: 'debit',
-            amount: priceCalc.totalRentalFee,
-            currency: 'VND',
-            status: 'success',
-            referenceType: 'RentalOrder',
-          },
-        ],
-        { session }
-      );
+      // Tách giao dịch tiền thuê và tiền cọc.
+      // Cả hai cùng liên kết tới đúng đơn thuê.
+      const paymentEntries = [
+        {
+          type: 'rental_payment',
+          amount: priceCalc.totalRentalFee,
+          balanceDelta: -priceCalc.totalRentalFee,
+          lockedDelta: 0,
+          phase: 'rental_payment',
+        },
+        {
+          type: 'rental_deposit',
+          amount: priceCalc.totalDeposit,
+          balanceDelta: 0,
+          lockedDelta: priceCalc.totalDeposit,
+          phase: 'rental_deposit_hold',
+        },
+      ];
 
-      await modifyFunds(
-        wallet,
-        walletTx,
-        -priceCalc.totalRentalFee,
-        priceCalc.totalDeposit,
-        'rental_pay_hold',
-        session
-      );
+      for (const entry of paymentEntries) {
+        if (entry.amount <= 0) continue;
+
+        const [tx] = await WalletTransaction.create(
+          [
+            {
+              walletId: wallet._id,
+              userId: customerId,
+              code: generateWalletTxCode('RNT'),
+              transactionType: entry.type,
+              direction: 'debit',
+              amount: entry.amount,
+              status: 'success',
+
+              referenceType: 'RentalOrder',
+              referenceId: rentalOrderId,
+
+              businessKey: `${entry.type}:${rentalOrderId}`,
+              completedAt: new Date(),
+            },
+          ],
+          { session }
+        );
+
+        // Tiền thuê: trừ số dư.
+        // Tiền cọc: tăng số tiền bị khóa.
+        await modifyFunds(
+          wallet,
+          tx,
+          entry.balanceDelta,
+          entry.lockedDelta,
+          entry.phase,
+          session
+        );
+
+        // Lưu thông tin số dư trước/sau do modifyFunds cập nhật.
+        await tx.save({ session });
+
+        if (entry.type === 'rental_deposit') {
+          depositHoldTransactionId = tx._id;
+        }
+      }
     }
 
     // 6. Tạo RentalOrder
     const orderCode = generateOrderCode();
+
     const [order] = await RentalOrder.create(
       [
         {
+          _id: rentalOrderId,
           orderCode,
           locationId,
           customerId,
           createdBy: createdBy || customerId,
+
           rentalStatus: orderStatus,
           paymentStatus,
           depositStatus,
+
+          // Liên kết giao dịch giữ cọc để đối soát khi hoàn tiền.
+          depositHoldTransactionId,
+          paymentMethod,
+          paidAmount:
+            paymentMethod === 'wallet'
+              ? priceCalc.totalPayable
+              : 0,
+
           startDate: new Date(startDate),
           dueDate: new Date(dueDate),
           rentalFee: priceCalc.totalRentalFee,
@@ -947,20 +998,20 @@ export const listRentalOrders = async ({
   const [details, shipments] = await Promise.all([
     orderIds.length
       ? RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } })
-          .populate({
-            path: 'variantId',
-            select: 'sku size color productId',
-            populate: {
-              path: 'productId',
-              select: 'name productCode images thumbnail thumbnailImage brand',
-            },
-          })
-          .lean()
+        .populate({
+          path: 'variantId',
+          select: 'sku size color productId',
+          populate: {
+            path: 'productId',
+            select: 'name productCode images thumbnail thumbnailImage brand',
+          },
+        })
+        .lean()
       : [],
     orderIds.length
       ? OrderShipment.find({ orderId: { $in: orderIds }, orderType: 'rental' })
-          .sort({ createdAt: -1 })
-          .lean()
+        .sort({ createdAt: -1 })
+        .lean()
       : [],
   ]);
 

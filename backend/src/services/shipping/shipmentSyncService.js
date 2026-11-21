@@ -29,6 +29,7 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
     if (!shipment || !shipment.trackingCode) {
       return shipment;
     }
+    if (shipment.isSimulated) return shipment;
 
     // Tránh spam request lên GHN nếu vừa mới sync trong 3 giây qua (trừ khi có flag force)
     if (!force && shipment.lastSyncedAt && Date.now() - new Date(shipment.lastSyncedAt).getTime() < 3000) {
@@ -233,6 +234,7 @@ export const syncInFlightShipments = async () => {
 
     const inFlightShipments = await OrderShipment.find({
       shipmentStatus: { $in: ['preparing', 'shipped'] },
+      isSimulated: { $ne: true },
       trackingCode: { $exists: true, $ne: '', $not: /^(SHP|TRK)-/ },
       $or: [
         { lastSyncedAt: { $lt: thresholdDate } },

@@ -202,6 +202,33 @@ export const simulateGhnHandler = async (req, res, next) => {
       });
     }
 
+    const target = await OrderShipment.findOne({
+      trackingCode,
+    }).lean();
+
+    if (!target) {
+      return res.status(404).json({
+        message: 'Không tìm thấy vận đơn.',
+      });
+    }
+
+    const { fetchOrderAndValidateScope } = await import(
+      '../../services/shipping/shipmentHelpers.js'
+    );
+
+    await fetchOrderAndValidateScope(
+      req.user,
+      target.orderType,
+      target.orderId
+    );
+
+    if (target.isSimulated) {
+      return res.status(409).json({
+        message:
+          'Hãy cập nhật vận đơn này trong cửa sổ Trả đồ.',
+      });
+    }
+
     const normalized = {
       order_code: trackingCode,
       status: ghnStatus,

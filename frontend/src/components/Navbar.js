@@ -320,7 +320,7 @@ export default function Navbar() {
                     onClick={() => setDropdownOpen(false)}
                   >
                     <span className="menu-item-chat-left">
-                      <i className="fa-regular fa-comment-dots menu-icon"></i> Tin nhắn tư vấn
+                      <i className="fa-regular fa-comment-dots menu-icon"></i>   Tin nhắn tư vấn
                     </span>
                     {unreadChatCount > 0 && (
                       <span className="dropdown-chat-badge">
@@ -329,12 +329,13 @@ export default function Navbar() {
                     )}
                   </Link>
                   <Link
-                    to="/favorites"
+                    to="/wallet"
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
                     <Wallet size={15} className="menu-icon" /> Ví Vestora
                   </Link>
+
                   <Link
                     to="/wardrobe"
                     className="menu-item"

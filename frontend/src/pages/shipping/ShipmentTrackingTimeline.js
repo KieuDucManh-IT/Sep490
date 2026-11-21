@@ -34,6 +34,7 @@ import '../../styles/ShippingModal.css';
 
 export default function ShipmentTrackingTimeline({
   shipment,
+  rentalStatus = null,
   onCancel,
   onRetry,
   onStatusUpdated,
@@ -55,10 +56,29 @@ export default function ShipmentTrackingTimeline({
 
   if (!shipment) return null;
 
-  const statusDef = SHIPMENT_STATUS_MAP[shipment.shipmentStatus] || {
-    text: shipment.shipmentStatus || 'Chưa xác định',
-    chipClass: 'pending',
-  };
+  const completedRentalReturn =
+    shipment.shipmentType === 'return' &&
+    rentalStatus === 'returned';
+
+  const waitingForInspection =
+    shipment.shipmentType === 'return' &&
+    Boolean(rentalStatus) &&
+    shipment.shipmentStatus === 'delivered';
+
+  const statusDef = completedRentalReturn
+    ? {
+      text: 'Đã trả đồ hoàn tất',
+      chipClass: 'completed',
+    }
+    : waitingForInspection
+      ? {
+        text: 'Đã về shop, chờ nghiệm thu',
+        chipClass: 'processing',
+      }
+      : SHIPMENT_STATUS_MAP[shipment.shipmentStatus] || {
+        text: shipment.shipmentStatus || 'Chưa xác định',
+        chipClass: 'pending',
+      };
 
   const handleCopyCode = () => {
     const code = shipment.trackingCode;
@@ -453,9 +473,8 @@ export default function ShipmentTrackingTimeline({
                   <div key={item._id || `${item.status}-${item.timestamp || idx}`} className="mb-3 position-relative">
                     {/* Timeline bullet dot */}
                     <div
-                      className={`position-absolute rounded-circle shipping-timeline-bullet ${
-                        isLatest ? 'bg-primary' : 'bg-secondary'
-                      }`}
+                      className={`position-absolute rounded-circle shipping-timeline-bullet ${isLatest ? 'bg-primary' : 'bg-secondary'
+                        }`}
                     />
                     <div className="d-flex align-items-center gap-2">
                       <span className={`small fw-bold ${isLatest ? 'text-primary' : 'text-dark'}`}>
@@ -624,9 +643,8 @@ export default function ShipmentTrackingTimeline({
 
                 <button
                   type="button"
-                  className={`btn btn-sm py-1 px-3 ${
-                    activeAction === 'delivered' ? 'btn-success text-white' : 'btn-outline-success'
-                  }`}
+                  className={`btn btn-sm py-1 px-3 ${activeAction === 'delivered' ? 'btn-success text-white' : 'btn-outline-success'
+                    }`}
                   style={{ fontSize: '12.5px', borderRadius: '6px', fontWeight: 600 }}
                   onClick={() => setActiveAction((prev) => (prev === 'delivered' ? null : 'delivered'))}
                   disabled={simulating}
@@ -636,9 +654,8 @@ export default function ShipmentTrackingTimeline({
 
                 <button
                   type="button"
-                  className={`btn btn-sm py-1 px-3 ${
-                    activeAction === 'failed' ? 'btn-warning text-dark' : 'btn-outline-warning'
-                  }`}
+                  className={`btn btn-sm py-1 px-3 ${activeAction === 'failed' ? 'btn-warning text-dark' : 'btn-outline-warning'
+                    }`}
                   style={{ fontSize: '12.5px', borderRadius: '6px', fontWeight: 600 }}
                   onClick={() => setActiveAction((prev) => (prev === 'failed' ? null : 'failed'))}
                   disabled={simulating}
@@ -843,9 +860,8 @@ export default function ShipmentTrackingTimeline({
 
               {simulateFeedback && (
                 <div
-                  className={`mt-2 py-1 px-2 rounded-2 small d-flex align-items-center gap-1 ${
-                    simulateFeedback.type === 'error' ? 'text-danger' : 'text-success'
-                  }`}
+                  className={`mt-2 py-1 px-2 rounded-2 small d-flex align-items-center gap-1 ${simulateFeedback.type === 'error' ? 'text-danger' : 'text-success'
+                    }`}
                   style={{
                     backgroundColor: simulateFeedback.type === 'error' ? '#fef2f2' : '#ecfdf5',
                     border: `1px solid ${simulateFeedback.type === 'error' ? '#fecaca' : '#a7f3d0'}`,

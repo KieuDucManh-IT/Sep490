@@ -5,6 +5,10 @@ import { cancelRentalOrder } from '../../services/rentalOrderApi';
 import { createRentalClaim } from '../../services/rentalReturnApi';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
 import {
+  RentalReturnWorkflow,
+  RentalDeliveryVideos,
+} from '../../pages/shipping/ShipmentReturnModal';
+import {
   Truck,
   Package,
   CheckCircle,
@@ -735,6 +739,18 @@ export default function OrderTrackingDetailModal({
       setIsSubmitting(false);
     }
   };
+  if (viewMode === 'return') {
+    return (
+      <RentalReturnWorkflow
+        show
+        orderId={order._id}
+        onClose={() => {
+          setViewMode('tracking');
+          onOrderUpdated?.();
+        }}
+      />
+    );
+  }
 
   return (
     <HauteCoutureModal
@@ -744,8 +760,8 @@ export default function OrderTrackingDetailModal({
         viewMode === 'cancel'
           ? 'Hủy Đơn Thuê Trang Phục'
           : viewMode === 'dispute'
-          ? 'Yêu Cầu Đổi Trả Do Lỗi Sản Xuất (24h)'
-          : `Tiến Trình & Chi Tiết Đơn Hàng #${order.orderCode || order._id?.slice(-6).toUpperCase()}`
+            ? 'Yêu Cầu Đổi Trả Do Lỗi Sản Xuất (24h)'
+            : `Tiến Trình & Chi Tiết Đơn Hàng #${order.orderCode || order._id?.slice(-6).toUpperCase()}`
       }
       subtitle={
         viewMode === 'tracking'
@@ -852,6 +868,9 @@ export default function OrderTrackingDetailModal({
 
               {/* KHỐI 3: CHI TIẾT TÀI CHÍNH & THANH TOÁN */}
               <OrderFinancialSummary order={order} isRental={isRental} />
+              {isRental && (
+                <RentalDeliveryVideos orderId={order._id} />
+              )}
 
               {/* KHỐI 4: CÁC NÚT HÀNH ĐỘNG */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingTop: '8px' }}>
@@ -899,6 +918,18 @@ export default function OrderTrackingDetailModal({
                     >
                       <RotateCcw size={15} />
                       <span>Khiếu Nại Đổi Trả (24h)</span>
+                    </button>
+                  )}
+
+                  {isRental && order.rentalStatus !== 'cancelled' && (
+                    <button
+                      type="button"
+                      className="btn btn-primary me-2 mb-2"
+                      onClick={() => setViewMode('return')}
+                    >
+                      {['renting', 'overdue'].includes(order.rentalStatus)
+                        ? 'Trả đồ'
+                        : 'Video bàn giao / Theo dõi trả đồ'}
                     </button>
                   )}
                 </div>

@@ -11,6 +11,7 @@ import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundRece
 import { enrichProductsWithInventory } from '../warehouse/productInventoryHelper.js';
 import { normalizeColorKey } from './productImageHelper.js';
 import { hasRequiredPrices } from './productPricing.js';
+import { assertLeafCategories } from './categoryRules.js';
 
 const imageError = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const populateProduct = (query) => query.populate('categoryId').lean();
@@ -21,7 +22,21 @@ const assertActiveCategories = async (categoryIds) => {
   }
 };
 
-const normalizeImages = (images, productId) => {
+/**
+ * Sản phẩm chỉ gắn loại cấp cuối (TASK-014 A3). Chỉ kiểm các loại mới thêm so với `currentIds`:
+ * sản phẩm cũ đang gắn loại cha (dữ liệu trước khi đổi quy tắc) vẫn sửa được các trường khác.
+ */
+const assertLeafCategoriesForNew = async (categoryIds, currentIds = []) => {
+  const current = new Set((currentIds || []).map((id) => String(id?._id || id)));
+  const added = [...new Set((categoryIds || []).map(String))].filter((id) => !current.has(id));
+  if (!added.length) return;
+  const parentIds = await Category.distinct('parentCategoryId', {
+    parentCategoryId: { $in: added }, isDeleted: { $ne: true }, status: 'active',
+  });
+  assertLeafCategories(added, parentIds);
+};
+
+const normalizeImages =(images, productId) => {
   if (!Array.isArray(images)) throw imageError('Danh sách ảnh sản phẩm phải là một mảng.');
   const seenPrimary = new Set();
   return images.map((image, index) => {
@@ -178,6 +193,7 @@ export const productService = {
     const { images, variants, ...productPayload } = payload || {};
     const normalized = validateProduct(productPayload);
     await assertActiveCategories(normalized.categoryId);
+    await assertLeafCategoriesForNew(normalized.categoryId);
     const product = await Product.create(normalized);
     try {
       // Biến thể trước, ảnh sau: màu của ảnh được kiểm tra theo biến thể vừa lưu.
@@ -201,6 +217,7 @@ export const productService = {
     delete current.productType;
     const changes = validateProduct(productPayload, current);
     await assertActiveCategories(changes.categoryId || product.categoryId);
+    if (changes.categoryId) await assertLeafCategoriesForNew(changes.categoryId, product.categoryId);
     Object.assign(product, changes);
     product.set('productType', undefined);
     // TASK-008: WM đổi tag của sản phẩm đã định giá mà giá không còn đủ → tạm ẩn với khách tới khi Owner bổ sung.

@@ -3,12 +3,32 @@ import { StorageLocation } from '../../models/warehouse/location/StorageLocation
 import { validateInventoryLocation, validateStorageLocation } from '../../validations/warehouse/locationValidation.js';
 import User from '../../models/system/User.js';
 import { Shop } from '../../models/shop/Shop.js';
+import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
+import { getCentralWarehouse } from './shared/locations.js';
+import { isAdmin } from './shared/roles.js';
+import { appError } from './shared/errors.js';
+import { assertWarehouseCapacity, pickCentralWarehouseChanges } from './locationRules.js';
 
 const capacityConflict = (message) => Object.assign(new Error(message), { statusCode: 409 });
 const capacityOf = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
 const childCapacityTotal = async (filter) => {
   const children = await StorageLocation.find(filter).select('maxCapacity').lean();
   return children.reduce((total, child) => total + capacityOf(child.maxCapacity), 0);
+};
+
+/** Số đang chứa của một kho = tổng quantityOnHand trên balance (cùng cách tính "đã dùng" của capacitySnapshot). */
+const onHandTotal = async (locationId) => {
+  const [row] = await InventoryBalance.aggregate([
+    { $match: { locationId } },
+    { $group: { _id: null, total: { $sum: '$quantityOnHand' } } },
+  ]);
+  return Math.max(0, Number(row?.total) || 0);
+};
+
+/** Kho tổng kèm số đang chứa — dữ liệu cho màn "Thiết lập kho tổng". */
+export const getCentralWarehouseSettings = async () => {
+  const central = await getCentralWarehouse(null, { select: 'code name type address maxCapacity note status' });
+  return { ...central, currentQuantity: await onHandTotal(central._id) };
 };
 
 export const inventoryLocationService = {
@@ -20,18 +40,29 @@ export const inventoryLocationService = {
     if (data.type === 'warehouse') data.shopId = null;
     return InventoryLocation.create(data);
   },
-  update: async (id, payload) => {
+  /**
+   * Quản lý kho chỉ sửa được kho tổng (tên, địa chỉ, sức chứa, ghi chú); admin sửa được mọi kho như trước.
+   * Sức chứa kho tổng không được nhỏ hơn số đang chứa.
+   */
+  update: async (id, payload, user = null) => {
     const location = await InventoryLocation.findById(id);
     if (!location) return null;
-    const changes = validateInventoryLocation(payload, location.toObject());
+    const managerOnly = user && !isAdmin(user);
+    if (managerOnly && location.type !== 'warehouse') {
+      throw appError('Quản lý kho chỉ được sửa thông tin kho tổng. Kho chi nhánh do quản trị viên quản lý.', 403);
+    }
+    const input = managerOnly ? pickCentralWarehouseChanges(payload) : payload;
+    const changes = validateInventoryLocation(input, location.toObject());
     await validateWarehouseManager(Object.hasOwn(changes, 'managerId') ? changes.managerId : location.managerId);
     const candidate = { ...location.toObject(), ...changes };
     await validateShopLink(candidate, location._id);
     if (candidate.type === 'warehouse') changes.shopId = null;
     const childrenCapacity = await childCapacityTotal({ locationId: location._id, parentStorageId: null });
     const nextCapacity = Object.hasOwn(changes, 'maxCapacity') ? changes.maxCapacity : location.maxCapacity;
-    if (childrenCapacity > capacityOf(nextCapacity)) {
-      throw capacityConflict(`Sức chứa tối đa phải từ ${childrenCapacity} cái trở lên để chứa các zone hiện có.`);
+    if (candidate.type === 'warehouse' && (managerOnly || Object.hasOwn(changes, 'maxCapacity'))) {
+      assertWarehouseCapacity({ maxCapacity: nextCapacity, currentQuantity: await onHandTotal(location._id), childrenCapacity });
+    } else if (childrenCapacity > capacityOf(nextCapacity)) {
+      throw capacityConflict(`Sức chứa tối đa phải từ ${childrenCapacity} cái trở lên để chứa các khu hiện có.`);
     }
     Object.assign(location, changes);
     return location.save();
@@ -67,11 +98,11 @@ const validateParentAndCapacity = async (candidate, currentId = null) => {
     parent = await StorageLocation.findById(candidate.parentStorageId);
     if (!parent) throw Object.assign(new Error('Không tìm thấy vị trí cha.'), { statusCode: 400 });
     const validParentType = (candidate.type === 'row' && parent.type === 'zone') || (candidate.type === 'shelf' && parent.type === 'row');
-    if (!validParentType) throw Object.assign(new Error('Cấu trúc hợp lệ là zone → row → shelf.'), { statusCode: 400 });
+    if (!validParentType) throw Object.assign(new Error('Cấu trúc hợp lệ là Khu → Dãy → Kệ.'), { statusCode: 400 });
     if (String(parent.locationId) !== String(candidate.locationId)) throw Object.assign(new Error('Vị trí cha phải thuộc cùng kho/cửa hàng.'), { statusCode: 400 });
     if (!candidate.code.startsWith(`${parent.code}-`)) throw Object.assign(new Error(`Mã vị trí phải bắt đầu bằng ${parent.code}-.`), { statusCode: 400 });
   } else if (!['zone', 'temporary_area'].includes(candidate.type)) {
-    throw Object.assign(new Error('Row và shelf phải có vị trí cha.'), { statusCode: 400 });
+    throw Object.assign(new Error('Dãy và kệ phải có vị trí cha.'), { statusCode: 400 });
   }
 
   const childrenFilter = { parentStorageId: currentId || candidate._id };
@@ -110,15 +141,21 @@ const validateParentAndCapacity = async (candidate, currentId = null) => {
 
 export const storageLocationService = {
   list: listStorageLocations,
+  // Vị trí lưu trữ chỉ thuộc kho tổng (TASK-014 A2): luôn gán locationId = kho tổng, bỏ qua giá trị client gửi.
   create: async (payload) => {
-    const data = validateStorageLocation(payload);
+    const central = await getCentralWarehouse(null, { select: '_id' });
+    const data = validateStorageLocation({ ...(payload || {}), locationId: String(central._id) });
     await validateParentAndCapacity(data);
     return StorageLocation.create(data);
   },
   update: async (id, payload) => {
     const location = await StorageLocation.findById(id);
     if (!location) return null;
-    const changes = validateStorageLocation(payload, location.toObject());
+    const central = await getCentralWarehouse(null, { select: '_id' });
+    if (String(location.locationId) !== String(central._id)) {
+      throw appError('Vị trí này không thuộc kho tổng nên không sửa được ở đây.', 409);
+    }
+    const changes = validateStorageLocation({ ...(payload || {}), locationId: String(central._id) }, location.toObject());
     const candidate = { ...location.toObject(), ...changes, _id: location._id };
     if (candidate.parentStorageId && String(candidate.parentStorageId) === String(location._id)) {
       throw Object.assign(new Error('Vị trí không thể là cha của chính nó.'), { statusCode: 400 });
@@ -128,7 +165,7 @@ export const storageLocationService = {
     return location.save();
   },
   remove: async (id) => {
-    if (await StorageLocation.exists({ parentStorageId: id })) throw capacityConflict('Hãy xóa các row/shelf bên trong trước khi xóa vị trí này.');
+    if (await StorageLocation.exists({ parentStorageId: id })) throw capacityConflict('Hãy xóa các dãy/kệ bên trong trước khi xóa vị trí này.');
     return StorageLocation.findByIdAndDelete(id);
   },
 };

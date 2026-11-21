@@ -55,9 +55,9 @@ export const validateTransferPick = (payload) => {
     const allocations = line.allocations.map((allocation) => {
       if (!isObject(allocation)) throw badRequest('Phân bổ vị trí xuất không hợp lệ.');
       const itemIds = allocation.itemIds == null ? [] : allocation.itemIds;
-      if (!Array.isArray(itemIds)) throw badRequest('Danh sách InventoryItem phải là một danh sách.');
-      const normalizedItemIds = itemIds.map((id) => objectId(id, 'InventoryItem'));
-      if (new Set(normalizedItemIds).size !== normalizedItemIds.length) throw badRequest('InventoryItem trong cùng một vị trí bị trùng.');
+      if (!Array.isArray(itemIds)) throw badRequest('Danh sách mã hàng phải là một danh sách.');
+      const normalizedItemIds = itemIds.map((id) => objectId(id, 'Mã hàng'));
+      if (new Set(normalizedItemIds).size !== normalizedItemIds.length) throw badRequest('Mã hàng trong cùng một vị trí bị trùng.');
       return {
         storageId: allocation.storageId && allocation.storageId !== 'none' ? objectId(allocation.storageId, 'Vị trí xuất') : null,
         quantity: integer(allocation.quantity, 'Số lượng phân bổ', 1),
@@ -67,7 +67,7 @@ export const validateTransferPick = (payload) => {
     const storageKeys = allocations.map((allocation) => String(allocation.storageId || 'none'));
     if (new Set(storageKeys).size !== storageKeys.length) throw badRequest('Mỗi vị trí chỉ được phân bổ một lần cho một mặt hàng; hãy gộp số lượng cùng vị trí.');
     const allItemIds = allocations.flatMap((allocation) => allocation.itemIds);
-    if (new Set(allItemIds).size !== allItemIds.length) throw badRequest('Không thể phân bổ cùng một InventoryItem ở nhiều vị trí.');
+    if (new Set(allItemIds).size !== allItemIds.length) throw badRequest('Không thể phân bổ cùng một mã hàng ở nhiều vị trí.');
     return { detailId: objectId(line.detailId, 'Dòng điều chuyển'), allocations };
   });
   if (new Set(items.map((item) => item.detailId)).size !== items.length) throw badRequest('Dòng phân bổ bị trùng.');

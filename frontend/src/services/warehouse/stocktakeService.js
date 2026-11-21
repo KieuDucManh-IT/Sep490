@@ -5,6 +5,8 @@ export default {
   get: (id) => unwrap(api.get(`/warehouse/stocktakes/${id}`)),
   listStaff: () => unwrap(api.get('/warehouse/stocktakes/staff')),
   create: (payload) => unwrap(api.post('/warehouse/stocktakes', payload)),
+  // Chỉ đọc: các cặp (biến thể, vị trí) sẽ có trong phiếu theo phạm vi.
+  preview: (scope) => unwrap(api.post('/warehouse/stocktakes/preview', scope)),
   start: (id) => unwrap(api.post(`/warehouse/stocktakes/${id}/start`)),
   saveCounts: (id, payload) => unwrap(api.post(`/warehouse/stocktakes/${id}/counts`, payload)),
   submit: (id) => unwrap(api.post(`/warehouse/stocktakes/${id}/submit`)),

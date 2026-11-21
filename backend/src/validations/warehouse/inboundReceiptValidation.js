@@ -44,7 +44,7 @@ export const validatePutaway = (payload, detailIds) => {
     const seenStorage = new Set();
     const allocations = item.allocations.map((allocation) => {
       if (!isObjectId(allocation?.storageId) || !isQuantity(allocation.quantity) || allocation.quantity === 0 || seenStorage.has(allocation.storageId)) {
-        throw badRequest('Mỗi phân bổ cần một shelf hợp lệ, số lượng nguyên dương và không được lặp shelf.');
+        throw badRequest('Mỗi phân bổ cần một kệ hợp lệ, số lượng nguyên dương và không được lặp kệ.');
       }
       seenStorage.add(allocation.storageId);
       return { storageId: allocation.storageId, quantity: allocation.quantity };
@@ -61,4 +61,25 @@ export const validateCancelReason = (payload) => {
   if (!reason) throw badRequest('Vui lòng nhập lý do hủy phiếu.');
   if (reason.length > 500) throw badRequest('Lý do hủy phiếu tối đa 500 ký tự.');
   return { reason };
+};
+
+export const RECEIPT_DECISIONS = ['approve', 'recount'];
+
+/**
+ * Quyết định của quản lý kho với phiếu đã ghi nhận: 'approve' (cho xếp kệ) hoặc 'recount' (nhân viên kiểm nhận lại).
+ * 'reject' không còn được chấp nhận (TASK-014). 'recount' bắt buộc lý do (`reason`, client cũ gửi `note`), ≤ 500 ký tự.
+ */
+export const validateReceiptDecision = (payload) => {
+  const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  if (body.decision === 'reject') {
+    throw badRequest('Không còn hỗ trợ từ chối phiếu nhập. Hãy dùng "Yêu cầu kiểm nhận lại" hoặc hủy phiếu.');
+  }
+  if (!RECEIPT_DECISIONS.includes(body.decision)) throw badRequest('Quyết định không hợp lệ.');
+  if (body.decision === 'approve') return { decision: 'approve' };
+  const raw = body.reason ?? body.recountReason ?? body.note;
+  if (raw != null && typeof raw !== 'string') throw badRequest('Lý do kiểm nhận lại không hợp lệ.');
+  const reason = String(raw || '').trim();
+  if (!reason) throw badRequest('Vui lòng nhập lý do yêu cầu kiểm nhận lại.');
+  if (reason.length > 500) throw badRequest('Lý do kiểm nhận lại tối đa 500 ký tự.');
+  return { decision: 'recount', reason };
 };

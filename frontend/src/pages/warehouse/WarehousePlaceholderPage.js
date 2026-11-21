@@ -1,10 +1,18 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import WarehouseSidebar from '../../components/WarehouseSidebar';
-import '../../styles/WarehouseManager.css';
+import { PageHeader } from '../../components/warehouse';
+import WarehousePageLayout from './shared/WarehousePageLayout';
 
+/** Trang tạm cho các phân hệ kho chưa làm (route cũ vẫn giữ để không vỡ link). */
 export default function WarehousePlaceholderPage() {
   const { kind } = useParams();
   const title = decodeURIComponent(kind || '');
-  return <div className="wm-layout"><WarehouseSidebar /><main className="wm-main"><header className="wm-header"><div><span>WAREHOUSE MANAGER</span><h1>{title}</h1></div></header><section className="wm-panel"><p>Phân hệ {title.toLowerCase()} sẽ được triển khai ở bước tiếp theo.</p></section></main></div>;
+  return (
+    <WarehousePageLayout>
+      <PageHeader eyebrow="QUẢN LÝ KHO" title={title} />
+      <section className="wm-panel">
+        <p>Phân hệ {title.toLowerCase()} sẽ được triển khai ở bước tiếp theo.</p>
+      </section>
+    </WarehousePageLayout>
+  );
 }

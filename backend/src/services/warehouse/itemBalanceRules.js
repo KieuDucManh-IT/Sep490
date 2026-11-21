@@ -8,13 +8,12 @@
 //                         + (chỉ dòng storageId null của chi nhánh) tổng InventoryReservation active của đơn thuê/bán
 //   quantityRenting     = số món `renting`, ghi trên dòng storageId null của location (TASK-010 thêm cột)
 // in_transit, disposed, sold: không tính ở đâu.
+import { appError as fail } from './shared/errors.js';
 
 export const ON_HAND_STATUSES = Object.freeze(['available', 'reserved', 'unavailable', 'maintenance']);
 export const UNAVAILABLE_STATUSES = Object.freeze(['unavailable', 'maintenance']);
 export const OFF_HAND_STATUSES = Object.freeze(['in_transit', 'renting', 'disposed', 'sold']);
 export const BALANCE_FIELDS = Object.freeze(['quantityOnHand', 'quantityReserved', 'quantityUnavailable', 'quantityRenting']);
-
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
 export const idOf = (value) => {
   if (value === null || value === undefined || value === '') return '';

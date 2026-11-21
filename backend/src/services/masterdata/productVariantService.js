@@ -8,7 +8,7 @@ import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { validateProductVariant } from '../../validations/masterdata/productVariantValidation.js';
 
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
 const skuPart = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 const buildSku = async (product, variant, excludeId = null) => {
@@ -58,7 +58,8 @@ export const productVariantService = {
     const input = { ...payload, productId };
     delete input.sku;
     const data = validateProductVariant(input, variant.toObject());
-    data.sku = await buildSku(product, data, variant._id);
+    // Form biến thể không còn gửi `attributes` (TASK-014 A4): SKU tính trên dữ liệu đã gộp để giữ phần thuộc tính cũ.
+    data.sku = await buildSku(product, { ...variant.toObject(), ...data }, variant._id);
     Object.assign(variant, data);
     return variant.save();
   },

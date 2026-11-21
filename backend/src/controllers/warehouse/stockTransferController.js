@@ -6,6 +6,7 @@ import {
   listStockTransfers,
   listWarehouseTransferStaff,
   getTransferPickCandidates,
+  getTransferPickSuggestion,
   saveTransferPick,
   receiveTransfer,
   shipTransfer,
@@ -32,6 +33,11 @@ export const listTransferStaffRows = async (req, res, next) => {
 };
 export const getTransferPickCandidatesRow = async (req, res, next) => {
   try { res.json({ success: true, data: await getTransferPickCandidates(req.params.id, req.query.detailId, req.query.storageId, req.user) }); }
+  catch (error) { handleError(error, res, next); }
+};
+/** Chỉ đọc: khả dụng kho tổng + gợi ý vị trí lấy hàng (TASK-014 D). */
+export const getTransferPickSuggestionRow = async (req, res, next) => {
+  try { res.json({ success: true, data: await getTransferPickSuggestion(req.params.id, req.user) }); }
   catch (error) { handleError(error, res, next); }
 };
 export const saveTransferPickRow = async (req, res, next) => {

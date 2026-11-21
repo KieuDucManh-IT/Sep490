@@ -31,22 +31,22 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
     const variant = variants.find(v => idOf(v) === String(it.variantId));
     const product = variant?.productId;
     const errors = []; const warnings = [];
-    const fail = (code, message) => errors.push({ code, message });
+    const addItemError = (code, message) => errors.push({ code, message });
     const total = totals.get(String(it.variantId));
     const availableQty = locationId ? (location?.active ? stock(String(it.variantId), String(locationId)) : 0)
       : activeLocations.reduce((sum, loc) => sum + stock(String(it.variantId), idOf(loc)), 0);
-    if (!variant || !product?._id) fail('ERR_ITEM_NOT_FOUND', 'Sản phẩm không còn tồn tại.');
-    else if (!isActiveVariant(variant) || !isActiveProduct(product)) fail('ERR_ITEM_INACTIVE', 'Sản phẩm đã ngừng kinh doanh.');
-    else if (product.isSetPrice !== true) fail('ERR_ITEM_NOT_PRICED', `Sản phẩm [${product.name || variant.sku}] chưa được mở bán.`);
-    if (product && (it.orderType === 'sale' ? String(product.tag).toLowerCase() === 'rental' : String(product.tag).toLowerCase() === 'sale')) fail('ERR_ITEM_TYPE_MISMATCH', 'Sản phẩm không hỗ trợ hình thức giao dịch này.');
-    if (location && !location.active) fail('ERR_BRANCH_UNAVAILABLE', 'Chi nhánh không khả dụng.');
-    if (availableQty < total) fail('ERR_INSUFFICIENT_STOCK', `Chỉ còn ${availableQty} sản phẩm, giỏ đang yêu cầu ${total}.`);
+    if (!variant || !product?._id) addItemError('ERR_ITEM_NOT_FOUND', 'Sản phẩm không còn tồn tại.');
+    else if (!isActiveVariant(variant) || !isActiveProduct(product)) addItemError('ERR_ITEM_INACTIVE', 'Sản phẩm đã ngừng kinh doanh.');
+    else if (product.isSetPrice !== true) addItemError('ERR_ITEM_NOT_PRICED', `Sản phẩm [${product.name || variant.sku}] chưa được mở bán.`);
+    if (product && (it.orderType === 'sale' ? String(product.tag).toLowerCase() === 'rental' : String(product.tag).toLowerCase() === 'sale')) addItemError('ERR_ITEM_TYPE_MISMATCH', 'Sản phẩm không hỗ trợ hình thức giao dịch này.');
+    if (location && !location.active) addItemError('ERR_BRANCH_UNAVAILABLE', 'Chi nhánh không khả dụng.');
+    if (availableQty < total) addItemError('ERR_INSUFFICIENT_STOCK', `Chỉ còn ${availableQty} sản phẩm, giỏ đang yêu cầu ${total}.`);
     const prices = resolveProductPricing(product, variant);
     let authoritative = null;
     let priceChanged = false;
     if (variant && product?._id) {
       if (it.orderType === 'sale') {
-        if (!Number.isFinite(prices.salePrice) || prices.salePrice <= 0) fail('ERR_INVALID_PRICE', 'Giá bán chưa hợp lệ.');
+        if (!Number.isFinite(prices.salePrice) || prices.salePrice <= 0) addItemError('ERR_INVALID_PRICE', 'Giá bán chưa hợp lệ.');
         else {
           authoritative = { salePrice: prices.salePrice, lineTotal: prices.salePrice * it.quantity, lineDeposit: 0 };
           priceChanged = it.clientSalePrice !== undefined && it.clientSalePrice !== prices.salePrice;
@@ -54,8 +54,8 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
         }
       } else {
         const range = validateCalendarRentalRange(it.startDate, it.dueDate);
-        if (!range.valid) fail(range.code, range.message);
-        if (!Number.isFinite(prices.rentalPricePerDay) || prices.rentalPricePerDay <= 0 || !Number.isFinite(prices.deposit) || prices.deposit < 0) fail('ERR_INVALID_PRICE', 'Giá thuê hoặc tiền cọc chưa hợp lệ.');
+        if (!range.valid) addItemError(range.code, range.message);
+        if (!Number.isFinite(prices.rentalPricePerDay) || prices.rentalPricePerDay <= 0 || !Number.isFinite(prices.deposit) || prices.deposit < 0) addItemError('ERR_INVALID_PRICE', 'Giá thuê hoặc tiền cọc chưa hợp lệ.');
         else if (range.valid) {
           authoritative = { rentalPricePerDay: prices.rentalPricePerDay, depositPerUnit: prices.deposit, rentalDays: range.rentalDays,
             lineTotal: prices.rentalPricePerDay * range.rentalDays * it.quantity, lineDeposit: prices.deposit * it.quantity };

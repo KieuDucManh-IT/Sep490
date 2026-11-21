@@ -1,11 +1,13 @@
 ﻿import express from 'express';
 import { authMiddleware, requireRoles } from '../middlewares/errorMiddleware.js';
-import { approveStocktakeRow, cancelStocktakeRow, countStocktakeRow, createStocktakeRow, getStocktakeRow, listStocktakeStaff, listStocktakesRow, startStocktakeRow, submitStocktakeRow } from '../controllers/warehouse/stocktakeController.js';
+import { approveStocktakeRow, cancelStocktakeRow, countStocktakeRow, createStocktakeRow, getStocktakeRow, listStocktakeStaff, listStocktakesRow, previewStocktakeRow, startStocktakeRow, submitStocktakeRow } from '../controllers/warehouse/stocktakeController.js';
 const router = express.Router();
 router.use(authMiddleware);
 router.get('/staff', requireRoles('warehouse_manager'), listStocktakeStaff);
 router.get('/', requireRoles('warehouse_manager', 'warehouse_staff'), listStocktakesRow);
 router.post('/', requireRoles('warehouse_manager'), createStocktakeRow);
+// Chỉ đọc; đặt trước '/:id' để không bị hiểu là mã phiếu.
+router.post('/preview', requireRoles('warehouse_manager'), previewStocktakeRow);
 router.get('/:id', requireRoles('warehouse_manager', 'warehouse_staff'), getStocktakeRow);
 router.post('/:id/start', requireRoles('warehouse_manager'), startStocktakeRow);
 router.post('/:id/counts', requireRoles('warehouse_manager', 'warehouse_staff'), countStocktakeRow);

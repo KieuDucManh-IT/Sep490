@@ -9,7 +9,9 @@ import { resolveLocationScope } from '../order/orderMonitoringService.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
 import { Shop } from '../../models/shop/Shop.js';
 
-export const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
+
+export { fail };
 
 /**
  * Chuẩn hóa đối tượng người gửi / người nhận (Tỉnh/Thành, Quận/Huyện, Phường/Xã)

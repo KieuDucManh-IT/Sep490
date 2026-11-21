@@ -8,6 +8,7 @@ import {
   listStockTransferRows,
   listTransferStaffRows,
   getTransferPickCandidatesRow,
+  getTransferPickSuggestionRow,
   saveTransferPickRow,
   receiveTransferRow,
   shipTransferRow,
@@ -22,6 +23,7 @@ router.get('/', requireRoles('branch_manager', 'warehouse_manager', 'warehouse_s
 router.post('/requests', requireRoles('branch_manager'), createTransferRequestRow);
 router.get('/:id', requireRoles('branch_manager', 'warehouse_manager', 'warehouse_staff'), getStockTransferRow);
 router.get('/:id/pick-candidates', requireRoles('warehouse_staff', 'warehouse_manager'), getTransferPickCandidatesRow);
+router.get('/:id/pick-suggestion', requireRoles('warehouse_staff', 'warehouse_manager'), getTransferPickSuggestionRow);
 router.post('/:id/pick', requireRoles('warehouse_staff', 'warehouse_manager'), saveTransferPickRow);
 router.post('/:id/decision', requireRoles('warehouse_manager'), decideTransferRequestRow);
 router.post('/:id/ship', requireRoles('warehouse_staff', 'warehouse_manager'), shipTransferRow);

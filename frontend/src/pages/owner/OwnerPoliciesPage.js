@@ -24,7 +24,7 @@ import '../../styles/OwnerPolicies.css';
 const normalizePoliciesArray = (raw) => {
   if (Array.isArray(raw)) {
     return raw.map((item, idx) => ({
-      key: item.key || `policy-${idx}`,
+      _id: item._id || item.id || `policy-${idx}`,
       title: item.title || '',
       summary: item.summary || '',
       content: item.content || '',
@@ -33,7 +33,7 @@ const normalizePoliciesArray = (raw) => {
   }
   if (raw && typeof raw === 'object') {
     return Object.entries(raw).map(([key, val], idx) => ({
-      key,
+      _id: val?._id || val?.id || key || `policy-${idx}`,
       title: val?.title || '',
       summary: val?.summary || '',
       content: val?.content || '',
@@ -45,7 +45,7 @@ const normalizePoliciesArray = (raw) => {
 
 export default function OwnerPoliciesPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeKey, setActiveKey] = useState('');
+  const [activeId, setActiveId] = useState('');
 
   const [policies, setPolicies] = useState([]);
   const [initialPolicies, setInitialPolicies] = useState([]);
@@ -67,14 +67,13 @@ export default function OwnerPoliciesPage() {
       setPolicies(normalized);
       setInitialPolicies(JSON.parse(JSON.stringify(normalized)));
 
-      // Đặt activeKey nếu chưa chọn hoặc mục cũ không còn
       if (normalized.length > 0) {
-        setActiveKey((prev) => {
-          const exists = normalized.some((p) => p.key === prev);
-          return exists ? prev : normalized[0].key;
+        setActiveId((prev) => {
+          const exists = normalized.some((p) => p._id === prev);
+          return exists ? prev : normalized[0]._id;
         });
       } else {
-        setActiveKey('');
+        setActiveId('');
       }
     } catch (error) {
       setToast({
@@ -113,9 +112,9 @@ export default function OwnerPoliciesPage() {
   }, [isDirty]);
 
   // Cập nhật từng trường của chính sách đang chọn
-  const handleFieldChange = useCallback((key, field, value) => {
+  const handleFieldChange = useCallback((id, field, value) => {
     setPolicies((prev) =>
-      prev.map((item) => (item.key === key ? { ...item, [field]: value } : item))
+      prev.map((item) => (item._id === id ? { ...item, [field]: value } : item))
     );
   }, []);
 
@@ -135,6 +134,34 @@ export default function OwnerPoliciesPage() {
   const handleSave = async (e) => {
     if (e) e.preventDefault();
     if (!isDirty || saving) return;
+
+    // Validate tên chính sách không được để trống
+    const emptyIndex = policies.findIndex((p) => !p.title || !String(p.title).trim());
+    if (emptyIndex !== -1) {
+      const invalidPolicy = policies[emptyIndex];
+      setToast({
+        type: 'danger',
+        message: `Tên chính sách (mục số ${emptyIndex + 1}) không được để trống. Vui lòng nhập tên chính sách trước khi lưu.`,
+      });
+      setActiveId(invalidPolicy._id);
+      return;
+    }
+
+    // Validate tên chính sách không được trùng lặp
+    const seenTitles = new Map();
+    for (let i = 0; i < policies.length; i++) {
+      const p = policies[i];
+      const clean = String(p.title || '').trim().toLowerCase();
+      if (seenTitles.has(clean)) {
+        setToast({
+          type: 'danger',
+          message: `Tên chính sách "${p.title.trim()}" bị trùng lặp. Vui lòng đặt tên phân biệt trước khi lưu.`,
+        });
+        setActiveId(p._id);
+        return;
+      }
+      seenTitles.set(clean, i);
+    }
 
     setSaving(true);
     try {
@@ -166,20 +193,26 @@ export default function OwnerPoliciesPage() {
     try {
       const res = await createPolicy(newPolicyData);
       const createdItem = res?.data || newPolicyData;
+      const normalizedCreated = {
+        _id: createdItem._id || `policy-${Date.now()}`,
+        title: createdItem.title || '',
+        summary: createdItem.summary || '',
+        content: createdItem.content || '',
+        isActive: createdItem.isActive !== false,
+      };
 
-      // Cập nhật state với chính sách mới
       setPolicies((prev) => {
-        const updated = [...prev, createdItem];
+        const updated = [...prev, normalizedCreated];
         setInitialPolicies(JSON.parse(JSON.stringify(updated)));
         return updated;
       });
 
-      setActiveKey(createdItem.key);
+      setActiveId(normalizedCreated._id);
       setShowCreateModal(false);
 
       setToast({
         type: 'success',
-        message: `Đã tạo chính sách "${createdItem.title}" thành công!`,
+        message: `Đã tạo chính sách "${normalizedCreated.title}" thành công!`,
       });
       setTimeout(() => setToast(null), 4000);
     } catch (error) {
@@ -193,28 +226,32 @@ export default function OwnerPoliciesPage() {
   };
 
   // Xóa chính sách (Delete Policy)
-  const handleDeletePolicy = async (keyToDelete) => {
-    if (!keyToDelete || deleting) return;
+  const handleDeletePolicy = async (idToDelete) => {
+    if (!idToDelete || deleting) return;
 
     setDeleting(true);
     try {
-      await deletePolicy(keyToDelete);
+      const res = await deletePolicy(idToDelete);
+      const rawList = res?.data;
+      let remainingList;
+      if (Array.isArray(rawList)) {
+        remainingList = normalizePoliciesArray(rawList);
+      } else {
+        remainingList = policies.filter((p) => String(p._id) !== String(idToDelete));
+      }
 
-      setPolicies((prev) => {
-        const remaining = prev.filter((p) => p.key !== keyToDelete);
-        setInitialPolicies(JSON.parse(JSON.stringify(remaining)));
+      setPolicies(remainingList);
+      setInitialPolicies(JSON.parse(JSON.stringify(remainingList)));
 
-        if (activeKey === keyToDelete) {
-          setActiveKey(remaining.length > 0 ? remaining[0].key : '');
-        }
-        return remaining;
-      });
+      if (String(activeId) === String(idToDelete) || !remainingList.some((p) => String(p._id) === String(activeId))) {
+        setActiveId(remainingList.length > 0 ? remainingList[0]._id : '');
+      }
 
       setToast({
         type: 'success',
         message: 'Đã xóa chính sách thành công khỏi chuỗi.',
       });
-      setTimeout(() => setToast(null), 4000);
+      setTimeout(() => setToast(null), 3000);
     } catch (error) {
       setToast({
         type: 'danger',
@@ -226,8 +263,8 @@ export default function OwnerPoliciesPage() {
   };
 
   const activePolicyData = useMemo(() => {
-    return policies.find((p) => p.key === activeKey) || policies[0] || null;
-  }, [policies, activeKey]);
+    return policies.find((p) => p._id === activeId) || policies[0] || null;
+  }, [policies, activeId]);
 
   return (
     <div className="shop-dashboard-layout">
@@ -319,8 +356,8 @@ export default function OwnerPoliciesPage() {
                   <Col lg={4} md={5}>
                     <PolicyNavList
                       policies={policies}
-                      activeKey={activeKey}
-                      onSelectKey={setActiveKey}
+                      activeId={activeId}
+                      onSelectId={setActiveId}
                       onOpenCreateModal={() => setShowCreateModal(true)}
                     />
                   </Col>
@@ -329,8 +366,9 @@ export default function OwnerPoliciesPage() {
                   <Col lg={8} md={7}>
                     {activePolicyData ? (
                       <PolicyEditorCard
-                        activeKey={activePolicyData.key}
+                        activeId={activePolicyData._id}
                         policyData={activePolicyData}
+                        policies={policies}
                         onChangeField={handleFieldChange}
                         onDeletePolicy={handleDeletePolicy}
                         isDeleting={deleting}
@@ -357,6 +395,7 @@ export default function OwnerPoliciesPage() {
         onHide={() => setShowCreateModal(false)}
         onCreate={handleCreatePolicy}
         isCreating={creating}
+        existingPolicies={policies}
       />
 
       {/* Thông báo dạng Toast nổi */}

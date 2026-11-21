@@ -1,21 +1,7 @@
 import mongoose from 'mongoose';
 import { BusinessPolicy } from '../../models/shop/BusinessPolicy.js';
 
-/**
- * Trợ giúp chuyển chuỗi tiếng Việt thành slug/key an toàn
- */
-export function slugify(text = '') {
-  return text
-    .toString()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[đĐ]/g, 'd')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
-}
+const escapeRegex = (str = '') => str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
 /**
  * Lấy danh sách toàn bộ chính sách kinh doanh của toàn chuỗi VESTORA (Dành cho Shop Owner)
@@ -40,12 +26,12 @@ export const getMyPolicy = async (req, res) => {
 };
 
 /**
- * TẠO CHÍNH SÁCH MỚI (CREATE POLICY - Thêm 1 document vào collection)
+ * TẠO CHÍNH SÁCH MỚI (CREATE POLICY)
  * POST /api/shops/policies
  */
 export const createPolicy = async (req, res) => {
   try {
-    const { title, summary, content, isActive, key } = req.body;
+    const { title, summary, content, isActive } = req.body;
     if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
@@ -53,18 +39,19 @@ export const createPolicy = async (req, res) => {
       });
     }
 
-    let generatedKey = key ? slugify(key) : slugify(title);
-    if (!generatedKey) generatedKey = `policy-${Date.now()}`;
-
-    // Đảm bảo không trùng key trong toàn hệ thống
-    const existing = await BusinessPolicy.findOne({ key: generatedKey });
-    if (existing) {
-      generatedKey = `${generatedKey}-${Date.now().toString().slice(-4)}`;
+    const cleanTitle = title.trim();
+    const duplicate = await BusinessPolicy.findOne({
+      title: { $regex: new RegExp(`^${escapeRegex(cleanTitle)}$`, 'i') },
+    });
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: `Chính sách có tên "${cleanTitle}" đã tồn tại trong hệ thống.`,
+      });
     }
 
     const newPolicy = await BusinessPolicy.create({
-      title: title.trim().slice(0, 200),
-      key: generatedKey,
+      title: cleanTitle.slice(0, 200),
       summary: typeof summary === 'string' ? summary.trim().slice(0, 500) : '',
       content: typeof content === 'string' ? content.trim() : '',
       isActive: isActive !== false,
@@ -96,27 +83,44 @@ export const updateMyPolicy = async (req, res) => {
       : [];
 
     if (policiesList.length > 0) {
+      const seenTitles = new Set();
+      // Validate toàn bộ tên chính sách không được để trống và không được trùng nhau
       for (let idx = 0; idx < policiesList.length; idx++) {
         const item = policiesList[idx];
-        const searchKey = item.key || (item._id && String(item._id));
-        if (!searchKey) continue;
+        const clean = String(item.title || '').trim().toLowerCase();
+        if (!clean) {
+          return res.status(400).json({
+            success: false,
+            message: `Tên chính sách (mục số ${idx + 1}) không được để trống.`,
+          });
+        }
+        if (seenTitles.has(clean)) {
+          return res.status(400).json({
+            success: false,
+            message: `Tên chính sách "${String(item.title).trim()}" bị trùng lặp trong danh mục.`,
+          });
+        }
+        seenTitles.add(clean);
+      }
 
+      for (let idx = 0; idx < policiesList.length; idx++) {
+        const item = policiesList[idx];
+        const policyId = item._id || item.id || item.key;
+        if (!policyId) continue;
+
+        const isOid = mongoose.Types.ObjectId.isValid(policyId);
         const updateData = {
-          title: typeof item.title === 'string' ? item.title.trim().slice(0, 200) : item.title,
+          title: String(item.title).trim().slice(0, 200),
           summary: typeof item.summary === 'string' ? item.summary.trim().slice(0, 500) : item.summary,
           content: typeof item.content === 'string' ? item.content.trim() : item.content,
           isActive: item.isActive !== false,
         };
 
-        await BusinessPolicy.findOneAndUpdate(
-          {
-            $or: [
-              { key: searchKey },
-              ...(mongoose.Types.ObjectId.isValid(searchKey) ? [{ _id: searchKey }] : []),
-            ],
-          },
-          { $set: updateData }
-        );
+        if (isOid) {
+          await BusinessPolicy.findByIdAndUpdate(policyId, { $set: updateData });
+        } else {
+          await BusinessPolicy.findOneAndUpdate({ key: policyId }, { $set: updateData });
+        }
       }
     }
 
@@ -138,7 +142,7 @@ export const updateMyPolicy = async (req, res) => {
 };
 
 /**
- * Cập nhật một chính sách cụ thể theo key hoặc _id
+ * Cập nhật một chính sách cụ thể theo ID hoặc key cũ
  * PUT /api/shops/policies/:key
  */
 export const updatePolicyByKey = async (req, res) => {
@@ -147,12 +151,31 @@ export const updatePolicyByKey = async (req, res) => {
     const { title, summary, content, isActive } = req.body;
 
     const isOid = mongoose.Types.ObjectId.isValid(key);
-    const filter = {
-      $or: [{ key }, ...(isOid ? [{ _id: key }] : [])],
-    };
+    const filter = isOid ? { _id: key } : { key };
 
     const updateFields = {};
-    if (typeof title === 'string') updateFields.title = title.trim().slice(0, 200);
+    if (title !== undefined) {
+      const cleanTitle = typeof title === 'string' ? title.trim() : '';
+      if (!cleanTitle) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tên chính sách không được để trống.',
+        });
+      }
+
+      const duplicate = await BusinessPolicy.findOne({
+        title: { $regex: new RegExp(`^${escapeRegex(cleanTitle)}$`, 'i') },
+        ...(isOid ? { _id: { $ne: key } } : { key: { $ne: key } }),
+      });
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: `Chính sách có tên "${cleanTitle}" đã tồn tại. Vui lòng chọn tên khác.`,
+        });
+      }
+
+      updateFields.title = cleanTitle.slice(0, 200);
+    }
     if (typeof summary === 'string') updateFields.summary = summary.trim().slice(0, 500);
     if (typeof content === 'string') updateFields.content = content.trim();
     if (typeof isActive === 'boolean') updateFields.isActive = isActive;
@@ -184,23 +207,26 @@ export const updatePolicyByKey = async (req, res) => {
 };
 
 /**
- * XÓA CHÍNH SÁCH (DELETE POLICY - Xóa 1 document khỏi collection)
+ * XÓA CHÍNH SÁCH
  * DELETE /api/shops/policies/:key
  */
 export const deletePolicy = async (req, res) => {
   try {
-    const { key } = req.params;
-    if (!key) {
+    const { key: policyId } = req.params;
+    if (!policyId) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu mã định danh chính sách cần xóa.',
+        message: 'Thiếu định danh chính sách cần xóa.',
       });
     }
 
-    const isOid = mongoose.Types.ObjectId.isValid(key);
-    const deleted = await BusinessPolicy.findOneAndDelete({
-      $or: [{ key }, ...(isOid ? [{ _id: key }] : [])],
-    });
+    let deleted = null;
+    if (mongoose.Types.ObjectId.isValid(policyId)) {
+      deleted = await BusinessPolicy.findByIdAndDelete(policyId);
+    }
+    if (!deleted) {
+      deleted = await BusinessPolicy.findOneAndDelete({ key: policyId });
+    }
 
     if (!deleted) {
       return res.status(404).json({

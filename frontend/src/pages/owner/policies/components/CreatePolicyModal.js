@@ -2,8 +2,7 @@ import React, { useState, useId, useEffect, useRef, memo } from 'react';
 import { Modal, Form, Spinner } from 'react-bootstrap';
 import { Plus, Sparkles, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 
-
-function CreatePolicyModal({ show, onHide, onCreate, isCreating }) {
+function CreatePolicyModal({ show, onHide, onCreate, isCreating, existingPolicies = [] }) {
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
@@ -32,13 +31,22 @@ function CreatePolicyModal({ show, onHide, onCreate, isCreating }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!title.trim()) {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) {
       setValidationError('Vui lòng nhập tên chính sách.');
       return;
     }
 
+    const isDuplicate = existingPolicies.some(
+      (p) => (p.title || '').trim().toLowerCase() === cleanTitle.toLowerCase()
+    );
+    if (isDuplicate) {
+      setValidationError(`Chính sách "${cleanTitle}" đã tồn tại. Vui lòng chọn tên khác.`);
+      return;
+    }
+
     onCreate({
-      title: title.trim(),
+      title: cleanTitle,
       summary: summary.trim(),
       content: content.trim(),
       isActive,

@@ -77,6 +77,9 @@ export const createOutboundShipment = async (user, payload = {}) => {
     toProvinceId,
     toDistrictId,
     toWardCode,
+    toProvinceName,
+    toWardName,
+    isNewToAddress,
     weight = 500,
     length = 30,
     width = 20,
@@ -129,9 +132,14 @@ export const createOutboundShipment = async (user, payload = {}) => {
   const effectiveProvinceId = toProvinceId || shipAddr.provinceId;
   const effectiveWardCode = toWardCode || shipAddr.wardCode;
   let resolvedDistrictId = toDistrictId || shipAddr.districtId;
+  const effectiveProvinceName = toProvinceName || shipAddr.city || '';
+  const effectiveWardName = toWardName || shipAddr.ward || '';
+  const useNewToAddress = Boolean(
+    isNewToAddress || shipAddr.isNewAddress || (!resolvedDistrictId && effectiveProvinceName && effectiveWardName)
+  );
 
   // Tự động suy luận District cho GHN API nếu hệ thống chỉ truyền cấp Tỉnh & cấp Xã
-  if (!resolvedDistrictId && (effectiveProvinceId || effectiveWardCode)) {
+  if (!useNewToAddress && !resolvedDistrictId && (effectiveProvinceId || effectiveWardCode)) {
     const resolved = await resolveGpsToGhn(null, null, {
       provinceId: effectiveProvinceId,
       wardCode: effectiveWardCode,
@@ -140,8 +148,9 @@ export const createOutboundShipment = async (user, payload = {}) => {
     resolvedDistrictId = resolved.districtId;
   }
 
-  if (!resolvedDistrictId) throw fail('Vui lòng chọn Tỉnh/Thành và Quận/Huyện người nhận.', 400);
-  if (!effectiveWardCode) throw fail('Vui lòng chọn Phường/Xã người nhận.', 400);
+  if (!useNewToAddress && !resolvedDistrictId) throw fail('Vui lòng chọn Tỉnh/Thành và Quận/Huyện người nhận.', 400);
+  if (useNewToAddress && !effectiveProvinceName) throw fail('Vui lòng chọn Tỉnh/Thành phố người nhận.', 400);
+  if (!effectiveWardName && !effectiveWardCode) throw fail('Vui lòng chọn Phường/Xã người nhận.', 400);
 
   const receiverInfo = formatPartyInfo({
     name: toName || shipAddr.receiverName || shipAddr.toName || customer.FullName || 'Khách Hàng',
@@ -150,6 +159,10 @@ export const createOutboundShipment = async (user, payload = {}) => {
     provinceId: effectiveProvinceId,
     districtId: resolvedDistrictId,
     wardCode: effectiveWardCode,
+    provinceName: effectiveProvinceName,
+    districtName: shipAddr.district || '',
+    wardName: effectiveWardName,
+    isNewAddress: useNewToAddress,
   });
 
   if (!receiverInfo.phone) throw fail('Số điện thoại người nhận không được để trống.', 400);
@@ -170,7 +183,11 @@ export const createOutboundShipment = async (user, payload = {}) => {
     toPhone: receiverInfo.phone,
     toAddress: receiverInfo.address,
     toWardCode: receiverInfo.wardCode || toWardCode,
-    toDistrictId: Number(resolvedDistrictId),
+    toDistrictId: resolvedDistrictId ? Number(resolvedDistrictId) : undefined,
+    toProvinceName: receiverInfo.provinceName,
+    toDistrictName: receiverInfo.districtName,
+    toWardName: receiverInfo.wardName || receiverInfo.wardCode,
+    isNewToAddress: receiverInfo.isNewAddress,
     codAmount: calculatedCod,
     weight: Number(weight) || 500,
     length: Number(length) || 30,
@@ -204,8 +221,9 @@ export const createOutboundShipment = async (user, payload = {}) => {
   const OrderModel = orderType === 'rental' ? RentalOrder : SalesOrder;
   const updateFields = {
     'shippingAddress.provinceId': Number(effectiveProvinceId) || receiverInfo.provinceId,
-    'shippingAddress.districtId': Number(resolvedDistrictId),
+    'shippingAddress.districtId': resolvedDistrictId ? Number(resolvedDistrictId) : null,
     'shippingAddress.wardCode': String(effectiveWardCode || receiverInfo.wardCode),
+    'shippingAddress.isNewAddress': useNewToAddress,
   };
 
   if (orderType === 'rental') {
@@ -235,6 +253,9 @@ export const createReturnShipment = async (user, payload = {}) => {
     fromProvinceId,
     fromDistrictId,
     fromWardCode,
+    fromProvinceName,
+    fromWardName,
+    isNewFromAddress,
     weight = 500,
     note = 'Lấy lại trang phục cho thuê hoàn trả về shop',
   } = payload;
@@ -259,7 +280,13 @@ export const createReturnShipment = async (user, payload = {}) => {
 
   // Tự động suy luận District nếu chỉ có Tỉnh & Xã
   let resolvedDistrictId = fromDistrictId;
-  if (!resolvedDistrictId && (fromProvinceId || fromWardCode)) {
+  const shipAddr = order.shippingAddress || {};
+  const effectiveFromProvinceName = fromProvinceName || shipAddr.city || '';
+  const effectiveFromWardName = fromWardName || shipAddr.ward || '';
+  const useNewFromAddress = Boolean(
+    isNewFromAddress || shipAddr.isNewAddress || (!resolvedDistrictId && effectiveFromProvinceName && effectiveFromWardName)
+  );
+  if (!useNewFromAddress && !resolvedDistrictId && (fromProvinceId || fromWardCode)) {
     const resolved = await resolveGpsToGhn(null, null, {
       provinceId: fromProvinceId,
       wardCode: fromWardCode,
@@ -268,20 +295,22 @@ export const createReturnShipment = async (user, payload = {}) => {
     resolvedDistrictId = resolved.districtId;
   }
 
-  if (!resolvedDistrictId) throw fail('Vui lòng chọn Tỉnh/Thành lấy hàng trả.', 400);
-  if (!fromWardCode) throw fail('Phường/Xã lấy hàng trả không được để trống.', 400);
+  if (!useNewFromAddress && !resolvedDistrictId) throw fail('Vui lòng chọn Tỉnh/Thành lấy hàng trả.', 400);
+  if (useNewFromAddress && !effectiveFromProvinceName) throw fail('Tỉnh/Thành phố lấy hàng trả không được để trống.', 400);
+  if (!effectiveFromWardName && !fromWardCode) throw fail('Phường/Xã lấy hàng trả không được để trống.', 400);
 
   // Đảo chiều: Người gửi là Khách, Người nhận là Cửa hàng
   const customer = order.customerId || {};
   const customerInfo = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
-  const shipAddr = order.shippingAddress || {};
-
   const senderInfo = formatPartyInfo({
     name: fromName || shipAddr.receiverName || shipAddr.toName || customer.FullName || 'Khách Hàng',
     phone: fromPhone || shipAddr.phone || shipAddr.toPhone || customerInfo?.Phone || customer.phone || '',
     address: fromAddress || shipAddr.street || customerInfo?.AddressDetail || customerInfo?.Address || customer.address || '',
     provinceId: fromProvinceId,
     wardCode: fromWardCode,
+    provinceName: effectiveFromProvinceName,
+    wardName: effectiveFromWardName,
+    isNewAddress: useNewFromAddress,
   });
 
   if (!senderInfo.phone) throw fail('Số điện thoại người trả không được để trống.', 400);
@@ -295,8 +324,11 @@ export const createReturnShipment = async (user, payload = {}) => {
     fromName: senderInfo.name,
     fromPhone: senderInfo.phone,
     fromAddress: senderInfo.address,
-    fromDistrictId: Number(resolvedDistrictId),
+    fromDistrictId: resolvedDistrictId ? Number(resolvedDistrictId) : undefined,
     fromWardCode: senderInfo.wardCode || fromWardCode,
+    fromProvinceName: senderInfo.provinceName,
+    fromWardName: senderInfo.wardName || senderInfo.wardCode,
+    isNewFromAddress: senderInfo.isNewAddress,
     toName: receiverInfo.name,
     toPhone: receiverInfo.phone,
     toAddress: receiverInfo.address,

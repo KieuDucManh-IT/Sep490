@@ -19,6 +19,10 @@ const addressInfoSchema = new mongoose.Schema({
   provinceId: { type: Number, default: null },
   districtId: { type: Number, default: null },
   wardCode: { type: String, trim: true, default: null },
+  provinceName: { type: String, trim: true, default: '' },
+  districtName: { type: String, trim: true, default: '' },
+  wardName: { type: String, trim: true, default: '' },
+  isNewAddress: { type: Boolean, default: false },
 }, { _id: false });
 
 const orderShipmentSchema = new mongoose.Schema({

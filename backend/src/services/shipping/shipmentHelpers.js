@@ -14,7 +14,20 @@ export const fail = (message, statusCode = 400) => Object.assign(new Error(messa
 /**
  * Chuẩn hóa đối tượng người gửi / người nhận (Tỉnh/Thành, Quận/Huyện, Phường/Xã)
  */
-export const formatPartyInfo = ({ name, phone, address, provinceId, districtId, wardCode, latitude, longitude }) => ({
+export const formatPartyInfo = ({
+  name,
+  phone,
+  address,
+  provinceId,
+  districtId,
+  wardCode,
+  provinceName,
+  districtName,
+  wardName,
+  isNewAddress,
+  latitude,
+  longitude,
+}) => ({
   name: name || '',
   phone: phone || '',
   address: address || '',
@@ -23,6 +36,10 @@ export const formatPartyInfo = ({ name, phone, address, provinceId, districtId, 
   provinceId: provinceId ? Number(provinceId) : undefined,
   districtId: districtId ? Number(districtId) : undefined,
   wardCode: wardCode ? String(wardCode) : undefined,
+  provinceName: provinceName || '',
+  districtName: districtName || '',
+  wardName: wardName || '',
+  isNewAddress: Boolean(isNewAddress),
 });
 
 /**

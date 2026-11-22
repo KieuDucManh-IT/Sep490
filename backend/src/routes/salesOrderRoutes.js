@@ -6,11 +6,87 @@
 import express from 'express';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
 import * as salesOrderController from '../controllers/sale&rental/salesOrderController.js';
+import { withStatus } from '../services/warehouse/orderStockService.js';
+import { SalesOrder } from '../models/sale&rental/SalesOrder.js';
+import * as salesFlow from '../services/sale&rental/salesOrderService.js';
+import { createEvidenceUploadHandlers } from './rentalReturnRoutes.js';
 
 const router = express.Router();
 
 // Tất cả endpoints đơn mua đều yêu cầu đăng nhập
 router.use(authMiddleware);
+
+const handle = fn => async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    await fn(req, res);
+  } catch (error) {
+    next(withStatus(error));
+  }
+};
+
+router.get('/:id/return-flow', handle(async (req, res) => {
+  res.json({
+    success: true,
+    data: await salesFlow.getSalesReturnFlow(req.user, req.params.id),
+  });
+}));
+
+router.post('/:id/return/request', handle(async (req, res) => {
+  res.json({
+    success: true,
+    data: await salesFlow.requestSalesReturn(
+      req.user,
+      req.params.id,
+      req.body.reason
+    ),
+  });
+}));
+
+router.post('/:id/return/simulate', handle(async (req, res) => {
+  res.json({
+    success: true,
+    data: await salesFlow.advanceSalesReturn(
+      req.user,
+      req.params.id,
+      req.body.newStatus
+    ),
+  });
+}));
+
+router.post('/:id/return/complete', handle(async (req, res) => {
+  if (req.body.confirmed !== true) {
+    return res.status(400).json({
+      message: 'Cần xác nhận đã nhận đủ hàng nguyên vẹn.',
+    });
+  }
+
+  res.json({
+    success: true,
+    data: await salesFlow.completeSalesReturn(req.user, req.params.id),
+  });
+}));
+
+router.post(
+  '/:id/evidence/:kind',
+  ...createEvidenceUploadHandlers({
+    Model: SalesOrder,
+    checkAccess: salesFlow.checkSalesEvidenceAccess,
+    folder: 'sales-evidence',
+    statusFilter: kind => ({
+      orderStatus: {
+        $in: kind === 'packing'
+          ? ['draft', 'confirmed', 'processing']
+          : ['completed'],
+      },
+      returnStatus: kind === 'return-received'
+        ? 'received'
+        : kind === 'return'
+          ? { $in: [null, 'none', 'requested'] }
+          : { $ne: 'completed' },
+    }),
+  })
+);
 
 // 1. Tạo đơn mua mới (Khách hàng)
 router.post('/', salesOrderController.createOrder);

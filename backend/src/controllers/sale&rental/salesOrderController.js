@@ -5,6 +5,31 @@
 
 import * as salesOrderService from '../../services/sale&rental/salesOrderService.js';
 
+const normalizedRole = (user) => String(user?.role || user?.Role || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[\s_-]/g, '');
+
+const ensureCustomer = (req, res) => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Bạn cần đăng nhập để xem lịch sử đơn mua',
+    });
+    return false;
+  }
+
+  if (normalizedRole(req.user) !== 'customer') {
+    res.status(403).json({
+      success: false,
+      message: 'Lịch sử đơn mua chỉ dành cho khách hàng',
+    });
+    return false;
+  }
+
+  return true;
+};
+
 export const createOrder = async (req, res, next) => {
   const service = req?.deps?.salesOrderService || salesOrderService;
   try {
@@ -58,21 +83,16 @@ export const createOrder = async (req, res, next) => {
 export const getMyOrders = async (req, res, next) => {
   const service = req?.deps?.salesOrderService || salesOrderService;
   try {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để xem lịch sử đơn mua',
-      });
-    }
+    if (!ensureCustomer(req, res)) return;
 
     const customerId = req.user._id;
-    const { page, limit, status } = req.query;
+    const { page, limit, status, orderStatus } = req.query;
 
     const result = await service.getMySalesOrders({
       customerId,
       page,
       limit,
-      orderStatus: status,
+      orderStatus: orderStatus || status,
     });
 
     return res.status(200).json({
@@ -99,6 +119,8 @@ export const getMyOrders = async (req, res, next) => {
 export const getOrderById = async (req, res, next) => {
   const service = req?.deps?.salesOrderService || salesOrderService;
   try {
+    if (!ensureCustomer(req, res)) return;
+
     const { id } = req.params;
     const order = await service.getSalesOrderById(id, req.user);
 

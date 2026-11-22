@@ -1,4 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react';
 import {
   RotateCcw,
   Package,
@@ -16,6 +21,38 @@ import {
 import { useAdministrativeDivisions } from './hooks/useAdministrativeDivisions';
 import SearchableSelect from '../../components/SearchableSelect';
 import '../../styles/ShippingModal.css';
+import { Modal as ReturnFlowModal } from 'react-bootstrap';
+import {
+  getRentalReturnFlow,
+  requestRentalReturn,
+  advanceRentalReturn,
+  completeRentalReturn,
+  uploadRentalEvidence,
+} from '../../services/rentalReturnApi';
+import {
+  getSalesReturnFlow,
+  requestSalesReturn,
+  advanceSalesReturn,
+  completeSalesReturn,
+  uploadSalesEvidence,
+} from '../../services/salesOrderApi';
+
+const RETURN_APIS = {
+  rental: {
+    get: getRentalReturnFlow,
+    request: requestRentalReturn,
+    advance: advanceRentalReturn,
+    complete: completeRentalReturn,
+    upload: uploadRentalEvidence,
+  },
+  sale: {
+    get: getSalesReturnFlow,
+    request: requestSalesReturn,
+    advance: advanceSalesReturn,
+    complete: completeSalesReturn,
+    upload: uploadSalesEvidence,
+  },
+};
 
 export default function ShipmentReturnModal({
   show,
@@ -43,9 +80,19 @@ export default function ShipmentReturnModal({
   const [note, setNote] = useState('Thu hồi trang phục cho thuê hoàn trả về shop');
 
   const [submitting, setSubmitting] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment
+  // Countdown timer cho nút gửi đơn (khóa nút chống gửi dồn / tránh rate-limit GHN)
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment (Hỗ trợ GHN v3)
   useEffect(() => {
     if (!show || !order) return;
 
@@ -73,22 +120,36 @@ export default function ShipmentReturnModal({
     if (initialShipment?.weight) setWeight(Number(initialShipment.weight));
     if (initialShipment?.note) setNote(initialShipment.note);
     setErrorMsg('');
+    setCooldown(0);
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã cho điểm lấy đồ
     if (provinces.length > 0) {
-      if (finalProvId) {
-        handleProvinceChange(String(finalProvId), wardHint, finalWardCode, fullAddr);
-      } else {
-        const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
+      let targetProvId = finalProvId ? String(finalProvId) : '';
+      const exists = targetProvId && provinces.some((p) => String(p._id || p.ProvinceID) === targetProvId);
+      if (!exists) {
+        const matchedProv = autoMatchProvince(targetProvId || provHint, fullAddr, provinces);
         if (matchedProv) {
-          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, finalWardCode, fullAddr);
+          targetProvId = String(matchedProv._id || matchedProv.ProvinceID);
         }
+      }
+
+      if (targetProvId) {
+        handleProvinceChange(targetProvId, wardHint, finalWardCode, fullAddr);
       }
     }
   }, [show, order, initialShipment, provinces, handleProvinceChange]);
 
+  const formatErrorText = (msg) => {
+    const raw = String(msg || '');
+    if (raw.toLowerCase().includes('too many request') || raw.toLowerCase().includes('is processing')) {
+      return 'GHN đang xử lý tạo đơn cho mã này, vui lòng đợi vài giây rồi thử lại.';
+    }
+    return raw;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting || cooldown > 0) return;
     if (!fromProvinceId) {
       setErrorMsg('Vui lòng chọn Tỉnh/Thành phố nơi shipper tới lấy đồ trả.');
       return;
@@ -121,14 +182,23 @@ export default function ShipmentReturnModal({
     setSubmitting(true);
     setErrorMsg('');
     try {
+      const selectedProv = provinces.find((p) => String(p._id || p.ProvinceID) === String(fromProvinceId));
+      const selectedWard = wards.find((w) => String(w.WardCode || w._id) === String(fromWardCode));
+      const provName = selectedProv?.name || selectedProv?.ProvinceName || order?.shippingAddress?.city || '';
+      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || order?.shippingAddress?.ward || '';
+      const isNewAddress = Number(fromProvinceId) >= 1000000 || Boolean(order?.shippingAddress?.isNewAddress);
+
       const payload = {
         orderId: order._id,
         fromName: fromName.trim(),
         fromPhone: cleanPhone,
         fromAddress: fromAddress.trim(),
         fromProvinceId: Number(fromProvinceId),
-        fromDistrictId: Number(fromDistrictId),
+        fromDistrictId: fromDistrictId ? Number(fromDistrictId) : undefined,
         fromWardCode: String(fromWardCode || ''),
+        fromProvinceName: provName,
+        fromWardName: wardName,
+        isNewFromAddress: isNewAddress,
         weight: Number(weight) || 500,
         note: note.trim(),
       };
@@ -138,10 +208,12 @@ export default function ShipmentReturnModal({
         if (onSuccess) onSuccess(res.data);
         onClose();
       } else {
-        setErrorMsg(res?.message || 'Tạo yêu cầu thu hồi thất bại.');
+        setErrorMsg(formatErrorText(res?.message || 'Tạo yêu cầu thu hồi thất bại.'));
+        setCooldown(5);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Lỗi khi kết nối hệ thống GHN.');
+      setErrorMsg(formatErrorText(err.message || 'Lỗi khi kết nối hệ thống GHN.'));
+      setCooldown(5);
     } finally {
       setSubmitting(false);
     }
@@ -166,15 +238,15 @@ export default function ShipmentReturnModal({
           {/* Header */}
           <div className="modal-header bg-light border-bottom">
             <div className="d-flex align-items-center gap-2">
-              <div className="p-2 rounded bg-info text-white">
+              <div className="p-2 rounded bg-warning text-dark">
                 <RotateCcw size={18} />
               </div>
               <div>
                 <h6 className="modal-title fw-bold text-dark mb-0">
-                  Tạo Yêu Cầu Thu Hồi Đồ Thuê (GHN)
+                  Tạo Vận Đơn Thu Hồi Đồ Thuê (GHN)
                 </h6>
                 <small className="text-muted">
-                  Đơn thuê: <strong>{order.orderCode}</strong> • Shipper tới lấy đồ từ khách mang về chi nhánh
+                  Đơn hàng: <strong>{order.orderCode}</strong>
                 </small>
               </div>
             </div>
@@ -259,15 +331,15 @@ export default function ShipmentReturnModal({
                     />
                   </div>
 
-                  {/* Địa giới hành chính: Chỉ còn cấp Tỉnh/Thành và Phường/Xã (bỏ cấp Huyện) */}
+                  {/* Địa giới hành chính: Cấp Tỉnh/Thành và Phường/Xã (Mô hình 2 cấp GHN v3) */}
                   <div className="col-12 col-md-6">
                     <label className="form-label small text-muted mb-1">Tỉnh / Thành phố *</label>
                     <SearchableSelect
                       id="returnFromProvince"
                       options={provinces.map((p) => ({
-                        value: String(p.ProvinceID),
-                        label: p.ProvinceName,
-                        name: p.ProvinceName,
+                        value: String(p._id || p.ProvinceID),
+                        label: p.name || p.ProvinceName,
+                        name: p.name || p.ProvinceName,
                       }))}
                       value={String(fromProvinceId || '')}
                       onChange={(val) => handleProvinceChange(val)}
@@ -280,9 +352,9 @@ export default function ShipmentReturnModal({
                     <SearchableSelect
                       id="returnFromWard"
                       options={wards.map((w) => ({
-                        value: String(w.WardCode),
-                        label: w.label || w.WardName,
-                        name: w.WardName,
+                        value: String(w.WardCode || w._id),
+                        label: w.label || w.WardName || w.name,
+                        name: w.WardName || w.name,
                       }))}
                       value={String(fromWardCode || '')}
                       onChange={(val) => handleWardChange(val)}
@@ -299,20 +371,21 @@ export default function ShipmentReturnModal({
                       className="form-control form-control-sm"
                       value={fromAddress}
                       onChange={(e) => setFromAddress(e.target.value)}
+                      placeholder="VD: Số 24, Ngõ 105 Đường Cầu Giấy"
                       required
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Khối lượng & Ghi chú */}
+              {/* Thông số kiện hàng & Ghi chú */}
               <div className="mb-3">
                 <div className="small fw-bold text-uppercase text-muted mb-2">
-                  <Package size={14} className="me-1 inline" /> 3. Thông tin gói đồ & Ghi chú
+                  <Package size={14} className="me-1 inline" /> 3. Thông số kiện hàng & Ghi chú
                 </div>
                 <div className="row g-2">
-                  <div className="col-6 col-md-4">
-                    <label className="form-label small text-muted mb-1">Khối lượng ước tính (gram)</label>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small text-muted mb-1">Khối lượng (gram) *</label>
                     <input
                       type="number"
                       min="100"
@@ -320,10 +393,11 @@ export default function ShipmentReturnModal({
                       className="form-control form-control-sm"
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
+                      required
                     />
                   </div>
                   <div className="col-12 col-md-8">
-                    <label className="form-label small text-muted mb-1">Ghi chú vận chuyển</label>
+                    <label className="form-label small text-muted mb-1">Ghi chú cho shipper</label>
                     <input
                       type="text"
                       className="form-control form-control-sm"
@@ -349,15 +423,672 @@ export default function ShipmentReturnModal({
             <button
               type="submit"
               form="shipment-return-form"
-              className="btn btn-sm btn-info text-white d-flex align-items-center gap-1"
-              disabled={submitting}
+              className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+              disabled={submitting || cooldown > 0}
             >
-              {submitting ? <Loader2 size={14} className="spin" /> : <CheckCircle size={14} />}
-              <span>{submitting ? 'Đang gửi GHN...' : 'Xác nhận tạo đơn thu hồi'}</span>
+              {submitting ? (
+                <>
+                  <Loader2 size={14} className="spin" />
+                  <span>Đang gửi GHN...</span>
+                </>
+              ) : cooldown > 0 ? (
+                <>
+                  <Loader2 size={14} className="spin" />
+                  <span>Vui lòng đợi ({cooldown}s)...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={14} />
+                  <span>Xác nhận tạo đơn thu hồi GHN</span>
+                </>
+              )}
             </button>
           </div>
         </div>
       </div>
     </div>
   );
+}
+export function RentalReturnWorkflow({
+  show,
+  orderId,
+  onClose,
+  orderType = 'rental',
+  readOnly = false,
+}) {
+  if (!show || !orderId) return null;
+
+  return (
+    <RentalReturnWorkflowBody
+      key={orderType + ':' + orderId}
+      orderId={orderId}
+      onClose={onClose}
+      orderType={orderType}
+      readOnly={readOnly}
+    />
+  );
+}
+
+function useRentalEvidence(orderId, orderType = 'rental') {
+  const api = RETURN_APIS[orderType];
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const busyRef = useRef(false);
+  const mounted = useRef(false);
+  const generation = useRef(0);
+
+  const load = useCallback(async () => {
+    const current = ++generation.current;
+
+    try {
+      const response = await api.get(orderId);
+
+      if (mounted.current && current === generation.current) {
+        // Giữ URL đang phát để polling không làm video chạy lại.
+        const keepVideo = (previous, next) =>
+          previous?.uploadedAt === next?.uploadedAt &&
+            previous?.expiresAt > Date.now() + 60000
+            ? previous
+            : next;
+
+        setData(previous => ({
+          ...response.data,
+
+          ...Object.fromEntries(
+            [
+              'packingVideo',
+              'receivingVideo',
+              'returnVideo',
+              'returnReceivedVideo',
+            ].map(field => [
+              field,
+              keepVideo(previous?.[field], response.data[field]),
+            ])
+          ),
+        }));
+      }
+    } catch (err) {
+      if (mounted.current && current === generation.current) {
+        setError(err.message);
+      }
+    }
+  }, [orderId, api]);
+
+  useEffect(() => {
+    mounted.current = true;
+    load();
+
+    const timer = setInterval(() => {
+      if (!busyRef.current) load();
+    }, 5000);
+
+    return () => {
+      mounted.current = false;
+      generation.current += 1;
+      clearInterval(timer);
+    };
+  }, [load]);
+
+  async function run(action) {
+    if (busyRef.current) return;
+
+    busyRef.current = true;
+    generation.current += 1;
+    setBusy(true);
+    setError('');
+
+    try {
+      await action();
+      await load();
+    } catch (err) {
+      if (mounted.current) setError(err.message);
+    } finally {
+      busyRef.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  function upload(kind, file) {
+    if (!file) return;
+
+    if (
+      !['video/mp4', 'video/webm'].includes(file.type) ||
+      file.size > 50 * 1024 * 1024
+    ) {
+      setError('Chọn video MP4/WebM, tối đa 50 MB và 5 phút.');
+      return;
+    }
+
+    run(() => api.upload(orderId, kind, file));
+  }
+  return { data, error, busy, run, upload, api };
+}
+
+function EvidenceVideos({
+  data,
+  busy,
+  upload,
+  stage,
+  orderType = 'rental',
+  readOnly = false,
+}) {
+  const definitions = stage === 'delivery'
+    ? [
+      {
+        kind: 'packing',
+        field: 'packingVideo',
+        label:
+          'Shop: video sản phẩm trước khi giao hàng' +
+          (orderType === 'sale' ? ' (bắt buộc)' : ''),
+      },
+      {
+        kind: 'receiving',
+        field: 'receivingVideo',
+        label: 'Khách: video nhận hàng (không bắt buộc)',
+      },
+    ]
+    : [
+      {
+        kind: 'return',
+        field: 'returnVideo',
+        label: 'Khách: video trước khi trả đồ (không bắt buộc)',
+      },
+      {
+        kind: 'return-received',
+        field: 'returnReceivedVideo',
+        label: orderType === 'sale'
+          ? 'Shop: video nhận hàng trả (bắt buộc trước khi hoàn tiền)'
+          : 'Shop: video nhận đồ trả (bắt buộc trước khi hoàn cọc)',
+      },
+    ];
+
+  return (
+    <div className="row g-3">
+      {definitions.map(item => {
+        const video = data[item.field];
+
+        const canUpload =
+          !readOnly &&
+          data.videoPermissions?.[item.kind] &&
+          !video;
+
+        return (
+          <div className="col-md-6" key={item.field}>
+            <label
+              className="d-block fw-semibold"
+              htmlFor={`video-${item.field}`}
+            >
+              {item.label}
+            </label>
+
+            {video ? (
+              <>
+                <video
+                  aria-label={item.label}
+                  src={video.url}
+                  controls
+                  playsInline
+                  preload="none"
+                  style={{ width: '100%' }}
+                />
+
+                <small>
+                  Tải lên:{' '}
+                  {new Date(video.uploadedAt).toLocaleString('vi-VN')}
+                </small>
+              </>
+            ) : canUpload ? (
+              <>
+                <input
+                  id={`video-${item.field}`}
+                  type="file"
+                  accept="video/mp4,video/webm"
+                  disabled={busy}
+                  onChange={event => {
+                    upload(item.kind, event.target.files?.[0]);
+                    event.target.value = '';
+                  }}
+                />
+
+                <div className="small text-muted">
+                  MP4/WebM · tối đa 50 MB, 5 phút
+                </div>
+              </>
+            ) : (
+              <p className="text-muted">Chưa có video.</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function RentalDeliveryVideos({
+  orderId,
+  readOnly = false,
+  orderType = 'rental',
+  onChange,
+}) {
+  if (!orderId) return null;
+
+  return (
+    <RentalDeliveryVideosBody
+      key={orderType + ':' + orderId}
+      orderId={orderId}
+      readOnly={readOnly}
+      orderType={orderType}
+      onChange={onChange}
+    />
+  );
+}
+
+function RentalDeliveryVideosBody({
+  orderId,
+  readOnly,
+  orderType,
+  onChange,
+}) {
+  const { data, error, busy, upload } =
+    useRentalEvidence(orderId, orderType);
+
+  useEffect(() => {
+    onChange?.(data);
+  }, [data, onChange]);
+
+  return (
+    <section className="modal-section-card">
+      <div className="modal-section-header">
+        <h6 className="modal-section-title">
+          5. Video giao hàng và nhận hàng
+        </h6>
+      </div>
+
+      {error && (
+        <div role="alert" className="alert alert-danger">
+          {error}
+        </div>
+      )}
+
+      {data ? (
+        <EvidenceVideos
+          data={data}
+          busy={busy}
+          upload={upload}
+          stage="delivery"
+          orderType={orderType}
+          readOnly={readOnly}
+        />
+      ) : (
+        <p>Đang tải video…</p>
+      )}
+
+      {orderType === 'sale' &&
+        data?.videoPermissions?.packing &&
+        !data.packingVideo && (
+          <p className="small text-muted mt-2">
+            Chi nhánh cần tải video đóng hàng trước khi tạo vận đơn
+            hoặc xác nhận đã giao.
+          </p>
+        )}
+
+      {busy && <p role="status">Đang tải video lên…</p>}
+    </section>
+  );
+}
+
+function RentalReturnWorkflowBody({
+  orderId,
+  onClose,
+  orderType,
+  readOnly,
+}) {
+  const { data, error, busy, run, upload, api } =
+    useRentalEvidence(orderId, orderType);
+
+  const isSale = orderType === 'sale';
+  const [reason, setReason] = useState('');
+
+  const [confirmed, setConfirmed] = useState(false);
+  const errorRef = useRef(null);
+
+  useEffect(() => {
+    if (error) {
+      errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [error]);
+
+  const shipment = data?.shipment;
+  const status = shipment?.shipmentStatus;
+
+  const statusText = {
+    preparing: 'Chờ lấy đồ',
+    shipped: 'Đang chuyển về shop',
+    delivered: 'Đã về shop, chờ nghiệm thu',
+  };
+
+  const date = value =>
+    value ? new Date(value).toLocaleString('vi-VN') : '—';
+
+  return (
+    <ReturnFlowModal
+      show
+      onHide={() => !busy && onClose()}
+      size="lg"
+      centered
+      backdrop="static"
+    >
+      <ReturnFlowModal.Header closeButton={!busy}>
+        <ReturnFlowModal.Title>
+          {isSale ? 'Trả hàng đã mua' : 'Trả đồ thuê'}{' '}
+          {data?.orderCode ? `#${data.orderCode}` : ''}
+        </ReturnFlowModal.Title>
+      </ReturnFlowModal.Header>
+
+      <ReturnFlowModal.Body
+        style={{ maxHeight: '75vh', overflowY: 'auto' }}
+      >
+        {error && (
+          <div ref={errorRef} role="alert" className="alert alert-danger">
+            {error}
+          </div>
+        )}
+
+        {!data ? (
+          <p>Đang tải thông tin trả đồ…</p>
+        ) : (
+          <>
+            <section className="border rounded p-3 mb-3">
+              <h6>
+                {isSale ? 'Khách hàng & đơn mua' : 'Khách hàng & thời gian thuê'}
+              </h6>
+              <div>
+                {data.customer.name} · {data.customer.phone}
+              </div>
+              <p>{data.customer.address}</p>
+
+              <div>
+                {isSale ? (
+                  <>Ngày mua: {date(data.createdAt)}</>
+                ) : (
+                  <>
+                    Ngày thuê: {date(data.startDate)}
+                    {' · '}
+                    Hạn trả: {date(data.dueDate)}
+                  </>
+                )}
+              </div>
+
+              <hr />
+
+              <strong>Nơi nhận trả: {data.shop.name}</strong>
+              <div>
+                {data.shop.address} · {data.shop.phone}
+              </div>
+            </section>
+
+            <section className="border rounded p-3 mb-3">
+              <h6>Trang phục hoàn trả ({data.items.length})</h6>
+
+              <table className="table align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th>Phân loại</th>
+                    <th>Số lượng</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {data.items.map(item => (
+                    <tr key={item.id}>
+                      <td>
+                        {item.image && (
+                          <img
+                            src={item.image}
+                            alt=""
+                            style={{
+                              width: 48,
+                              height: 60,
+                              objectFit: 'cover',
+                              marginRight: 10,
+                            }}
+                          />
+                        )}
+
+                        {item.name}
+                        <div className="small text-muted">
+                          {item.sku}
+                        </div>
+                      </td>
+
+                      <td>
+                        {[item.size, item.color]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </td>
+
+                      <td>{item.quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+
+            <section className="border rounded p-3 mb-3">
+              <h6>Video trả đồ và nhận đồ trả</h6>
+              <EvidenceVideos
+                orderType={orderType}
+                readOnly={readOnly}
+                data={data}
+                busy={busy}
+                upload={upload}
+                stage="return"
+              />
+            </section>
+
+            {shipment && (
+              <section className="border rounded p-3 mb-3">
+                <h6>
+                  {shipment.carrierName}{' '}
+                  {shipment.isSimulated && (
+                    <span className="badge bg-warning text-dark">
+                      Mô phỏng
+                    </span>
+                  )}
+                </h6>
+
+                <div style={{ overflowWrap: 'anywhere' }}>
+                  Mã vận đơn: {shipment.trackingCode}
+                </div>
+
+                <strong>
+                  {data.completed
+                    ? (isSale ? 'Đã trả hàng hoàn tất' : 'Hoàn tất trả đồ')
+                    : statusText[status] || status}
+                </strong>
+
+                <p>
+                  Từ {shipment.senderInfo?.name}
+                  {' → '}
+                  {shipment.receiverInfo?.name}
+                </p>
+
+                <h6>Hành trình trả đồ</h6>
+
+                <ol>
+                  {[...(shipment.statusHistory || [])]
+                    .reverse()
+                    .map((event, i) => (
+                      <li key={i} className="mb-2">
+                        {event.description}
+                        <div className="small text-muted">
+                          {date(event.timestamp)}
+                        </div>
+                      </li>
+                    ))}
+                </ol>
+              </section>
+            )}
+
+            {data.completed && (
+              <div role="status" className="alert alert-success">
+                {isSale ? 'Đã trả hàng hoàn tất. ' : 'Đã hoàn tất trả đồ. '}
+
+                {data.refundedAmount != null &&
+                  Number.isFinite(Number(data.refundedAmount)) && (
+                    <>
+                      Đã hoàn{' '}
+                      {Number(data.refundedAmount).toLocaleString('vi-VN')}đ{' '}
+                      {isSale ? 'tiền mua hàng' : 'tiền cọc'} vào Ví Vestora
+                      của chủ đơn.
+                    </>
+                  )}
+              </div>
+            )}
+
+            {isSale && data.requestBlockedReason && !data.completed && (
+              <p className="text-muted">{data.requestBlockedReason}</p>
+            )}
+
+            {isSale && data.canRequest && !readOnly && (
+              <div className="mb-3">
+                <p>Yêu cầu trả lại toàn bộ sản phẩm trong đơn mua.</p>
+
+                <label htmlFor="sales-return-reason" className="form-label">
+                  Lý do trả hàng (không bắt buộc)
+                </label>
+
+                <textarea
+                  id="sales-return-reason"
+                  className="form-control"
+                  maxLength={1000}
+                  value={reason}
+                  disabled={busy}
+                  onChange={event => setReason(event.target.value)}
+                />
+              </div>
+            )}
+
+            {!data.completed && data.canRequest && !readOnly && (
+              <button
+                className="btn btn-primary"
+                disabled={busy || !data.simulatorEnabled}
+                onClick={() =>
+                  run(() =>
+                    isSale
+                      ? api.request(orderId, reason)
+                      : api.request(orderId)
+                  )
+                }
+              >
+                {isSale ? 'Tạo đơn trả hàng mua' : 'Tạo đơn trả đồ'}
+              </button>
+            )}
+
+            {!data.completed &&
+              data.canManage &&
+              !readOnly &&
+              data.simulatorEnabled &&
+              shipment?.isSimulated && (
+                <div className="mt-3">
+                  {status === 'preparing' && (
+                    <button
+                      className="btn btn-outline-primary"
+                      disabled={busy}
+                      onClick={() =>
+                        run(() => api.advance(orderId, 'shipped'))
+                      }
+                    >
+                      Mô phỏng: đã lấy đồ
+                    </button>
+                  )}
+
+                  {status === 'shipped' && (
+                    <button
+                      className="btn btn-outline-primary"
+                      disabled={busy}
+                      onClick={() =>
+                        run(() => api.advance(orderId, 'delivered'))
+                      }
+                    >
+                      Mô phỏng: đã giao về shop
+                    </button>
+                  )}
+
+                  {status === 'delivered' && (
+                    <>
+                      <label className="d-block mb-2">
+                        <input
+                          type="checkbox"
+                          checked={confirmed}
+                          disabled={busy}
+                          onChange={event => setConfirmed(event.target.checked)}
+                        />{' '}
+                        Đã kiểm tra và nhận đủ đồ nguyên vẹn
+                      </label>
+
+                      {!data.returnReceivedVideo && (
+                        <div
+                          role="alert"
+                          className="alert alert-warning py-2"
+                        >
+                          {isSale
+                            ? 'Shop cần tải video nhận hàng trả ở mục phía trên trước khi hoàn tất và hoàn tiền.'
+                            : 'Shop cần tải video nhận đồ trả ở mục phía trên trước khi hoàn tất và hoàn cọc.'}
+                        </div>
+                      )}
+
+                      <button
+                        className="btn btn-success"
+                        disabled={
+                          busy ||
+                          !confirmed ||
+                          !data.returnReceivedVideo
+                        }
+                        onClick={() =>
+                          run(() => api.complete(orderId))
+                        }
+                      >
+                        {isSale
+                          ? 'Hoàn tất trả hàng & hoàn tiền'
+                          : 'Hoàn tất trả đồ & hoàn cọc'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+            {!data.simulatorEnabled && !data.completed && (
+              <p className="text-muted mt-3">
+                Mô phỏng trả đồ chưa được bật trên máy chủ.
+              </p>
+            )}
+
+            {busy && <p role="status">Đang xử lý…</p>}
+          </>
+        )}
+      </ReturnFlowModal.Body>
+
+      <ReturnFlowModal.Footer>
+        <button
+          className="btn btn-secondary"
+          disabled={busy}
+          onClick={onClose}
+        >
+          Đóng
+        </button>
+      </ReturnFlowModal.Footer>
+    </ReturnFlowModal>
+  );
+}
+
+export function SalesReturnWorkflow(props) {
+  return <RentalReturnWorkflow {...props} orderType="sale" />;
+}
+
+export function SalesDeliveryVideos(props) {
+  return <RentalDeliveryVideos {...props} orderType="sale" />;
 }

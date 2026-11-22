@@ -1,3 +1,4 @@
+import apiClient from './api';
 /**
  * Sales Order API Service (100% Native Fetch - Zero Axios)
  * Quản lý các cuộc gọi API đơn mua trang phục Vestora
@@ -17,7 +18,7 @@ const getAuthHeaders = () => {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-  } catch (_) {}
+  } catch (_) { }
   return headers;
 };
 
@@ -136,7 +137,7 @@ export async function updateSalesOrderStatus(orderId, { orderStatus, note }) {
   });
 }
 
-/* ---------------- Trả hàng bán (TASK-015) ---------------- */
+/* ---------------- Trả hàng bán theo món (TASK-015/016) ---------------- */
 
 /** Món còn trả được của đơn, theo dòng đơn (BM chi nhánh của đơn / admin). */
 export async function getSalesReturnableItems(orderId) {
@@ -152,3 +153,33 @@ export async function getSalesReturns(orderId) {
 export async function createSalesReturn(orderId, payload) {
   return salesRequest(`/${orderId}/returns`, { method: 'POST', body: payload });
 }
+
+/* ---------------- Luồng trả hàng mua có video (main2) ---------------- */
+
+export const getSalesReturnFlow = id =>
+  apiClient.get(`/sales-orders/${id}/return-flow`);
+
+export const requestSalesReturn = (id, reason = '') =>
+  apiClient.post('/sales-orders/' + id + '/return/request', {
+    reason,
+  });
+
+export const advanceSalesReturn = (id, newStatus) =>
+  apiClient.post('/sales-orders/' + id + '/return/simulate', {
+    newStatus,
+  });
+
+export const completeSalesReturn = id =>
+  apiClient.post('/sales-orders/' + id + '/return/complete', {
+    confirmed: true,
+  });
+
+export const uploadSalesEvidence = (id, kind, file) => {
+  const form = new FormData();
+  form.append('video', file);
+
+  return apiClient.post(
+    `/sales-orders/${id}/evidence/${kind}`,
+    form
+  );
+};

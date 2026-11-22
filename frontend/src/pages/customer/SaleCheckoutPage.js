@@ -72,6 +72,7 @@ export default function SaleCheckoutPage() {
     provinceId: null,
     districtId: null,
     wardCode: '',
+    isNewAddress: true,
   });
 
   const handleDivisionsChange = useCallback((divisionData) => {
@@ -83,6 +84,7 @@ export default function SaleCheckoutPage() {
       district: divisionData.district,
       wardCode: divisionData.wardCode,
       ward: divisionData.ward,
+      isNewAddress: true,
     }));
   }, []);
 
@@ -183,10 +185,6 @@ export default function SaleCheckoutPage() {
       setValidationError('Vui lòng chọn Tỉnh / Thành phố nhận hàng');
       return;
     }
-    if (!shippingAddress.districtId) {
-      setValidationError('Vui lòng chọn Quận / Huyện nhận hàng');
-      return;
-    }
     if (!shippingAddress.wardCode) {
       setValidationError('Vui lòng chọn Phường / Xã nhận hàng');
       return;
@@ -229,6 +227,7 @@ export default function SaleCheckoutPage() {
             provinceId: shippingAddress.provinceId ? Number(shippingAddress.provinceId) : null,
             districtId: shippingAddress.districtId ? Number(shippingAddress.districtId) : null,
             wardCode: shippingAddress.wardCode ? String(shippingAddress.wardCode).trim() : null,
+            isNewAddress: true,
           },
           ...(note.trim() ? { note: note.trim() } : {}),
         };

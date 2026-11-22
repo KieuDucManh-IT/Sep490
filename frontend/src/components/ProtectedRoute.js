@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
  * @param {React.ReactNode} children - Component to render if authorized
  * @param {Array<string>} allowedRoles - Optional list of authorized roles (e.g. ['SHOP_OWNER', 'OWNER'])
  */
-export default function ProtectedRoute({ children, allowedRoles = [] }) {
+export default function ProtectedRoute({ children, allowedRoles = [], allowAdmin = true }) {
   const location = useLocation();
 
   const {
@@ -45,7 +45,7 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
   if (allowedRoles && allowedRoles.length > 0) {
     const rawRole = String(user.Role || user.role || "").trim().toUpperCase();
     const normalizedAllowed = allowedRoles.map((r) => String(r).trim().toUpperCase());
-    const hasPermission = rawRole === "ADMIN" || normalizedAllowed.includes(rawRole);
+    const hasPermission = (allowAdmin && rawRole === "ADMIN") || normalizedAllowed.includes(rawRole);
 
     if (!hasPermission) {
       if (rawRole === "BRANCH_MANAGER") {

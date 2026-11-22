@@ -24,6 +24,7 @@ import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import apiClient, { API_BASE } from "../../services/api";
 import productService from "../../services/productService";
+import { selectionImages } from "../../services/cart/productSelection";
 import useTryOnVideo from "../../hook/useTryOnVideo";
 import "../../styles/WebcamTryOnPage.css";
 
@@ -53,6 +54,29 @@ function resolveImageUrl(rawImage) {
   } catch {
     return "";
   }
+}
+
+function resolveProductImageUrl(product, requestedImage, color) {
+  // Giữ đúng ảnh người dùng chọn, kể cả ảnh riêng của một màu.
+  const productImages = [
+    ...(product?.images || []),
+    product?.image,
+    ...(product?.imageRecords || []).map((record) => record.imageUrl),
+  ]
+    .map(resolveImageUrl)
+    .filter(Boolean);
+
+  const preferred = resolveImageUrl(requestedImage);
+
+  if (preferred && productImages.includes(preferred)) {
+    return preferred;
+  }
+
+  return (
+    selectionImages(product, "", color)
+      .map(resolveImageUrl)
+      .find(Boolean) || ""
+  );
 }
 
 function SavedVideoCard({ item }) {
@@ -90,6 +114,8 @@ function SavedVideoCard({ item }) {
 export default function WebcamTryOnPage() {
   const [params] = useSearchParams();
   const productId = params.get("product");
+  const requestedImage = params.get("image") || "";
+  const selectedColor = params.get("color") || "";
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(Boolean(productId));
@@ -157,9 +183,13 @@ export default function WebcamTryOnPage() {
 
           setProduct(result.data);
 
-          const image = result.data.images?.[0] || result.data.image;
+          const image = resolveProductImageUrl(
+            result.data,
+            requestedImage,
+            selectedColor
+          );
 
-          if (!resolveImageUrl(image)) {
+          if (!image) {
             setHasError(true);
             setMessage(
               "Trang phục này chưa có ảnh hợp lệ để thử đồ."
@@ -176,7 +206,7 @@ export default function WebcamTryOnPage() {
           setHasError(true);
           setMessage(
             error.message ||
-              "Không tải được sản phẩm. Vui lòng thử lại."
+            "Không tải được sản phẩm. Vui lòng thử lại."
           );
         })
         .finally(() => {
@@ -188,10 +218,12 @@ export default function WebcamTryOnPage() {
       active = false;
       clearSession();
     };
-  }, [productId, clearSession]);
+  }, [productId, requestedImage, selectedColor, clearSession]);
 
-  const imageUrl = resolveImageUrl(
-    product?.images?.[0] || product?.image
+  const imageUrl = resolveProductImageUrl(
+    product,
+    requestedImage,
+    selectedColor
   );
 
   const productName =
@@ -432,8 +464,8 @@ export default function WebcamTryOnPage() {
 
       finish(
         cameraErrors[error.name] ||
-          error.message ||
-          "Không thể bắt đầu thử đồ. Vui lòng thử lại.",
+        error.message ||
+        "Không thể bắt đầu thử đồ. Vui lòng thử lại.",
         true
       );
     }
@@ -521,9 +553,8 @@ export default function WebcamTryOnPage() {
             </div>
 
             <div
-              className={`vto-product-image${
-                loading ? " vto-product-image--loading" : ""
-              }`}
+              className={`vto-product-image${loading ? " vto-product-image--loading" : ""
+                }`}
             >
               {imageUrl && !imageFailed ? (
                 <img
@@ -596,9 +627,8 @@ export default function WebcamTryOnPage() {
               </div>
 
               <span
-                className={`vto-session-state${
-                  phase === "live" ? " vto-session-state--live" : ""
-                }`}
+                className={`vto-session-state${phase === "live" ? " vto-session-state--live" : ""
+                  }`}
               >
                 <span />
                 {phase === "live"
@@ -623,9 +653,8 @@ export default function WebcamTryOnPage() {
                 </div>
 
                 <div
-                  className={`vto-video-stage${
-                    cameraReady ? " vto-video-stage--playing" : ""
-                  }`}
+                  className={`vto-video-stage${cameraReady ? " vto-video-stage--playing" : ""
+                    }`}
                 >
                   <video
                     ref={inputRef}
@@ -637,7 +666,7 @@ export default function WebcamTryOnPage() {
                       if (
                         sessionRef.current?.camera &&
                         inputRef.current?.srcObject ===
-                          sessionRef.current.camera
+                        sessionRef.current.camera
                       ) {
                         setCameraReady(true);
                       }
@@ -689,9 +718,8 @@ export default function WebcamTryOnPage() {
                 </div>
 
                 <div
-                  className={`vto-video-stage${
-                    outputReady ? " vto-video-stage--playing" : ""
-                  }`}
+                  className={`vto-video-stage${outputReady ? " vto-video-stage--playing" : ""
+                    }`}
                 >
                   <video
                     ref={outputRef}
@@ -833,9 +861,8 @@ export default function WebcamTryOnPage() {
               </div>
 
               <div
-                className={`vto-status${
-                  hasError ? " vto-status--error" : ""
-                }`}
+                className={`vto-status${hasError ? " vto-status--error" : ""
+                  }`}
                 role="status"
                 aria-live="polite"
                 aria-atomic="true"
@@ -859,11 +886,10 @@ export default function WebcamTryOnPage() {
 
               {video.notice && (
                 <div
-                  className={`vto-recording-note${
-                    video.status === "error"
-                      ? " vto-recording-note--error"
-                      : ""
-                  }`}
+                  className={`vto-recording-note${video.status === "error"
+                    ? " vto-recording-note--error"
+                    : ""
+                    }`}
                   role="status"
                 >
                   <VideoIcon

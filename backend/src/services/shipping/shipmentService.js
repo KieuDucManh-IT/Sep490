@@ -7,6 +7,7 @@ import { mapGhnStatus } from './ghnStatusMapper.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
 import { syncSingleShipmentFromGHN } from './shipmentSyncService.js';
 import { getWebhookSecret } from './ghnConfig.js';
+import { recordSalesDelivery } from '../sale&rental/salesOrderService.js';
 import {
   fail,
   formatPartyInfo,
@@ -129,9 +130,12 @@ export const createOutboundShipment = async (user, payload = {}) => {
     customCodAmount,
   } = payload;
 
-  const order = await fetchOrderAndValidateScope(user, orderType, orderId);
+  const order = await fetchOrderAndValidateScope(
+    user,
+    orderType,
+    orderId
+  );
 
-  // Ràng buộc nghiệp vụ: Đơn hàng nhận tại showroom (pickup) không thể tạo vận đơn GHN
   const isPickup = order.deliveryMethod === 'pickup' || (order.note && order.note.includes('Nhận tại Showroom'));
   if (isPickup) {
     throw fail('Đơn hàng đăng ký nhận tại showroom (pickup), không thể tạo vận đơn giao hàng qua GHN.', 400);
@@ -315,7 +319,7 @@ export const createOutboundShipment = async (user, payload = {}) => {
   await OrderModel.updateOne(
     { _id: order._id },
     { $set: updateFields }
-  ).catch(() => {});
+  ).catch(() => { });
 
   return savedShipment;
 };
@@ -572,10 +576,7 @@ export const getShipmentsByOrderId = async (user, orderType, orderId) => {
  */
 const updateOrderStatusOnDelivered = async (shipment, actionTime) => {
   if (shipment.orderType === 'sale') {
-    await SalesOrder.findOneAndUpdate(
-      { _id: shipment.orderId, orderStatus: { $nin: ['cancelled'] } },
-      { orderStatus: 'completed' }
-    );
+    await recordSalesDelivery(shipment, actionTime);
   } else if (shipment.orderType === 'rental') {
     if (shipment.shipmentType === 'outbound') {
       const rental = await RentalOrder.findOne({ _id: shipment.orderId });
@@ -635,6 +636,28 @@ export const processGHNWebhook = async (payload = {}, secretKey = '', options = 
   const shipment = await OrderShipment.findOne({ trackingCode: order_code });
   if (!shipment) {
     return { success: false, message: 'Không tìm thấy vận đơn để cập nhật' };
+  }
+
+  if (shipment.isSimulated) {
+    throw fail(
+      'Vận đơn mô phỏng trả hàng phải được cập nhật trong cửa sổ trả hàng.',
+      409
+    );
+  }
+
+  if (
+    isSimulated &&
+    shipment.orderType === 'sale' &&
+    shipment.shipmentType === 'outbound' &&
+    !await SalesOrder.exists({
+      _id: shipment.orderId,
+      'packingVideo.publicId': { $type: 'string' },
+    })
+  ) {
+    throw fail(
+      'Chi nhánh phải tải video đóng hàng ở mục 5 trước khi giao hàng.',
+      422
+    );
   }
 
   const mapped = mapGhnStatus(status);
@@ -775,6 +798,27 @@ export const updateManualShipmentStatus = async (user, shipmentId, newStatus, re
 
   // 1. Phân quyền chi nhánh (BOLA protection)
   await fetchOrderAndValidateScope(user, shipment.orderType, shipment.orderId);
+  if (shipment.isSimulated) {
+    throw fail(
+      'Hãy cập nhật vận chuyển mô phỏng trong cửa sổ trả hàng.',
+      409
+    );
+  }
+
+  if (
+    shipment.orderType === 'sale' &&
+    shipment.shipmentType === 'outbound' &&
+    ['shipped', 'delivered'].includes(newStatus) &&
+    !await SalesOrder.exists({
+      _id: shipment.orderId,
+      'packingVideo.publicId': { $type: 'string' },
+    })
+  ) {
+    throw fail(
+      'Chi nhánh phải tải video đóng hàng ở mục 5 trước khi giao hàng.',
+      422
+    );
+  }
 
   // 2. Kiểm tra quy tắc chuyển dịch FSM
   const allowedTransitions = VALID_MANUAL_TRANSITIONS[shipment.shipmentStatus] || [];
@@ -804,7 +848,10 @@ export const updateManualShipmentStatus = async (user, shipmentId, newStatus, re
 
   // 3. Đồng bộ trạng thái đơn hàng an toàn (Enum Safety Guard)
   if (newStatus === 'shipped') {
-    if (shipment.orderType === 'sale') {
+    if (
+      shipment.orderType === 'sale' &&
+      shipment.shipmentType === 'outbound'
+    ) {
       await SalesOrder.findOneAndUpdate(
         { _id: shipment.orderId, orderStatus: { $nin: ['cancelled'] } },
         { orderStatus: 'shipped' }

@@ -20,16 +20,31 @@ import {
   readyWallet,
   readBalances,
   changeFunds,
+  inTransaction,
 } from '../walletService.js';
 import { checkSalesAvailability } from '../warehouse/productInventoryHelper.js';
 import {
-  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes, sellItems, withStatus,
+  reserveStock,
+  closeReservations,
+  incBranchBalance,
+  releaseReserved,
+  trackingTypes,
+  sellItems,
+  withStatus,
+  aggregateLines,
 } from '../warehouse/orderStockService.js';
 import {
   createSalesOrderSchema,
   updateSalesOrderStatusSchema,
 } from '../../validations/sale&rental/salesOrderValidation.js';
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import cloudinary from '../../config/cloudinary.js';
+import { encryptValue } from '../../utils/walletSecurity.js';
+import { SalesReturn } from '../../models/sale&rental/SalesReturn.js';
+import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js';
+import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
+import { moveItems } from '../warehouse/itemStateService.js';
+import { fetchOrderAndValidateScope } from '../shipping/shipmentHelpers.js';
 
 export class ServiceError extends Error {
   constructor(status, message, code = null, details = null) {
@@ -237,6 +252,7 @@ export const createSalesOrder = async ({
     let orderStatus = 'confirmed';
     let paymentStatus = 'unpaid';
     let paymentRefId = null;
+    const salesOrderId = new mongoose.Types.ObjectId();
 
     // 5. Nếu thanh toán qua Ví nội bộ Vestora
     if (paymentMethod === 'wallet') {
@@ -268,6 +284,9 @@ export const createSalesOrder = async ({
             currency: 'VND',
             status: 'success',
             referenceType: 'SalesOrder',
+            referenceId: salesOrderId,
+            businessKey: `sales-payment:${salesOrderId}`,
+            completedAt: new Date(),
           },
         ],
         { session }
@@ -283,6 +302,7 @@ export const createSalesOrder = async ({
         'sales_order_payment',
         session
       );
+      await walletTx.save({ session });
     }
 
     // 6. Tạo SalesOrder
@@ -290,6 +310,7 @@ export const createSalesOrder = async ({
     const [order] = await SalesOrder.create(
       [
         {
+          _id: salesOrderId,
           orderCode,
           locationId,
           customerId,
@@ -303,6 +324,7 @@ export const createSalesOrder = async ({
           totalAmount: priceCalc.totalAmount,
           shippingAddress,
           paymentRefId,
+          paidAmount: paymentMethod === 'wallet' ? priceCalc.totalAmount : 0,
           confirmedAt: new Date(),
           note,
         },
@@ -384,20 +406,20 @@ export const getMySalesOrders = async ({
   const [details, shipments] = await Promise.all([
     orderIds.length
       ? SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
-          .populate({
-            path: 'variantId',
-            select: 'sku size color productId attributes',
-            populate: {
-              path: 'productId',
-              select: 'name productCode images thumbnail thumbnailImage brand',
-            },
-          })
-          .lean()
+        .populate({
+          path: 'variantId',
+          select: 'sku size color productId attributes',
+          populate: {
+            path: 'productId',
+            select: 'name productCode images thumbnail thumbnailImage brand',
+          },
+        })
+        .lean()
       : [],
     orderIds.length
       ? OrderShipment.find({ orderId: { $in: orderIds }, orderType: 'sale' })
-          .sort({ createdAt: -1 })
-          .lean()
+        .sort({ createdAt: -1 })
+        .lean()
       : [],
   ]);
 
@@ -530,20 +552,20 @@ export const getBranchSalesOrders = async ({
   const [details, shipments] = await Promise.all([
     orderIds.length
       ? SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
-          .populate({
-            path: 'variantId',
-            select: 'sku size color productId',
-            populate: {
-              path: 'productId',
-              select: 'name productCode',
-            },
-          })
-          .lean()
+        .populate({
+          path: 'variantId',
+          select: 'sku size color productId',
+          populate: {
+            path: 'productId',
+            select: 'name productCode',
+          },
+        })
+        .lean()
       : [],
     orderIds.length
       ? OrderShipment.find({ orderId: { $in: orderIds }, orderType: 'sale' })
-          .sort({ createdAt: -1 })
-          .lean()
+        .sort({ createdAt: -1 })
+        .lean()
       : [],
   ]);
 
@@ -602,9 +624,19 @@ export const updateSalesOrderStatus = async ({
     throw new ServiceError(400, `Dữ liệu cập nhật không hợp lệ: ${errorMsg}`);
   }
 
-  const order = await SalesOrder.findById(orderId);
+  const order = await SalesOrder.findById(orderId).select('+packingVideo');
   if (!order) {
     throw new ServiceError(404, 'Không tìm thấy đơn mua hàng');
+  }
+
+  if (
+    ['shipped', 'completed'].includes(orderStatus) &&
+    !order.packingVideo
+  ) {
+    throw new ServiceError(
+      422,
+      'Chi nhánh phải tải video đóng hàng ở mục 5 trước khi giao hàng.'
+    );
   }
 
   if (order.orderStatus === 'cancelled' || order.orderStatus === 'completed') {
@@ -635,6 +667,7 @@ export const updateSalesOrderStatus = async ({
       // Nếu COD, khi completed thì chuyển paymentStatus thành 'paid'
       if (order.paymentMethod === 'cod') {
         updateFields.paymentStatus = 'paid';
+        updateFields.paidAmount = order.totalAmount;
       }
 
       // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật.
@@ -756,3 +789,972 @@ export const updateSalesOrderStatus = async ({
     session.endSession();
   }
 };
+export const SALES_EVIDENCE_FIELDS = Object.freeze({
+  packing: 'packingVideo',
+  receiving: 'receivingVideo',
+  return: 'returnVideo',
+  'return-received': 'returnReceivedVideo',
+});
+
+export const salesReturnSimulatorEnabled = () =>
+  process.env.NODE_ENV !== 'production' &&
+  process.env.ENABLE_GHN_SIMULATOR === 'true';
+
+const salesManager = user =>
+  ['admin', 'owner', 'shopowner', 'branchmanager'].includes(
+    String(user?.Role || user?.role || '')
+      .toLowerCase()
+      .replace(/[\s_-]/g, '')
+      .replace('brandmanager', 'branchmanager')
+  );
+
+const saleReturnable = order =>
+  order.orderStatus === 'completed' &&
+  order.paymentStatus === 'paid' &&
+  order.returnStatus !== 'completed';
+
+export async function accessSalesReturnOrder(
+  user,
+  id,
+  staffOnly = false,
+  session = null
+) {
+  if (!mongoose.isValidObjectId(id)) {
+    throw new ServiceError(400, 'Mã đơn mua không hợp lệ.');
+  }
+
+  const order = await SalesOrder.findById(id)
+    .select('+packingVideo +receivingVideo +returnVideo +returnReceivedVideo')
+    .session(session);
+
+  if (!order) {
+    throw new ServiceError(404, 'Không tìm thấy đơn mua.');
+  }
+
+  const manager = salesManager(user);
+
+  if (manager) {
+    try {
+      await fetchOrderAndValidateScope(user, 'sale', id);
+    } catch (error) {
+      throw withStatus(error);
+    }
+  } else if (
+    staffOnly ||
+    String(order.customerId) !== String(user?._id)
+  ) {
+    throw new ServiceError(403, 'Bạn không có quyền thao tác đơn mua này.');
+  }
+
+  return { order, manager };
+}
+
+async function salesEvidencePermissions(order, user, manager, shipment) {
+  const owner =
+    String(order.customerId?._id || order.customerId) === String(user._id);
+
+  const outboundStarted = await OrderShipment.exists({
+    orderType: 'sale',
+    orderId: order._id,
+    shipmentType: 'outbound',
+    shipmentStatus: { $in: ['shipped', 'delivered'] },
+  });
+
+  return {
+    packing:
+      manager &&
+      ['draft', 'confirmed', 'processing'].includes(order.orderStatus) &&
+      !outboundStarted,
+
+    receiving:
+      owner &&
+      order.orderStatus === 'completed' &&
+      order.returnStatus !== 'completed',
+
+    return:
+      owner &&
+      saleReturnable(order) &&
+      (!shipment || shipment.shipmentStatus === 'preparing'),
+
+    'return-received':
+      manager &&
+      saleReturnable(order) &&
+      shipment?.shipmentStatus === 'delivered',
+  };
+}
+
+function signedSalesEvidence(video) {
+  if (!video) return null;
+
+  const expiresAt = Math.floor(Date.now() / 1000) + 900;
+
+  return {
+    uploadedAt: video.uploadedAt,
+    expiresAt: expiresAt * 1000,
+    url: cloudinary.utils.private_download_url(
+      video.publicId,
+      video.format,
+      {
+        resource_type: 'video',
+        type: 'authenticated',
+        attachment: false,
+        expires_at: expiresAt,
+      }
+    ),
+  };
+}
+
+export async function getSalesReturnFlow(user, id) {
+  const { order, manager } = await accessSalesReturnOrder(user, id);
+
+  await order.populate([
+    { path: 'customerId', select: 'FullName Information' },
+    { path: 'locationId', populate: { path: 'shopId' } },
+  ]);
+
+  const details = await SalesOrderDetail.find({ salesOrderId: id })
+    .populate({
+      path: 'variantId',
+      select: 'sku size color productId',
+      populate: {
+        path: 'productId',
+        select: 'name images image',
+      },
+    })
+    .lean();
+
+  const shipment = await OrderShipment.findOne({
+    orderId: id,
+    orderType: 'sale',
+    shipmentType: 'return',
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const shop = order.locationId?.shopId || order.locationId || {};
+
+  return {
+    orderCode: order.orderCode,
+    orderStatus: order.orderStatus,
+    returnStatus: order.returnStatus,
+    createdAt: order.createdAt,
+
+    customer: {
+      name:
+        order.shippingAddress?.receiverName ||
+        order.customerId?.FullName ||
+        '',
+      phone: order.shippingAddress?.phone || '',
+      address: [
+        order.shippingAddress?.street,
+        order.shippingAddress?.ward,
+        order.shippingAddress?.district,
+        order.shippingAddress?.city,
+      ].filter(Boolean).join(', '),
+    },
+
+    shop: {
+      name: shop.name || '',
+      phone: shop.phone || '',
+      address: shop.address || '',
+    },
+
+    items: details.map(d => ({
+      id: d._id,
+      name: d.variantId?.productId?.name || 'Trang phục',
+      sku: d.variantId?.sku || '',
+      size: d.variantId?.size || '',
+      color: d.variantId?.color || '',
+      quantity: d.quantity,
+      image:
+        d.variantId?.productId?.images?.[0] ||
+        d.variantId?.productId?.image ||
+        '',
+    })),
+
+    ...Object.fromEntries(
+      Object.values(SALES_EVIDENCE_FIELDS).map(field => [
+        field,
+        signedSalesEvidence(order[field]),
+      ])
+    ),
+
+    videoPermissions: await salesEvidencePermissions(
+      order,
+      user,
+      manager,
+      shipment
+    ),
+
+    shipment,
+    canManage: manager,
+    simulatorEnabled: salesReturnSimulatorEnabled(),
+    canRequest: saleReturnable(order) && !shipment && !order.returnId,
+
+    requestBlockedReason:
+      order.orderStatus !== 'completed'
+        ? 'Chỉ tạo yêu cầu trả hàng sau khi khách đã nhận hàng.'
+        : order.paymentStatus !== 'paid' &&
+          order.returnStatus !== 'completed'
+          ? 'Đơn chưa được xác nhận thanh toán đủ; cần đối soát trước khi trả và hoàn tiền.'
+          : '',
+
+    completed: order.returnStatus === 'completed',
+
+    refundedAmount:
+      order.returnStatus === 'completed' &&
+        order.paymentStatus === 'refunded'
+        ? order.refundedAmount
+        : null,
+  };
+}
+
+export async function checkSalesEvidenceAccess(user, id, kind) {
+  if (!Object.hasOwn(SALES_EVIDENCE_FIELDS, kind)) {
+    throw new ServiceError(400, 'Loại video không hợp lệ.');
+  }
+
+  const { order, manager } = await accessSalesReturnOrder(user, id);
+
+  const shipment = await OrderShipment.findOne({
+    orderId: id,
+    orderType: 'sale',
+    shipmentType: 'return',
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const permissions = await salesEvidencePermissions(
+    order,
+    user,
+    manager,
+    shipment
+  );
+
+  if (!permissions[kind]) {
+    throw new ServiceError(
+      403,
+      'Bạn không thể tải loại video này ở trạng thái hiện tại của đơn.'
+    );
+  }
+
+  const field = SALES_EVIDENCE_FIELDS[kind];
+
+  if (order[field]) {
+    throw new ServiceError(409, 'Video đã được lưu, không ghi đè bằng chứng.');
+  }
+
+  return field;
+}
+
+export async function requestSalesReturn(user, id, reason = '') {
+  if (!salesReturnSimulatorEnabled()) {
+    throw new ServiceError(403, 'Luồng trả hàng mô phỏng chưa được bật.');
+  }
+
+  if (typeof reason !== 'string' || reason.length > 1000) {
+    throw new ServiceError(400, 'Lý do trả hàng tối đa 1.000 ký tự.');
+  }
+
+  await accessSalesReturnOrder(user, id);
+
+  return inTransaction(async session => {
+    const { order } = await accessSalesReturnOrder(
+      user,
+      id,
+      false,
+      session
+    );
+
+    if (!saleReturnable(order)) {
+      throw new ServiceError(409, 'Chỉ trả đơn đã giao và đã thanh toán đủ.');
+    }
+
+    await SalesOrder.updateOne(
+      { _id: id },
+      { $inc: { returnFlowVersion: 1 } },
+      { session }
+    );
+
+    const existing = await OrderShipment.findOne({
+      orderId: id,
+      orderType: 'sale',
+      shipmentType: 'return',
+    }).session(session);
+
+    if (existing && order.returnId) return existing;
+
+    const anotherReturn = await SalesReturn.exists({
+      salesOrderId: id,
+      returnStatus: { $nin: ['rejected', 'cancelled'] },
+    }).session(session);
+
+    if (existing || anotherReturn) {
+      throw new ServiceError(
+        409,
+        'Đơn đã có yêu cầu trả hàng khác; cần đối soát trước.'
+      );
+    }
+
+    const details = await SalesOrderDetail.find({
+      salesOrderId: id,
+    }).session(session);
+
+    if (!details.length) {
+      throw new ServiceError(409, 'Đơn chưa có chi tiết sản phẩm.');
+    }
+
+    await order.populate({
+      path: 'locationId',
+      populate: { path: 'shopId' },
+    });
+
+    const shop = order.locationId?.shopId || order.locationId || {};
+    const address = order.shippingAddress || {};
+
+    if (
+      !address.phone ||
+      !address.street ||
+      !shop.phone ||
+      !shop.address
+    ) {
+      throw new ServiceError(
+        422,
+        'Thiếu địa chỉ hoặc số điện thoại người trả/chi nhánh.'
+      );
+    }
+
+    const [receipt] = await SalesReturn.create([{
+      returnCode: 'RET-SO-' + crypto.randomUUID(),
+      salesOrderId: id,
+      locationId: order.locationId._id,
+      createdBy: user._id,
+      returnReason:
+        reason.trim() || 'Khách hàng yêu cầu trả toàn bộ đơn mua.',
+      returnStatus: 'requested',
+    }], { session });
+
+    const [shipment] = await OrderShipment.create([{
+      orderId: id,
+      orderCode: order.orderCode,
+      orderType: 'sale',
+      shipmentType: 'return',
+      isSimulated: true,
+      trackingCode: 'SIM-SRET-' + crypto.randomUUID(),
+      carrierName: 'Vận chuyển mô phỏng',
+      shipmentStatus: 'preparing',
+      codAmount: 0,
+      fromLocationId: order.locationId._id,
+      createdBy: user._id,
+
+      senderInfo: {
+        name: address.receiverName,
+        phone: address.phone,
+        address: [
+          address.street,
+          address.ward,
+          address.district,
+          address.city,
+        ].filter(Boolean).join(', '),
+      },
+
+      receiverInfo: {
+        name: shop.name,
+        phone: shop.phone,
+        address: shop.address,
+      },
+
+      statusHistory: [{
+        status: 'preparing',
+        description: 'Đã tạo đơn trả hàng mua, chờ lấy hàng (mô phỏng)',
+      }],
+    }], { session });
+
+    await SalesOrder.updateOne(
+      { _id: id },
+      {
+        $set: {
+          returnId: receipt._id,
+          returnStatus: 'requested',
+        },
+      },
+      { session }
+    );
+
+    return shipment;
+  });
+}
+
+export async function advanceSalesReturn(user, id, newStatus) {
+  if (!salesReturnSimulatorEnabled()) {
+    throw new ServiceError(403, 'Mô phỏng chỉ được phép trên dev.');
+  }
+
+  await accessSalesReturnOrder(user, id, true);
+
+  return inTransaction(async session => {
+    const { order } = await accessSalesReturnOrder(
+      user,
+      id,
+      true,
+      session
+    );
+
+    if (!saleReturnable(order)) {
+      throw new ServiceError(
+        409,
+        'Đơn không còn ở trạng thái có thể trả hàng.'
+      );
+    }
+
+    const shipment = await OrderShipment.findOne({
+      orderId: id,
+      orderType: 'sale',
+      shipmentType: 'return',
+      isSimulated: true,
+    }).session(session);
+
+    if (!shipment) {
+      throw new ServiceError(404, 'Chưa có vận đơn trả hàng mô phỏng.');
+    }
+
+    if (shipment.shipmentStatus === newStatus) return shipment;
+
+    const nextStatus = {
+      preparing: 'shipped',
+      shipped: 'delivered',
+    };
+
+    if (nextStatus[shipment.shipmentStatus] !== newStatus) {
+      throw new ServiceError(409, 'Không được bỏ bước hoặc lùi trạng thái.');
+    }
+
+    const now = new Date();
+
+    await SalesOrder.updateOne(
+      { _id: id },
+      {
+        $inc: { returnFlowVersion: 1 },
+        $set: {
+          returnStatus: newStatus === 'shipped' ? 'returning' : 'received',
+        },
+      },
+      { session }
+    );
+
+    const updated = await OrderShipment.findOneAndUpdate(
+      {
+        _id: shipment._id,
+        shipmentStatus: shipment.shipmentStatus,
+      },
+      {
+        $set: {
+          shipmentStatus: newStatus,
+          [newStatus === 'shipped' ? 'shippedAt' : 'deliveredAt']: now,
+        },
+        $push: {
+          statusHistory: {
+            status: newStatus,
+            timestamp: now,
+            description: newStatus === 'shipped'
+              ? 'Đã lấy hàng từ khách, đang chuyển về shop (mô phỏng)'
+              : 'Đã giao hàng về shop, chờ nghiệm thu (mô phỏng)',
+          },
+        },
+      },
+      { new: true, runValidators: true, session }
+    );
+
+    if (!updated) {
+      throw new ServiceError(409, 'Vận đơn vừa thay đổi; vui lòng tải lại.');
+    }
+
+    return updated;
+  });
+}
+export async function validateSalesRefundPayment(order, wallet, session) {
+  const amount = order.totalAmount;
+
+  if (
+    !order.customerId ||
+    !Number.isSafeInteger(amount) ||
+    amount <= 0 ||
+    order.paymentStatus !== 'paid' ||
+    (
+      order.paidAmount != null &&
+      order.paidAmount !== 0 &&
+      order.paidAmount !== amount
+    )
+  ) {
+    throw new ServiceError(
+      409,
+      'Số tiền đã thanh toán không khớp đơn mua.'
+    );
+  }
+
+  if (order.paymentMethod === 'wallet') {
+    const query = order.paymentRefId
+      ? { _id: order.paymentRefId }
+      : {
+          referenceType: 'SalesOrder',
+          referenceId: order._id,
+          transactionType: 'payment',
+          status: 'success',
+        };
+
+    const tx = await WalletTransaction.findOne(query).session(session);
+
+    if (
+      !wallet ||
+      !tx ||
+      String(tx.userId) !== String(order.customerId) ||
+      String(tx.walletId) !== String(wallet._id) ||
+      tx.amount !== amount ||
+      tx.referenceType !== 'SalesOrder' ||
+      (tx.referenceId && String(tx.referenceId) !== String(order._id)) ||
+      tx.status !== 'success' ||
+      tx.direction !== 'debit' ||
+      tx.transactionType !== 'payment'
+    ) {
+      throw new ServiceError(
+        409,
+        'Không đối soát được giao dịch thanh toán gốc của đơn mua.'
+      );
+    }
+  } else if (order.paymentMethod !== 'cod') {
+    throw new ServiceError(
+      409,
+      'Phương thức thanh toán cần được đối soát trước khi hoàn.'
+    );
+  }
+
+  const previousRefund = await WalletTransaction.exists({
+    referenceType: 'SalesOrder',
+    referenceId: order._id,
+    transactionType: 'refund',
+    status: 'success',
+  }).session(session);
+
+  if (previousRefund) {
+    throw new ServiceError(
+      409,
+      'Đơn đã có giao dịch hoàn tiền; cần đối soát trước.'
+    );
+  }
+
+  return amount;
+}
+
+export async function restoreSalesReturnStock(
+  order,
+  details,
+  receiptId,
+  user,
+  session
+) {
+  const lines = aggregateLines(details);
+
+  if (
+    !lines.length ||
+    details.some(d => !Number.isSafeInteger(d.quantity) || d.quantity <= 0)
+  ) {
+    throw new ServiceError(409, 'Chi tiết sản phẩm trả không hợp lệ.');
+  }
+
+  const reservations = await InventoryReservation.find({
+    orderId: order._id,
+    orderType: 'sale',
+  }).session(session);
+
+  const movements = await StockMovement.find({
+    referenceType: 'sales_order',
+    referenceId: order._id,
+    movementType: 'sale',
+  }).session(session);
+
+  const expected = new Map(
+    lines.map(line => [String(line.variantId), line.quantity])
+  );
+
+  const matches = records => {
+    const actual = new Map(
+      aggregateLines(records).map(line => [
+        String(line.variantId),
+        line.quantity,
+      ])
+    );
+
+    return (
+      actual.size === expected.size &&
+      [...expected].every(([id, quantity]) => actual.get(id) === quantity)
+    );
+  };
+
+  // Mô phỏng chưa xuất kho: chỉ giải phóng phần giữ chỗ của chính đơn này.
+  if (!movements.length) {
+    if (
+      !salesReturnSimulatorEnabled() ||
+      reservations.some(r => r.status !== 'active') ||
+      reservations.some(
+        r => String(r.locationId) !== String(order.locationId)
+      ) ||
+      (reservations.length && !matches(reservations))
+    ) {
+      throw new ServiceError(
+        409,
+        'Giữ chỗ tồn kho không khớp; cần đối soát trước khi hoàn tiền.'
+      );
+    }
+
+    const held = await closeReservations(
+      { orderId: order._id, orderType: 'sale' },
+      'released',
+      session
+    );
+
+    await releaseReserved({
+      locationId: order.locationId,
+      reservedByVariant: held,
+    }, session);
+
+    return;
+  }
+
+  if (
+    reservations.some(r => r.status === 'active') ||
+    movements.some(m =>
+      String(m.locationId) !== String(order.locationId) ||
+      !Number.isSafeInteger(m.quantityChange) ||
+      m.quantityChange >= 0
+    ) ||
+    !matches(movements.map(m => ({
+      variantId: m.variantId,
+      quantity: -m.quantityChange,
+    })))
+  ) {
+    throw new ServiceError(
+      409,
+      'Xuất kho của đơn không khớp số lượng trả.'
+    );
+  }
+
+  const itemMovements = movements.filter(m => m.itemId);
+  const quantityMovements = movements.filter(m => !m.itemId);
+
+  if (
+    itemMovements.some(m => m.quantityChange !== -1) ||
+    new Set(itemMovements.map(m => String(m.itemId))).size !==
+      itemMovements.length ||
+    quantityMovements.some(m =>
+      m.storageId ||
+      itemMovements.some(i => String(i.variantId) === String(m.variantId))
+    )
+  ) {
+    throw new ServiceError(
+      409,
+      'Dữ liệu hiện vật xuất kho cần được đối soát.'
+    );
+  }
+
+  if (itemMovements.length) {
+    const items = await InventoryItem.find({
+      _id: { $in: itemMovements.map(m => m.itemId) },
+    }).session(session);
+
+    const invalidItems = items.some(item => {
+      const movement = itemMovements.find(
+        m => String(m.itemId) === String(item._id)
+      );
+
+      return (
+        item.status !== 'sold' ||
+        String(item.variantId) !== String(movement.variantId) ||
+        String(item.locationId) !== String(order.locationId)
+      );
+    });
+
+    if (items.length !== itemMovements.length || invalidItems) {
+      throw new ServiceError(
+        409,
+        'Hiện vật đã thay đổi hoặc không thuộc đơn mua này.'
+      );
+    }
+
+    await moveItems(items, item => ({
+      status: 'available',
+      condition: item.condition === 'new' ? 'new' : 'good',
+      locationId: order.locationId,
+      storageId: null,
+    }), session);
+  }
+
+  const quantityLines = aggregateLines(
+    quantityMovements.map(m => ({
+      variantId: m.variantId,
+      quantity: -m.quantityChange,
+    }))
+  );
+
+  for (const line of quantityLines) {
+    await incBranchBalance({
+      locationId: order.locationId,
+      variantId: line.variantId,
+      inc: { quantityOnHand: line.quantity },
+    }, session);
+  }
+
+  await StockMovement.insertMany(
+    movements.map(m => ({
+      variantId: m.variantId,
+      itemId: m.itemId || null,
+      locationId: order.locationId,
+      storageId: null,
+      movementType: 'sales_return',
+      quantityChange: -m.quantityChange,
+      referenceType: 'sales_return',
+      referenceId: receiptId,
+      createdBy: user._id,
+    })),
+    { session }
+  );
+}
+
+export async function completeSalesReturn(user, id) {
+  if (!salesReturnSimulatorEnabled()) {
+    throw new ServiceError(403, 'Luồng trả hàng mô phỏng chưa được bật.');
+  }
+
+  await accessSalesReturnOrder(user, id, true);
+
+  return inTransaction(async session => {
+    const { order } = await accessSalesReturnOrder(
+      user,
+      id,
+      true,
+      session
+    );
+
+    const businessKey = 'sales-return:' + id;
+
+    // Bấm lại không hoàn thêm tiền.
+    if (order.returnStatus === 'completed') {
+      const tx = await WalletTransaction.findOne({
+        businessKey,
+        status: 'success',
+      }).session(session);
+
+      if (
+        order.paymentStatus !== 'refunded' ||
+        !tx ||
+        tx.amount !== order.refundedAmount ||
+        String(tx.userId) !== String(order.customerId)
+      ) {
+        throw new ServiceError(
+          409,
+          'Kết quả hoàn tiền cần được đối soát.'
+        );
+      }
+
+      return {
+        refundedAmount: tx.amount,
+        alreadyCompleted: true,
+      };
+    }
+
+    if (
+      !saleReturnable(order) ||
+      order.returnStatus !== 'received' ||
+      !order.returnId
+    ) {
+      throw new ServiceError(409, 'Đơn chưa sẵn sàng nghiệm thu trả hàng.');
+    }
+
+    if (!order.returnReceivedVideo) {
+      throw new ServiceError(
+        422,
+        'Shop phải tải video nhận hàng trả trước khi hoàn tiền.'
+      );
+    }
+
+    const shipment = await OrderShipment.findOne({
+      orderId: id,
+      orderType: 'sale',
+      shipmentType: 'return',
+      isSimulated: true,
+      shipmentStatus: 'delivered',
+    }).session(session);
+
+    if (!shipment) {
+      throw new ServiceError(409, 'Hàng chưa được giao về shop.');
+    }
+
+    let wallet = await Wallet.findOne({
+      userId: order.customerId,
+    })
+      .select('+balanceEncrypted +lockedBalanceEncrypted')
+      .session(session);
+
+    const amount = await validateSalesRefundPayment(order, wallet, session);
+
+    const claimed = await SalesOrder.updateOne(
+      {
+        _id: id,
+        orderStatus: 'completed',
+        paymentStatus: 'paid',
+        returnStatus: 'received',
+      },
+      {
+        $set: {
+          returnStatus: 'completed',
+          paymentStatus: 'refunded',
+          refundedAmount: amount,
+          returnCompletedAt: new Date(),
+        },
+        $inc: { returnFlowVersion: 1 },
+      },
+      { session }
+    );
+
+    if (claimed.matchedCount !== 1) {
+      throw new ServiceError(
+        409,
+        'Đơn vừa được quyết toán; vui lòng tải lại.'
+      );
+    }
+
+    const receipt = await SalesReturn.findOneAndUpdate(
+      {
+        _id: order.returnId,
+        salesOrderId: id,
+        returnStatus: 'requested',
+      },
+      {
+        $set: {
+          returnStatus: 'completed',
+          approvedBy: user._id,
+          approvedAt: new Date(),
+          refundAmount: amount,
+        },
+      },
+      { new: true, runValidators: true, session }
+    );
+
+    if (!receipt) {
+      throw new ServiceError(409, 'Phiếu trả hàng đã thay đổi.');
+    }
+
+    const details = await SalesOrderDetail.find({
+      salesOrderId: id,
+    }).session(session);
+
+    await restoreSalesReturnStock(
+      order,
+      details,
+      receipt._id,
+      user,
+      session
+    );
+
+    await SalesReturnDetail.insertMany(
+      details.map(d => ({
+        salesReturnId: receipt._id,
+        salesOrderDetailId: d._id,
+        quantityReturned: d.quantity,
+        unitRefundAmount: d.lineTotal / d.quantity,
+        conditionOnReturn: 'good',
+        disposition: 'restock',
+        note: 'Shop xác nhận nhận đủ hàng nguyên vẹn.',
+      })),
+      { session }
+    );
+
+    // Khách thanh toán COD có thể chưa mở ví.
+    if (!wallet) {
+      const walletId = new mongoose.Types.ObjectId();
+
+      [wallet] = await Wallet.create([{
+        _id: walletId,
+        userId: order.customerId,
+        balanceEncrypted: encryptValue(0, walletId + ':balance'),
+        lockedBalanceEncrypted: encryptValue(0, walletId + ':locked'),
+      }], { session });
+    }
+
+    const [tx] = await WalletTransaction.create([{
+      walletId: wallet._id,
+      userId: order.customerId,
+      businessKey,
+      code: generateWalletTxCode('REF-SO'),
+      transactionType: 'refund',
+      direction: 'credit',
+      amount,
+      status: 'success',
+      referenceType: 'SalesOrder',
+      referenceId: order._id,
+      completedAt: new Date(),
+    }], { session });
+
+    await changeFunds(
+      wallet,
+      tx,
+      amount,
+      0,
+      'sales_return_refund',
+      session
+    );
+
+    await tx.save({ session });
+
+    return {
+      refundedAmount: amount,
+      alreadyCompleted: false,
+    };
+  });
+}
+
+export async function recordSalesDelivery(shipment, actionTime) {
+  if (
+    shipment.orderType !== 'sale' ||
+    shipment.shipmentType !== 'outbound'
+  ) {
+    return;
+  }
+
+  const order = await SalesOrder.findById(shipment.orderId);
+
+  if (
+    !order ||
+    order.orderStatus === 'cancelled' ||
+    order.returnStatus === 'completed'
+  ) {
+    return;
+  }
+
+  const updates = {
+    orderStatus: 'completed',
+    completedAt: order.completedAt || actionTime,
+  };
+
+  const cod = Number(shipment.codAmount);
+
+  if (
+    order.paymentMethod === 'cod' &&
+    ['unpaid', 'partial'].includes(order.paymentStatus) &&
+    Number.isSafeInteger(cod) &&
+    cod > 0 &&
+    (order.paidAmount || 0) + cod === order.totalAmount
+  ) {
+    updates.paymentStatus = 'paid';
+    updates.paidAmount = order.totalAmount;
+  }
+
+  await SalesOrder.updateOne(
+    {
+      _id: order._id,
+      orderStatus: order.orderStatus,
+      paymentStatus: order.paymentStatus,
+      returnStatus: { $ne: 'completed' },
+    },
+    { $set: updates }
+  );
+}

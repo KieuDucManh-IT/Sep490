@@ -26,19 +26,6 @@ const handle = fn => async (req, res, next) => {
   }
 };
 
-const checkUpload = async (req, res, next) => {
-  try {
-    await returnFlow.checkEvidenceAccess(
-      req.user,
-      req.params.id,
-      req.params.kind
-    );
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
-
 const videoUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -145,127 +132,142 @@ router.post(
   })
 );
 
-router.post(
-  '/orders/:id/evidence/:kind',
-  videoLimit,
-  checkUpload,
-  receiveVideo,
-  handle(async (req, res) => {
-    const { id, kind } = req.params;
-
-    const field = await returnFlow.checkEvidenceAccess(
-      req.user,
-      id,
-      kind
-    );
-
-    const buffer = req.file?.buffer;
-
-    const mp4 =
-      req.file?.mimetype === 'video/mp4' &&
-      buffer?.subarray(4, 8).toString('ascii') === 'ftyp';
-
-    const webm =
-      req.file?.mimetype === 'video/webm' &&
-      buffer?.subarray(0, 4).toString('hex') === '1a45dfa3';
-
-    if (!mp4 && !webm) {
-      return res.status(400).json({
-        message:
-          'Nội dung file không phải video MP4/WebM hợp lệ.',
-      });
-    }
-
-    const publicId =
-      `rental-evidence/${id}/${kind}-${randomUUID()}`;
-
-    let uploaded;
-
+export function createEvidenceUploadHandlers({
+  Model,
+  checkAccess,
+  statusFilter,
+  folder,
+}) {
+  const checkUpload = async (req, res, next) => {
     try {
-      uploaded = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          {
-            public_id: publicId,
-            resource_type: 'video',
-            type: 'authenticated',
-            overwrite: false,
-          },
-          (error, result) =>
-            error ? reject(error) : resolve(result)
-        ).end(buffer);
-      });
-
-      if (
-        uploaded.resource_type !== 'video' ||
-        !uploaded.format ||
-        !uploaded.duration ||
-        uploaded.duration > 300
-      ) {
-        throw Object.assign(
-          new Error(
-            'Video phải phát được và dài tối đa 5 phút.'
-          ),
-          { status: 400 }
-        );
-      }
-
-      await returnFlow.checkEvidenceAccess(req.user, id, kind);
-
-      const saved = await RentalOrder.findOneAndUpdate(
-        {
-          _id: id,
-          rentalStatus: {
-            $in: kind === 'packing'
-              ? ['draft', 'confirmed']
-              : ['renting', 'overdue'],
-          },
-          [field]: null,
-        },
-        {
-          $set: {
-            [field]: {
-              publicId,
-              format: uploaded.format,
-              uploadedBy: req.user._id,
-              uploadedAt: new Date(),
-            },
-          },
-          $inc: { returnFlowVersion: 1 },
-        },
-        { new: true, runValidators: true }
-      );
-
-      if (!saved) {
-        throw Object.assign(
-          new Error(
-            'Đơn vừa thay đổi hoặc đã có video.'
-          ),
-          { status: 409 }
-        );
-      }
-
-      res.json({ success: true });
+      await checkAccess(req.user, req.params.id, req.params.kind);
+      next();
     } catch (error) {
-      if (uploaded) {
-        try {
-          const linked = await RentalOrder.exists({
-            _id: id,
-            [`${field}.publicId`]: publicId,
-          });
+      next(error);
+    }
+  };
 
-          if (!linked) {
-            await cloudinary.uploader.destroy(publicId, {
+  return [
+    videoLimit,
+    checkUpload,
+    receiveVideo,
+    handle(async (req, res) => {
+      const { id, kind } = req.params;
+      const field = await checkAccess(req.user, id, kind);
+      const buffer = req.file?.buffer;
+
+      const mp4 =
+        req.file?.mimetype === 'video/mp4' &&
+        buffer?.subarray(4, 8).toString('ascii') === 'ftyp';
+
+      const webm =
+        req.file?.mimetype === 'video/webm' &&
+        buffer?.subarray(0, 4).toString('hex') === '1a45dfa3';
+
+      if (!mp4 && !webm) {
+        return res.status(400).json({
+          message: 'Nội dung file không phải video MP4/WebM hợp lệ.',
+        });
+      }
+
+      const publicId =
+        folder + '/' + id + '/' + kind + '-' + randomUUID();
+
+      let uploaded;
+
+      try {
+        uploaded = await new Promise((resolve, reject) => {
+          cloudinary.uploader.upload_stream(
+            {
+              public_id: publicId,
               resource_type: 'video',
               type: 'authenticated',
-            });
-          }
-        } catch {
-          // Giữ video nếu chưa xác định được kết quả ghi DB.
-        }
-      }
+              overwrite: false,
+            },
+            (error, result) => error ? reject(error) : resolve(result)
+          ).end(buffer);
+        });
 
-      throw error;
-    }
+        if (
+          uploaded.resource_type !== 'video' ||
+          !uploaded.format ||
+          !uploaded.duration ||
+          uploaded.duration > 300
+        ) {
+          throw Object.assign(
+            new Error('Video phải phát được và dài tối đa 5 phút.'),
+            { status: 400 }
+          );
+        }
+
+        await checkAccess(req.user, id, kind);
+
+        const saved = await Model.findOneAndUpdate(
+          {
+            _id: id,
+            ...statusFilter(kind),
+            [field]: null,
+          },
+          {
+            $set: {
+              [field]: {
+                publicId,
+                format: uploaded.format,
+                uploadedBy: req.user._id,
+                uploadedAt: new Date(),
+              },
+            },
+            $inc: { returnFlowVersion: 1 },
+          },
+          { new: true, runValidators: true }
+        );
+
+        if (!saved) {
+          throw Object.assign(
+            new Error('Đơn vừa thay đổi hoặc đã có video.'),
+            { status: 409 }
+          );
+        }
+
+        res.json({ success: true });
+      } catch (error) {
+        if (uploaded) {
+          try {
+            const linked = await Model.exists({
+              _id: id,
+              [`${field}.publicId`]: publicId,
+            });
+
+            if (!linked) {
+              await cloudinary.uploader.destroy(publicId, {
+                resource_type: 'video',
+                type: 'authenticated',
+              });
+            }
+          } catch {
+            // Giữ video nếu chưa xác định được kết quả ghi DB.
+          }
+        }
+
+        throw error;
+      }
+    }),
+  ];
+}
+
+router.post(
+  '/orders/:id/evidence/:kind',
+  ...createEvidenceUploadHandlers({
+    Model: RentalOrder,
+    checkAccess: returnFlow.checkEvidenceAccess,
+    folder: 'rental-evidence',
+    statusFilter: kind => ({
+      rentalStatus: {
+        $in: kind === 'packing'
+          ? ['draft', 'confirmed']
+          : ['renting', 'overdue'],
+      },
+    }),
   })
 );
 

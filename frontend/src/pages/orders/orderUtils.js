@@ -99,6 +99,30 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
 
   const isSale = type === 'sale' || Boolean(order.orderStatus && !order.rentalStatus);
   const currentStatus = isSale ? (order.orderStatus || order.status) : (order.rentalStatus || order.status);
+  if (isSale) {
+    const returnStates = {
+      requested: {
+        text: 'Chờ lấy hàng trả',
+        chipClass: 'confirmed',
+      },
+      returning: {
+        text: 'Đang chuyển hàng trả về shop',
+        chipClass: 'processing',
+      },
+      received: {
+        text: 'Đã về shop, chờ nghiệm thu',
+        chipClass: 'processing',
+      },
+      completed: {
+        text: 'Đã trả hàng hoàn tất',
+        chipClass: 'returned',
+      },
+    };
+
+    if (returnStates[order.returnStatus]) {
+      return returnStates[order.returnStatus];
+    }
+  }
   // Ưu tiên kết quả nghiệm thu của đơn thuê.
   if (!isSale && currentStatus === 'returned') {
     return RENTAL_STATUS_MAP.returned;
@@ -137,10 +161,8 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     if (activeShipment.shipmentStatus === 'delivered') {
       if (isReturn) {
         return {
-          text: isSale
-            ? (isBranch ? 'Đã nhận hàng thu hồi' : 'Đã Hoàn Tất')
-            : 'Đã về shop, chờ nghiệm thu',
-          chipClass: isSale ? 'returned' : 'processing',
+          text: 'Đã về shop, chờ nghiệm thu',
+          chipClass: 'processing',
         };
       }
       if (isSale) {

@@ -30,6 +30,10 @@ import {
 import { cancelShipmentApi } from '../../services/shippingApi';
 import '../../styles/ShopBranches.css';
 import '../../styles/OrderMonitoring.css';
+import {
+  SalesDeliveryVideos,
+  SalesReturnWorkflow,
+} from '../shipping/ShipmentReturnModal';
 
 export default function SaleOrderDetailModal({
   isOpen,
@@ -37,13 +41,15 @@ export default function SaleOrderDetailModal({
   orderId,
   initialOrder = null,
   isReadOnly = false,
-  onAction = () => {},
+  onAction = () => { },
 }) {
   const [loading, setLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
   const [error, setError] = useState('');
   const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
   const [retryShipment, setRetryShipment] = useState(null);
+  const [returnFlowOpen, setReturnFlowOpen] = useState(false);
+  const [deliveryEvidence, setDeliveryEvidence] = useState(null);
 
   const refetchOrder = () => {
     if (orderId) {
@@ -53,7 +59,7 @@ export default function SaleOrderDetailModal({
             setDetailData(res.data);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   };
 
@@ -77,6 +83,8 @@ export default function SaleOrderDetailModal({
       return;
     }
 
+    setReturnFlowOpen(false);
+    setDeliveryEvidence(null);
     let isMounted = true;
     setLoading(true);
     setError('');
@@ -116,17 +124,17 @@ export default function SaleOrderDetailModal({
     const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
     if (match) noteDeliveryAddress = match[3].trim();
   }
-  const customerAddress = order.shippingAddress?.street 
+  const customerAddress = order.shippingAddress?.street
     ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
     : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
   const rawShipments = detailData?.shipments || order.shipments || [];
   const shipments = Array.isArray(rawShipments)
     ? [...rawShipments].sort((a, b) => {
-        const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
-        const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
-        return timeB - timeA; // Vận đơn mới nhất lên trên đầu
-      })
+      const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+      const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+      return timeB - timeA; // Vận đơn mới nhất lên trên đầu
+    })
     : [];
 
   const statusDef = resolveOrderDisplayStatus(
@@ -155,6 +163,32 @@ export default function SaleOrderDetailModal({
     order.isHQ ||
     order.branchId?.isHQ
   );
+
+  const returnButton = order.orderStatus === 'completed' ? (
+    <button
+      type="button"
+      className="btn-modal-primary"
+      onClick={() => setReturnFlowOpen(true)}
+    >
+      {order.returnStatus === 'completed'
+        ? 'Xem kết quả trả hàng'
+        : 'Video / Nghiệm thu trả hàng mua'}
+    </button>
+  ) : null;
+
+  if (returnFlowOpen) {
+    return (
+      <SalesReturnWorkflow
+        show
+        orderId={orderId}
+        readOnly={isReadOnly}
+        onClose={() => {
+          setReturnFlowOpen(false);
+          refetchOrder();
+        }}
+      />
+    );
+  }
 
   return (
     <Modal
@@ -384,6 +418,18 @@ export default function SaleOrderDetailModal({
               </div>
             </div>
 
+            {order.returnStatus === 'completed' && (
+              <div role="status" className="alert alert-success">
+                Đã trả hàng hoàn tất.
+                {order.paymentStatus === 'refunded' && (
+                  <>
+                    {' '}Đã hoàn {formatCurrency(order.refundedAmount)} vào
+                    Ví Vestora của khách hàng.
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Section 4: Vận đơn giao hàng GHN */}
             {(() => {
               const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
@@ -407,18 +453,18 @@ export default function SaleOrderDetailModal({
                         </span>
                       )}
                       {canCreateOutbound && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                          onClick={() => {
-                            setRetryShipment(null);
-                            setIsCreateShipmentOpen(true);
-                          }}
-                        >
-                          <Truck size={14} />
-                          <span>+ Tạo vận đơn GHN</span>
-                        </button>
-                      )}
+  <button
+    type="button"
+    className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+    onClick={() => {
+      setRetryShipment(null);
+      setIsCreateShipmentOpen(true);
+    }}
+  >
+    <Truck size={14} />
+    <span>+ Tạo vận đơn GHN</span>
+  </button>
+)}
                     </div>
                   </div>
 
@@ -431,12 +477,13 @@ export default function SaleOrderDetailModal({
                           isLatest={idx === 0}
                           onCancel={handleCancelShipment}
                           onStatusUpdated={refetchOrder}
+                          salesReturnStatus={order.returnStatus}
                           onRetry={
                             !hasActiveOutbound
                               ? (targetShipment) => {
-                                  setRetryShipment(targetShipment || s);
-                                  setIsCreateShipmentOpen(true);
-                                }
+                                setRetryShipment(targetShipment || s);
+                                setIsCreateShipmentOpen(true);
+                              }
                               : null
                           }
                           isBranchManager={!isReadOnly}
@@ -451,6 +498,11 @@ export default function SaleOrderDetailModal({
                 </div>
               );
             })()}
+            <SalesDeliveryVideos
+              orderId={orderId}
+              readOnly={isReadOnly}
+              onChange={setDeliveryEvidence}
+            />
           </>
         )}
       </div>
@@ -458,7 +510,9 @@ export default function SaleOrderDetailModal({
       {/* 3. Modal Footer */}
       <div className="vestora-modal-footer">
         {isReadOnly ? (
-          <div className="d-flex justify-content-end w-100">
+          <div className="d-flex justify-content-end gap-2 w-100">
+            {returnButton}
+
             <button
               type="button"
               className="btn-modal-secondary px-4"
@@ -478,6 +532,8 @@ export default function SaleOrderDetailModal({
             </button>
 
             <div className="d-flex align-items-center gap-2">
+              {returnButton}
+
               <button
                 type="button"
                 className="btn-modal-secondary d-flex align-items-center gap-1"
@@ -503,6 +559,12 @@ export default function SaleOrderDetailModal({
                   type="button"
                   className="btn-modal-primary d-flex align-items-center gap-1"
                   style={{ background: '#059669', borderColor: '#059669' }}
+                  disabled={!deliveryEvidence?.packingVideo}
+                  title={
+                    !deliveryEvidence?.packingVideo
+                      ? 'Tải video đóng hàng tại mục 5 trước'
+                      : ''
+                  }
                   onClick={() => onAction('complete', order)}
                 >
                   <CheckCircle2 size={15} />

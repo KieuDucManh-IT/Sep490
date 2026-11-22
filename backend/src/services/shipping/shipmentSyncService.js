@@ -3,6 +3,7 @@ import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import * as ghnService from './ghnService.js';
 import { mapGhnStatus } from './ghnStatusMapper.js';
+import { recordSalesDelivery } from '../sale&rental/salesOrderService.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -133,10 +134,7 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
       if (mapped.internalStatus === 'delivered') {
         shipment.deliveredAt = shipment.deliveredAt || actionTime;
         if (shipment.orderType === 'sale') {
-          await SalesOrder.findOneAndUpdate(
-            { _id: shipment.orderId, orderStatus: { $nin: ['cancelled'] } },
-            { orderStatus: 'completed' }
-          );
+          await recordSalesDelivery(shipment, actionTime);
         } else if (shipment.orderType === 'rental') {
           if (shipment.shipmentType === 'outbound') {
             const rental = await RentalOrder.findOne({ _id: shipment.orderId });
@@ -269,11 +267,11 @@ export const startShipmentSyncJob = (intervalMinutes = 2) => {
 
   // Chạy lần đầu sau 15 giây khi server khởi động
   setTimeout(() => {
-    syncInFlightShipments().catch(() => {});
+    syncInFlightShipments().catch(() => { });
   }, 15 * 1000);
 
   // Thiết lập interval định kỳ
   return setInterval(() => {
-    syncInFlightShipments().catch(() => {});
+    syncInFlightShipments().catch(() => { });
   }, intervalMs);
 };

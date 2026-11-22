@@ -7,6 +7,8 @@ import { formatCurrencyVND } from '../../services/cart/cartCalculations';
 import {
   RentalReturnWorkflow,
   RentalDeliveryVideos,
+  SalesReturnWorkflow,
+  SalesDeliveryVideos,
 } from '../../pages/shipping/ShipmentReturnModal';
 import {
   Truck,
@@ -740,8 +742,12 @@ export default function OrderTrackingDetailModal({
     }
   };
   if (viewMode === 'return') {
+    const ReturnWorkflow = isRental
+      ? RentalReturnWorkflow
+      : SalesReturnWorkflow;
+
     return (
-      <RentalReturnWorkflow
+      <ReturnWorkflow
         show
         orderId={order._id}
         onClose={() => {
@@ -815,26 +821,68 @@ export default function OrderTrackingDetailModal({
       {/* ========================================================
           MODE 3: TIẾN TRÌNH VẬN CHUYỂN & CHI TIẾT ĐƠN HÀNG
           ======================================================== */}
-      {viewMode === 'tracking' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {viewMode === 'tracking' && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+          }}
+        >
           {loading && !trackingData ? (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: '#78716C' }}>
-              <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto 12px auto', display: 'block', color: '#96723D' }} />
-              <p style={{ fontSize: '13px', margin: 0 }}>Đang nạp tiến trình vận chuyển thời gian thực từ GHN...</p>
+            <div
+              style={{
+                padding: '40px 0',
+                textAlign: 'center',
+                color: '#78716C',
+              }}
+            >
+              <Loader2
+                size={32}
+                className="animate-spin"
+                style={{
+                  margin: '0 auto 12px auto',
+                  display: 'block',
+                  color: '#96723D',
+                }}
+              />
+
+              <p style={{ fontSize: '13px', margin: 0 }}>
+                Đang nạp tiến trình vận chuyển thời gian thực từ GHN...
+              </p>
             </div>
           ) : errorMsg && !trackingData ? (
-            <div style={{ padding: '16px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', color: '#DC2626', fontSize: '13px' }}>
+            <div
+              style={{
+                padding: '16px',
+                background: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: '8px',
+                color: '#DC2626',
+                fontSize: '13px',
+              }}
+            >
               {errorMsg}
             </div>
           ) : (
             <>
               {/* KHỐI 1: FORM TIẾN TRÌNH VẬN CHUYỂN & TRẠNG THÁI GHN */}
               {trackingData && (
-                <div className="tracking-result-card" style={{ margin: 0, padding: '20px', borderRadius: '12px', border: '1px solid #E5E0D8' }}>
+                <div
+                  className="tracking-result-card"
+                  style={{
+                    margin: 0,
+                    padding: '20px',
+                    borderRadius: '12px',
+                    border: '1px solid #E5E0D8',
+                  }}
+                >
                   <TrackingHeader trackingData={trackingData} />
 
                   {!trackingData.hasGhnShipment && (
-                    <TrackingShopNotice shipmentStatus={trackingData.shipmentStatus} />
+                    <TrackingShopNotice
+                      shipmentStatus={trackingData.shipmentStatus}
+                    />
                   )}
 
                   <TrackingStepper
@@ -862,97 +910,149 @@ export default function OrderTrackingDetailModal({
                   />
                 </div>
               )}
-
-              {/* KHỐI 2: DANH SÁCH SẢN PHẨM TRONG ĐƠN */}
-              <OrderProductsList orderItems={orderItems} />
-
-              {/* KHỐI 3: CHI TIẾT TÀI CHÍNH & THANH TOÁN */}
-              <OrderFinancialSummary order={order} isRental={isRental} />
-              {isRental && (
-                <RentalDeliveryVideos orderId={order._id} />
-              )}
-
-              {/* KHỐI 4: CÁC NÚT HÀNH ĐỘNG */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingTop: '8px' }}>
-                <div>
-                  {isRental && ['confirmed', 'preparing', 'pending_payment'].includes(order.rentalStatus) && (
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('cancel')}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '6px',
-                        border: '1px solid #FECACA',
-                        backgroundColor: '#FEF2F2',
-                        color: '#DC2626',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <XCircle size={15} />
-                      <span>Hủy Đơn Thuê</span>
-                    </button>
-                  )}
-
-                  {isRental && isWithin24hWindow() && (
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('dispute')}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '6px',
-                        border: '1px solid #FED7AA',
-                        backgroundColor: '#FFFBEB',
-                        color: '#D97706',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <RotateCcw size={15} />
-                      <span>Khiếu Nại Đổi Trả (24h)</span>
-                    </button>
-                  )}
-
-                  {isRental && order.rentalStatus !== 'cancelled' && (
-                    <button
-                      type="button"
-                      className="btn btn-primary me-2 mb-2"
-                      onClick={() => setViewMode('return')}
-                    >
-                      {['renting', 'overdue'].includes(order.rentalStatus)
-                        ? 'Trả đồ'
-                        : 'Video bàn giao / Theo dõi trả đồ'}
-                    </button>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onClose}
-                  style={{
-                    padding: '8px 20px',
-                    borderRadius: '6px',
-                    border: '1px solid #E5E0D8',
-                    background: '#171717',
-                    color: '#F8F7F4',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Đóng
-                </button>
-              </div>
             </>
           )}
+
+          {/* KHỐI 2: DANH SÁCH SẢN PHẨM TRONG ĐƠN */}
+          <OrderProductsList orderItems={orderItems} />
+
+          {/* KHỐI 3: CHI TIẾT TÀI CHÍNH & THANH TOÁN */}
+          <OrderFinancialSummary
+            order={order}
+            isRental={isRental}
+          />
+
+          {/* VIDEO GIAO HÀNG VÀ NHẬN HÀNG */}
+          {isRental ? (
+            <RentalDeliveryVideos orderId={order._id} />
+          ) : (
+            <SalesDeliveryVideos orderId={order._id} />
+          )}
+
+          {/* KẾT QUẢ TRẢ HÀNG MUA */}
+          {!isRental && order.returnStatus === 'completed' && (
+            <div role="status" className="alert alert-success">
+              Đã trả hàng hoàn tất.
+
+              {order.paymentStatus === 'refunded' && (
+                <>
+                  {' '}Đã hoàn{' '}
+                  {formatCurrencyVND(order.refundedAmount)}
+                  {' '}vào Ví Vestora của bạn.
+                </>
+              )}
+            </div>
+          )}
+
+          {/* KHỐI 4: CÁC NÚT HÀNH ĐỘNG */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px',
+              paddingTop: '8px',
+            }}
+          >
+            <div>
+              {/* HỦY ĐƠN THUÊ */}
+              {isRental &&
+                ['confirmed', 'preparing', 'pending_payment'].includes(
+                  order.rentalStatus
+                ) && (
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('cancel')}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid #FECACA',
+                      backgroundColor: '#FEF2F2',
+                      color: '#DC2626',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <XCircle size={15} />
+                    <span>Hủy Đơn Thuê</span>
+                  </button>
+                )}
+
+              {/* KHIẾU NẠI ĐƠN THUÊ */}
+              {isRental && isWithin24hWindow() && (
+                <button
+                  type="button"
+                  onClick={() => setViewMode('dispute')}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid #FED7AA',
+                    backgroundColor: '#FFFBEB',
+                    color: '#D97706',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <RotateCcw size={15} />
+                  <span>Khiếu Nại Đổi Trả (24h)</span>
+                </button>
+              )}
+
+              {/* TRẢ HÀNG ĐÃ MUA */}
+              {!isRental && order.orderStatus === 'completed' && (
+                <button
+                  type="button"
+                  className="btn btn-primary me-2 mb-2"
+                  onClick={() => setViewMode('return')}
+                >
+                  {order.returnStatus === 'completed'
+                    ? 'Xem kết quả trả hàng'
+                    : order.returnStatus && order.returnStatus !== 'none'
+                      ? 'Theo dõi trả hàng mua'
+                      : 'Trả hàng đã mua'}
+                </button>
+              )}
+
+              {/* TRẢ ĐỒ THUÊ */}
+              {isRental && order.rentalStatus !== 'cancelled' && (
+                <button
+                  type="button"
+                  className="btn btn-primary me-2 mb-2"
+                  onClick={() => setViewMode('return')}
+                >
+                  {['renting', 'overdue'].includes(order.rentalStatus)
+                    ? 'Trả đồ'
+                    : 'Video bàn giao / Theo dõi trả đồ'}
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '8px 20px',
+                borderRadius: '6px',
+                border: '1px solid #E5E0D8',
+                background: '#171717',
+                color: '#F8F7F4',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Đóng
+            </button>
+          </div>
         </div>
       )}
 

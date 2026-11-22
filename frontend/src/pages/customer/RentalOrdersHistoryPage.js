@@ -45,21 +45,21 @@ const SALE_TABS = [
 
 const RENTAL_STATUS_MAP = {
   pending_payment: { label: 'Chờ Thanh Toán', color: '#D97706', bg: '#FFFBEB' },
-  confirmed:       { label: 'Đã Xác Nhận',    color: '#2563EB', bg: '#EFF6FF' },
-  preparing:       { label: 'Đang Chuẩn Bị',  color: '#7C3AED', bg: '#F5F3FF' },
-  ready_for_pickup:{ label: 'Chờ Nhận Đồ',    color: '#059669', bg: '#ECFDF5' },
-  renting:         { label: 'Đang Trải Nghiệm',color: '#0284C7', bg: '#F0F9FF' },
-  overdue:         { label: 'Quá Hạn Trả',    color: '#DC2626', bg: '#FEF2F2' },
-  returned:        { label: 'Đã Hoàn Trả',    color: '#16A34A', bg: '#F0FDF4' },
-  cancelled:       { label: 'Đã Hủy',         color: '#6B7280', bg: '#F3F4F6' },
+  confirmed: { label: 'Đã Xác Nhận', color: '#2563EB', bg: '#EFF6FF' },
+  preparing: { label: 'Đang Chuẩn Bị', color: '#7C3AED', bg: '#F5F3FF' },
+  ready_for_pickup: { label: 'Chờ Nhận Đồ', color: '#059669', bg: '#ECFDF5' },
+  renting: { label: 'Đang Trải Nghiệm', color: '#0284C7', bg: '#F0F9FF' },
+  overdue: { label: 'Quá Hạn Trả', color: '#DC2626', bg: '#FEF2F2' },
+  returned: { label: 'Đã Hoàn Trả', color: '#16A34A', bg: '#F0FDF4' },
+  cancelled: { label: 'Đã Hủy', color: '#6B7280', bg: '#F3F4F6' },
 };
 
 const SALE_STATUS_MAP = {
-  confirmed:  { label: 'Chờ Đóng Gói', color: '#2563EB', bg: '#EFF6FF' },
+  confirmed: { label: 'Chờ Đóng Gói', color: '#2563EB', bg: '#EFF6FF' },
   processing: { label: 'Đang Chuẩn Bị', color: '#96723D', bg: '#FAF5EE' },
-  shipped:    { label: 'Đang Giao Hàng', color: '#7C3AED', bg: '#F5F3FF' },
-  completed:  { label: 'Đã Giao Thành Công', color: '#16A34A', bg: '#F0FDF4' },
-  cancelled:  { label: 'Đã Hủy', color: '#DC2626', bg: '#FEF2F2' },
+  shipped: { label: 'Đang Giao Hàng', color: '#7C3AED', bg: '#F5F3FF' },
+  completed: { label: 'Đã Giao Thành Công', color: '#16A34A', bg: '#F0FDF4' },
+  cancelled: { label: 'Đã Hủy', color: '#DC2626', bg: '#FEF2F2' },
 };
 
 function getRentalStatusInfo(status) {
@@ -133,7 +133,15 @@ export default function RentalOrdersHistoryPage() {
       const params = {};
       if (activeSaleTab !== 'all') params.status = activeSaleTab;
       const res = await getMySalesOrders(params);
-      setSaleOrders(res.data || []);
+      const orders = res.data || [];
+
+      setSaleOrders(orders);
+
+      setSelectedSaleOrder(previous =>
+        previous
+          ? orders.find(item => item._id === previous._id) || previous
+          : null
+      );
     } catch (err) {
       setSaleError(err.message || 'Không thể tải lịch sử đơn mua.');
     } finally {

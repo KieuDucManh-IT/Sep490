@@ -29,6 +29,30 @@ import {
   completeRentalReturn,
   uploadRentalEvidence,
 } from '../../services/rentalReturnApi';
+import {
+  getSalesReturnFlow,
+  requestSalesReturn,
+  advanceSalesReturn,
+  completeSalesReturn,
+  uploadSalesEvidence,
+} from '../../services/salesOrderApi';
+
+const RETURN_APIS = {
+  rental: {
+    get: getRentalReturnFlow,
+    request: requestRentalReturn,
+    advance: advanceRentalReturn,
+    complete: completeRentalReturn,
+    upload: uploadRentalEvidence,
+  },
+  sale: {
+    get: getSalesReturnFlow,
+    request: requestSalesReturn,
+    advance: advanceSalesReturn,
+    complete: completeSalesReturn,
+    upload: uploadSalesEvidence,
+  },
+};
 
 export default function ShipmentReturnModal({
   show,
@@ -378,19 +402,24 @@ export function RentalReturnWorkflow({
   show,
   orderId,
   onClose,
+  orderType = 'rental',
+  readOnly = false,
 }) {
   if (!show || !orderId) return null;
 
   return (
     <RentalReturnWorkflowBody
-      key={orderId}
+      key={orderType + ':' + orderId}
       orderId={orderId}
       onClose={onClose}
+      orderType={orderType}
+      readOnly={readOnly}
     />
   );
 }
 
-function useRentalEvidence(orderId) {
+function useRentalEvidence(orderId, orderType = 'rental') {
+  const api = RETURN_APIS[orderType];
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -403,7 +432,7 @@ function useRentalEvidence(orderId) {
     const current = ++generation.current;
 
     try {
-      const response = await getRentalReturnFlow(orderId);
+      const response = await api.get(orderId);
 
       if (mounted.current && current === generation.current) {
         // Giữ URL đang phát để polling không làm video chạy lại.
@@ -434,7 +463,7 @@ function useRentalEvidence(orderId) {
         setError(err.message);
       }
     }
-  }, [orderId]);
+  }, [orderId, api]);
 
   useEffect(() => {
     mounted.current = true;
@@ -481,9 +510,9 @@ function useRentalEvidence(orderId) {
       return;
     }
 
-    run(() => uploadRentalEvidence(orderId, kind, file));
+    run(() => api.upload(orderId, kind, file));
   }
-  return { data, error, busy, run, upload };
+  return { data, error, busy, run, upload, api };
 }
 
 function EvidenceVideos({
@@ -491,6 +520,7 @@ function EvidenceVideos({
   busy,
   upload,
   stage,
+  orderType = 'rental',
   readOnly = false,
 }) {
   const definitions = stage === 'delivery'
@@ -498,7 +528,9 @@ function EvidenceVideos({
       {
         kind: 'packing',
         field: 'packingVideo',
-        label: 'Shop: video sản phẩm trước khi giao hàng',
+        label:
+          'Shop: video sản phẩm trước khi giao hàng' +
+          (orderType === 'sale' ? ' (bắt buộc)' : ''),
       },
       {
         kind: 'receiving',
@@ -515,7 +547,9 @@ function EvidenceVideos({
       {
         kind: 'return-received',
         field: 'returnReceivedVideo',
-        label: 'Shop: video nhận đồ trả (bắt buộc trước khi hoàn cọc)',
+        label: orderType === 'sale'
+          ? 'Shop: video nhận hàng trả (bắt buộc trước khi hoàn tiền)'
+          : 'Shop: video nhận đồ trả (bắt buộc trước khi hoàn cọc)',
       },
     ];
 
@@ -584,20 +618,34 @@ function EvidenceVideos({
 export function RentalDeliveryVideos({
   orderId,
   readOnly = false,
+  orderType = 'rental',
+  onChange,
 }) {
   if (!orderId) return null;
 
   return (
     <RentalDeliveryVideosBody
-      key={orderId}
+      key={orderType + ':' + orderId}
       orderId={orderId}
       readOnly={readOnly}
+      orderType={orderType}
+      onChange={onChange}
     />
   );
 }
 
-function RentalDeliveryVideosBody({ orderId, readOnly }) {
-  const { data, error, busy, upload } = useRentalEvidence(orderId);
+function RentalDeliveryVideosBody({
+  orderId,
+  readOnly,
+  orderType,
+  onChange,
+}) {
+  const { data, error, busy, upload } =
+    useRentalEvidence(orderId, orderType);
+
+  useEffect(() => {
+    onChange?.(data);
+  }, [data, onChange]);
 
   return (
     <section className="modal-section-card">
@@ -619,20 +667,38 @@ function RentalDeliveryVideosBody({ orderId, readOnly }) {
           busy={busy}
           upload={upload}
           stage="delivery"
+          orderType={orderType}
           readOnly={readOnly}
         />
       ) : (
         <p>Đang tải video…</p>
       )}
 
+      {orderType === 'sale' &&
+        data?.videoPermissions?.packing &&
+        !data.packingVideo && (
+          <p className="small text-muted mt-2">
+            Chi nhánh cần tải video đóng hàng trước khi tạo vận đơn
+            hoặc xác nhận đã giao.
+          </p>
+        )}
+
       {busy && <p role="status">Đang tải video lên…</p>}
     </section>
   );
 }
 
-function RentalReturnWorkflowBody({ orderId, onClose }) {
-  const { data, error, busy, run, upload } =
-    useRentalEvidence(orderId);
+function RentalReturnWorkflowBody({
+  orderId,
+  onClose,
+  orderType,
+  readOnly,
+}) {
+  const { data, error, busy, run, upload, api } =
+    useRentalEvidence(orderId, orderType);
+
+  const isSale = orderType === 'sale';
+  const [reason, setReason] = useState('');
 
   const [confirmed, setConfirmed] = useState(false);
   const errorRef = useRef(null);
@@ -665,7 +731,8 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
     >
       <ReturnFlowModal.Header closeButton={!busy}>
         <ReturnFlowModal.Title>
-          Trả đồ thuê {data?.orderCode ? `#${data.orderCode}` : ''}
+          {isSale ? 'Trả hàng đã mua' : 'Trả đồ thuê'}{' '}
+          {data?.orderCode ? `#${data.orderCode}` : ''}
         </ReturnFlowModal.Title>
       </ReturnFlowModal.Header>
 
@@ -683,16 +750,24 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
         ) : (
           <>
             <section className="border rounded p-3 mb-3">
-              <h6>Khách hàng & thời gian thuê</h6>
+              <h6>
+                {isSale ? 'Khách hàng & đơn mua' : 'Khách hàng & thời gian thuê'}
+              </h6>
               <div>
                 {data.customer.name} · {data.customer.phone}
               </div>
               <p>{data.customer.address}</p>
 
               <div>
-                Ngày thuê: {date(data.startDate)}
-                {' · '}
-                Hạn trả: {date(data.dueDate)}
+                {isSale ? (
+                  <>Ngày mua: {date(data.createdAt)}</>
+                ) : (
+                  <>
+                    Ngày thuê: {date(data.startDate)}
+                    {' · '}
+                    Hạn trả: {date(data.dueDate)}
+                  </>
+                )}
               </div>
 
               <hr />
@@ -754,6 +829,8 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
             <section className="border rounded p-3 mb-3">
               <h6>Video trả đồ và nhận đồ trả</h6>
               <EvidenceVideos
+                orderType={orderType}
+                readOnly={readOnly}
                 data={data}
                 busy={busy}
                 upload={upload}
@@ -778,7 +855,7 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
 
                 <strong>
                   {data.completed
-                    ? 'Hoàn tất trả đồ'
+                    ? (isSale ? 'Đã trả hàng hoàn tất' : 'Hoàn tất trả đồ')
                     : statusText[status] || status}
                 </strong>
 
@@ -807,26 +884,62 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
 
             {data.completed && (
               <div role="status" className="alert alert-success">
-                Đã hoàn tất trả đồ.{' '}
-                {data.refundedAmount !== null &&
-                  `Đã hoàn ${Number(data.refundedAmount).toLocaleString('vi-VN')}đ tiền cọc vào Ví Vestora của chủ đơn.`}
+                {isSale ? 'Đã trả hàng hoàn tất. ' : 'Đã hoàn tất trả đồ. '}
+
+                {data.refundedAmount != null &&
+                  Number.isFinite(Number(data.refundedAmount)) && (
+                    <>
+                      Đã hoàn{' '}
+                      {Number(data.refundedAmount).toLocaleString('vi-VN')}đ{' '}
+                      {isSale ? 'tiền mua hàng' : 'tiền cọc'} vào Ví Vestora
+                      của chủ đơn.
+                    </>
+                  )}
               </div>
             )}
 
-            {!data.completed && data.canRequest && (
+            {isSale && data.requestBlockedReason && !data.completed && (
+              <p className="text-muted">{data.requestBlockedReason}</p>
+            )}
+
+            {isSale && data.canRequest && !readOnly && (
+              <div className="mb-3">
+                <p>Yêu cầu trả lại toàn bộ sản phẩm trong đơn mua.</p>
+
+                <label htmlFor="sales-return-reason" className="form-label">
+                  Lý do trả hàng (không bắt buộc)
+                </label>
+
+                <textarea
+                  id="sales-return-reason"
+                  className="form-control"
+                  maxLength={1000}
+                  value={reason}
+                  disabled={busy}
+                  onChange={event => setReason(event.target.value)}
+                />
+              </div>
+            )}
+
+            {!data.completed && data.canRequest && !readOnly && (
               <button
                 className="btn btn-primary"
                 disabled={busy || !data.simulatorEnabled}
                 onClick={() =>
-                  run(() => requestRentalReturn(orderId))
+                  run(() =>
+                    isSale
+                      ? api.request(orderId, reason)
+                      : api.request(orderId)
+                  )
                 }
               >
-                Tạo đơn trả đồ
+                {isSale ? 'Tạo đơn trả hàng mua' : 'Tạo đơn trả đồ'}
               </button>
             )}
 
             {!data.completed &&
               data.canManage &&
+              !readOnly &&
               data.simulatorEnabled &&
               shipment?.isSimulated && (
                 <div className="mt-3">
@@ -835,9 +948,7 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
                       className="btn btn-outline-primary"
                       disabled={busy}
                       onClick={() =>
-                        run(() =>
-                          advanceRentalReturn(orderId, 'shipped')
-                        )
+                        run(() => api.advance(orderId, 'shipped'))
                       }
                     >
                       Mô phỏng: đã lấy đồ
@@ -849,9 +960,7 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
                       className="btn btn-outline-primary"
                       disabled={busy}
                       onClick={() =>
-                        run(() =>
-                          advanceRentalReturn(orderId, 'delivered')
-                        )
+                        run(() => api.advance(orderId, 'delivered'))
                       }
                     >
                       Mô phỏng: đã giao về shop
@@ -865,27 +974,36 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
                           type="checkbox"
                           checked={confirmed}
                           disabled={busy}
-                          onChange={event =>
-                            setConfirmed(event.target.checked)
-                          }
+                          onChange={event => setConfirmed(event.target.checked)}
                         />{' '}
                         Đã kiểm tra và nhận đủ đồ nguyên vẹn
                       </label>
 
                       {!data.returnReceivedVideo && (
-                        <div role="alert" className="alert alert-warning py-2">
-                          Shop cần tải video nhận đồ trả ở mục phía trên trước khi hoàn tất và hoàn cọc.
+                        <div
+                          role="alert"
+                          className="alert alert-warning py-2"
+                        >
+                          {isSale
+                            ? 'Shop cần tải video nhận hàng trả ở mục phía trên trước khi hoàn tất và hoàn tiền.'
+                            : 'Shop cần tải video nhận đồ trả ở mục phía trên trước khi hoàn tất và hoàn cọc.'}
                         </div>
                       )}
 
                       <button
                         className="btn btn-success"
-                        disabled={busy || !confirmed || !data.returnReceivedVideo}
+                        disabled={
+                          busy ||
+                          !confirmed ||
+                          !data.returnReceivedVideo
+                        }
                         onClick={() =>
-                          run(() => completeRentalReturn(orderId))
+                          run(() => api.complete(orderId))
                         }
                       >
-                        Hoàn tất trả đồ & hoàn cọc
+                        {isSale
+                          ? 'Hoàn tất trả hàng & hoàn tiền'
+                          : 'Hoàn tất trả đồ & hoàn cọc'}
                       </button>
                     </>
                   )}
@@ -914,4 +1032,12 @@ function RentalReturnWorkflowBody({ orderId, onClose }) {
       </ReturnFlowModal.Footer>
     </ReturnFlowModal>
   );
+}
+
+export function SalesReturnWorkflow(props) {
+  return <RentalReturnWorkflow {...props} orderType="sale" />;
+}
+
+export function SalesDeliveryVideos(props) {
+  return <RentalDeliveryVideos {...props} orderType="sale" />;
 }

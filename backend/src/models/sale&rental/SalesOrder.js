@@ -1,6 +1,49 @@
 import mongoose from 'mongoose';
+const evidenceVideoSchema = new mongoose.Schema({
+  publicId: { type: String, required: true },
+  format: { type: String, required: true },
+  uploadedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+  uploadedAt: { type: Date, default: Date.now },
+}, { _id: false });
 
 const salesOrderSchema = new mongoose.Schema({
+  packingVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+  receivingVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+  returnVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+  returnReceivedVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+  returnStatus: {
+    type: String,
+    default: 'none',
+    enum: ['none', 'requested', 'returning', 'received', 'completed'],
+  },
+  returnId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SalesReturn',
+    default: null,
+  },
+  returnCompletedAt: { type: Date, default: null },
+  refundedAmount: { type: Number, min: 0, default: 0 },
+  returnFlowVersion: { type: Number, default: 0 },
   orderCode: { type: String, required: true, unique: true, trim: true },
   locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', required: true },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

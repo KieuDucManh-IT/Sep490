@@ -1,3 +1,4 @@
+import apiClient from './api';
 /**
  * Sales Order API Service (100% Native Fetch - Zero Axios)
  * Quản lý các cuộc gọi API đơn mua trang phục Vestora
@@ -17,7 +18,7 @@ const getAuthHeaders = () => {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-  } catch (_) {}
+  } catch (_) { }
   return headers;
 };
 
@@ -135,3 +136,30 @@ export async function updateSalesOrderStatus(orderId, { orderStatus, note }) {
     body: { orderStatus, note },
   });
 }
+export const getSalesReturnFlow = id =>
+  apiClient.get(`/sales-orders/${id}/return-flow`);
+
+export const requestSalesReturn = (id, reason = '') =>
+  apiClient.post('/sales-orders/' + id + '/return/request', {
+    reason,
+  });
+
+export const advanceSalesReturn = (id, newStatus) =>
+  apiClient.post('/sales-orders/' + id + '/return/simulate', {
+    newStatus,
+  });
+
+export const completeSalesReturn = id =>
+  apiClient.post('/sales-orders/' + id + '/return/complete', {
+    confirmed: true,
+  });
+
+export const uploadSalesEvidence = (id, kind, file) => {
+  const form = new FormData();
+  form.append('video', file);
+
+  return apiClient.post(
+    `/sales-orders/${id}/evidence/${kind}`,
+    form
+  );
+};

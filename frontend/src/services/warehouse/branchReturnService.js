@@ -2,6 +2,8 @@ import api from '../api';
 
 const branchReturnService = {
   list: async () => (await api.get('/warehouse/returns')).data || [],
+  /** Danh sách phân trang: params gồm page, limit, status, search → { items, total, page, limit }. */
+  listPage: async (params = {}) => (await api.get('/warehouse/returns', { params })).data,
   listStaff: async () => (await api.get('/warehouse/returns/staff')).data || [],
   get: async (id) => (await api.get(`/warehouse/returns/${id}`)).data,
   create: async (payload) => (await api.post('/warehouse/returns', payload)).data,

@@ -1,53 +1,309 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AlertTriangle, Boxes, ClipboardList, FileBarChart2, Layers3, LogOut, MapPin, Package, RotateCcw, Tags, MoveRight, Wrench } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  FileBarChart2,
+  LogOut,
+  MapPin,
+  MoveRight,
+  Package,
+  RotateCcw,
+  SlidersHorizontal,
+  Tags,
+  Truck,
+  Warehouse,
+  Wrench,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import stockDiscrepancyService from '../services/warehouse/stockDiscrepancyService';
+import stockDiscrepancyService, { DISCREPANCY_CHANGED_EVENT } from '../services/warehouse/stockDiscrepancyService';
+import '../styles/ShopDashboard.css';
 import '../styles/WarehouseManager.css';
 import '../styles/WarehouseUx.css';
+import '../styles/WarehouseShared.css';
 
-export default function WarehouseSidebar({ mode = 'manager' }) {
-  const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const { logout } = useAuth();
-  const [openDiscrepancies, setOpenDiscrepancies] = useState(null);
+const COLLAPSED_KEY = 'vestora_warehouse_sidebar_collapsed';
+const DISCREPANCY_PATH = '/warehousemanager/discrepancies';
+// Mỗi trang kho tự gắn sidebar nên sidebar được mount lại khi đổi trang.
+// Giữ số đếm trong bộ nhớ một lúc để không gọi API ở mỗi lần đổi trang.
+const COUNT_CACHE_MS = 60 * 1000;
+let cachedDiscrepancyCount = null;
+let cachedDiscrepancyAt = 0;
+
+const MANAGER_NAV_GROUPS = [
+  {
+    id: 'masterdata',
+    title: 'DANH MỤC',
+    items: [
+      { path: '/warehousemanager/inventory-locations', label: 'Thiết lập kho tổng', icon: Warehouse, desc: 'Tên, địa chỉ, sức chứa của kho tổng' },
+      { path: '/warehousemanager/storage-locations', label: 'Vị trí lưu trữ', icon: MapPin, desc: 'Khu, dãy, kệ trong kho' },
+      { path: '/warehousemanager/categories', label: 'Loại sản phẩm', icon: Tags, desc: 'Loại sản phẩm tối đa 2 cấp' },
+      { path: '/warehousemanager/products', label: 'Sản phẩm', icon: Package, desc: 'Sản phẩm và biến thể' },
+      { path: '/warehousemanager/suppliers', label: 'Nhà cung cấp', icon: Truck, desc: 'Danh sách nhà cung cấp' },
+    ],
+  },
+  {
+    id: 'slips',
+    title: 'PHIẾU KHO',
+    items: [
+      { path: '/warehousemanager/inbound-receipts', label: 'Nhập kho', icon: ArrowDownToLine, desc: 'Phiếu nhập hàng vào kho tổng' },
+      { path: '/warehousemanager/outbound', label: 'Xuất kho sang chi nhánh', icon: ArrowUpFromLine, desc: 'Duyệt và theo dõi phiếu xuất cho chi nhánh' },
+      { path: '/warehousemanager/branch-returns', label: 'Hàng trả từ chi nhánh', icon: RotateCcw, desc: 'Phiếu chi nhánh trả hàng về kho tổng' },
+      { path: DISCREPANCY_PATH, label: 'Chênh lệch điều chuyển', icon: AlertTriangle, desc: 'Hàng thiếu hoặc hỏng khi điều chuyển' },
+      { path: '/warehousemanager/stocktakes', label: 'Kiểm kê', icon: ClipboardCheck, desc: 'Tạo và duyệt phiếu kiểm kê' },
+      { path: '/warehousemanager/adjustments', label: 'Điều chỉnh tồn', icon: SlidersHorizontal, desc: 'Duyệt phiếu điều chỉnh tồn kho' },
+      { path: '/warehousemanager/relocations', label: 'Di chuyển hàng', icon: MoveRight, desc: 'Chuyển hàng giữa các kệ (tách / gộp)' },
+      { path: '/warehousemanager/maintenance', label: 'Giặt / sửa / thanh lý', icon: Wrench, desc: 'Phiếu giặt, sửa và đề xuất thanh lý' },
+    ],
+  },
+  {
+    id: 'reports',
+    title: 'BÁO CÁO',
+    items: [
+      { path: '/warehousemanager/reports/inventory', label: 'Tồn kho', icon: FileBarChart2, desc: 'Báo cáo tồn kho theo vị trí' },
+      // Menu "Lịch sử giao dịch" tạm ẩn: màn thẻ kho làm ở task khác, route vẫn giữ trong App.js.
+    ],
+  },
+];
+
+const STAFF_NAV_GROUPS = [
+  {
+    id: 'operations',
+    title: 'NGHIỆP VỤ KHO',
+    items: [
+      { path: '/warehousestaff/inbound-receipts', label: 'Kiểm tra hàng nhập', icon: ArrowDownToLine, desc: 'Tiếp nhận và kiểm hàng nhập kho' },
+      { path: '/warehousestaff/outbound', label: 'Soạn hàng xuất kho', icon: ArrowUpFromLine, desc: 'Soạn hàng cho phiếu xuất đã duyệt' },
+      { path: '/warehousestaff/branch-returns', label: 'Nhận hàng trả từ chi nhánh', icon: RotateCcw, desc: 'Kiểm nhận hàng chi nhánh trả về' },
+      { path: '/warehousestaff/relocations', label: 'Di chuyển hàng', icon: MoveRight, desc: 'Phiếu di chuyển hàng giữa các kệ được giao' },
+      { path: '/warehousestaff/stocktakes', label: 'Kiểm kê được giao', icon: ClipboardCheck, desc: 'Đếm hàng theo phiếu kiểm kê' },
+      { path: '/warehousestaff/maintenance', label: 'Giặt / sửa được giao', icon: Wrench, desc: 'Thực hiện phiếu giặt / sửa' },
+    ],
+  },
+  {
+    id: 'reports',
+    title: 'BÁO CÁO',
+    items: [
+      { path: '/warehousestaff/reports/inventory', label: 'Tồn kho', icon: FileBarChart2, desc: 'Báo cáo tồn kho theo vị trí' },
+    ],
+  },
+];
+
+function readCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveCollapsed(value) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, String(value));
+  } catch {
+    // Trình duyệt chặn localStorage: chỉ không nhớ được trạng thái, sidebar vẫn chạy.
+  }
+}
+
+/**
+ * Đếm phiếu chênh lệch đang mở. Lỗi (kể cả 404 khi backend chưa có API đếm) thì trả null để ẩn số.
+ * @param {boolean} force bỏ qua bộ nhớ tạm, luôn gọi API
+ */
+async function loadOpenDiscrepancyCount(force) {
+  const cacheIsFresh = Date.now() - cachedDiscrepancyAt < COUNT_CACHE_MS;
+  if (!force && cachedDiscrepancyAt > 0 && cacheIsFresh) return cachedDiscrepancyCount;
+  try {
+    cachedDiscrepancyCount = await stockDiscrepancyService.count('open');
+  } catch {
+    cachedDiscrepancyCount = null;
+  }
+  cachedDiscrepancyAt = Date.now();
+  return cachedDiscrepancyCount;
+}
+
+/** Viên đếm phiếu chênh lệch đang mở (chỉ có ở sidebar Quản lý kho). */
+function useOpenDiscrepancyCount(enabled) {
+  const [count, setCount] = useState(enabled ? cachedDiscrepancyCount : null);
+
   useEffect(() => {
-    if (mode !== 'manager') return undefined;
+    if (!enabled) return undefined;
     let active = true;
-    // Lỗi khi đếm phiếu chênh lệch thì chỉ ẩn số, không chặn sidebar.
-    stockDiscrepancyService.list({ status: 'open' })
-      .then((rows) => { if (active) setOpenDiscrepancies(Array.isArray(rows) ? rows.length : null); })
-      .catch(() => { if (active) setOpenDiscrepancies(null); });
-    return () => { active = false; };
-  }, [mode, pathname]);
-  const nav = (to, icon, label) => <Link key={to} className={`wm-nav-item ${pathname === to ? 'active' : ''}`} to={to}>{icon}{label}</Link>;
-  const handleLogout = async () => {
-    try { await logout(); } finally { navigate('/login', { replace: true }); }
+    const refresh = async (force) => {
+      const value = await loadOpenDiscrepancyCount(force);
+      if (active) setCount(value);
+    };
+    const handleChanged = () => refresh(true);
+
+    refresh(false);
+    window.addEventListener(DISCREPANCY_CHANGED_EVENT, handleChanged);
+    return () => {
+      active = false;
+      window.removeEventListener(DISCREPANCY_CHANGED_EVENT, handleChanged);
+    };
+  }, [enabled]);
+
+  if (!enabled) return null;
+  return count;
+}
+
+function formatCount(count) {
+  if (count > 99) return '99+';
+  return String(count);
+}
+
+/**
+ * Sidebar phân hệ kho, cùng giao diện với sidebar Quản lý chi nhánh.
+ * @param {object} props
+ * @param {'manager'|'staff'} [props.mode='manager'] menu của Quản lý kho hay Nhân viên kho
+ */
+export default function WarehouseSidebar({ mode = 'manager' }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { logout, user } = useAuth();
+  const isManager = mode !== 'staff';
+  const [isCollapsed, setIsCollapsed] = useState(readCollapsed);
+  const openDiscrepancies = useOpenDiscrepancyCount(isManager);
+
+  const navGroups = isManager ? MANAGER_NAV_GROUPS : STAFF_NAV_GROUPS;
+  const homePath = isManager ? '/warehousemanager' : '/warehousestaff/inbound-receipts';
+  const roleLabel = isManager ? 'Quản lý kho' : 'Nhân viên kho';
+
+  const userName = useMemo(() => {
+    return user?.FullName || user?.fullName || user?.name || roleLabel;
+  }, [user, roleLabel]);
+  const userInitial = userName.charAt(0).toUpperCase();
+
+  const handleToggle = useCallback(() => {
+    setIsCollapsed((previous) => {
+      const next = !previous;
+      saveCollapsed(next);
+      return next;
+    });
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout();
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  }, [logout, navigate]);
+
+  const isActive = (path) => {
+    if (location.pathname === path) return true;
+    return location.pathname.startsWith(`${path}/`);
   };
-  return <aside className="wm-sidebar">
-    <div className="wm-brand"><Boxes size={25} /><div><strong>WAREHOUSE</strong><small>{mode === 'manager' ? 'MANAGER' : 'STAFF'}</small></div></div>
-    <nav>
-      {mode === 'manager' ? <><p>Danh mục dùng chung</p>
-      {nav('/warehousemanager/inventory-locations', <MapPin size={17} />, 'Kho / cửa hàng')}
-      {nav('/warehousemanager/storage-locations', <MapPin size={17} />, 'Vị trí lưu trữ')}
-      {nav('/warehousemanager/categories', <Tags size={17} />, 'Loại sản phẩm')}
-      {nav('/warehousemanager/products', <Package size={17} />, 'Sản phẩm')}
-      {nav('/warehousemanager/suppliers', <Package size={17} />, 'Nhà cung cấp')}
-      <p>Quản lý phiếu</p>
-      {nav('/warehousemanager/inbound-receipts', <ClipboardList size={17} />, 'Nhập kho')}
-      {nav('/warehousemanager/outbound', <ClipboardList size={17} />, '\u0058\u0075\u1ea5\u0074 \u006b\u0068\u006f')}
-      {nav('/warehousemanager/branch-returns', <RotateCcw size={17} />, 'Hàng trả từ chi nhánh')}
-      {nav('/warehousemanager/discrepancies', <AlertTriangle size={17} />, <>Chênh lệch điều chuyển{openDiscrepancies > 0 && <span className="wm-nav-count" style={{ marginLeft: 'auto', minWidth: 20, padding: '1px 7px', borderRadius: 10, background: '#a12620', color: '#fff', fontSize: 11, fontWeight: 700, textAlign: 'center' }}>{openDiscrepancies}</span>}</>)}
-      {nav('/warehousemanager/stocktakes', <ClipboardList size={17} />, '\u004b\u0069\u1ec3\u006d \u006b\u0068\u006f')}
-      {nav('/warehousemanager/adjustments', <ClipboardList size={17} />, '\u0110\u0069\u1ec1\u0075 \u0063\u0068\u1ec9\u006e\u0068')}
-      {nav('/warehousemanager/relocations/split', <MoveRight size={17} />, '\u0054\u00e1\u0063\u0068 \u0074\u1ed3\u006e \u006b\u0068\u006f')}
-      {nav('/warehousemanager/relocations/merge', <Layers3 size={17} />, '\u0047\u1ed9\u0070 \u0074\u1ed3\u006e \u006b\u0068\u006f')}
-      {nav('/warehousemanager/maintenance', <Wrench size={17} />, 'Giặt / sửa / thanh lý')}
-      <p>Báo cáo</p>
-      {nav('/warehousemanager/reports/inventory', <FileBarChart2 size={17} />, 'Tồn kho')}
-      {nav(`/warehousemanager/reports/${encodeURIComponent('Lịch sử giao dịch')}`, <FileBarChart2 size={17} />, 'Lịch sử giao dịch')}
-      </> : <><p>Nghiệp vụ kho</p>{nav('/warehousestaff/inbound-receipts', <ClipboardList size={17} />, 'Kiểm tra hàng nhập')}{nav('/warehousestaff/outbound', <ClipboardList size={17} />, 'Soạn hàng xuất kho')}{nav('/warehousestaff/branch-returns', <RotateCcw size={17} />, 'Nhận hàng trả từ chi nhánh')}{nav('/warehousestaff/relocations', <MoveRight size={17} />, '\u0044\u0069 \u0063\u0068\u0075\u0079\u1ec3\u006e \u0111\u01b0\u1ee3\u0063 \u0067\u0069\u0061\u006f')}{nav('/warehousestaff/stocktakes', <ClipboardList size={17} />, 'Kiểm kê được giao')}{nav('/warehousestaff/maintenance', <Wrench size={17} />, 'Giặt / sửa được giao')}<p>Báo cáo</p>{nav('/warehousestaff/reports/inventory', <FileBarChart2 size={17} />, 'Tồn kho')}</>}
-    </nav>
-    <button className="wm-exit wm-logout-button" type="button" onClick={handleLogout}><LogOut size={16} /> Đăng xuất</button>
-  </aside>;
+
+  const renderCount = (path) => {
+    if (path !== DISCREPANCY_PATH) return null;
+    if (!openDiscrepancies || openDiscrepancies <= 0) return null;
+    if (isCollapsed) return <span className="wh-sidebar-count-dot" aria-hidden="true" />;
+    return <span className="wh-sidebar-count" aria-label={`${openDiscrepancies} phiếu đang mở`}>{formatCount(openDiscrepancies)}</span>;
+  };
+
+  const renderItem = (item) => {
+    const active = isActive(item.path);
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        className={`sidebar-nav-item ${active ? 'active' : ''}`}
+        title={isCollapsed ? `${item.label} - ${item.desc}` : item.desc}
+        aria-current={active ? 'page' : undefined}
+      >
+        <div className="sidebar-nav-item-content">
+          <span className="sidebar-nav-icon wh-sidebar-icon-wrap">
+            <Icon size={17} strokeWidth={active ? 2.2 : 1.8} />
+            {isCollapsed && renderCount(item.path)}
+          </span>
+          {!isCollapsed && <span className="sidebar-nav-label text-truncate">{item.label}</span>}
+        </div>
+        {!isCollapsed && (
+          <div className="sidebar-nav-item-right">
+            {renderCount(item.path)}
+            <ChevronRight size={13} className={`sidebar-nav-arrow ${active ? 'active' : ''}`} />
+          </div>
+        )}
+      </Link>
+    );
+  };
+
+  return (
+    <aside
+      className={`shop-sidebar ${isCollapsed ? 'collapsed' : ''}`}
+      role="navigation"
+      aria-label={`Thanh điều hướng ${roleLabel}`}
+    >
+      <div className="shop-sidebar-inner">
+        <div className="shop-brand-badge">
+          <div className="shop-brand-left">
+            <Link to={homePath} className="shop-brand-link" title={`VESTORA ${roleLabel}`}>
+              <span className="shop-brand-logo">{isCollapsed ? 'V' : 'VESTORA'}</span>
+            </Link>
+          </div>
+          <button
+            type="button"
+            className="shop-sidebar-toggle-btn"
+            onClick={handleToggle}
+            title={isCollapsed ? 'Mở rộng thanh tác vụ' : 'Thu gọn thanh tác vụ'}
+            aria-label={isCollapsed ? 'Mở rộng thanh tác vụ' : 'Thu gọn thanh tác vụ'}
+          >
+            {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
+        </div>
+
+        <div className={`shop-branch-card ${isCollapsed ? 'collapsed' : ''}`} title={`${userName} • ${roleLabel}`}>
+          <div className="shop-branch-avatar-container">
+            {user?.avatar ? (
+              <img src={user.avatar} alt={userName} className="shop-branch-avatar-img" />
+            ) : (
+              <div className="shop-branch-avatar-circle">
+                <span>{userInitial}</span>
+              </div>
+            )}
+            <span className="shop-branch-status-dot online" />
+          </div>
+          {!isCollapsed && (
+            <div className="shop-branch-info-box">
+              <div className="shop-branch-manager-name" title={userName}>{userName}</div>
+              <div className="shop-owner-role-tag in-card" title={roleLabel}>
+                <span className="text-truncate">{roleLabel}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <nav className="shop-nav-menu">
+          {navGroups.map((group) => (
+            <div key={group.id} className="shop-nav-group">
+              {isCollapsed ? (
+                <div className="sidebar-section-divider-dot" />
+              ) : (
+                <div className="sidebar-section-label">{group.title}</div>
+              )}
+              {group.items.map(renderItem)}
+            </div>
+          ))}
+        </nav>
+
+        <div className="shop-sidebar-footer">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="shop-sidebar-btn-logout"
+            title={isCollapsed ? 'Đăng xuất khỏi hệ thống' : undefined}
+          >
+            <span className="sidebar-nav-icon logout-icon">
+              <LogOut size={17} strokeWidth={1.8} />
+            </span>
+            {!isCollapsed && <span className="sidebar-nav-label">Đăng xuất</span>}
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
 }

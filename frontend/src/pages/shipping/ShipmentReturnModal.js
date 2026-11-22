@@ -80,9 +80,19 @@ export default function ShipmentReturnModal({
   const [note, setNote] = useState('Thu hồi trang phục cho thuê hoàn trả về shop');
 
   const [submitting, setSubmitting] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment
+  // Countdown timer cho nút gửi đơn (khóa nút chống gửi dồn / tránh rate-limit GHN)
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment (Hỗ trợ GHN v3)
   useEffect(() => {
     if (!show || !order) return;
 
@@ -110,22 +120,36 @@ export default function ShipmentReturnModal({
     if (initialShipment?.weight) setWeight(Number(initialShipment.weight));
     if (initialShipment?.note) setNote(initialShipment.note);
     setErrorMsg('');
+    setCooldown(0);
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã cho điểm lấy đồ
     if (provinces.length > 0) {
-      if (finalProvId) {
-        handleProvinceChange(String(finalProvId), wardHint, finalWardCode, fullAddr);
-      } else {
-        const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
+      let targetProvId = finalProvId ? String(finalProvId) : '';
+      const exists = targetProvId && provinces.some((p) => String(p._id || p.ProvinceID) === targetProvId);
+      if (!exists) {
+        const matchedProv = autoMatchProvince(targetProvId || provHint, fullAddr, provinces);
         if (matchedProv) {
-          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, finalWardCode, fullAddr);
+          targetProvId = String(matchedProv._id || matchedProv.ProvinceID);
         }
+      }
+
+      if (targetProvId) {
+        handleProvinceChange(targetProvId, wardHint, finalWardCode, fullAddr);
       }
     }
   }, [show, order, initialShipment, provinces, handleProvinceChange]);
 
+  const formatErrorText = (msg) => {
+    const raw = String(msg || '');
+    if (raw.toLowerCase().includes('too many request') || raw.toLowerCase().includes('is processing')) {
+      return 'GHN đang xử lý tạo đơn cho mã này, vui lòng đợi vài giây rồi thử lại.';
+    }
+    return raw;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting || cooldown > 0) return;
     if (!fromProvinceId) {
       setErrorMsg('Vui lòng chọn Tỉnh/Thành phố nơi shipper tới lấy đồ trả.');
       return;
@@ -158,14 +182,23 @@ export default function ShipmentReturnModal({
     setSubmitting(true);
     setErrorMsg('');
     try {
+      const selectedProv = provinces.find((p) => String(p._id || p.ProvinceID) === String(fromProvinceId));
+      const selectedWard = wards.find((w) => String(w.WardCode || w._id) === String(fromWardCode));
+      const provName = selectedProv?.name || selectedProv?.ProvinceName || order?.shippingAddress?.city || '';
+      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || order?.shippingAddress?.ward || '';
+      const isNewAddress = Number(fromProvinceId) >= 1000000 || Boolean(order?.shippingAddress?.isNewAddress);
+
       const payload = {
         orderId: order._id,
         fromName: fromName.trim(),
         fromPhone: cleanPhone,
         fromAddress: fromAddress.trim(),
         fromProvinceId: Number(fromProvinceId),
-        fromDistrictId: Number(fromDistrictId),
+        fromDistrictId: fromDistrictId ? Number(fromDistrictId) : undefined,
         fromWardCode: String(fromWardCode || ''),
+        fromProvinceName: provName,
+        fromWardName: wardName,
+        isNewFromAddress: isNewAddress,
         weight: Number(weight) || 500,
         note: note.trim(),
       };
@@ -175,10 +208,12 @@ export default function ShipmentReturnModal({
         if (onSuccess) onSuccess(res.data);
         onClose();
       } else {
-        setErrorMsg(res?.message || 'Tạo yêu cầu thu hồi thất bại.');
+        setErrorMsg(formatErrorText(res?.message || 'Tạo yêu cầu thu hồi thất bại.'));
+        setCooldown(5);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Lỗi khi kết nối hệ thống GHN.');
+      setErrorMsg(formatErrorText(err.message || 'Lỗi khi kết nối hệ thống GHN.'));
+      setCooldown(5);
     } finally {
       setSubmitting(false);
     }
@@ -203,15 +238,15 @@ export default function ShipmentReturnModal({
           {/* Header */}
           <div className="modal-header bg-light border-bottom">
             <div className="d-flex align-items-center gap-2">
-              <div className="p-2 rounded bg-info text-white">
+              <div className="p-2 rounded bg-warning text-dark">
                 <RotateCcw size={18} />
               </div>
               <div>
                 <h6 className="modal-title fw-bold text-dark mb-0">
-                  Tạo Yêu Cầu Thu Hồi Đồ Thuê (GHN)
+                  Tạo Vận Đơn Thu Hồi Đồ Thuê (GHN)
                 </h6>
                 <small className="text-muted">
-                  Đơn thuê: <strong>{order.orderCode}</strong> • Shipper tới lấy đồ từ khách mang về chi nhánh
+                  Đơn hàng: <strong>{order.orderCode}</strong>
                 </small>
               </div>
             </div>
@@ -296,15 +331,15 @@ export default function ShipmentReturnModal({
                     />
                   </div>
 
-                  {/* Địa giới hành chính: Chỉ còn cấp Tỉnh/Thành và Phường/Xã (bỏ cấp Huyện) */}
+                  {/* Địa giới hành chính: Cấp Tỉnh/Thành và Phường/Xã (Mô hình 2 cấp GHN v3) */}
                   <div className="col-12 col-md-6">
                     <label className="form-label small text-muted mb-1">Tỉnh / Thành phố *</label>
                     <SearchableSelect
                       id="returnFromProvince"
                       options={provinces.map((p) => ({
-                        value: String(p.ProvinceID),
-                        label: p.ProvinceName,
-                        name: p.ProvinceName,
+                        value: String(p._id || p.ProvinceID),
+                        label: p.name || p.ProvinceName,
+                        name: p.name || p.ProvinceName,
                       }))}
                       value={String(fromProvinceId || '')}
                       onChange={(val) => handleProvinceChange(val)}
@@ -317,9 +352,9 @@ export default function ShipmentReturnModal({
                     <SearchableSelect
                       id="returnFromWard"
                       options={wards.map((w) => ({
-                        value: String(w.WardCode),
-                        label: w.label || w.WardName,
-                        name: w.WardName,
+                        value: String(w.WardCode || w._id),
+                        label: w.label || w.WardName || w.name,
+                        name: w.WardName || w.name,
                       }))}
                       value={String(fromWardCode || '')}
                       onChange={(val) => handleWardChange(val)}
@@ -336,20 +371,21 @@ export default function ShipmentReturnModal({
                       className="form-control form-control-sm"
                       value={fromAddress}
                       onChange={(e) => setFromAddress(e.target.value)}
+                      placeholder="VD: Số 24, Ngõ 105 Đường Cầu Giấy"
                       required
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Khối lượng & Ghi chú */}
+              {/* Thông số kiện hàng & Ghi chú */}
               <div className="mb-3">
                 <div className="small fw-bold text-uppercase text-muted mb-2">
-                  <Package size={14} className="me-1 inline" /> 3. Thông tin gói đồ & Ghi chú
+                  <Package size={14} className="me-1 inline" /> 3. Thông số kiện hàng & Ghi chú
                 </div>
                 <div className="row g-2">
-                  <div className="col-6 col-md-4">
-                    <label className="form-label small text-muted mb-1">Khối lượng ước tính (gram)</label>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small text-muted mb-1">Khối lượng (gram) *</label>
                     <input
                       type="number"
                       min="100"
@@ -357,10 +393,11 @@ export default function ShipmentReturnModal({
                       className="form-control form-control-sm"
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
+                      required
                     />
                   </div>
                   <div className="col-12 col-md-8">
-                    <label className="form-label small text-muted mb-1">Ghi chú vận chuyển</label>
+                    <label className="form-label small text-muted mb-1">Ghi chú cho shipper</label>
                     <input
                       type="text"
                       className="form-control form-control-sm"
@@ -386,11 +423,25 @@ export default function ShipmentReturnModal({
             <button
               type="submit"
               form="shipment-return-form"
-              className="btn btn-sm btn-info text-white d-flex align-items-center gap-1"
-              disabled={submitting}
+              className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+              disabled={submitting || cooldown > 0}
             >
-              {submitting ? <Loader2 size={14} className="spin" /> : <CheckCircle size={14} />}
-              <span>{submitting ? 'Đang gửi GHN...' : 'Xác nhận tạo đơn thu hồi'}</span>
+              {submitting ? (
+                <>
+                  <Loader2 size={14} className="spin" />
+                  <span>Đang gửi GHN...</span>
+                </>
+              ) : cooldown > 0 ? (
+                <>
+                  <Loader2 size={14} className="spin" />
+                  <span>Vui lòng đợi ({cooldown}s)...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={14} />
+                  <span>Xác nhận tạo đơn thu hồi GHN</span>
+                </>
+              )}
             </button>
           </div>
         </div>

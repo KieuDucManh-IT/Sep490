@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Search, ShieldCheck, Edit3, Sparkles } from 'lucide-react';
-import { fmtCurrency, formatDate } from '../utils/pricingHelpers';
+import { fmtCurrency, formatDate, isRentalConfigured } from '../utils/pricingHelpers';
 
 /**
  * Bảng hiển thị danh sách trang phục kèm bảng giá và tiền cọc
@@ -116,14 +116,27 @@ function PricingTable({
                           ) : null}
                         </div>
                         <div className="pricing-product-name">{it.name}</div>
-                        {/* TASK-008: trạng thái định giá */}
-                        {it.isSetPrice ? (
-                          <span className="badge bg-success-subtle text-success border border-success-subtle">Đã định giá</span>
-                        ) : (
-                          <span className="badge bg-warning text-dark" title={it.missingPrices?.length ? `Còn thiếu: ${it.missingPrices.join(', ')}` : undefined}>
-                            Chưa định giá
-                          </span>
-                        )}
+                        {/* TASK-008: trạng thái định giá & cấu hình giá */}
+                        <div className="d-flex align-items-center gap-1 flex-wrap mt-1">
+                          {it.isSetPrice ? (
+                            <span className="badge bg-success-subtle text-success border border-success-subtle">
+                              Đã định giá
+                            </span>
+                          ) : (
+                            <span className="badge bg-warning text-dark" title={it.missingPrices?.length ? `Còn thiếu: ${it.missingPrices.join(', ')}` : undefined}>
+                              Chưa định giá
+                            </span>
+                          )}
+                          {isRentalConfigured(it) ? (
+                            <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle">
+                              Đã cấu hình giá
+                            </span>
+                          ) : (
+                            <span className="badge bg-light text-muted border" title="Chưa có giá thuê hoặc tiền cọc">
+                              Chưa cấu hình giá
+                            </span>
+                          )}
+                        </div>
                         <div className="pricing-product-updated">
                           Cập nhật: {formatDate(it.updatedAt)}
                         </div>

@@ -119,14 +119,9 @@ export default function RentalOrderDetailModal({
   const customerName = order.shippingAddress?.receiverName || customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
   const customerPhone = order.shippingAddress?.phone || customerInfo?.Phone || customer.phone || 'Chưa cập nhật';
   const customerEmail = customer.Email || customer.email || '';
-  let noteDeliveryAddress = '';
-  if (order.note) {
-    const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
-    if (match) noteDeliveryAddress = match[3].trim();
-  }
   const customerAddress = order.shippingAddress?.street
     ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.district, order.shippingAddress.city].filter(Boolean).join(', ')
-    : (order.shippingAddress?.address || noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
+    : (order.shippingAddress?.address || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
   const rawShipments = detailData?.shipments || order.shipments || [];
   const shipments = Array.isArray(rawShipments)

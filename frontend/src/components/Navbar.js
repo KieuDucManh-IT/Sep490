@@ -307,13 +307,15 @@ export default function Navbar() {
                   >
                     <User size={15} className="menu-icon" /> Tài khoản cá nhân
                   </Link>
-                  <Link
-                    to="/rental-orders"
-                    className="menu-item"
-                    onClick={() => setDropdownOpen(false)}
-                  >
-                    <ClipboardList size={15} className="menu-icon" /> Đơn thuê của tôi
-                  </Link>
+                  {String(user?.Role || user?.role || '').trim().toLowerCase() === 'customer' && (
+                    <Link
+                      to="/rental-orders"
+                      className="menu-item"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <ClipboardList size={15} className="menu-icon" /> Đơn thuê của tôi
+                    </Link>
+                  )}
                   <Link
                     to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
                     className="menu-item menu-item-chat"

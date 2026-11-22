@@ -13,7 +13,7 @@ const handle = (work) => async (req, res, next) => {
   }
 };
 
-export const listStockRelocationRows = handle((req) => listStockRelocations(req.user, req.query.operationType));
+export const listStockRelocationRows = handle((req) => listStockRelocations(req.user, req.query));
 export const listStockRelocationStaffRows = handle(() => listRelocationStaff());
 export const getStockRelocationRow = handle((req) => getStockRelocation(req.params.id, req.user));
 export const createStockRelocationRow = handle((req) => createStockRelocation(req.body, req.user, validateCreateStockRelocation(req.body)));

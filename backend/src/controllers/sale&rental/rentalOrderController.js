@@ -6,6 +6,31 @@
 
 import * as rentalOrderService from '../../services/sale&rental/rentalOrderService.js';
 
+const normalizedRole = (user) => String(user?.role || user?.Role || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[\s_-]/g, '');
+
+const ensureCustomer = (req, res) => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Bạn cần đăng nhập để xem lịch sử đơn thuê',
+    });
+    return false;
+  }
+
+  if (normalizedRole(req.user) !== 'customer') {
+    res.status(403).json({
+      success: false,
+      message: 'Lịch sử đơn thuê chỉ dành cho khách hàng',
+    });
+    return false;
+  }
+
+  return true;
+};
+
 export const createOrder = async (req, res, next) => {
   const service = req?.deps?.rentalOrderService || rentalOrderService;
   try {
@@ -64,6 +89,8 @@ export const createOrder = async (req, res, next) => {
 export const getOrderById = async (req, res, next) => {
   const service = req?.deps?.rentalOrderService || rentalOrderService;
   try {
+    if (!ensureCustomer(req, res)) return;
+
     const { id } = req.params;
     const order = await service.getRentalOrderById(id);
 
@@ -97,15 +124,17 @@ export const getOrderById = async (req, res, next) => {
 export const listOrders = async (req, res, next) => {
   const service = req?.deps?.rentalOrderService || rentalOrderService;
   try {
-    const userRole = (req.user?.role || req.user?.Role || '').toLowerCase();
-    const query = { ...req.query };
+    if (!ensureCustomer(req, res)) return;
 
-    // Khách hàng chỉ xem được danh sách đơn của chính mình
-    if (userRole === 'customer') {
-      query.customerId = req.user._id;
-    }
+    const { page, limit, status, rentalStatus } = req.query;
 
-    const result = await service.listRentalOrders(query);
+    const selectedStatus = rentalStatus || status;
+    const result = await service.listRentalOrders({
+      customerId: req.user._id,
+      rentalStatus: selectedStatus && selectedStatus !== 'ALL' ? selectedStatus : undefined,
+      page,
+      limit,
+    });
 
     return res.status(200).json({
       success: true,
@@ -182,8 +211,11 @@ export const handoverOrder = async (req, res, next) => {
 export const cancelOrder = async (req, res, next) => {
   const service = req?.deps?.rentalOrderService || rentalOrderService;
   try {
+    if (!req.user?._id) {
+      return res.status(401).json({ success: false, message: 'Bạn cần đăng nhập để hủy đơn thuê' });
+    }
     const { id } = req.params;
-    const { cancelReason } = req.body;
+    const { cancelReason } = req.body || {};
 
     const result = await service.cancelRentalOrder({
       rentalOrderId: id,
@@ -201,6 +233,7 @@ export const cancelOrder = async (req, res, next) => {
       return res.status(error.status).json({
         success: false,
         message: error.message,
+        code: error.code,
       });
     }
     next(error);

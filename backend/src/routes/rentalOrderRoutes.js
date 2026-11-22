@@ -16,11 +16,11 @@ router.use(authMiddleware);
 // 1. Tạo đơn thuê mới (Khách hàng)
 router.post('/', rentalOrderController.createOrder);
 
-// 2. Danh sách đơn thuê (Khách hàng xem đơn của mình, Nhân viên/Admin xem theo chi nhánh hoặc toàn bộ)
-router.get('/', rentalOrderController.listOrders);
+// 2. Lịch sử đơn thuê của khách hàng; màn hình vận hành dùng order monitoring riêng.
+router.get('/', requireRole('customer'), rentalOrderController.listOrders);
 
-// 3. Chi tiết đơn thuê
-router.get('/:id', rentalOrderController.getOrderById);
+// 3. Chi tiết đơn thuê của khách hàng
+router.get('/:id', requireRole('customer'), rentalOrderController.getOrderById);
 
 // 4. Gán mã vạch hiện vật kho (Nhân viên showroom/kho)
 router.post(

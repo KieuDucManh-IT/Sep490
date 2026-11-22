@@ -105,6 +105,15 @@ export const getProvincesHandler = async (req, res, next) => {
   }
 };
 
+export const getNewProvincesHandler = async (req, res, next) => {
+  try {
+    const result = await ghnService.getNewProvinces();
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
 export const getDistrictsHandler = async (req, res, next) => {
   try {
     const result = await ghnService.getDistricts(req.params.provinceId);
@@ -124,6 +133,15 @@ export const getWardsHandler = async (req, res, next) => {
       success: true,
       data: result,
     });
+  } catch (error) {
+    handleError(error, res, next);
+  }
+};
+
+export const getNewWardsHandler = async (req, res, next) => {
+  try {
+    const result = await ghnService.getNewWards(req.params.provinceId);
+    return res.json({ success: true, data: result });
   } catch (error) {
     handleError(error, res, next);
   }
@@ -498,19 +516,9 @@ export const trackShipmentHandler = async (req, res, next) => {
     const customerInfo = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
     const shipAddr = order.shippingAddress || {};
 
-    let receiverName = shipAddr.receiverName || shipAddr.toName || customer.FullName || 'Khách Hàng';
-    let receiverPhone = shipAddr.phone || shipAddr.toPhone || customerInfo?.Phone || customer.phone || '';
-    let receiverAddress = shipAddr.street || customerInfo?.AddressDetail || customerInfo?.Address || customer.address || '';
-
-    // Fallback bóc tách từ order.note nếu có định dạng "[Giao tận nơi: Name - Phone - Address]"
-    if (order.note && (!receiverPhone || !receiverAddress)) {
-      const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
-      if (match) {
-        if (!shipAddr.receiverName && !customer.FullName) receiverName = match[1].trim();
-        if (!receiverPhone) receiverPhone = match[2].trim();
-        if (!receiverAddress) receiverAddress = match[3].trim();
-      }
-    }
+    const receiverName = shipAddr.receiverName || shipAddr.toName || customer.FullName || 'Khách Hàng';
+    const receiverPhone = shipAddr.phone || shipAddr.toPhone || customerInfo?.Phone || customer.phone || '';
+    const receiverAddress = shipAddr.street || customerInfo?.AddressDetail || customerInfo?.Address || customer.address || '';
 
     // Trích xuất thông tin chi nhánh / showroom xuất hàng
     let storeName = 'Hệ thống Showroom Vestora';

@@ -9,12 +9,27 @@ import { resolveLocationScope } from '../order/orderMonitoringService.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
 import { Shop } from '../../models/shop/Shop.js';
 
-export const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
+
+export { fail };
 
 /**
  * Chuẩn hóa đối tượng người gửi / người nhận (Tỉnh/Thành, Quận/Huyện, Phường/Xã)
  */
-export const formatPartyInfo = ({ name, phone, address, provinceId, districtId, wardCode, latitude, longitude }) => ({
+export const formatPartyInfo = ({
+  name,
+  phone,
+  address,
+  provinceId,
+  districtId,
+  wardCode,
+  provinceName,
+  districtName,
+  wardName,
+  isNewAddress,
+  latitude,
+  longitude,
+}) => ({
   name: name || '',
   phone: phone || '',
   address: address || '',
@@ -23,6 +38,10 @@ export const formatPartyInfo = ({ name, phone, address, provinceId, districtId, 
   provinceId: provinceId ? Number(provinceId) : undefined,
   districtId: districtId ? Number(districtId) : undefined,
   wardCode: wardCode ? String(wardCode) : undefined,
+  provinceName: provinceName || '',
+  districtName: districtName || '',
+  wardName: wardName || '',
+  isNewAddress: Boolean(isNewAddress),
 });
 
 /**

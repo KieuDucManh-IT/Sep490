@@ -66,6 +66,7 @@ const salesOrderSchema = new mongoose.Schema({
     provinceId: { type: Number, default: null },
     districtId: { type: Number, default: null },
     wardCode: { type: String, trim: true, default: null },
+    isNewAddress: { type: Boolean, default: false },
   },
   paidAmount: { type: Number, default: 0 },
   paymentRefId: { type: mongoose.Schema.Types.ObjectId, ref: 'WalletTransaction', default: null },

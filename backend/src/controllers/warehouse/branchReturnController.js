@@ -20,7 +20,7 @@ const handle = (work) => async (req, res, next) => {
   }
 };
 
-export const listBranchReturnRows = handle((req) => listBranchReturns(req.user));
+export const listBranchReturnRows = handle((req) => listBranchReturns(req.user, req.query));
 export const getBranchReturnRow = handle((req) => getBranchReturn(req.params.id, req.user));
 export const listBranchReturnStaffRows = handle(() => listBranchReturnStaff());
 export const createBranchReturnRow = handle((req) => createBranchReturn(req.body, req.user));

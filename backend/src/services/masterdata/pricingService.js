@@ -4,7 +4,7 @@ import { ProductImage } from '../../models/masterdata/ProductImages.js';
 import { missingRequiredPrices } from './productPricing.js';
 import { representativeUrlByProduct } from './productImageHelper.js';
 
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const TAG_LABELS = { rental: 'cho thuê', sale: 'bán', both: 'vừa thuê vừa bán' };
 

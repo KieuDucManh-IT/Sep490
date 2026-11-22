@@ -92,7 +92,7 @@ router.post(
 router.post('/', salesOrderController.createOrder);
 
 // 2. Danh sách đơn mua của chính khách hàng
-router.get('/my-orders', salesOrderController.getMyOrders);
+router.get('/my-orders', requireRole('customer'), salesOrderController.getMyOrders);
 
 // 3. Danh sách đơn mua tại chi nhánh (Nhân viên chi nhánh / Staff / Admin)
 router.get(
@@ -101,8 +101,8 @@ router.get(
   salesOrderController.getBranchOrders
 );
 
-// 4. Chi tiết đơn mua theo ID
-router.get('/:id', salesOrderController.getOrderById);
+// 4. Chi tiết đơn mua của khách hàng theo ID
+router.get('/:id', requireRole('customer'), salesOrderController.getOrderById);
 
 // 5. Cập nhật trạng thái đơn mua (Nhân viên chi nhánh / Staff / Admin)
 router.patch(

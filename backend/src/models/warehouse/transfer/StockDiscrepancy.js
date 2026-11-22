@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 // Phiếu chênh lệch (UC-29): mở khi bên nhận chốt nhận hàng mà một dòng điều chuyển bị thiếu.
 // Hàng thiếu đã ra khỏi sổ ở bước xuất (transfer_out), nên phiếu này chỉ ghi lại số thiếu và cách kết luận.
-// TASK-015: luôn theo món (`itemIds`, `itemPreviousConditions`); field `trackingType` đã bỏ.
+// TASK-015: luôn theo món (`itemIds`); field `trackingType` đã bỏ. TASK-016: bỏ `itemPreviousConditions`.
 const resolutionSchema = new mongoose.Schema({
   outcome: { type: String, required: true, enum: ['found', 'lost'] },
   quantity: { type: Number, required: true, min: 1 },
@@ -26,11 +26,6 @@ const stockDiscrepancySchema = new mongoose.Schema({
   quantityMissing: { type: Number, required: true, min: 1 },
   quantityResolved: { type: Number, min: 0, default: 0 },
   itemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }],
-  itemPreviousConditions: [{
-    _id: false,
-    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', required: true },
-    condition: { type: String, default: 'good' },
-  }],
   status: { type: String, default: 'open', enum: ['open', 'partially_resolved', 'resolved'] },
   resolutions: [resolutionSchema],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

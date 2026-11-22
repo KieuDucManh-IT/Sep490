@@ -48,9 +48,9 @@ export default function ReceivePanel({ transfer, busy, onAction, cancelButton })
   const renderReceived = (line) => {
     const counts = receiptCounts(receipt[line._id], (line.itemIds || []).length);
     return <div>
-      <small className="wm-stock-subline mt-0">Tốt {counts.good} · Hỏng {counts.damaged} · Thiếu {counts.missing}</small>
+      <small className="wm-stock-subline mt-0">Đạt {counts.good} · Cần xử lý {counts.damaged} · Mất {counts.missing}</small>
       <button type="button" className="wm-text-button p-0" onClick={() => setPickerLineId(line._id)}>
-        Đánh dấu món hỏng / thiếu
+        Đánh dấu món cần xử lý / mất
       </button>
     </div>;
   };

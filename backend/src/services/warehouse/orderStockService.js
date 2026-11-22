@@ -13,9 +13,6 @@ import {
 } from './itemStateService.js';
 import { availableOf, sumAvailable } from './balanceQueryService.js';
 
-/** Tình trạng món không được bán/cho thuê dù status `available`. */
-export const UNUSABLE_CONDITIONS = Object.freeze(['damaged', 'unrepairable', 'missing']);
-
 /** Lỗi nghiệp vụ dùng chung cho các service đơn hàng (controller đơn đọc `status`, controller khác đọc `statusCode`). */
 export const orderError = (status, message, code = null, details = null) =>
   Object.assign(new Error(message), { name: 'ServiceError', status, statusCode: status, code, details });
@@ -53,21 +50,19 @@ export const aggregateLines = (lines = []) => {
 };
 
 /**
- * Bảng quy đổi khi nhận trả đồ thuê (người dùng chốt 17/11). Không dùng `maintenance` ở chi nhánh:
- *   new/good → available; worn/damaged → unavailable; unrepairable → unavailable + condition unrepairable.
- * `condition` của món luôn cập nhật theo conditionOnReturn.
+ * Kết quả kiểm khi nhận trả đồ thuê → trạng thái món (TASK-016 A3). Không dùng `maintenance` ở chi nhánh:
+ *   ok → available; needs_service → unavailable (chờ chuyển về kho tổng xử lý); missing → lost (khách không trả).
  */
+export const RETURN_INSPECTION_RESULTS = Object.freeze(['ok', 'needs_service', 'missing']);
 export const RETURN_TRANSITIONS = Object.freeze({
-  new: Object.freeze({ status: 'available', condition: 'new' }),
-  good: Object.freeze({ status: 'available', condition: 'good' }),
-  worn: Object.freeze({ status: 'unavailable', condition: 'worn' }),
-  damaged: Object.freeze({ status: 'unavailable', condition: 'damaged' }),
-  unrepairable: Object.freeze({ status: 'unavailable', condition: 'unrepairable' }),
+  ok: Object.freeze({ status: 'available' }),
+  needs_service: Object.freeze({ status: 'unavailable' }),
+  missing: Object.freeze({ status: 'lost' }),
 });
 
-export const returnTransition = (conditionOnReturn) => {
-  const transition = RETURN_TRANSITIONS[conditionOnReturn];
-  if (!transition) throw orderError(400, `Tình trạng khi trả không hợp lệ: ${conditionOnReturn}.`);
+export const returnTransition = (inspectionResult) => {
+  const transition = RETURN_TRANSITIONS[inspectionResult];
+  if (!transition) throw orderError(400, `Kết quả kiểm khi trả không hợp lệ: ${inspectionResult}.`);
   return { ...transition };
 };
 
@@ -166,9 +161,12 @@ export const createOrderStockService = ({
     return moveItems(items, { status: 'renting' }, session, { adjustments });
   };
 
-  /** Nhận trả đồ thuê: renting → theo RETURN_TRANSITIONS (helper: renting −1, onHand +1, unavailable +1 nếu cần). */
+  /**
+   * Nhận trả đồ thuê: renting → theo RETURN_TRANSITIONS (renting −1; onHand +1 và unavailable +1 nếu cần; `lost` chỉ trừ renting).
+   * entries: [{ item, inspectionResult }].
+   */
   const returnItems = async (entries, session) => {
-    const byId = new Map((entries || []).map(({ item, conditionOnReturn }) => [idOf(item._id), returnTransition(conditionOnReturn)]));
+    const byId = new Map((entries || []).map(({ item, inspectionResult }) => [idOf(item._id), returnTransition(inspectionResult)]));
     for (const { item } of entries || []) {
       if (item.status !== 'renting') throw orderError(409, `Món hàng ${item.itemCode || item._id} không ở trạng thái đang cho thuê (hiện tại: ${item.status}).`);
     }
@@ -176,13 +174,13 @@ export const createOrderStockService = ({
   };
 
   /**
-   * Hoàn tất đơn bán: chọn FIFO `quantity` món `available` (condition dùng được, cũ nhất theo createdAt)
+   * Hoàn tất đơn bán: chọn FIFO `quantity` món `available` (cũ nhất theo createdAt)
    * tại chi nhánh → `sold` (onHand −1 mỗi món) gộp với nhả giữ chỗ `reservedQuantity`. Không đủ món → 409.
    */
   const sellItems = async ({ locationId, variantId, quantity, reservedQuantity = 0, sku }, session) => {
     requireSession(session);
     const query = InventoryItem.find({
-      locationId, variantId, status: 'available', condition: { $nin: UNUSABLE_CONDITIONS },
+      locationId, variantId, status: 'available',
     }).sort({ createdAt: 1, _id: 1 }).limit(quantity);
     const items = await withSession(query, session);
     if ((items || []).length < quantity) {

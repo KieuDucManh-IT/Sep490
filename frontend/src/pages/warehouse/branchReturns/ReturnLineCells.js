@@ -12,8 +12,8 @@ function ItemReceiptSummary({ line, received, onChange }) {
   const counts = receiptCounts(received, (line.itemIds || []).length);
   return (
     <div>
-      <small className="wm-stock-subline mt-0">Tốt {counts.good} · Hỏng {counts.damaged} · Thiếu {counts.missing}</small>
-      <button type="button" className="wm-text-button p-0" onClick={() => setOpen(true)}>Đánh dấu món hỏng / thiếu</button>
+      <small className="wm-stock-subline mt-0">Đạt {counts.good} · Cần xử lý {counts.damaged} · Mất {counts.missing}</small>
+      <button type="button" className="wm-text-button p-0" onClick={() => setOpen(true)}>Đánh dấu món cần xử lý / mất</button>
       {open && (
         <ItemReceiptModal
           title={formatVariantName(line.variantId)}

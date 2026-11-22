@@ -62,8 +62,7 @@ export const TRANSFER_STATUS_LABELS = {
   rejected: 'Bị từ chối',
   preparing: 'Đang soạn hàng',
   shipped: 'Đang điều chuyển',
-  partially_received: 'Đã nhận một phần',
-  received: 'Đã nhận hàng',
+  completed: 'Hoàn tất',
   cancelled: 'Đã hủy',
 };
 
@@ -76,6 +75,7 @@ export const BRANCH_RETURN_STATUS_LABELS = {
   receipt_submitted: 'Chờ duyệt kết quả nhận',
   receipt_approved: 'Đã duyệt nhận, chờ xếp kệ',
   completed: 'Hoàn tất',
+  cancelled: 'Đã hủy',
 };
 
 /** Chiều điều chuyển. */
@@ -155,58 +155,65 @@ export const RESPONSIBLE_PARTY_LABELS = {
 
 /* ---------------- Món hàng ---------------- */
 
-/** Tình trạng (condition) của món hàng. */
-export const CONDITION_LABELS = {
-  new: 'Mới',
-  good: 'Tốt',
-  worn: 'Đã qua sử dụng',
-  damaged: 'Hỏng',
-  unrepairable: 'Không thể sửa',
-  missing: 'Thất lạc',
-};
-
-/** Tình trạng món trong màn chênh lệch: `missing` được gọi là "Thiếu / không tìm thấy". */
-export const DISCREPANCY_CONDITION_LABELS = {
-  ...CONDITION_LABELS,
-  missing: 'Thiếu / không tìm thấy',
-};
-
-/** Trạng thái món hàng (InventoryItem.status), gồm cả `sold`. */
+/**
+ * Trạng thái món hàng (InventoryItem.status). TASK-016: bỏ "tình trạng" (condition) — trạng thái là nguồn duy nhất
+ * cho biết món dùng được hay không; `lost` = đã xác định mất, không tính vào tồn.
+ */
 export const ITEM_STATUS_LABELS = {
   available: 'Sẵn sàng',
-  unavailable: 'Không khả dụng',
-  maintenance: 'Đang xử lý',
   reserved: 'Đang giữ chỗ',
+  unavailable: 'Cần xử lý',
+  maintenance: 'Đang giặt/sửa',
   renting: 'Đang cho thuê',
   in_transit: 'Đang điều chuyển',
-  disposed: 'Đã thanh lý',
   sold: 'Đã bán',
+  disposed: 'Đã thanh lý',
+  lost: 'Mất',
 };
 
-/** Kết quả nhận của một món (màn nhận hàng: mặc định "Nhận tốt", chỉ đánh dấu món hỏng / thiếu). */
+/** Trạng thái mặc định bị ẩn ở danh sách món (đã rời kho); có bộ lọc để xem. */
+export const HIDDEN_ITEM_STATUSES = ['sold', 'disposed', 'lost'];
+
+/** Kết quả kiểm một món khi nhận hàng / trả đồ thuê (A5): Đạt / Cần xử lý / Mất. */
+export const INSPECTION_RESULT_LABELS = {
+  ok: 'Đạt',
+  needs_service: 'Cần xử lý',
+  missing: 'Mất',
+};
+
+/** Kết quả nhận của một món (màn nhận hàng: mặc định "Đạt", chỉ đánh dấu món cần xử lý / mất). */
 export const RECEIPT_STATE_LABELS = {
-  good: 'Nhận tốt',
-  damaged: 'Hỏng',
-  missing: 'Thiếu',
+  good: 'Đạt',
+  damaged: 'Cần xử lý',
+  missing: 'Mất',
+};
+
+/* ---------------- Kiểm kê (TASK-016 B) ---------------- */
+
+/** Kết quả nhân viên ghi cho từng món. */
+export const STOCKTAKE_RESULT_LABELS = {
+  ok: 'Có mặt – dùng được',
+  needs_service: 'Có mặt – cần xử lý',
+  not_found: 'Không thấy',
+};
+
+/** Kết quả áp dụng sau khi duyệt. */
+export const STOCKTAKE_OUTCOME_LABELS = {
+  unchanged: 'Đúng',
+  needs_service: 'Cần xử lý',
+  lost: 'Mất',
+  found: 'Tìm thấy',
+  created: 'Tìm thấy (món mới)',
+  relocated: 'Chuyển kệ',
+  skipped: 'Bị bỏ qua',
 };
 
 /* ---------------- Trả hàng bán ---------------- */
 
-/** Cách xử lý món khách trả (SalesReturnDetail.disposition). */
-export const SALES_RETURN_DISPOSITION_LABELS = {
-  restock: 'Nhập lại kho',
-  quarantine: 'Cách ly',
-  repair: 'Sửa chữa',
-  dispose: 'Hủy bỏ',
-};
-
-/** Tình trạng món khi khách trả (SalesReturnDetail.conditionOnReturn). */
-export const SALES_RETURN_CONDITION_LABELS = {
-  new: 'Mới',
-  good: 'Tốt',
-  worn: 'Đã qua sử dụng',
-  damaged: 'Hỏng',
-  unrepairable: 'Không thể sửa',
+/** Kết quả kiểm món khách trả (SalesReturnDetail.inspectionResults): chỉ Đạt / Cần xử lý. */
+export const SALES_RETURN_RESULT_LABELS = {
+  ok: 'Đạt',
+  needs_service: 'Cần xử lý',
 };
 
 /* ---------------- Giặt / sửa / thanh lý ---------------- */

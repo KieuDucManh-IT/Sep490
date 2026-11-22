@@ -11,7 +11,8 @@ import PickPanel from './PickPanel';
 import ReceivePanel from './ReceivePanel';
 import { locationName } from './transferHelpers';
 
-const RECEIVING_STATUSES = ['shipped', 'partially_received'];
+// TASK-016 D1: nhận một phần (chưa chốt) phiếu vẫn ở `shipped`; chốt nhận → `completed`.
+const RECEIVING_STATUSES = ['shipped'];
 
 /** Panel nhập liệu ứng với vai trò + trạng thái phiếu; null = chỉ xem. */
 function panelFor(mode, status) {
@@ -25,7 +26,7 @@ function guidanceFor(mode, status) {
   if (mode === 'warehouse' && status === 'requested') return 'Kiểm tra số lượng khả dụng, chọn nhân viên phụ trách rồi duyệt phiếu.';
   if (mode === 'staff' && status === 'approved') return 'Bấm "Lấy theo gợi ý" để điền sẵn kệ và món, sửa nếu cần rồi lưu phân bổ.';
   if (mode === 'staff' && status === 'preparing') return 'Rà soát phân bổ trước khi xác nhận xuất hàng khỏi kho tổng.';
-  if (mode === 'branch' && RECEIVING_STATUSES.includes(status)) return 'Mặc định mọi món đã xuất là nhận tốt; chỉ đánh dấu món hỏng hoặc thiếu rồi xác nhận.';
+  if (mode === 'branch' && RECEIVING_STATUSES.includes(status)) return 'Mặc định mọi món đã xuất là Đạt; chỉ đánh dấu món cần xử lý hoặc mất rồi xác nhận.';
   return '';
 }
 
@@ -50,7 +51,8 @@ export default function TransferDetailModal({ mode, transfer, staff, storages, b
     <Modal.Header closeButton>
       <div className="wm-stock-detail-heading mb-0">
         <div>
-          <small>{transfer.transferCode} · {labelOf(TRANSFER_STATUS_LABELS, status, status)}</small>
+          <small>{transfer.transferCode} · {labelOf(TRANSFER_STATUS_LABELS, status, status)}
+            {transfer.hasDiscrepancy && <span className="wm-status-badge status-cancelled ms-2">Có chênh lệch</span>}</small>
           <Modal.Title as="h2">{locationName(transfer.toLocationId)}</Modal.Title>
           <p>Kho xuất: {locationName(transfer.fromLocationId)} · Người tạo: {transfer.createdBy?.FullName || '—'}</p>
         </div>

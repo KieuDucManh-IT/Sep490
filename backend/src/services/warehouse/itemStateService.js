@@ -64,9 +64,10 @@ export const createItemStateService = ({ InventoryItem, InventoryBalance, hasRen
   };
 
   /**
-   * Đổi trạng thái / location / kệ / tình trạng của nhiều món, gộp phần chênh theo dòng balance ($inc một lần mỗi dòng).
+   * Đổi trạng thái / location / kệ của nhiều món, gộp phần chênh theo dòng balance ($inc một lần mỗi dòng).
    * - items: document (mongoose hoặc lean) đã đọc trong cùng session, cần có _id, variantId, locationId, storageId, status.
-   * - changes: object hoặc hàm (item) => object: { status?, condition?, locationId?, storageId?, warehouseHold? }
+   * - changes: object hoặc hàm (item) => object: { status?, locationId?, storageId?, warehouseHold? }
+   *     (TASK-016: món không còn `condition`; trạng thái là nguồn duy nhất cho biết món dùng được hay không.)
    *     warehouseHold +1: phiếu kho (tách/gộp kệ, trả hàng chi nhánh) bắt đầu giữ món → reserved +1 ở dòng mới.
    *     warehouseHold -1: phiếu kho nhả món → reserved -1 ở dòng cũ.
    *     Giữ chỗ của ĐƠN thuê/bán KHÔNG dùng warehouseHold (đã nằm trong InventoryReservation).
@@ -90,7 +91,6 @@ export const createItemStateService = ({ InventoryItem, InventoryBalance, hasRen
       if (after.status !== before.status) $set.status = after.status;
       if (!sameId(after.locationId, before.locationId)) $set.locationId = after.locationId;
       if (!sameId(after.storageId, before.storageId)) $set.storageId = after.storageId;
-      if (change.condition !== undefined && change.condition !== item.condition) $set.condition = change.condition;
       befores.push(before); afters.push(after); holds.push(change.warehouseHold || 0);
       writes.push({ item, before, $set });
     }
@@ -104,7 +104,7 @@ export const createItemStateService = ({ InventoryItem, InventoryBalance, hasRen
         { session, runValidators: true },
       );
       if ((result?.matchedCount ?? result?.n ?? 0) !== 1) throw fail(`Món hàng ${item.itemCode || item._id} vừa thay đổi trạng thái hoặc vị trí, vui lòng tải lại.`, 409);
-      for (const field of [...STATE_FIELDS, 'condition']) if (field in $set) item[field] = $set[field];
+      for (const field of STATE_FIELDS) if (field in $set) item[field] = $set[field];
     }
     await applyDeltas(deltas, session);
     return list;

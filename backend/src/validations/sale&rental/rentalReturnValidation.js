@@ -11,23 +11,10 @@ import { objectIdSchema } from './rentalOrderValidation.js';
 
 export const returnItemInspectionSchema = z.object({
   itemId: objectIdSchema,
-  conditionOnReturn: z.enum(
-    ['new', 'good', 'worn', 'damaged', 'unrepairable'],
-    {
-      errorMap: () => ({
-        message:
-          'Tình trạng đồ phải là: new, good, worn, damaged hoặc unrepairable',
-      }),
-    }
-  ),
-  itemReturnStatus: z
-    .enum(['accepted', 'damaged', 'missing_parts', 'rejected'], {
-      errorMap: () => ({
-        message:
-          'Trạng thái tiếp nhận phải là: accepted, damaged, missing_parts hoặc rejected',
-      }),
-    })
-    .default('accepted'),
+  // TASK-016: Đạt / Cần xử lý / Mất.
+  inspectionResult: z.enum(['ok', 'needs_service', 'missing'], {
+    error: 'Kết quả kiểm phải là: ok (đạt), needs_service (cần xử lý) hoặc missing (mất)',
+  }),
   damageFee: z.number().min(0, 'Phí hư hại không được âm').default(0),
   note: z.string().max(500, 'Ghi chú tối đa 500 ký tự').optional(),
 });

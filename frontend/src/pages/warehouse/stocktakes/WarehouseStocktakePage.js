@@ -13,34 +13,23 @@ import StocktakeDetailModal from './StocktakeDetailModal';
 import StocktakeListPanel from './StocktakeListPanel';
 import useStocktakeMasterData from './useStocktakeMasterData';
 import useStocktakePreview from './useStocktakePreview';
-import {
-  buildCountPayload, emptyCreateForm, hasMissingCount, initialCounts, validateCounts,
-} from './stocktakeHelpers';
+import { buildCountPayload, emptyCreateForm, validateCounts } from './stocktakeHelpers';
 
-/** Số đếm đang nhập của phiếu đang mở (tình trạng từng món, món lạ đã ghi, món lạ mới phát hiện). */
+/**
+ * Kết quả đang nhập của phiếu đang mở (TASK-016 B2): `results` chỉ giữ dòng đã sửa
+ * (dòng chưa sửa lấy kết quả đã lưu, mặc định "Có mặt – dùng được"), và món lạ chưa lưu.
+ */
 function useCounting() {
-  const [counts, setCounts] = useState({});
-  const [itemConditions, setItemConditions] = useState({});
+  const [results, setResults] = useState({});
   const [newItems, setNewItems] = useState([]);
-  const reset = (stocktake) => {
-    const initial = initialCounts(stocktake);
-    setCounts(initial.counts);
-    setItemConditions(initial.conditions);
-  };
-  const setCount = (lineId, value) => setCounts((old) => ({ ...old, [lineId]: value }));
-  // Kiểm từng món: chọn "mất" thì số thực tế là 0, còn lại là 1.
-  const setCondition = (lineId, condition) => {
-    setItemConditions((old) => ({ ...old, [lineId]: condition }));
-    setCounts((old) => ({ ...old, [lineId]: condition === 'missing' ? '0' : '1' }));
-  };
-  return {
-    counts, itemConditions, newItems, setNewItems, setCount, setCondition, reset,
-  };
+  const reset = () => { setResults({}); setNewItems([]); };
+  const setResult = (lineId, value) => setResults((old) => ({ ...old, [lineId]: value }));
+  return { results, newItems, setNewItems, setResult, reset };
 }
 
 /**
- * Màn kiểm kê kho tổng. Chủ kho tạo phiếu, bắt đầu, duyệt (sinh phiếu điều chỉnh) và hủy;
- * nhân viên được giao nhập số đếm và gửi kết quả.
+ * Màn kiểm kê kho tổng. Chủ kho tạo phiếu, bắt đầu, duyệt (= áp dụng ngay vào tồn) và hủy;
+ * nhân viên được giao ghi kết quả theo món và gửi.
  */
 export default function WarehouseStocktakePage() {
   const { user } = useAuth();
@@ -125,25 +114,17 @@ export default function WarehouseStocktakePage() {
   };
 
   const saveCounts = async () => {
-    const lines = selected.items || [];
-    const message = validateCounts(lines, counting.counts, counting.newItems);
+    const message = validateCounts(counting.newItems);
     if (message) {
       setError(message);
       return false;
     }
-    const payload = buildCountPayload(
-      lines, counting.counts, counting.itemConditions, counting.newItems,
-    );
-    const result = await runAction(() => stocktakeService.saveCounts(selected._id, payload), 'Đã lưu số đếm.');
-    if (result) counting.setNewItems([]);
+    const payload = buildCountPayload(selected.items || [], counting.results, counting.newItems);
+    const result = await runAction(() => stocktakeService.saveCounts(selected._id, payload), 'Đã lưu kết quả kiểm.');
     return Boolean(result);
   };
 
   const submitCounts = async () => {
-    if (hasMissingCount(selected.items || [], counting.counts)) {
-      setError('Cần ghi nhận đủ các món lạ trước khi gửi kết quả.');
-      return;
-    }
     const saved = await saveCounts();
     if (!saved) return;
     await runAction(() => stocktakeService.submit(selected._id), 'Đã gửi kết quả kiểm kê.');
@@ -151,11 +132,13 @@ export default function WarehouseStocktakePage() {
 
   const approve = () => runAction(async () => {
     const result = await stocktakeService.approve(selected._id);
-    return { ...result.stocktake, createdAdjustment: result.adjustment };
-  }, (result) => {
-    const code = result?.createdAdjustment?.adjustmentCode;
-    if (code) return `Đã duyệt kiểm kê, tạo phiếu điều chỉnh ${code}.`;
-    return 'Đã duyệt kiểm kê.';
+    return result.stocktake || result;
+  }, (stocktake) => {
+    const summary = stocktake?.summary;
+    if (!summary) return 'Đã duyệt và áp dụng kết quả kiểm kê.';
+    const skipped = summary.skipped ? ` · ${summary.skipped} dòng bị bỏ qua (xem lý do trong bảng)` : '';
+    return `Đã duyệt và áp dụng: đúng ${summary.unchanged}, cần xử lý ${summary.needsService}, mất ${summary.lost}, `
+      + `tìm thấy ${summary.found}, chuyển kệ ${summary.relocated}${skipped}.`;
   });
 
   const confirmCancel = async (reason) => {
@@ -179,7 +162,7 @@ export default function WarehouseStocktakePage() {
 
   const detailActions = {
     onCancel: () => setShowCancel(true),
-    onStart: () => runAction(() => stocktakeService.start(selected._id), 'Đã bắt đầu kiểm kê và chụp tồn sổ.'),
+    onStart: () => runAction(() => stocktakeService.start(selected._id), 'Đã bắt đầu kiểm kê và chụp trạng thái từng món.'),
     onSave: saveCounts,
     onSubmit: submitCounts,
     onApprove: approve,
@@ -198,7 +181,7 @@ export default function WarehouseStocktakePage() {
       <PageHeader
         eyebrow="KHO TỔNG / KIỂM SOÁT TỒN KHO"
         title="Kiểm kê kho"
-        description="Đếm hàng thực tế so với tồn sổ; chênh lệch được duyệt thành phiếu điều chỉnh tồn."
+        description="Kiểm từng món theo kệ; duyệt kết quả là áp dụng ngay vào tồn kho (không tạo phiếu điều chỉnh)."
         actions={isManager && <Button variant="dark" onClick={toggleCreate}>+ Tạo phiếu kiểm kê</Button>}
       />
       <div className="wm-stock-tabs">

@@ -1,6 +1,8 @@
 // Điều chuyển hàng từ kho tổng xuống chi nhánh (bổ sung hàng cho cửa hàng).
-// Luồng trạng thái: requested → approved → preparing → shipped → (partially_received) → received
+// Luồng trạng thái: requested → approved → preparing → shipped → completed
 //                   (requested có thể bị rejected; requested/approved/preparing có thể bị cancelled).
+// TASK-016 D1: bỏ `received` / `partially_received`. Nhận một phần (chưa chốt) giữ `shipped`; chốt nhận → `completed`.
+// Có dòng thiếu → mở phiếu chênh lệch; nhãn "Có chênh lệch" dựa vào `hasDiscrepancy`, không dựa vào trạng thái.
 // Ai làm bước nào:
 // - Quản lý chi nhánh: tạo yêu cầu, nhận hàng (ghi số nhận / hỏng), hủy khi còn chờ duyệt.
 // - Quản lý kho tổng: duyệt số lượng + giao nhân viên kho, hủy trước khi xuất.
@@ -15,6 +17,7 @@ import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Shop } from '../../models/shop/Shop.js';
 import { StockTransfer } from '../../models/warehouse/transfer/StockTransfer.js';
 import { StockTransferDetail } from '../../models/warehouse/transfer/StockTransferDetail.js';
+import { StockDiscrepancy } from '../../models/warehouse/transfer/StockDiscrepancy.js';
 import User from '../../models/system/User.js';
 import { recordStockMovement } from './inventoryLedgerService.js';
 import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
@@ -47,8 +50,7 @@ export const TRANSFER_STATUS = {
   REJECTED: 'rejected',
   PREPARING: 'preparing',
   SHIPPED: 'shipped',
-  PARTIALLY_RECEIVED: 'partially_received',
-  RECEIVED: 'received',
+  COMPLETED: 'completed',
   CANCELLED: 'cancelled',
 };
 const LISTABLE_STATUSES = Object.values(TRANSFER_STATUS);
@@ -84,7 +86,7 @@ const findDetails = (transferIds) => StockTransferDetail.find({ transferId: { $i
     populate: { path: 'productId', select: 'productCode name' },
   })
   .populate('fromStorageId', 'code name type')
-  .populate('itemIds', 'itemCode serialNumber condition status')
+  .populate('itemIds', 'itemCode serialNumber status')
   .populate('discrepancyId', 'discrepancyCode status quantityMissing quantityResolved');
 
 const centralWarehouse = () => getCentralWarehouse(null, {
@@ -158,7 +160,20 @@ const getTransfer = async (transferId, user = null) => {
   const transfer = await StockTransfer.findOne({ _id: transferId, ...NOT_RETURN }).populate(transferPopulation);
   if (!transfer) throw appError('Không tìm thấy yêu cầu điều chuyển.', 404);
   if (user) await canAccessTransfer(transfer, user);
-  return { ...transfer.toObject(), items: await findDetails([transferId]) };
+  const items = await findDetails([transferId]);
+  return { ...transfer.toObject(), items, hasDiscrepancy: items.some((item) => item.discrepancyId) };
+};
+
+/**
+ * TASK-016 D1: nhãn "Có chênh lệch" dựa vào việc phiếu có phiếu chênh lệch (một truy vấn cho cả trang),
+ * không dựa vào trạng thái. Nhận mảng phiếu hoặc kết quả phân trang { items, ... }.
+ */
+export const withDiscrepancyFlag = async (result) => {
+  const rows = Array.isArray(result) ? result : result.items;
+  if (!rows.length) return result;
+  const flagged = new Set((await StockDiscrepancy.distinct('transferId', { transferId: { $in: rows.map((row) => row._id) } })).map(String));
+  const marked = rows.map((row) => ({ ...(typeof row.toObject === 'function' ? row.toObject() : row), hasDiscrepancy: flagged.has(String(row._id)) }));
+  return Array.isArray(result) ? marked : { ...result, items: marked };
 };
 
 /* ------------------------------ Danh sách ------------------------------ */
@@ -187,14 +202,14 @@ export const listStockTransfers = async (user, query = {}) => {
     locationFields: ['fromLocationId', 'toLocationId'],
     userFields: ['createdBy', 'assignedStaffId'],
   });
-  return listSlips({
+  return withDiscrepancyFlag(await listSlips({
     Model: StockTransfer,
     filter: andFilter(filter, searchFilter),
     decorate: (find) => find.populate(transferPopulation),
     paging: parsePaging(query),
     attachDetails: { findDetails, parentField: 'transferId' },
     summary: { DetailModel: StockTransferDetail, parentField: 'transferId', quantityField: 'quantityRequested' },
-  });
+  }));
 };
 
 export const listWarehouseTransferStaff = () => User.find({ Role: WAREHOUSE_STAFF_ROLE_PATTERN, Status: /^active$/i })
@@ -348,7 +363,7 @@ export const getTransferPickCandidates = async (transferId, detailId, storageId,
   }
   const place = { locationId: transfer.fromLocationId, storageId: storage, variantId: detail.variantId };
   return InventoryItem.find({ ...place, status: 'available' })
-    .select('_id itemCode serialNumber condition status').sort({ createdAt: 1 }).lean();
+    .select('_id itemCode serialNumber status').sort({ createdAt: 1 }).lean();
 };
 
 /** Phiếu ở các bước này mới cần xem khả dụng / gợi ý lấy hàng. */
@@ -634,7 +649,6 @@ const receiveIndividualItems = async ({ transfer, detail, line, previous, destin
     }
     if (!item) throw appError('Một mã hàng cá thể không còn ở trạng thái/vị trí dự kiến.', 409);
     const change = { status: isDamaged ? 'unavailable' : 'available' };
-    if (isDamaged) change.condition = 'damaged';
     if (!alreadyReceived) Object.assign(change, { locationId: destination._id, storageId: null });
     await moveItem(item, change, session);
     if (alreadyReceived) continue;
@@ -682,11 +696,10 @@ const incomingQuantities = (receipt, detailById) => receipt.items
 export const receiveTransfer = async (transferId, payload, user) => {
   if (!isBranchManagerOrAdmin(user)) throw appError('Chỉ quản lý chi nhánh mới được xác nhận nhận hàng.', 403);
   const receipt = validateTransferReceipt(payload);
-  const receivable = [TRANSFER_STATUS.SHIPPED, TRANSFER_STATUS.PARTIALLY_RECEIVED];
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await StockTransfer.findOne({ _id: transferId, ...NOT_RETURN, status: { $in: receivable } })
+      const transfer = await StockTransfer.findOne({ _id: transferId, ...NOT_RETURN, status: TRANSFER_STATUS.SHIPPED })
         .session(session);
       if (!transfer) throw appError('Phiếu chưa được xuất từ kho tổng hoặc đã hoàn tất nhận hàng.', 409);
       const destination = await assertBranchOwnsLocation(transfer.toLocationId, user);
@@ -702,11 +715,9 @@ export const receiveTransfer = async (transferId, payload, user) => {
       }
       if (receipt.complete) {
         await openTransferDiscrepancies({ transfer, details, user, session });
-        transfer.status = TRANSFER_STATUS.RECEIVED;
+        transfer.status = TRANSFER_STATUS.COMPLETED;
         transfer.receivedBy = user._id;
         transfer.receivedAt = new Date();
-      } else {
-        transfer.status = TRANSFER_STATUS.PARTIALLY_RECEIVED;
       }
       if (receipt.note) transfer.note = appendNote(transfer.note, 'Nhận hàng', receipt.note);
       await transfer.save({ session });

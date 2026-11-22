@@ -1,21 +1,9 @@
 /**
  * Hàm tính toán thuần cho màn kiểm kê (không gọi API, không có state).
- * Tách riêng để component chỉ lo hiển thị.
+ * TASK-016 B: mỗi dòng là một món; nhân viên ghi kết quả (mặc định "Có mặt – dùng được"), kệ thực tế nếu khác,
+ * và món lạ (mã gặp trên kệ). Duyệt = áp dụng ngay, không còn phiếu điều chỉnh.
  */
 import { idOf } from '../shared/slipHelpers';
-
-/** Các tình trạng chọn được khi kiểm từng món; `missing` = không tìm thấy món khi đếm. */
-export const COUNT_CONDITION_OPTIONS = [
-  ['new', 'Mới'],
-  ['good', 'Tốt'],
-  ['worn', 'Đã qua sử dụng'],
-  ['damaged', 'Hỏng'],
-  ['unrepairable', 'Không thể sửa'],
-  ['missing', 'Mất / không tìm thấy'],
-];
-
-/** Tình trạng chọn được cho món mới phát hiện khi kiểm (không có `missing`). */
-export const NEW_ITEM_CONDITION_OPTIONS = COUNT_CONDITION_OPTIONS.filter(([value]) => value !== 'missing');
 
 export const emptyCreateForm = (locationId = '') => ({
   locationId,
@@ -40,7 +28,8 @@ export const selectedPreviewLines = (items, excludedKeys) => items
   .filter((item) => !excludedKeys.has(item.key))
   .map((item) => ({ variantId: item.variantId, storageId: item.storageId || null }));
 
-export const emptyNewItem = () => ({ variantId: '', storageId: '', itemCode: '', serialNumber: '', countedCondition: 'good' });
+/** Món lạ: mã gặp trên kệ (có trong hệ thống → dùng món đó; chưa có → chọn biến thể để tạo món mới). */
+export const emptyNewItem = (storageId = '') => ({ itemCode: '', variantId: '', storageId, serialNumber: '', countedResult: 'ok' });
 
 const isWholeWarehouse = (row) => {
   if (row.scopeType === 'full') return true;
@@ -61,62 +50,54 @@ export function scopeLabel(row) {
   return parts.join(' · ');
 }
 
-/**
- * Mọi sản phẩm quản lý theo món (TASK-015): mỗi dòng chụp số là một món (`itemId`).
- * Dòng không có `itemId` là món lạ đã ghi nhận thêm (qua `newItems`), số đếm 0 hoặc 1.
- */
-export const isItemLine = (line) => Boolean(line.itemId);
-
-/** Tình trạng đang chọn của một dòng món; mặc định = tình trạng hiện có của món ("như cũ"). */
-export function lineCondition(line, itemConditions) {
-  return itemConditions[line._id] || line.countedCondition || line.itemId?.condition || 'good';
+/** Kết quả đang chọn của một dòng: { countedResult, foundStorageId }; mặc định "ok", kệ như hệ thống. */
+export function lineResult(line, results) {
+  const draft = results[line._id];
+  if (draft) return draft;
+  return { countedResult: line.countedResult || 'ok', foundStorageId: idOf(line.foundStorageId) || '' };
 }
 
-/** Số lượng thực tế của một dòng: món thiếu = 0, món còn = 1, món lạ = số đã ghi (0 / 1). */
-export function actualQuantity(line, counts, itemConditions) {
-  if (isItemLine(line)) return lineCondition(line, itemConditions) === 'missing' ? 0 : 1;
-  return Number(counts[line._id] || 0);
+/** Kệ thực tế khác kệ hệ thống của dòng (chỉ dòng thường). */
+export const isMovedLine = (line, result) => !line.isExtra && Boolean(result.foundStorageId)
+  && result.foundStorageId !== idOf(line.storageAtStart || line.storageId);
+
+/** Dòng khác thường: cần xử lý, không thấy, khác kệ, hoặc món lạ. */
+export function isUnusualLine(line, results) {
+  if (line.isExtra) return true;
+  const result = lineResult(line, results);
+  return result.countedResult !== 'ok' || isMovedLine(line, result);
 }
 
-/** Chênh lệch = thực tế - tồn sổ. */
-export const lineVariance = (line, actual) => actual - Number(line.systemQuantity || 0);
-
-/** Dòng khác thường: món thiếu, đổi tình trạng so với hiện có, hoặc món lạ. */
-export function isUnusualLine(line, itemConditions) {
-  if (!isItemLine(line)) return true;
-  const condition = lineCondition(line, itemConditions);
-  return condition === 'missing' || condition !== (line.itemId?.condition || 'good');
-}
-
-/** Số liệu tổng của phiếu đang mở cho hàng thẻ KPI. */
-export function countSummary(lines, counts, itemConditions) {
+/** Số liệu tổng của phiếu đang kiểm cho hàng thẻ KPI. */
+export function countSummary(lines, results) {
   return lines.reduce((summary, line) => {
-    const condition = isItemLine(line) ? lineCondition(line, itemConditions) : line.countedCondition;
-    summary.expected += Number(line.systemQuantity || 0);
-    summary.counted += actualQuantity(line, counts, itemConditions);
-    if (condition === 'missing') summary.missing += 1;
-    if (['damaged', 'unrepairable'].includes(condition)) summary.damaged += 1;
+    const result = lineResult(line, results);
+    summary.total += line.isExtra ? 0 : 1;
+    if (line.isExtra) summary.extra += 1;
+    else if (result.countedResult === 'not_found') summary.notFound += 1;
+    else if (result.countedResult === 'needs_service') summary.needsService += 1;
+    if (isMovedLine(line, result)) summary.moved += 1;
     return summary;
-  }, { expected: 0, counted: 0, missing: 0, damaged: 0 });
+  }, { total: 0, needsService: 0, notFound: 0, moved: 0, extra: 0 });
 }
 
 /** Mã kệ dùng để nhóm / sắp xếp dòng kiểm kê. */
 const storageCodeOf = (line) => line.storageId?.code || '';
+const codeOfLine = (line) => line.itemId?.itemCode || line.countedItemCode || '';
 
 /**
  * Nhóm dòng kiểm kê theo kệ (sắp theo mã kệ), lọc theo mã hàng / SKU và tùy chọn chỉ dòng khác thường.
  * @returns {{ key: string, label: string, lines: object[] }[]}
  */
-export function groupLinesByStorage(lines, { query = '', onlyUnusual = false, itemConditions = {} } = {}) {
+export function groupLinesByStorage(lines, { query = '', onlyUnusual = false, results = {} } = {}) {
   const keyword = query.trim().toLowerCase();
   const groups = new Map();
   const sorted = [...lines].sort((a, b) => storageCodeOf(a).localeCompare(storageCodeOf(b))
-    || String(a.itemId?.itemCode || '').localeCompare(String(b.itemId?.itemCode || '')));
+    || codeOfLine(a).localeCompare(codeOfLine(b)));
   for (const line of sorted) {
-    const text = [line.itemId?.itemCode, line.itemId?.serialNumber, line.countedItemCode, line.variantId?.sku]
-      .filter(Boolean).join(' ').toLowerCase();
+    const text = [codeOfLine(line), line.itemId?.serialNumber, line.variantId?.sku].filter(Boolean).join(' ').toLowerCase();
     if (keyword && !text.includes(keyword)) continue;
-    if (onlyUnusual && !isUnusualLine(line, itemConditions)) continue;
+    if (onlyUnusual && !isUnusualLine(line, results)) continue;
     const key = idOf(line.storageId) || 'none';
     if (!groups.has(key)) groups.set(key, { key, label: storageCodeOf(line) ? `Kệ ${storageCodeOf(line)}` : 'Chưa gán kệ', lines: [] });
     groups.get(key).lines.push(line);
@@ -124,21 +105,7 @@ export function groupLinesByStorage(lines, { query = '', onlyUnusual = false, it
   return [...groups.values()];
 }
 
-/** Số đếm và tình trạng ban đầu khi mở phiếu: món có mặt, tình trạng như cũ (hoặc kết quả đã lưu). */
-export function initialCounts(stocktake) {
-  const lines = stocktake.items || [];
-  const counts = Object.fromEntries(lines.map((line) => {
-    if (line.isCounted) return [line._id, String(line.countedQuantity)];
-    if (line.itemId) return [line._id, '1'];
-    return [line._id, ''];
-  }));
-  const conditions = Object.fromEntries(lines
-    .filter((line) => line.itemId)
-    .map((line) => [line._id, line.countedCondition || line.itemId.condition || 'good']));
-  return { counts, conditions };
-}
-
-/** Biến thể được phép ghi nhận là hàng mới phát hiện: thuộc phạm vi sản phẩm của phiếu (nếu có). */
+/** Biến thể được phép ghi nhận là món mới: thuộc phạm vi sản phẩm của phiếu (nếu có). */
 export function variantsInScope(variants, stocktake) {
   const productIds = (stocktake?.productIds || []).map(idOf);
   const variantIds = (stocktake?.variantIds || []).map(idOf);
@@ -147,39 +114,32 @@ export function variantsInScope(variants, stocktake) {
     || variantIds.includes(idOf(variant)));
 }
 
-const hasValue = (value) => value !== '' && value !== null && value !== undefined;
-
-/** Kiểm tra món lạ trước khi lưu (mã hàng không bắt buộc — trống thì hệ thống tự sinh); trả message lỗi hoặc ''. */
-export function validateCounts(lines, counts, newItems) {
-  const badCount = lines.some((line) => !line.itemId && hasValue(counts[line._id])
-    && !['0', '1'].includes(String(counts[line._id])));
-  const badNewItem = newItems.some((item) => !item.variantId || !item.storageId);
-  if (badCount || badNewItem) return 'Món lạ cần chọn đủ biến thể và vị trí.';
+/** Kiểm tra món lạ trước khi lưu; trả message lỗi hoặc ''. */
+export function validateCounts(newItems) {
+  if (newItems.some((item) => !item.storageId)) return 'Món lạ cần chọn kệ đang kiểm.';
+  if (newItems.some((item) => !item.itemCode?.trim() && !item.variantId)) return 'Món lạ cần nhập mã hàng, hoặc chọn biến thể nếu món chưa có mã.';
   return '';
 }
 
-/** Còn dòng món lạ chưa ghi số đếm thì chưa được gửi kết quả. */
-export function hasMissingCount(lines, counts) {
-  return lines.some((line) => !line.itemId && !hasValue(counts[line._id]));
-}
-
-/** Dữ liệu gửi API lưu số đếm: dòng món gửi tình trạng (`missing` = mất), món lạ mỗi phần tử một món. */
-export function buildCountPayload(lines, counts, itemConditions, newItems) {
-  const items = lines
-    .filter((line) => line.itemId || hasValue(counts[line._id]))
-    .map((line) => {
-      if (!line.itemId) return { detailId: line._id, countedQuantity: Number(counts[line._id]) };
-      const condition = lineCondition(line, itemConditions);
-      return { detailId: line._id, countedQuantity: condition === 'missing' ? 0 : 1, countedCondition: condition };
-    });
+/**
+ * Dữ liệu gửi API lưu kết quả: mọi dòng gửi `countedResult` (mặc định ok) + kệ thực tế nếu khác;
+ * món lạ gửi mã / biến thể / kệ đang kiểm. Dòng món lạ đã lưu chọn "not_found" = bỏ ghi nhận.
+ */
+export function buildCountPayload(lines, results, newItems) {
+  const items = lines.map((line) => {
+    const result = lineResult(line, results);
+    const row = { detailId: line._id, countedResult: result.countedResult };
+    if (!line.isExtra && result.countedResult !== 'not_found' && isMovedLine(line, result)) row.foundStorageId = result.foundStorageId;
+    return row;
+  });
   const validNewItems = newItems
-    .filter((item) => item.variantId && item.storageId)
-    .map(({ variantId, storageId, itemCode, serialNumber, countedCondition }) => ({
-      variantId,
-      storageId,
+    .filter((item) => item.storageId && (item.itemCode?.trim() || item.variantId))
+    .map(({ itemCode, variantId, storageId, serialNumber, countedResult }) => ({
       itemCode: itemCode?.trim() || undefined,
+      variantId: variantId || undefined,
+      storageId,
       serialNumber: serialNumber?.trim() || undefined,
-      countedCondition: countedCondition || 'good',
+      countedResult: countedResult === 'needs_service' ? 'needs_service' : 'ok',
     }));
   return { items, newItems: validNewItems };
 }

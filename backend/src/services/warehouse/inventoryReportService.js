@@ -7,6 +7,7 @@ import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundRece
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { RentalOrderItem } from '../../models/sale&rental/RentalOrderItem.js';
+import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
 import { getBalances } from './balanceQueryService.js';
 import { EMPTY_SUMMARY, buildBalanceReportRows, rollupReportRows, summarizeReport } from './inventoryReportRules.js';
 
@@ -59,7 +60,36 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
   return { items, summary: summarizeReport(items), locations };
 };
 
-export const getIndividualItemDetails = async ({ locationId, storageId, variantId, productId, itemLevel = 'variant', availableOnly = false }) => {
+/** Mặc định ẩn món đã rời kho (TASK-016 C4); `statuses=sold,lost,...` để xem riêng các trạng thái đó. */
+const HIDDEN_ITEM_STATUSES = ['disposed', 'renting', 'in_transit', 'sold', 'lost'];
+const ITEM_STATUSES = ['available', 'reserved', 'unavailable', 'maintenance', ...HIDDEN_ITEM_STATUSES];
+
+const parseStatuses = (value) => {
+  const list = (Array.isArray(value) ? value : String(value || '').split(',')).map((row) => String(row).trim()).filter(Boolean);
+  if (list.some((status) => !ITEM_STATUSES.includes(status))) throw invalid('Trạng thái món hàng không hợp lệ.');
+  return list;
+};
+
+/** Món `sold` → mã đơn bán (SalesOrderDetail.itemIds). Một truy vấn cho cả danh sách. */
+const attachSoldOrders = async (rows) => {
+  const soldIds = rows.filter((row) => row.status === 'sold').map((row) => row._id);
+  if (!soldIds.length) return rows;
+  const details = await SalesOrderDetail.find({ itemIds: { $in: soldIds } }).select('itemIds salesOrderId')
+    .populate('salesOrderId', 'orderCode').lean();
+  const orderByItem = new Map();
+  for (const detail of details) {
+    for (const itemId of detail.itemIds || []) orderByItem.set(String(itemId), detail.salesOrderId);
+  }
+  for (const row of rows) {
+    const order = orderByItem.get(String(row._id));
+    if (order) row.soldOrder = { _id: order._id, orderCode: order.orderCode };
+  }
+  return rows;
+};
+
+export const getIndividualItemDetails = async ({
+  locationId, storageId, variantId, productId, itemLevel = 'variant', availableOnly = false, statuses,
+}) => {
   if (!mongoose.isValidObjectId(locationId)) throw invalid('Kho/cửa hàng không hợp lệ.');
   if (storageId && storageId !== 'none' && !mongoose.isValidObjectId(storageId)) throw invalid('Vị trí lưu trữ không hợp lệ.');
   if (!['product', 'variant'].includes(itemLevel)) throw invalid('Cấp mặt hàng không hợp lệ.');
@@ -76,7 +106,11 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     variantIds = [variant._id];
   }
   const onlyAvailable = availableOnly === true || String(availableOnly).toLowerCase() === 'true';
-  const query = { locationId, variantId: { $in: variantIds }, status: onlyAvailable ? 'available' : { $nin: ['disposed', 'renting', 'in_transit', 'sold'] } };
+  const wanted = parseStatuses(statuses);
+  let status = { $nin: HIDDEN_ITEM_STATUSES };
+  if (wanted.length) status = { $in: wanted };
+  if (onlyAvailable) status = 'available';
+  const query = { locationId, variantId: { $in: variantIds }, status };
   if (storageId === 'none' || !storageId) query.storageId = null;
   else {
     const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId').lean();
@@ -94,7 +128,7 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     }).map((storage) => storage._id);
     query.storageId = { $in: descendantIds };
   }
-  const rows = await InventoryItem.find(query).select('itemCode serialNumber condition status inboundReceiptDetail storageId').populate('variantId', 'sku size color').populate({
+  const rows = await InventoryItem.find(query).select('itemCode serialNumber status inboundReceiptDetail storageId').populate('variantId', 'sku size color').populate({
     path: 'inboundReceiptDetail',
     select: 'receiptDetailCode receiptId unitCost createdAt',
     populate: { path: 'receiptId', select: 'receiptCode supplierId receivedAt createdAt', populate: { path: 'supplierId', select: 'supplierCode name' } },
@@ -121,5 +155,5 @@ export const getIndividualItemDetails = async ({ locationId, storageId, variantI
     }
     if (updates.length) await InboundReceiptDetail.bulkWrite(updates);
   }
-  return rows;
+  return attachSoldOrders(rows);
 };

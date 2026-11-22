@@ -1,4 +1,7 @@
 
+const OBJECT_ID = /^[a-f\d]{24}$/i;
+export const COUNT_RESULTS = Object.freeze(['ok', 'needs_service', 'not_found']);
+
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const isObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const idList = (value, label) => {
@@ -54,18 +57,24 @@ export const validateStocktakeCountInput = (payload) => {
   const items = payload.items == null ? [] : payload.items;
   const newItems = payload.newItems == null ? [] : payload.newItems;
   if (!Array.isArray(items) || !Array.isArray(newItems)) throw invalid('Các dòng kiểm đếm phải là danh sách.');
+  // TASK-016: mỗi dòng gửi `countedResult` (ok / needs_service / not_found) và kệ thực tế tùy chọn.
   for (const item of items) {
-    if (!isObject(item) || !/^[a-f\d]{24}$/i.test(String(item.detailId || ''))) throw invalid('Dòng kiểm đếm có mã không hợp lệ.');
-    if (!Number.isInteger(Number(item.countedQuantity)) || Number(item.countedQuantity) < 0) throw invalid('Số lượng thực tế phải là số nguyên không âm.');
-    if (item.countedItemStatus != null && !['available', 'reserved', 'maintenance', 'unavailable'].includes(item.countedItemStatus)) throw invalid('Trạng thái món hàng kiểm kê không hợp lệ.');
-    if (item.countedCondition != null && !['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'].includes(item.countedCondition)) throw invalid('Tình trạng món hàng kiểm kê không hợp lệ.');
+    if (!isObject(item) || !OBJECT_ID.test(String(item.detailId || ''))) throw invalid('Dòng kiểm đếm có mã không hợp lệ.');
+    if (!COUNT_RESULTS.includes(item.countedResult)) throw invalid('Kết quả kiểm phải là: có mặt – dùng được, có mặt – cần xử lý hoặc không thấy.');
+    if (item.foundStorageId != null && item.foundStorageId !== '' && !OBJECT_ID.test(String(item.foundStorageId))) throw invalid('Kệ thực tế không hợp lệ.');
   }
+  // Món lạ: mã gặp trên kệ (có thì dùng món đó, chưa có thì cần biến thể để tạo món mới) + kệ đang kiểm.
   for (const item of newItems) {
-    if (!isObject(item) || !/^[a-f\d]{24}$/i.test(String(item.variantId || ''))) throw invalid('Dòng hàng ngoài hệ thống có biến thể không hợp lệ.');
-    if (item.countedItemStatus != null && !['available', 'reserved', 'maintenance', 'unavailable'].includes(item.countedItemStatus)) throw invalid('Trạng thái món hàng mới không hợp lệ.');
-    if (item.countedCondition != null && !['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'].includes(item.countedCondition)) throw invalid('Tình trạng món hàng mới không hợp lệ.');
+    if (!isObject(item)) throw invalid('Dòng món lạ không hợp lệ.');
+    if (item.variantId != null && item.variantId !== '' && !OBJECT_ID.test(String(item.variantId))) throw invalid('Món lạ có biến thể không hợp lệ.');
+    if (!String(item.itemCode || '').trim() && !item.variantId) throw invalid('Món lạ cần mã hàng hoặc biến thể.');
+    if (!OBJECT_ID.test(String(item.storageId || ''))) throw invalid('Chọn kệ đang kiểm cho món lạ.');
+    if (item.countedResult != null && !['ok', 'needs_service'].includes(item.countedResult)) throw invalid('Món lạ chỉ ghi "dùng được" hoặc "cần xử lý".');
   }
-  return { items, newItems };
+  return {
+    items: items.map((item) => ({ ...item, foundStorageId: item.foundStorageId ? String(item.foundStorageId) : null })),
+    newItems,
+  };
 };
 
 export const validateCancelReason = (payload) => {

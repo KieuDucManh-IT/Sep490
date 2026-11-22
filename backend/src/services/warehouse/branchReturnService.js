@@ -1,8 +1,9 @@
 // Trả hàng từ chi nhánh về kho tổng (phiếu StockTransfer có direction = 'branch_to_central').
 // Luồng trạng thái: requested → approved → shipped → receipt_submitted → receipt_approved → completed
-//                   (requested có thể bị rejected; approved có thể bị cancelled; receipt_submitted bị trả lại → shipped).
+//                   (requested có thể bị rejected; requested / approved có thể bị cancelled; receipt_submitted bị trả lại → shipped).
+// TASK-016 D2: chỉ hủy trước khi gửi (requested / approved), người hủy là quản lý chi nhánh tạo phiếu hoặc WM, bắt buộc lý do.
 // Ai làm bước nào:
-// - Quản lý chi nhánh: tạo phiếu, gửi hàng (trừ tồn chi nhánh), hủy khi đã duyệt nhưng chưa gửi.
+// - Quản lý chi nhánh: tạo phiếu, gửi hàng (trừ tồn chi nhánh), hủy trước khi gửi.
 // - Quản lý kho tổng: duyệt số lượng (giữ tồn chi nhánh) + giao nhân viên, duyệt kết quả kiểm nhận.
 // - Nhân viên kho tổng được giao: ghi nhận số nhận / hỏng, xếp hàng lên kệ (cộng tồn kho tổng).
 // Hàng thiếu khi xếp lên kệ → mở phiếu chênh lệch thay vì loại bỏ ngay.
@@ -27,6 +28,7 @@ import { getCentralWarehouse } from './shared/locations.js';
 import { addToStorageChain, capacitySnapshot } from './shared/capacity.js';
 import { parsePaging } from './shared/pagination.js';
 import { andFilter, buildSearchFilter, listSlips } from './shared/listing.js';
+import { validateCancelReason } from '../../validations/warehouse/stockTransferValidation.js';
 
 // Giữ export cũ cho nơi khác còn import capacitySnapshot từ file này.
 export { capacitySnapshot };
@@ -44,8 +46,6 @@ export const RETURN_STATUS = {
 const LISTABLE_STATUSES = Object.values(RETURN_STATUS);
 const RETURN_DIRECTION = { direction: 'branch_to_central' };
 const NOT_ASSIGNED_MESSAGE = 'Phiếu này chưa được giao cho bạn.';
-/** Món có tình trạng này không được chọn để trả (không gửi hàng hỏng/mất về kho tổng qua phiếu trả). */
-const UNRETURNABLE_CONDITIONS = ['damaged', 'unrepairable', 'missing'];
 
 const isBranchManagerOrAdmin = (user) => isBranchManager(user) || isAdmin(user);
 const validId = (id) => mongoose.isValidObjectId(id);
@@ -79,9 +79,9 @@ const findDetails = (ids) => StockTransferDetail.find({ transferId: { $in: ids }
     select: 'sku size color productId',
     populate: { path: 'productId', select: 'name productCode' },
   })
-  .populate('itemIds', 'itemCode serialNumber condition status')
-  .populate('receivedItemIds', 'itemCode serialNumber condition status')
-  .populate('damagedItemIds', 'itemCode serialNumber condition status')
+  .populate('itemIds', 'itemCode serialNumber status')
+  .populate('receivedItemIds', 'itemCode serialNumber status')
+  .populate('damagedItemIds', 'itemCode serialNumber status')
   .populate('putawayAllocations.storageId', 'code name type')
   .populate('discrepancyId', 'discrepancyCode status quantityMissing quantityResolved');
 
@@ -259,7 +259,7 @@ const reserveReturnItems = async ({ transfer, detail, quantity, session }) => {
   const place = { locationId: transfer.fromLocationId, variantId: detail.variantId };
   const available = await getAvailable(place, session);
   if (available < quantity) throw appError(`Chi nhánh chỉ còn ${available} cái khả dụng để trả.`, 409);
-  const locked = await InventoryItem.find({ ...place, status: 'available', condition: { $nin: UNRETURNABLE_CONDITIONS } })
+  const locked = await InventoryItem.find({ ...place, status: 'available' })
     .sort({ createdAt: 1 }).limit(quantity).session(session);
   if (locked.length < quantity) {
     throw stockMismatchError({ ...place, expected: available, found: locked.length, context: 'decideBranchReturn' });
@@ -366,24 +366,43 @@ export const dispatchBranchReturn = async (id, user) => {
   return loadReturn(id, user);
 };
 
-/** Chi nhánh hủy phiếu đã duyệt nhưng chưa gửi: nhả phần tồn đã giữ. */
-export const cancelBranchReturn = async (id, user) => {
+/** Phiếu trả chỉ hủy được trước khi chi nhánh gửi hàng (TASK-016 D2). */
+export const CANCELLABLE_RETURN_STATUSES = Object.freeze([RETURN_STATUS.REQUESTED, RETURN_STATUS.APPROVED]);
+
+/** WM / admin hủy mọi phiếu; quản lý chi nhánh chỉ hủy phiếu mình tạo của chi nhánh mình. */
+const assertCanCancelReturn = async (transfer, user) => {
+  if (isWarehouseManagerOrAdmin(user)) return;
+  if (!isBranchManager(user)) throw appError('Chỉ quản lý chi nhánh tạo phiếu hoặc quản lý kho mới được hủy phiếu trả hàng.', 403);
+  if (!isSameUser(transfer.createdBy, user)) throw appError('Chỉ quản lý chi nhánh đã tạo phiếu mới được hủy phiếu này.', 403);
+  await assertBranchAccess(transfer, user);
+};
+
+/**
+ * Hủy phiếu trả trước khi gửi hàng: requested / approved → cancelled (cập nhật có điều kiện; sai trạng thái → 409).
+ * Phiếu đã duyệt đang giữ món ở chi nhánh → nhả về `available`.
+ */
+export const cancelBranchReturn = async (id, payload, user) => {
   if (!validId(id)) throw appError('Mã phiếu trả hàng không hợp lệ.');
-  if (!isBranchManagerOrAdmin(user)) throw appError('Chỉ quản lý chi nhánh mới được hủy phiếu trả hàng.', 403);
+  const { reason } = validateCancelReason(payload);
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await loadReturnInStatus(id, RETURN_STATUS.APPROVED, session, 'Chỉ có thể hủy phiếu đã duyệt nhưng chưa gửi hàng.');
-      await assertBranchAccess(transfer, user);
+      const current = await StockTransfer.findOne({ _id: id, ...RETURN_DIRECTION }).session(session);
+      if (!current) throw appError('Không tìm thấy phiếu trả hàng.', 404);
+      await assertCanCancelReturn(current, user);
+      const previous = await StockTransfer.findOneAndUpdate(
+        { _id: id, ...RETURN_DIRECTION, status: { $in: CANCELLABLE_RETURN_STATUSES } },
+        { $set: { status: RETURN_STATUS.CANCELLED, cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
+        { returnDocument: 'before', session },
+      );
+      if (!previous) throw appError('Chỉ hủy được phiếu trả đang chờ duyệt hoặc đã duyệt nhưng chưa gửi hàng.', 409);
+      if (previous.status !== RETURN_STATUS.APPROVED) return;
       const details = await StockTransferDetail.find({ transferId: id }).session(session);
       for (const detail of details) {
-        const quantity = detail.quantityApproved || 0;
-        if (!quantity) continue;
-        const locked = await findReservedItems(transfer, detail, session);
+        if (!detail.quantityApproved) continue;
+        const locked = await findReservedItems(previous, detail, session);
         await moveItems(locked, { status: 'available', warehouseHold: -1 }, session);
       }
-      transfer.status = RETURN_STATUS.CANCELLED;
-      await transfer.save({ session });
     });
   } finally {
     await session.endSession();
@@ -582,7 +601,7 @@ const putawayReturnItems = async ({ transfer, detail, line, user, session }) => 
       .session(session);
     if (!item) throw appError('Một món hàng không còn ở trạng thái đang điều chuyển.', 409);
     let change = { locationId: transfer.toLocationId, storageId: shelfByItem.get(itemId), status: 'available' };
-    if (damaged.has(itemId)) change = { locationId: transfer.toLocationId, storageId: null, status: 'unavailable', condition: 'damaged' };
+    if (damaged.has(itemId)) change = { locationId: transfer.toLocationId, storageId: null, status: 'unavailable' };
     await moveItem(item, change, session);
     await recordStockMovement(transferInMovement(transfer, detail, user, {
       itemId: item._id, storageId: item.storageId, quantityChange: 1,

@@ -145,16 +145,15 @@ export const createReturnReceiptAndSettle = async ({
     const returnDetails = items.map((it) => ({
       rentalReturnId: rentalReturn._id,
       itemId: it.itemId,
-      conditionOnReturn: it.conditionOnReturn,
-      itemReturnStatus: it.itemReturnStatus || 'accepted',
+      inspectionResult: it.inspectionResult,
       damageFee: Number(it.damageFee || 0),
       note: it.note || '',
     }));
     await RentalReturnDetail.insertMany(returnDetails, { session });
 
-    // 3. TASK-010: cập nhật hiện vật qua itemStateService theo bảng quy đổi (người dùng chốt 17/11):
-    //    new/good → available; worn/damaged → unavailable; unrepairable → unavailable + condition unrepairable.
-    //    Không dùng `maintenance` ở chi nhánh (bảo trì chỉ ở kho tổng). Helper: renting −1, onHand +1, unavailable +1 nếu cần.
+    // 3. TASK-016 A3: cập nhật hiện vật qua itemStateService theo kết quả kiểm:
+    //    ok → available; needs_service → unavailable; missing → lost (không tính vào tồn, RentalOrderItem → missing).
+    //    Không dùng `maintenance` ở chi nhánh (bảo trì chỉ ở kho tổng).
     const orderDetails = await RentalOrderDetail.find({ rentalOrderId: order._id }).select('_id').session(session);
     const handedOver = await RentalOrderItem.find({
       rentalOrderDetailId: { $in: orderDetails.map((d) => d._id) },
@@ -173,11 +172,13 @@ export const createReturnReceiptAndSettle = async ({
       if (!invItem || !handedOverIds.has(String(it.itemId))) {
         throw new ServiceError(422, `Hiện vật ${invItem?.itemCode || it.itemId} không thuộc đơn thuê này hoặc chưa được bàn giao`);
       }
-      return { item: invItem, conditionOnReturn: it.conditionOnReturn };
+      return { item: invItem, inspectionResult: it.inspectionResult };
     });
     await returnItems(entries, session);
 
-    await StockMovement.insertMany(entries.map(({ item }) => ({
+    // Món mất không quay lại kho → không ghi +1.
+    const backInStock = entries.filter(({ inspectionResult }) => inspectionResult !== 'missing');
+    await StockMovement.insertMany(backInStock.map(({ item }) => ({
       variantId: item.variantId,
       itemId: item._id,
       locationId: item.locationId,
@@ -189,11 +190,12 @@ export const createReturnReceiptAndSettle = async ({
       createdBy: receivedBy || order.createdBy,
     })), { session });
 
-    await RentalOrderItem.updateMany(
-      { _id: { $in: handedOver.map((row) => row._id) } },
-      { $set: { status: 'returned' } },
-      { session }
-    );
+    const missingIds = new Set(entries.filter(({ inspectionResult }) => inspectionResult === 'missing').map(({ item }) => String(item._id)));
+    const rowsWith = (missing) => handedOver.filter((row) => missingIds.has(String(row.itemId)) === missing).map((row) => row._id);
+    await RentalOrderItem.updateMany({ _id: { $in: rowsWith(false) } }, { $set: { status: 'returned' } }, { session });
+    if (missingIds.size) {
+      await RentalOrderItem.updateMany({ _id: { $in: rowsWith(true) } }, { $set: { status: 'missing' } }, { session });
+    }
 
     // 4. Quyết toán Tiền cọc trong Ví nội bộ (ACID)
     if (order.depositStatus === 'held') {
@@ -258,8 +260,8 @@ export const createReturnReceiptAndSettle = async ({
     if (isInternal) await session.commitTransaction();
 
     // TASK-012: Trả hàng → tồn kho thay đổi → kiểm tra lại hết hàng
-    // - Hàng new/good: available tăng → isOutOfStock có thể thành false
-    // - Hàng worn/damaged/unrepairable: unavailable tăng → không ảnh hưởng available, nhưng vẫn refresh để chắc chắn
+    // - Món đạt: available tăng → isOutOfStock có thể thành false
+    // - Món cần xử lý / mất: không ảnh hưởng available, nhưng vẫn refresh để chắc chắn
     if (isInternal) {
       try {
         const variantIds = [...new Set(entries.map((e) => String(e.item.variantId)).filter(Boolean))];

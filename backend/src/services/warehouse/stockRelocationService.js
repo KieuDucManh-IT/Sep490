@@ -34,7 +34,6 @@ export const RELOCATION_STATUS = {
 const OPEN_STATUSES = [RELOCATION_STATUS.ASSIGNED, RELOCATION_STATUS.IN_PROGRESS];
 const OPERATION_TYPES = ['move', 'split', 'merge'];
 /** Món có tình trạng này không được chọn để dời kệ. */
-const UNMOVABLE_CONDITIONS = ['damaged', 'unrepairable', 'missing'];
 
 const validId = mongoose.isValidObjectId;
 const makeCode = () => {
@@ -55,8 +54,8 @@ const findDetails = (ids) => StockRelocationDetail.find({ relocationId: { $in: i
   })
   .populate('fromStorageId', 'code name type')
   .populate('toStorageId', 'code name type')
-  .populate('itemIds', 'itemCode serialNumber condition status')
-  .populate('confirmedItemIds', 'itemCode serialNumber condition status');
+  .populate('itemIds', 'itemCode serialNumber status')
+  .populate('confirmedItemIds', 'itemCode serialNumber status');
 
 const load = async (id, user, session) => {
   if (!validId(id)) throw appError('Mã phiếu di chuyển không hợp lệ.');
@@ -179,7 +178,7 @@ const holdSourceStock = async ({ central, line, session }) => {
   const available = availableOf(balance);
   const message = `Tồn khả dụng tại kệ nguồn không đủ (${available}/${line.quantity}).`;
   if (!balance || available < line.quantity) throw appError(message, 409);
-  const items = await InventoryItem.find({ ...place, status: 'available', condition: { $nin: UNMOVABLE_CONDITIONS } })
+  const items = await InventoryItem.find({ ...place, status: 'available' })
     .sort({ createdAt: 1 }).limit(line.quantity).session(session);
   if (items.length !== line.quantity) {
     throw stockMismatchError({ ...place, expected: available, found: items.length, context: 'createStockRelocation' });

@@ -1,8 +1,8 @@
 // TASK-015 — Trả hàng bán theo món (SalesReturn / SalesReturnDetail).
 // Bản tối thiểu theo spec C2: quản lý chi nhánh của đơn (hoặc admin) ghi nhận khách trả lại các món đã mua của một
-// đơn đã hoàn tất. Món chọn trong số món đã bán của đơn (StockMovement `sale` có itemId), số món = `quantityReturned`.
-// Trong MỘT transaction: tạo phiếu (`completed`), món `sold` → tại chi nhánh của đơn, không kệ:
-//   restock → available; quarantine / repair / dispose → unavailable (WM xử lý tiếp bằng giặt/sửa hoặc thanh lý).
+// đơn đã hoàn tất. TASK-016 C: món chọn trong `SalesOrderDetail.itemIds` của dòng đơn, số món = `quantityReturned`.
+// Trong MỘT transaction: tạo phiếu (`completed`), món `sold` → tại chi nhánh của đơn, không kệ, theo kết quả kiểm:
+//   Đạt (ok) → available; Cần xử lý (needs_service) → unavailable (chờ chuyển về kho tổng xử lý).
 // Balance đổi theo món qua itemStateService; sổ biến động `sales_return` mỗi món một dòng có itemId.
 // NGOÀI PHẠM VI (cần quyết định nghiệp vụ): duyệt phiếu nhiều bước và hoàn tiền. `refundAmount` chỉ ghi nhận,
 // không tạo giao dịch ví, không đổi `paymentStatus` của đơn.
@@ -14,12 +14,11 @@ import { SalesReturn } from '../../models/sale&rental/SalesReturn.js';
 import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { moveItems, recordItemMovements } from '../warehouse/itemStateService.js';
 import { assertBranchCapacity } from '../warehouse/shared/capacity.js';
 import { isAdmin, isBranchManager } from '../warehouse/shared/roles.js';
 import {
-  checkReturnLines, parseSalesReturnPayload, returnedItemStatus, totalRefundAmount,
+  checkReturnLines, parseSalesReturnPayload, returnableItemsOf, returnedItemStatus, totalRefundAmount,
 } from './salesReturnRules.js';
 
 /** Phiếu trả ở các trạng thái này không còn giữ món (món có thể được trả lại ở phiếu khác). */
@@ -52,20 +51,6 @@ const loadOrder = async (orderId, session = null) => {
   return order;
 };
 
-/** Map variantId → Set id món đã bán của đơn (sổ biến động `sale` của đơn). */
-const soldItemsOfOrder = async (orderId, session) => {
-  const movements = await StockMovement.find({
-    referenceType: 'sales_order', referenceId: orderId, movementType: 'sale', itemId: { $ne: null },
-  }).select('variantId itemId').session(session).lean();
-  const byVariant = new Map();
-  for (const movement of movements) {
-    const key = idOf(movement.variantId);
-    if (!byVariant.has(key)) byVariant.set(key, new Set());
-    byVariant.get(key).add(idOf(movement.itemId));
-  }
-  return byVariant;
-};
-
 /** Các dòng trả đang có hiệu lực của đơn: số món đã trả theo dòng đơn và tập id món đã trả. */
 const previousReturnsOfOrder = async (orderId, session) => {
   const returns = await SalesReturn.find({ salesOrderId: orderId, returnStatus: { $nin: INACTIVE_RETURN_STATUSES } })
@@ -93,7 +78,7 @@ export const listSalesReturns = async (orderId, user) => {
     .populate('createdBy', 'FullName Email').lean();
   if (!returns.length) return [];
   const details = await SalesReturnDetail.find({ salesReturnId: { $in: returns.map((row) => row._id) } })
-    .populate('itemIds', 'itemCode serialNumber condition status').lean();
+    .populate('itemIds', 'itemCode serialNumber status').lean();
   return returns.map((row) => ({ ...row, items: details.filter((detail) => idOf(detail.salesReturnId) === idOf(row._id)) }));
 };
 
@@ -104,41 +89,34 @@ export const listSalesReturns = async (orderId, user) => {
 export const getReturnableItems = async (orderId, user) => {
   const order = await loadOrder(orderId);
   await assertCanManageReturns(order, user);
-  const [details, soldByVariant, previous] = await Promise.all([
+  const [details, previous] = await Promise.all([
     SalesOrderDetail.find({ salesOrderId: order._id }).populate('variantId', 'sku size color').lean(),
-    soldItemsOfOrder(order._id, null),
     previousReturnsOfOrder(order._id, null),
   ]);
-  const soldIds = [...soldByVariant.values()].flatMap((ids) => [...ids]);
+  const soldIds = details.flatMap((detail) => detail.itemIds || []);
   const items = soldIds.length
-    ? await InventoryItem.find({ _id: { $in: soldIds }, status: 'sold' }).select('_id itemCode serialNumber condition variantId').lean()
+    ? await InventoryItem.find({ _id: { $in: soldIds }, status: 'sold' }).select('_id itemCode serialNumber status variantId').lean()
     : [];
-  return details.map((detail) => {
-    const variantKey = idOf(detail.variantId);
-    const sold = soldByVariant.get(variantKey) || new Set();
-    const returnable = items.filter((item) => idOf(item.variantId) === variantKey && sold.has(idOf(item._id))
-      && !previous.returnedItemIds.has(idOf(item._id)));
-    return {
-      salesOrderDetailId: detail._id,
-      variant: detail.variantId,
-      quantity: detail.quantity,
-      quantityReturned: previous.returnedCountByDetail.get(idOf(detail._id)) || 0,
-      items: returnable,
-    };
-  });
+  return details.map((detail) => ({
+    salesOrderDetailId: detail._id,
+    variant: detail.variantId,
+    quantity: detail.quantity,
+    quantityReturned: previous.returnedCountByDetail.get(idOf(detail._id)) || 0,
+    hasItemList: Boolean(detail.itemIds?.length),
+    items: returnableItemsOf(detail, items, previous.returnedItemIds),
+  }));
 };
 
 /* ------------------------------ Tạo phiếu trả ------------------------------ */
 
-/** Đổi trạng thái các món trả của một dòng và ghi sổ `sales_return`. */
+/** Đổi trạng thái các món trả của một dòng theo kết quả kiểm và ghi sổ `sales_return`. */
 const restockReturnLine = async ({ order, line, variantId, salesReturn, items, user, session }) => {
-  const change = {
-    status: returnedItemStatus(line.disposition),
-    condition: line.conditionOnReturn,
+  const resultByItem = new Map(line.inspectionResults.map((row) => [row.itemId, row.result]));
+  await moveItems(items, (item) => ({
+    status: returnedItemStatus(resultByItem.get(idOf(item._id))),
     locationId: order.locationId,
     storageId: null,
-  };
-  await moveItems(items, change, session);
+  }), session);
   await recordItemMovements(items, {
     variantId,
     locationId: order.locationId,
@@ -167,15 +145,13 @@ export const createSalesReturn = async (orderId, payload, user) => {
 
       const details = await SalesOrderDetail.find({ salesOrderId: order._id }).session(session).lean();
       const itemIds = data.items.flatMap((line) => line.itemIds);
-      const [soldItemIdsByVariant, previous, items] = await Promise.all([
-        soldItemsOfOrder(order._id, session),
+      const [previous, items] = await Promise.all([
         previousReturnsOfOrder(order._id, session),
         InventoryItem.find({ _id: { $in: itemIds } }).session(session),
       ]);
       const itemById = new Map(items.map((item) => [idOf(item._id), item]));
       checkReturnLines(data.items, {
         detailById: new Map(details.map((detail) => [idOf(detail._id), detail])),
-        soldItemIdsByVariant,
         returnedCountByDetail: previous.returnedCountByDetail,
         returnedItemIds: previous.returnedItemIds,
         itemById,
@@ -208,6 +184,6 @@ export const createSalesReturn = async (orderId, payload, user) => {
     await session.endSession();
   }
   const salesReturn = await SalesReturn.findById(returnId).lean();
-  const items = await SalesReturnDetail.find({ salesReturnId: returnId }).populate('itemIds', 'itemCode serialNumber condition status').lean();
+  const items = await SalesReturnDetail.find({ salesReturnId: returnId }).populate('itemIds', 'itemCode serialNumber status').lean();
   return { ...salesReturn, items };
 };

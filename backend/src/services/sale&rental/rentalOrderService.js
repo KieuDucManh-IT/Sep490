@@ -28,7 +28,7 @@ import { InventoryReservation } from '../../models/warehouse/inventory/Inventory
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import {
   reserveStock, closeReservations, releaseReserved,
-  reserveItemsForOrder, releaseItemsFromOrder, handoverItems, UNUSABLE_CONDITIONS, withStatus,
+  reserveItemsForOrder, releaseItemsFromOrder, handoverItems, withStatus,
 } from '../warehouse/orderStockService.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
@@ -505,12 +505,6 @@ export const assignPhysicalItems = async ({
           throw new ServiceError(
             422,
             `Hiện vật [${item.itemCode || item._id}] không ở trạng thái sẵn sàng (hiện tại: ${item.status})`
-          );
-        }
-        if (!alreadyMine && UNUSABLE_CONDITIONS.includes(item.condition)) {
-          throw new ServiceError(
-            422,
-            `Hiện vật [${item.itemCode || item._id}] đang hỏng/thiếu (${item.condition}), không thể cho thuê`
           );
         }
         if (!alreadyMine) toReserve.push(item);

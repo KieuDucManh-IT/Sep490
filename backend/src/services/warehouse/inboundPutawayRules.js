@@ -1,14 +1,14 @@
 // TASK-015 — Hàm thuần cho bước xếp hàng nhập kho lên kệ (không đọc DB, có unit test).
 // Mọi đơn vị thực nhận đều thành món trên kệ:
-//   phần nhận tốt (thực nhận − hỏng) → món `available`, tình trạng `new`;
-//   phần hỏng → món `unavailable`, tình trạng `damaged` (quyết định 2), xếp kệ và tính sức chứa như hàng thường.
+//   phần nhận tốt (thực nhận − hỏng) → món `available`;
+//   phần hỏng → món `unavailable` (quyết định 2), xếp kệ và tính sức chứa như hàng thường. TASK-016: bỏ `condition`.
 
 const sumQuantity = (rows) => rows.reduce((total, row) => total + (row.quantity || 0), 0);
 
-/** Trạng thái / tình trạng của món sinh ra theo phần nhận tốt hoặc phần hỏng. */
+/** Trạng thái của món sinh ra theo phần nhận tốt hoặc phần hỏng. */
 export const INBOUND_ITEM_STATE = Object.freeze({
-  good: Object.freeze({ status: 'available', condition: 'new' }),
-  damaged: Object.freeze({ status: 'unavailable', condition: 'damaged' }),
+  good: Object.freeze({ status: 'available' }),
+  damaged: Object.freeze({ status: 'unavailable' }),
 });
 
 /** Số nhận tốt và số hỏng của một dòng phiếu (hỏng không vượt thực nhận). */

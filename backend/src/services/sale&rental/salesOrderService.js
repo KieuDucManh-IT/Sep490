@@ -30,6 +30,7 @@ import {
   updateSalesOrderStatusSchema,
 } from '../../validations/sale&rental/salesOrderValidation.js';
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import { splitItemsByLines } from './salesReturnRules.js';
 
 export class ServiceError extends Error {
   constructor(status, message, code = null, details = null) {
@@ -638,8 +639,8 @@ export const updateSalesOrderStatus = async ({
       }
 
       // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật:
-      // chọn FIFO món `available` (condition dùng được) → `sold` qua itemStateService, gộp reserved −qty;
-      // StockMovement mỗi món một dòng có itemId (trả hàng bán tra lại món qua các dòng này).
+      // chọn FIFO món `available` → `sold` qua itemStateService, gộp reserved −qty;
+      // StockMovement mỗi món một dòng có itemId. TASK-016 C: ghi món đã bán vào `itemIds` của từng dòng đơn.
       const details = await SalesOrderDetail.find({ salesOrderId: order._id }).populate('variantId', 'sku').session(session);
       const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'sale' }, 'consumed', session);
       const lines = new Map();
@@ -664,6 +665,10 @@ export const updateSalesOrderStatus = async ({
           referenceId: order._id,
           createdBy: user._id,
         })), { session });
+        const variantDetails = details.filter((it) => String(it.variantId?._id || it.variantId) === variantId);
+        for (const { detailId, itemIds } of splitItemsByLines(variantDetails, soldItems)) {
+          await SalesOrderDetail.updateOne({ _id: detailId }, { $set: { itemIds } }, { session });
+        }
       }
     } else if (orderStatus === 'cancelled') {
       updateFields.cancelledAt = new Date();

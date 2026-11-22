@@ -3,7 +3,8 @@
 // - Hệ thống tự mở phiếu khi chi nhánh chốt nhận hàng thiếu (stockTransferService) hoặc kho tổng xếp
 //   hàng trả về bị thiếu (branchReturnService).
 // - Quản lý kho tổng (hoặc admin) kết luận: "tìm thấy" → nhập lại về nơi nhận ban đầu hoặc kệ kho tổng;
-//   "mất" → món chuyển disposed (lúc xuất đã trừ tồn). TASK-015: phiếu luôn theo món (`itemIds`).
+//   "mất" → món chuyển `lost` (lúc xuất đã trừ tồn). TASK-015: phiếu luôn theo món (`itemIds`).
+// - TASK-016: bỏ `condition`; món thiếu giữ `in_transit` tới khi kết luận, tìm thấy → `available`.
 // - Quản lý chi nhánh chỉ xem phiếu liên quan tới chi nhánh mình.
 import mongoose from 'mongoose';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
@@ -45,7 +46,7 @@ const population = [
     select: 'sku size color productId',
     populate: { path: 'productId', select: 'productCode name' },
   },
-  { path: 'itemIds', select: 'itemCode serialNumber condition status locationId storageId' },
+  { path: 'itemIds', select: 'itemCode serialNumber status locationId storageId' },
   { path: 'createdBy', select: 'FullName Email' },
   { path: 'resolutions.resolvedBy', select: 'FullName Email' },
   { path: 'resolutions.targetLocationId', select: 'code name type' },
@@ -55,25 +56,19 @@ const population = [
 
 /* ------------------------------ Mở phiếu khi nhận thiếu ------------------------------ */
 
-/** Món thiếu = món đã xuất nhưng không có trong danh sách nhận; đánh dấu missing, nhớ condition cũ. */
-const markMissingItems = async (detail, missing, session) => {
+/** Món thiếu = món đã xuất nhưng không có trong danh sách nhận (vẫn `in_transit`, không nằm trong balance). */
+const findMissingItems = async (detail, missing, session) => {
   const received = new Set((detail.receivedItemIds || []).map(String));
   const missingIds = (detail.itemIds || []).map(String).filter((id) => !received.has(id));
   const items = await InventoryItem.find({ _id: { $in: missingIds }, status: 'in_transit' })
-    .select('_id itemCode variantId locationId storageId status condition').session(session).lean();
+    .select('_id').session(session).lean();
   if (items.length !== missing) throw appError('Số món thiếu không khớp với danh sách mã hàng đang điều chuyển.', 409);
-  // Món vẫn in_transit (không nằm trong balance), chỉ đổi tình trạng; đi qua itemStateService cho thống nhất.
-  await moveItems(items, { condition: 'missing' }, session);
-  return {
-    itemIds: items.map((item) => item._id),
-    itemPreviousConditions: items.map((item) => ({ itemId: item._id, condition: item.condition || 'good' })),
-  };
+  return { itemIds: items.map((item) => item._id) };
 };
 
 /**
  * Mở phiếu chênh lệch cho các dòng điều chuyển bị thiếu. Gọi trong transaction của bước chốt nhận hàng.
- * Món thiếu giữ `in_transit` nhưng đặt `condition: 'missing'` để không bị chọn nhầm,
- * condition cũ được lưu lại để khôi phục khi tìm thấy.
+ * Món thiếu giữ `in_transit` cho tới khi phiếu kết luận (không luồng nào chọn được món `in_transit`).
  * Không ghi sổ biến động vì lúc xuất đã ghi transfer_out đủ số lượng.
  */
 export const openTransferDiscrepancies = async ({ transfer, details, user, session }) => {
@@ -81,7 +76,7 @@ export const openTransferDiscrepancies = async ({ transfer, details, user, sessi
   for (const detail of details) {
     const missing = Number(detail.quantityMissing || 0);
     if (missing <= 0 || detail.discrepancyId) continue;
-    const missingItems = await markMissingItems(detail, missing, session);
+    const missingItems = await findMissingItems(detail, missing, session);
     const [discrepancy] = await StockDiscrepancy.create([{
       discrepancyCode: makeCode(),
       transferId: transfer._id,
@@ -212,11 +207,11 @@ const claimResolution = async ({ discrepancy, data, picked, user, session }) => 
   if (!claimed) throw appError('Phiếu chênh lệch vừa được người khác cập nhật. Hãy tải lại phiếu.', 409);
 };
 
-/** Mất: món in_transit → disposed (balance không đổi vì món đã rời sổ lúc xuất). */
+/** Mất: món in_transit → lost (balance không đổi vì món đã rời sổ lúc xuất). */
 const writeOffLostItems = async (itemIds, session) => {
   const items = await InventoryItem.find({ _id: { $in: itemIds }, status: 'in_transit' }).session(session);
   if (items.length !== itemIds.length) throw appError('Một số món hàng không còn ở trạng thái đang điều tra.', 409);
-  await moveItems(items, { status: 'disposed', condition: 'missing' }, session);
+  await moveItems(items, { status: 'lost' }, session);
 };
 
 /** Nơi nhập lại: kho tổng (bắt buộc chọn kệ) hoặc đúng nơi nhận ban đầu (không chọn kệ). */
@@ -260,20 +255,12 @@ const assertCentralShelfCapacity = async (location, storageId, quantity, session
   }
 };
 
-/** Món tìm thấy: in_transit → available (hoặc unavailable nếu trước đó hỏng) tại nơi nhập lại. */
-const restoreFoundItems = async ({ discrepancy, itemIds, location, storageId, movementBase, session }) => {
-  const previous = new Map(discrepancy.itemPreviousConditions.map((row) => [String(row.itemId), row.condition]));
+/** Món tìm thấy: in_transit → available tại nơi nhập lại (TASK-016 A3). */
+const restoreFoundItems = async ({ itemIds, location, storageId, movementBase, session }) => {
   for (const itemId of itemIds) {
-    const condition = previous.get(itemId) || 'good';
     const item = await InventoryItem.findOne({ _id: itemId, status: 'in_transit' }).session(session);
     if (!item) throw appError('Một số món hàng không còn ở trạng thái đang điều tra.', 409);
-    const damaged = ['damaged', 'unrepairable'].includes(condition);
-    await moveItem(item, {
-      status: damaged ? 'unavailable' : 'available',
-      condition,
-      locationId: location._id,
-      storageId,
-    }, session);
+    await moveItem(item, { status: 'available', locationId: location._id, storageId }, session);
     await recordStockMovement({ ...movementBase, itemId: item._id, quantityChange: 1 }, session);
   }
 };
@@ -293,7 +280,7 @@ const restockFoundGoods = async ({ discrepancy, data, picked, user, session }) =
     referenceId: discrepancy._id,
     createdBy: user._id,
   };
-  await restoreFoundItems({ discrepancy, itemIds: picked.itemIds, location, storageId, movementBase, session });
+  await restoreFoundItems({ itemIds: picked.itemIds, location, storageId, movementBase, session });
 };
 
 /**

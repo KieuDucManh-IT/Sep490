@@ -1,71 +1,88 @@
 import React, { useState } from 'react';
 import { Form } from 'react-bootstrap';
-import { formatVariantName, labelOf, CONDITION_LABELS } from '../../../constants/warehouseLabels';
 import {
-  COUNT_CONDITION_OPTIONS, actualQuantity, groupLinesByStorage, isItemLine, isUnusualLine, lineCondition, lineVariance,
-} from './stocktakeHelpers';
+  ITEM_STATUS_LABELS, STOCKTAKE_OUTCOME_LABELS, STOCKTAKE_RESULT_LABELS, formatVariantName, labelOf,
+} from '../../../constants/warehouseLabels';
+import { idOf } from '../shared/slipHelpers';
+import { groupLinesByStorage, isMovedLine, isUnusualLine, lineResult } from './stocktakeHelpers';
 
 function LineName({ line }) {
   return (
     <td>
-      <strong>{line.itemId?.itemCode || line.countedItemCode || 'Món lạ (mã tự sinh)'}</strong>
+      <strong>{line.itemId?.itemCode || line.countedItemCode || 'Món mới (mã tự sinh khi duyệt)'}</strong>
       {line.itemId?.serialNumber && <small className="wm-stock-subline">{line.itemId.serialNumber}</small>}
       <small className="wm-stock-subline">{formatVariantName(line.variantId)}</small>
-      {!isItemLine(line) && <small className="wm-stock-subline">Món lạ phát hiện khi kiểm</small>}
+      {line.isExtra && <small className="wm-stock-subline">Món lạ gặp trên kệ</small>}
     </td>
   );
 }
 
-/** Ô tình trạng: mặc định "như cũ"; chỉ đổi món hỏng / thiếu. Món lạ chọn còn ghi nhận hay bỏ. */
-function ConditionCell({ line, editable, condition, count, onConditionChange, onCountChange }) {
-  if (!isItemLine(line)) {
-    const saved = line.countedCondition || 'good';
-    if (!editable) return <td>{labelOf(CONDITION_LABELS, saved, saved)}</td>;
-    return (
-      <td>
-        <select aria-label="Ghi nhận món lạ" value={String(count ?? '1')} onChange={(event) => onCountChange(line._id, event.target.value)}>
-          <option value="1">Có mặt · {labelOf(CONDITION_LABELS, saved, saved)}</option>
-          <option value="0">Bỏ ghi nhận</option>
-        </select>
-      </td>
-    );
-  }
-  const current = line.itemId?.condition || 'good';
-  if (!editable) {
-    const saved = line.countedCondition || current;
-    return <td>{labelOf(CONDITION_LABELS, saved, saved)}</td>;
-  }
+/** Ô kết quả: dòng thường 3 lựa chọn; món lạ: dùng được / cần xử lý / bỏ ghi nhận. */
+function ResultCell({ line, editable, result, onChange }) {
+  if (!editable) return <td>{labelOf(STOCKTAKE_RESULT_LABELS, line.countedResult, line.countedResult ? line.countedResult : 'Chưa kiểm')}</td>;
   return (
     <td>
-      <select aria-label="Tình trạng thực tế của món hàng" value={condition} onChange={(event) => onConditionChange(line._id, event.target.value)}>
-        {COUNT_CONDITION_OPTIONS.map(([value, text]) => (
-          <option key={value} value={value}>{value === current ? `Có mặt · như cũ (${text})` : text}</option>
+      <select aria-label="Kết quả kiểm" value={result.countedResult}
+        onChange={(event) => onChange(line._id, { ...result, countedResult: event.target.value })}>
+        <option value="ok">{STOCKTAKE_RESULT_LABELS.ok}</option>
+        <option value="needs_service">{STOCKTAKE_RESULT_LABELS.needs_service}</option>
+        <option value="not_found">{line.isExtra ? 'Bỏ ghi nhận' : STOCKTAKE_RESULT_LABELS.not_found}</option>
+      </select>
+    </td>
+  );
+}
+
+/** Ô kệ thực tế: mặc định kệ hệ thống; chọn kệ khác khi món có mặt nhưng nằm sai kệ. */
+function ShelfCell({ line, editable, result, shelves, onChange }) {
+  const systemShelf = idOf(line.storageAtStart || line.storageId);
+  if (line.isExtra) return <td>{line.foundStorageId?.code || line.storageId?.code || '—'}</td>;
+  if (!editable) {
+    const moved = isMovedLine(line, { foundStorageId: idOf(line.foundStorageId) });
+    return <td>{moved ? `→ ${line.foundStorageId?.code || ''}` : 'Như hệ thống'}</td>;
+  }
+  if (result.countedResult === 'not_found') return <td>—</td>;
+  return (
+    <td>
+      <select aria-label="Kệ thực tế" value={result.foundStorageId || systemShelf}
+        onChange={(event) => onChange(line._id, { ...result, foundStorageId: event.target.value === systemShelf ? '' : event.target.value })}>
+        {!systemShelf && <option value="">Chưa gán kệ</option>}
+        {shelves.map((shelf) => (
+          <option key={shelf._id} value={idOf(shelf)}>{shelf.code}{idOf(shelf) === systemShelf ? ' (như hệ thống)' : ''}</option>
         ))}
       </select>
     </td>
   );
 }
 
-/** Tóm tắt một kệ: "Kệ A-01-03: 12 món · thiếu 1 · khác thường 2". */
-function groupSummary(group, counts, itemConditions) {
-  const missing = group.lines.filter((line) => actualQuantity(line, counts, itemConditions) === 0).length;
-  const unusual = group.lines.filter((line) => isUnusualLine(line, itemConditions)).length;
+/** Tóm tắt một kệ: "Kệ A-01-03: 12 món · không thấy 1 · khác thường 2". */
+function groupSummary(group, results) {
+  const notFound = group.lines.filter((line) => !line.isExtra && lineResult(line, results).countedResult === 'not_found').length;
+  const unusual = group.lines.filter((line) => isUnusualLine(line, results)).length;
   const parts = [`${group.label}: ${group.lines.length} món`];
-  if (missing) parts.push(`thiếu ${missing}`);
+  if (notFound) parts.push(`không thấy ${notFound}`);
   if (unusual) parts.push(`khác thường ${unusual}`);
   return parts.join(' · ');
 }
 
+/** Kết quả áp dụng sau duyệt (đúng / cần xử lý / mất / tìm thấy / chuyển kệ / bị bỏ qua + lý do). */
+function OutcomeCell({ line }) {
+  if (!line.appliedOutcome) return <td>{line.isCounted ? line.countedBy?.FullName || 'Đã kiểm' : 'Chưa kiểm'}</td>;
+  return (
+    <td>
+      {labelOf(STOCKTAKE_OUTCOME_LABELS, line.appliedOutcome, line.appliedOutcome)}
+      {line.skippedReason && <small className="wm-stock-subline text-danger">{line.skippedReason}</small>}
+    </td>
+  );
+}
+
 /**
- * Bảng kiểm kê theo món, nhóm theo kệ. Khi phiếu đang kiểm (`editable`), mọi món mặc định
- * "có mặt – tình trạng như cũ"; người kiểm chỉ sửa món khác thường. Có ô lọc theo mã.
+ * Bảng kiểm kê theo món, nhóm theo kệ (TASK-016 B2). Khi phiếu đang kiểm (`editable`), mọi món mặc định
+ * "Có mặt – dùng được"; người kiểm chỉ sửa món khác thường. Có ô lọc theo mã.
  */
-export default function StocktakeCountTable({
-  lines, editable, counts, itemConditions, onCountChange, onConditionChange,
-}) {
+export default function StocktakeCountTable({ lines, editable, results, shelves, onResultChange }) {
   const [query, setQuery] = useState('');
   const [onlyUnusual, setOnlyUnusual] = useState(false);
-  const groups = groupLinesByStorage(lines, { query, onlyUnusual, itemConditions });
+  const groups = groupLinesByStorage(lines, { query, onlyUnusual, results });
 
   return (
     <>
@@ -80,43 +97,34 @@ export default function StocktakeCountTable({
           <thead>
             <tr>
               <th>Mã hàng / mặt hàng</th>
-              <th>Tồn sổ</th>
-              <th>Tình trạng thực tế</th>
-              <th>Thực tế</th>
-              <th>Chênh lệch</th>
-              <th>Ghi nhận</th>
+              <th>Trạng thái lúc bắt đầu</th>
+              <th>Kết quả</th>
+              <th>Kệ thực tế</th>
+              <th>{lines.some((line) => line.appliedOutcome) ? 'Kết quả áp dụng' : 'Ghi nhận'}</th>
             </tr>
           </thead>
           <tbody>
             {groups.map((group) => (
               <React.Fragment key={group.key}>
                 <tr className="table-light">
-                  <td colSpan="6"><strong>{groupSummary(group, counts, itemConditions)}</strong></td>
+                  <td colSpan="5"><strong>{groupSummary(group, results)}</strong></td>
                 </tr>
                 {group.lines.map((line) => {
-                  const actual = actualQuantity(line, counts, itemConditions);
+                  const result = lineResult(line, results);
                   return (
                     <tr key={line._id}>
                       <LineName line={line} />
-                      <td>{line.systemQuantity}</td>
-                      <ConditionCell
-                        line={line}
-                        editable={editable}
-                        condition={lineCondition(line, itemConditions)}
-                        count={counts[line._id]}
-                        onConditionChange={onConditionChange}
-                        onCountChange={onCountChange}
-                      />
-                      <td>{actual}</td>
-                      <td>{lineVariance(line, actual)}</td>
-                      <td>{line.isCounted ? line.countedBy?.FullName || 'Đã kiểm' : 'Chưa kiểm'}</td>
+                      <td>{line.statusAtStart ? labelOf(ITEM_STATUS_LABELS, line.statusAtStart, line.statusAtStart) : '—'}</td>
+                      <ResultCell line={line} editable={editable} result={result} onChange={onResultChange} />
+                      <ShelfCell line={line} editable={editable} result={result} shelves={shelves} onChange={onResultChange} />
+                      <OutcomeCell line={line} />
                     </tr>
                   );
                 })}
               </React.Fragment>
             ))}
             {groups.length === 0 && (
-              <tr><td colSpan="6">{lines.length ? 'Không có món khớp bộ lọc.' : 'Không có tồn hệ thống trong phạm vi này.'}</td></tr>
+              <tr><td colSpan="5">{lines.length ? 'Không có món khớp bộ lọc.' : 'Không có món nào trong phạm vi này.'}</td></tr>
             )}
           </tbody>
         </table>

@@ -148,7 +148,7 @@ export async function getSalesReturns(orderId) {
   return salesRequest(`/${orderId}/returns`, { method: 'GET' });
 }
 
-/** Tạo phiếu trả hàng theo món: `{ returnReason, items: [{ salesOrderDetailId, itemIds, conditionOnReturn, disposition, note }] }`. */
+/** Tạo phiếu trả hàng theo món: `{ returnReason, items: [{ salesOrderDetailId, itemIds, inspectionResults: [{ itemId, result }], note }] }`. */
 export async function createSalesReturn(orderId, payload) {
   return salesRequest(`/${orderId}/returns`, { method: 'POST', body: payload });
 }

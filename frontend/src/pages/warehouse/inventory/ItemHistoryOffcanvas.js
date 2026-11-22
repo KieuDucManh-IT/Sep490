@@ -3,7 +3,7 @@ import { Offcanvas, Tab, Tabs } from 'react-bootstrap';
 import { EmptyState, Pagination } from '../../../components/warehouse';
 import inventoryInsightService from '../../../services/warehouse/inventoryInsightService';
 import {
-  CONDITION_LABELS, DISPOSAL_METHOD_LABELS, DISPOSAL_STATUS_LABELS, ITEM_STATUS_LABELS, MAINTENANCE_RESULT_LABELS,
+  DISPOSAL_METHOD_LABELS, DISPOSAL_STATUS_LABELS, ITEM_STATUS_LABELS, MAINTENANCE_RESULT_LABELS,
   MAINTENANCE_STATUS_LABELS, MAINTENANCE_TYPE_LABELS, MOVEMENT_TYPE_LABELS, formatVariantName, labelOf,
 } from '../../../constants/warehouseLabels';
 import { formatDateTime } from '../shared/slipHelpers';
@@ -66,7 +66,6 @@ function maintenanceRow(row) {
     return {
       type: 'Thanh lý',
       description: `${labelOf(DISPOSAL_METHOD_LABELS, row.method, row.method)} · ${row.reason || ''}`,
-      conditions: '—',
       status: labelOf(DISPOSAL_STATUS_LABELS, row.status, row.status),
       person: row.decidedBy?.FullName || row.requestedBy?.FullName || '—',
     };
@@ -75,7 +74,6 @@ function maintenanceRow(row) {
   return {
     type: labelOf(MAINTENANCE_TYPE_LABELS, row.maintenanceType, row.maintenanceType),
     description: [row.issueDescription, row.repairDescription].filter(Boolean).join(' — '),
-    conditions: `${labelOf(CONDITION_LABELS, row.beforeCondition, '—')} → ${labelOf(CONDITION_LABELS, row.afterCondition, '—')}`,
     status: `${labelOf(MAINTENANCE_STATUS_LABELS, row.status, row.status)}${result}`,
     person: row.assignedTo?.FullName || row.reportedBy?.FullName || '—',
   };
@@ -86,7 +84,7 @@ function MaintenanceTable({ entries }) {
     <div className="wm-table-wrap">
       <table>
         <thead>
-          <tr><th>Ngày</th><th>Loại</th><th>Mô tả</th><th>Tình trạng trước → sau</th><th>Trạng thái</th><th>Người làm</th></tr>
+          <tr><th>Ngày</th><th>Loại</th><th>Mô tả</th><th>Trạng thái</th><th>Người làm</th></tr>
         </thead>
         <tbody>
           {entries.map((row) => {
@@ -96,7 +94,6 @@ function MaintenanceTable({ entries }) {
                 <td>{formatDateTime(row.date)}</td>
                 <td>{view.type}</td>
                 <td>{view.description || '—'}</td>
-                <td>{view.conditions}</td>
                 <td>{view.status}</td>
                 <td>{view.person}</td>
               </tr>
@@ -150,8 +147,8 @@ export default function ItemHistoryOffcanvas({ itemId, onHide }) {
           <dl className="wm-item-history-info">
             <dt>Biến thể</dt><dd>{formatVariantName(item.variantId) || '—'}</dd>
             <dt>Serial</dt><dd>{item.serialNumber || '—'}</dd>
-            <dt>Tình trạng</dt><dd>{labelOf(CONDITION_LABELS, item.condition, item.condition)}</dd>
             <dt>Trạng thái</dt><dd>{labelOf(ITEM_STATUS_LABELS, item.status, item.status)}</dd>
+            {item.soldOrder?.orderCode && <><dt>Đơn bán</dt><dd>{item.soldOrder.orderCode}</dd></>}
             <dt>Vị trí hiện tại</dt><dd>{placeText({ location: item.locationId, storage: item.storageId })}</dd>
           </dl>
         )}

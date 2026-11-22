@@ -3,7 +3,7 @@ import { Button, Modal } from 'react-bootstrap';
 import WarehouseWorkflowProgress from '../../../components/WarehouseWorkflowProgress';
 import { StatusBadge } from '../../../components/warehouse';
 import {
-  ADJUSTMENT_STATUS_LABELS, CONDITION_LABELS, formatVariantName, labelOf,
+  ADJUSTMENT_STATUS_LABELS, ITEM_STATUS_LABELS, formatVariantName, labelOf,
 } from '../../../constants/warehouseLabels';
 import { codeAndName, idOf } from '../shared/slipHelpers';
 
@@ -14,8 +14,8 @@ export function formatChange(value) {
   return String(number);
 }
 
-/** Tình trạng món ghi theo dòng điều chỉnh (mỗi dòng một món). */
-const conditionLabel = (line) => (line.itemCondition ? labelOf(CONDITION_LABELS, line.itemCondition, line.itemCondition) : '—');
+/** Trạng thái món ghi theo dòng điều chỉnh (TASK-016: bỏ tình trạng; phiếu cũ chỉ còn để xem). */
+const statusLabel = (line) => (line.itemStatus ? labelOf(ITEM_STATUS_LABELS, line.itemStatus, line.itemStatus) : '—');
 
 function AdjustmentLinesTable({ lines }) {
   return (
@@ -28,7 +28,7 @@ function AdjustmentLinesTable({ lines }) {
             <th>Tồn trước</th>
             <th>Thay đổi</th>
             <th>Tồn sau</th>
-            <th>Tình trạng món</th>
+            <th>Trạng thái món</th>
           </tr>
         </thead>
         <tbody>
@@ -45,7 +45,7 @@ function AdjustmentLinesTable({ lines }) {
               <td>{line.quantityBefore}</td>
               <td>{formatChange(line.quantityChange)}</td>
               <td>{line.quantityAfter}</td>
-              <td>{conditionLabel(line)}</td>
+              <td>{statusLabel(line)}</td>
             </tr>
           ))}
         </tbody>

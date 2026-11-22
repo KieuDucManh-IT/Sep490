@@ -69,7 +69,6 @@ export const buildBalanceReportRows = ({ balances = [], overdue = [], variantByI
         color: variant.color || '',
         itemCode: '',
         serialNumber: '',
-        condition: '',
         itemStatus: '',
         itemCount: 0,
         quantityOnHand: 0,

@@ -41,13 +41,12 @@ const validId = mongoose.isValidObjectId;
 
 // Trạng thái món được phép đưa vào giặt/sửa hoặc đề xuất thanh lý.
 const ELIGIBLE_STATUSES = ['unavailable', 'available'];
-const CANDIDATE_CONDITIONS = ['damaged', 'worn'];
 const BLOCKED_STATUSES = ['renting', 'in_transit', 'reserved', 'disposed', 'maintenance'];
 const OPEN_STATUSES = [MAINTENANCE_STATUS.PENDING, MAINTENANCE_STATUS.IN_PROGRESS];
 
 const itemPopulate = {
   path: 'itemId',
-  select: 'itemCode serialNumber condition status storageId variantId locationId',
+  select: 'itemCode serialNumber status storageId variantId locationId',
   populate: [
     { path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode' } },
     { path: 'storageId', select: 'code name type' },
@@ -87,7 +86,7 @@ const loadEligibleItem = async (itemId, centralId, session) => {
   if (BLOCKED_STATUSES.includes(item.status)) {
     throw appError('Món hàng đang được thuê, giữ chỗ, điều chuyển, xử lý hoặc đã thanh lý.', 409);
   }
-  if (!ELIGIBLE_STATUSES.includes(item.status) || item.condition === 'missing') {
+  if (!ELIGIBLE_STATUSES.includes(item.status)) {
     throw appError('Món hàng không ở trạng thái có thể xử lý.', 409);
   }
   const [openRecord, pendingDisposal] = await Promise.all([
@@ -104,7 +103,7 @@ const loadEligibleItem = async (itemId, centralId, session) => {
  * Balance: maintenance vẫn tính onHand nhưng là không khả dụng (unavailable +1 nếu món đang available).
  */
 const lockItemForProcessing = async (item, centralId, session) => {
-  if (String(item.locationId) !== String(centralId) || item.condition === 'missing') {
+  if (String(item.locationId) !== String(centralId)) {
     throw appError('Món hàng vừa thay đổi trạng thái, vui lòng tải lại.', 409);
   }
   // Truyền bản sao để `item` của caller giữ trạng thái cũ (dùng cho previousItemStatus).
@@ -119,7 +118,7 @@ const duplicateGuard = (error, message) => {
 
 /* ----------------------------- Danh sách món cần xử lý ----------------------------- */
 
-/** Món ở kho tổng có tình trạng hỏng / sờn và chưa có phiếu xử lý nào đang mở. */
+/** Món ở kho tổng đang `unavailable` (cần xử lý — TASK-016) và chưa có phiếu xử lý nào đang mở. */
 export const listMaintenanceCandidates = async (user) => {
   requireManager(user, 'Chỉ quản lý kho mới được xem danh sách món cần xử lý.');
   const central = await centralWarehouse();
@@ -128,10 +127,10 @@ export const listMaintenanceCandidates = async (user) => {
     ItemDisposal.distinct('itemId', { isPending: true }),
   ]);
   const excluded = [...openItemIds, ...pendingItemIds];
-  const filter = { locationId: central._id, status: { $in: ELIGIBLE_STATUSES }, condition: { $in: CANDIDATE_CONDITIONS } };
+  const filter = { locationId: central._id, status: 'unavailable' };
   if (excluded.length) filter._id = { $nin: excluded };
   const rows = await InventoryItem.find(filter)
-    .select('itemCode serialNumber condition status storageId variantId locationId updatedAt')
+    .select('itemCode serialNumber status storageId variantId locationId updatedAt')
     .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode' } })
     .populate('storageId', 'code name type')
     .sort({ status: -1, updatedAt: -1 })
@@ -196,7 +195,6 @@ export const createMaintenanceRecord = async (user, validated) => {
         sourceType: 'warehouse_inspection',
         maintenanceType: validated.maintenanceType,
         issueDescription: validated.issueDescription,
-        beforeCondition: item.condition === 'missing' ? undefined : item.condition,
         previousItemStatus: item.status,
         status: MAINTENANCE_STATUS.PENDING,
         isOpen: true,
@@ -301,16 +299,16 @@ const returnRepairedItemToShelf = async ({ central, record, item, validated, use
   if (!shelf) throw appError('Vị trí xếp lại phải là kệ đang hoạt động thuộc kho tổng.');
   await assertShelfCapacity(central._id, item.storageId, shelf._id, session);
   const fromStorageId = item.storageId || null;
-  await moveItem(item, { status: 'available', condition: validated.afterCondition, storageId: shelf._id }, session);
+  await moveItem(item, { status: 'available', storageId: shelf._id }, session);
   await recordShelfMove({ item, fromStorageId, toStorageId: shelf._id, locationId: central._id, recordId: record._id, user, session });
-  record.afterCondition = validated.afterCondition;
   record.targetStorageId = shelf._id;
 };
 
-/** Không sửa được: đánh dấu unrepairable, món vẫn khóa maintenance và sinh đề xuất thanh lý chờ duyệt. */
+/**
+ * Không sửa được: món vẫn khóa `maintenance` và sinh đề xuất thanh lý chờ duyệt (như trước TASK-016);
+ * duyệt → disposed, từ chối → unavailable (decideDisposal).
+ */
 const proposeDisposalForUnrepairable = async ({ central, record, item, validated, user, session }) => {
-  await moveItem(item, { condition: 'unrepairable' }, session);
-  record.afterCondition = 'unrepairable';
   await ItemDisposal.create([{
     itemId: item._id,
     locationId: central._id,
@@ -330,8 +328,7 @@ const applyRepairResult = async (context) => {
     return;
   }
   if (validated.repairResult === 'failed') {
-    await moveItem(item, { status: 'unavailable', condition: 'damaged' }, session);
-    record.afterCondition = 'damaged';
+    await moveItem(item, { status: 'unavailable' }, session);
     return;
   }
   await proposeDisposalForUnrepairable(context);

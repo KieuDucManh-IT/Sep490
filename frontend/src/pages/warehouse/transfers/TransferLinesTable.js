@@ -17,7 +17,7 @@ import { itemCodeOf, lineName } from './transferHelpers';
 export default function TransferLinesTable({
   transfer, renderApproved, renderReceived, receivedHeader = 'Đã nhận', extraColumn, className = '', rowClassName,
 }) {
-  const damagedHeader = transfer.status === 'received' ? 'Hỏng / thiếu' : 'Hỏng';
+  const damagedHeader = transfer.status === 'completed' ? 'Cần xử lý / mất' : 'Cần xử lý';
   return <div className="wm-table-wrap"><table className={className}>
     <thead><tr>
       <th>Sản phẩm / SKU</th><th>Yêu cầu</th><th>Được duyệt</th><th>Đã xuất</th><th>{receivedHeader}</th><th>{damagedHeader}</th>

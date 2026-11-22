@@ -20,16 +20,42 @@ import {
 export { resolveBranchShippingInfo };
 
 /**
- * 1. Tính cước phí giao hàng ước tính theo vị trí Cửa hàng chi nhánh
+ * 1. Tính cước phí giao hàng ước tính theo vị trí Cửa hàng chi nhánh (Hỗ trợ GHN v3)
  */
 export const calculateOrderShippingFee = async (user, params = {}) => {
-  const { orderType, orderId, toProvinceId, toDistrictId, toWardCode, weight, length, width, height } = params;
+  const {
+    orderType,
+    orderId,
+    toProvinceId,
+    toDistrictId,
+    toWardCode,
+    toProvinceName,
+    toWardName,
+    isNewToAddress,
+    weight,
+    length,
+    width,
+    height,
+  } = params;
 
   let resolvedToDistrictId = toDistrictId;
-  if (!resolvedToDistrictId && (toProvinceId || toWardCode)) {
+  const isV3 = Boolean(
+    isNewToAddress ||
+    Number(toProvinceId) >= 1000000 ||
+    (toProvinceName && (String(toProvinceName).toLowerCase().includes('hà nội') || String(toProvinceName).toLowerCase().includes('ha noi')))
+  );
+
+  // GHN v3 bãi bỏ cấp huyện (chỉ có Tỉnh -> Phường/Xã).
+  // Nhưng endpoint tính cước v2 của GHN bắt buộc to_district_id.
+  // Khu vực Hà Nội dùng flat-rate quận trung tâm (1488 Ba Đình), không cần quét toàn bộ huyện.
+  if (isV3) {
+    resolvedToDistrictId = resolvedToDistrictId || 1488;
+  } else if (!resolvedToDistrictId && (toProvinceId || toWardCode || toProvinceName)) {
     const resolved = await resolveGpsToGhn(null, null, {
       provinceId: toProvinceId,
       wardCode: toWardCode,
+      city: toProvinceName,
+      ward: toWardName,
     });
     resolvedToDistrictId = resolved.districtId;
   }
@@ -46,17 +72,32 @@ export const calculateOrderShippingFee = async (user, params = {}) => {
     const branchInfo = await resolveBranchShippingInfo(order);
     fromDistrictId = branchInfo.districtId;
     fromWardCode = branchInfo.wardCode;
+  } else {
+    try {
+      const branchInfo = await resolveBranchShippingInfo(null);
+      fromDistrictId = branchInfo?.districtId;
+      fromWardCode = branchInfo?.wardCode;
+    } catch {}
   }
 
+  // Fallback chi nhánh chính nếu chưa xác định được từ DB
   if (!fromDistrictId) {
-    throw fail('Không xác định được địa giới hành chính của chi nhánh gửi hàng.', 400);
+    fromDistrictId = 1808; // Thạch Thất, Hà Nội (Kho chính / Showroom)
+    fromWardCode = '1B1921';
+  }
+
+  // GHN v2 calculation endpoint không nhận mã phường v3 dạng số 6+ chữ số
+  // Với tính cước nội thành theo quận của GHN, để toWardCode = '' tính ra đúng cước chuẩn
+  let feeToWardCode = String(toWardCode || '');
+  if (isV3 || /^\d{6,}$/.test(feeToWardCode)) {
+    feeToWardCode = '';
   }
 
   return ghnService.calculateShippingFee({
     fromDistrictId,
     fromWardCode,
     toDistrictId: Number(resolvedToDistrictId),
-    toWardCode: String(toWardCode || ''),
+    toWardCode: feeToWardCode,
     weight: Number(weight) || 500,
     length: Number(length) || 30,
     width: Number(width) || 20,
@@ -65,7 +106,7 @@ export const calculateOrderShippingFee = async (user, params = {}) => {
 };
 
 /**
- * 2. Tạo vận đơn xuất hàng (Outbound: Cửa hàng -> Khách hàng)
+ * 2. Tạo vận đơn xuất hàng (Outbound: Cửa hàng -> Khách hàng) (Hỗ trợ GHN v3)
  */
 export const createOutboundShipment = async (user, payload = {}) => {
   const {
@@ -132,20 +173,45 @@ export const createOutboundShipment = async (user, payload = {}) => {
   const effectiveProvinceId = toProvinceId || shipAddr.provinceId;
   const effectiveWardCode = toWardCode || shipAddr.wardCode;
   let resolvedDistrictId = toDistrictId || shipAddr.districtId;
-  const effectiveProvinceName = toProvinceName || shipAddr.city || '';
-  const effectiveWardName = toWardName || shipAddr.ward || '';
+  let effectiveProvinceName = toProvinceName || shipAddr.city || shipAddr.province || '';
+  let effectiveWardName = toWardName || shipAddr.ward || shipAddr.wardName || '';
+  let effectiveDistrictName = shipAddr.district || '';
   const useNewToAddress = Boolean(
-    isNewToAddress || shipAddr.isNewAddress || (!resolvedDistrictId && effectiveProvinceName && effectiveWardName)
+    isNewToAddress ||
+    shipAddr.isNewAddress ||
+    Number(effectiveProvinceId) >= 1000000 ||
+    (!resolvedDistrictId && effectiveProvinceName && effectiveWardName)
   );
 
-  // Tự động suy luận District cho GHN API nếu hệ thống chỉ truyền cấp Tỉnh & cấp Xã
-  if (!useNewToAddress && !resolvedDistrictId && (effectiveProvinceId || effectiveWardCode)) {
+  // Nếu là GHN v3 mà chưa có tên Tỉnh / Xã (do client chỉ gửi ID), tự động phân giải từ GHN v3 master data
+  if (useNewToAddress) {
+    if (!effectiveProvinceName && Number(effectiveProvinceId) >= 1000000) {
+      try {
+        const provs = await ghnService.getNewProvinces();
+        const pObj = provs.find((p) => Number(p._id) === Number(effectiveProvinceId));
+        if (pObj) effectiveProvinceName = pObj.name;
+      } catch {}
+    }
+    if ((!effectiveWardName || effectiveWardName === effectiveWardCode) && effectiveProvinceId && effectiveWardCode) {
+      try {
+        const wards = await ghnService.getNewWards(effectiveProvinceId);
+        const wObj = wards.find((w) => String(w._id) === String(effectiveWardCode));
+        if (wObj) effectiveWardName = wObj.name;
+      } catch {}
+    }
+  }
+
+  // Chỉ suy luận District và DistrictName cho GHN v2 legacy (cần 3 cấp)
+  if (!useNewToAddress && (!resolvedDistrictId || !effectiveDistrictName) && (effectiveProvinceId || effectiveWardCode || effectiveWardName)) {
     const resolved = await resolveGpsToGhn(null, null, {
       provinceId: effectiveProvinceId,
       wardCode: effectiveWardCode,
+      ward: effectiveWardName,
+      city: effectiveProvinceName,
       address: toAddress || shipAddr.street,
     });
-    resolvedDistrictId = resolved.districtId;
+    if (!resolvedDistrictId) resolvedDistrictId = resolved.districtId;
+    if (!effectiveDistrictName && resolved.districtName) effectiveDistrictName = resolved.districtName;
   }
 
   if (!useNewToAddress && !resolvedDistrictId) throw fail('Vui lòng chọn Tỉnh/Thành và Quận/Huyện người nhận.', 400);
@@ -157,10 +223,10 @@ export const createOutboundShipment = async (user, payload = {}) => {
     phone: toPhone || shipAddr.phone || shipAddr.toPhone || customerInfo?.Phone || customer.phone || '',
     address: toAddress || shipAddr.street || customerInfo?.AddressDetail || customerInfo?.Address || customer.address || '',
     provinceId: effectiveProvinceId,
-    districtId: resolvedDistrictId,
+    districtId: useNewToAddress ? undefined : resolvedDistrictId,
     wardCode: effectiveWardCode,
     provinceName: effectiveProvinceName,
-    districtName: shipAddr.district || '',
+    districtName: useNewToAddress ? '' : (effectiveDistrictName || shipAddr.district || ''),
     wardName: effectiveWardName,
     isNewAddress: useNewToAddress,
   });
@@ -170,6 +236,15 @@ export const createOutboundShipment = async (user, payload = {}) => {
 
   const calculatedCod = calculateCodAmount(order, orderType, customCodAmount);
   const ghnItems = await fetchOrderItemsForGHN(orderType, order._id, weight);
+
+  // Đếm số lần tạo vận đơn của đơn hàng này để sinh clientOrderCode duy nhất, tránh GHN khóa mã trùng khi retry
+  const previousShipmentsCount = await OrderShipment.countDocuments({
+    orderId: order._id,
+    shipmentType: 'outbound',
+  });
+  const clientOrderCode = previousShipmentsCount > 0
+    ? `${order.orderCode}-R${previousShipmentsCount}`
+    : order.orderCode;
 
   // Gọi GHN API tạo đơn
   const ghnRes = await ghnService.createGHNOrder({
@@ -183,9 +258,8 @@ export const createOutboundShipment = async (user, payload = {}) => {
     toPhone: receiverInfo.phone,
     toAddress: receiverInfo.address,
     toWardCode: receiverInfo.wardCode || toWardCode,
-    toDistrictId: resolvedDistrictId ? Number(resolvedDistrictId) : undefined,
+    toDistrictId: useNewToAddress ? undefined : (resolvedDistrictId ? Number(resolvedDistrictId) : undefined),
     toProvinceName: receiverInfo.provinceName,
-    toDistrictName: receiverInfo.districtName,
     toWardName: receiverInfo.wardName || receiverInfo.wardCode,
     isNewToAddress: receiverInfo.isNewAddress,
     codAmount: calculatedCod,
@@ -195,7 +269,7 @@ export const createOutboundShipment = async (user, payload = {}) => {
     height: Number(height) || 10,
     note,
     items: ghnItems,
-    clientOrderCode: order.orderCode,
+    clientOrderCode,
   });
 
   // Lưu vận đơn
@@ -221,10 +295,15 @@ export const createOutboundShipment = async (user, payload = {}) => {
   const OrderModel = orderType === 'rental' ? RentalOrder : SalesOrder;
   const updateFields = {
     'shippingAddress.provinceId': Number(effectiveProvinceId) || receiverInfo.provinceId,
-    'shippingAddress.districtId': resolvedDistrictId ? Number(resolvedDistrictId) : null,
     'shippingAddress.wardCode': String(effectiveWardCode || receiverInfo.wardCode),
+    'shippingAddress.city': effectiveProvinceName || shipAddr.city || '',
+    'shippingAddress.ward': effectiveWardName || shipAddr.ward || '',
     'shippingAddress.isNewAddress': useNewToAddress,
   };
+  if (!useNewToAddress) {
+    updateFields['shippingAddress.districtId'] = resolvedDistrictId ? Number(resolvedDistrictId) : null;
+    updateFields['shippingAddress.district'] = effectiveDistrictName || shipAddr.district || '';
+  }
 
   if (orderType === 'rental') {
     updateFields.rentalStatus = 'confirmed';
@@ -242,7 +321,7 @@ export const createOutboundShipment = async (user, payload = {}) => {
 };
 
 /**
- * 3. Tạo vận đơn thu hồi đồ thuê (Return: Khách hàng -> Cửa hàng)
+ * 3. Tạo vận đơn thu hồi đồ thuê (Return: Khách hàng -> Cửa hàng) (Hỗ trợ GHN v3)
  */
 export const createReturnShipment = async (user, payload = {}) => {
   const {
@@ -281,23 +360,51 @@ export const createReturnShipment = async (user, payload = {}) => {
   // Tự động suy luận District nếu chỉ có Tỉnh & Xã
   let resolvedDistrictId = fromDistrictId;
   const shipAddr = order.shippingAddress || {};
-  const effectiveFromProvinceName = fromProvinceName || shipAddr.city || '';
-  const effectiveFromWardName = fromWardName || shipAddr.ward || '';
+  let effectiveFromProvinceName = fromProvinceName || shipAddr.city || shipAddr.province || '';
+  let effectiveFromWardName = fromWardName || shipAddr.ward || shipAddr.wardName || '';
+  let effectiveFromDistrictName = shipAddr.district || '';
+  const effectiveFromProvinceId = fromProvinceId || shipAddr.provinceId;
+  const effectiveFromWardCode = fromWardCode || shipAddr.wardCode;
   const useNewFromAddress = Boolean(
-    isNewFromAddress || shipAddr.isNewAddress || (!resolvedDistrictId && effectiveFromProvinceName && effectiveFromWardName)
+    isNewFromAddress ||
+    shipAddr.isNewAddress ||
+    Number(effectiveFromProvinceId) >= 1000000 ||
+    (!resolvedDistrictId && effectiveFromProvinceName && effectiveFromWardName)
   );
-  if (!useNewFromAddress && !resolvedDistrictId && (fromProvinceId || fromWardCode)) {
+
+  if (useNewFromAddress) {
+    if (!effectiveFromProvinceName && Number(effectiveFromProvinceId) >= 1000000) {
+      try {
+        const provs = await ghnService.getNewProvinces();
+        const pObj = provs.find((p) => Number(p._id) === Number(effectiveFromProvinceId));
+        if (pObj) effectiveFromProvinceName = pObj.name;
+      } catch {}
+    }
+    if ((!effectiveFromWardName || effectiveFromWardName === effectiveFromWardCode) && effectiveFromProvinceId && effectiveFromWardCode) {
+      try {
+        const wards = await ghnService.getNewWards(effectiveFromProvinceId);
+        const wObj = wards.find((w) => String(w._id) === String(effectiveFromWardCode));
+        if (wObj) effectiveFromWardName = wObj.name;
+      } catch {}
+    }
+  }
+
+  // Chỉ suy luận District cho GHN v2 legacy (cần 3 cấp)
+  if (!useNewFromAddress && (!resolvedDistrictId || !effectiveFromDistrictName) && (effectiveFromProvinceId || effectiveFromWardCode || effectiveFromWardName)) {
     const resolved = await resolveGpsToGhn(null, null, {
-      provinceId: fromProvinceId,
-      wardCode: fromWardCode,
+      provinceId: effectiveFromProvinceId,
+      wardCode: effectiveFromWardCode,
+      ward: effectiveFromWardName,
+      city: effectiveFromProvinceName,
       address: fromAddress,
     });
-    resolvedDistrictId = resolved.districtId;
+    if (!resolvedDistrictId) resolvedDistrictId = resolved.districtId;
+    if (!effectiveFromDistrictName && resolved.districtName) effectiveFromDistrictName = resolved.districtName;
   }
 
   if (!useNewFromAddress && !resolvedDistrictId) throw fail('Vui lòng chọn Tỉnh/Thành lấy hàng trả.', 400);
   if (useNewFromAddress && !effectiveFromProvinceName) throw fail('Tỉnh/Thành phố lấy hàng trả không được để trống.', 400);
-  if (!effectiveFromWardName && !fromWardCode) throw fail('Phường/Xã lấy hàng trả không được để trống.', 400);
+  if (!effectiveFromWardName && !effectiveFromWardCode) throw fail('Phường/Xã lấy hàng trả không được để trống.', 400);
 
   // Đảo chiều: Người gửi là Khách, Người nhận là Cửa hàng
   const customer = order.customerId || {};
@@ -306,9 +413,11 @@ export const createReturnShipment = async (user, payload = {}) => {
     name: fromName || shipAddr.receiverName || shipAddr.toName || customer.FullName || 'Khách Hàng',
     phone: fromPhone || shipAddr.phone || shipAddr.toPhone || customerInfo?.Phone || customer.phone || '',
     address: fromAddress || shipAddr.street || customerInfo?.AddressDetail || customerInfo?.Address || customer.address || '',
-    provinceId: fromProvinceId,
-    wardCode: fromWardCode,
+    provinceId: effectiveFromProvinceId,
+    districtId: useNewFromAddress ? undefined : resolvedDistrictId,
+    wardCode: effectiveFromWardCode,
     provinceName: effectiveFromProvinceName,
+    districtName: useNewFromAddress ? '' : (effectiveFromDistrictName || shipAddr.district || ''),
     wardName: effectiveFromWardName,
     isNewAddress: useNewFromAddress,
   });
@@ -319,13 +428,21 @@ export const createReturnShipment = async (user, payload = {}) => {
   const storeReceiver = await resolveBranchShippingInfo(order);
   const receiverInfo = formatPartyInfo(storeReceiver);
 
+  const previousReturnCount = await OrderShipment.countDocuments({
+    orderId: order._id,
+    shipmentType: 'return',
+  });
+  const clientOrderCode = previousReturnCount > 0
+    ? `RET-${order.orderCode}-R${previousReturnCount}`
+    : `RET-${order.orderCode}`;
+
   const ghnRes = await ghnService.createGHNOrder({
     shopId: storeReceiver.ghnShopId,
     fromName: senderInfo.name,
     fromPhone: senderInfo.phone,
     fromAddress: senderInfo.address,
-    fromDistrictId: resolvedDistrictId ? Number(resolvedDistrictId) : undefined,
-    fromWardCode: senderInfo.wardCode || fromWardCode,
+    fromDistrictId: useNewFromAddress ? undefined : (resolvedDistrictId ? Number(resolvedDistrictId) : undefined),
+    fromWardCode: senderInfo.wardCode || effectiveFromWardCode,
     fromProvinceName: senderInfo.provinceName,
     fromWardName: senderInfo.wardName || senderInfo.wardCode,
     isNewFromAddress: senderInfo.isNewAddress,
@@ -337,7 +454,7 @@ export const createReturnShipment = async (user, payload = {}) => {
     codAmount: 0,
     weight: Number(weight) || 500,
     note: `[ĐỒ THUÊ HOÀN TRẢ VỀ CỬA HÀNG] ${note}`,
-    clientOrderCode: `RET-${order.orderCode}`,
+    clientOrderCode,
   });
 
   return await saveShipmentRecord({
@@ -702,4 +819,3 @@ export const updateManualShipmentStatus = async (user, shipmentId, newStatus, re
 
   return shipment;
 };
-

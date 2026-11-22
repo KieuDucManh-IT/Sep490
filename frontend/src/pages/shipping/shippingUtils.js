@@ -52,7 +52,7 @@ export const cleanText = (str) =>
     .replace(/[\s\-_,.]/g, '');
 
 /**
- * Tự động khớp Tỉnh / Thành phố từ dữ liệu khách hàng với danh mục GHN
+ * Tự động khớp Tỉnh / Thành phố từ dữ liệu khách hàng với danh mục GHN (Hỗ trợ GHN v3 và v2)
  */
 export const autoMatchProvince = (hint, fullAddr, provList) => {
   if (!Array.isArray(provList) || !provList.length) return null;
@@ -60,14 +60,29 @@ export const autoMatchProvince = (hint, fullAddr, provList) => {
   const cFull = cleanText(fullAddr);
 
   if (cHint) {
+    // 1. So khớp trực tiếp theo ID (cả v3 _id và v2 ProvinceID)
+    const byId = provList.find((p) => String(p._id || p.ProvinceID) === String(hint));
+    if (byId) return byId;
+
+    // Ánh xạ mã cũ v2 sang v3 (201 -> Hà Nội, 202 -> TP.HCM)
+    if (String(hint) === '201') {
+      const hn = provList.find((p) => cleanText(p.name || p.ProvinceName).includes('hanoi') || String(p._id || p.ProvinceID) === '1000000');
+      if (hn) return hn;
+    }
+    if (String(hint) === '202') {
+      const hcm = provList.find((p) => cleanText(p.name || p.ProvinceName).includes('hochiminh'));
+      if (hcm) return hcm;
+    }
+
+    // 2. So khớp theo tên tỉnh
     const direct = provList.find((p) => {
-      const pClean = cleanText(p.ProvinceName);
+      const pClean = cleanText(p.ProvinceName || p.name);
+      const exts = Array.isArray(p.NameExtension) ? p.NameExtension : Array.isArray(p.extension_names) ? p.extension_names : [];
       return (
         pClean === cHint ||
         cHint.includes(pClean) ||
         pClean.includes(cHint) ||
-        String(p.ProvinceID) === String(hint) ||
-        (Array.isArray(p.NameExtension) && p.NameExtension.some((ext) => cleanText(ext) === cHint))
+        exts.some((ext) => cleanText(ext) === cHint)
       );
     });
     if (direct) return direct;
@@ -75,7 +90,7 @@ export const autoMatchProvince = (hint, fullAddr, provList) => {
 
   if (cFull) {
     const byAddr = provList.find((p) => {
-      const pClean = cleanText(p.ProvinceName);
+      const pClean = cleanText(p.ProvinceName || p.name);
       return pClean.length > 2 && cFull.includes(pClean);
     });
     if (byAddr) return byAddr;
@@ -85,18 +100,7 @@ export const autoMatchProvince = (hint, fullAddr, provList) => {
 };
 
 /**
- * Từ điển các danh xưng địa lý đặc thù / chuyển đổi tên hành chính
- */
-export const WARD_ALIASES = {
-  hoalac: ['thachhoa', 'tanxa', 'binhyen', 'dongtruc'],
-  thachhoa: ['hoalac'],
-  khucnchoalac: ['thachhoa'],
-  fpt: ['thachhoa'],
-  thachthat: ['thachhoa', 'lienquan'],
-};
-
-/**
- * Tự động khớp Phường / Xã với danh mục GHN (hỗ trợ GSO GovernmentCode, GHN WardCode, NameExtension, Aliases)
+ * Tự động khớp Phường / Xã với danh mục GHN (hỗ trợ GSO GovernmentCode, GHN WardCode / _id, NameExtension / extension_names)
  */
 export const autoMatchWard = (wardNameHint, wardCodeHint = '', fullAddr = '', wardList = []) => {
   if (!Array.isArray(wardList) || !wardList.length) return null;
@@ -114,56 +118,44 @@ export const autoMatchWard = (wardNameHint, wardCodeHint = '', fullAddr = '', wa
     if (byGov) return byGov;
   }
 
-  // 2. Khớp trực tiếp qua WardCode của GHN
+  // 2. Khớp trực tiếp qua WardCode / _id của GHN (cả v2 và v3)
   if (wardCodeHint || wardNameHint) {
     const targetCode = String(wardCodeHint || wardNameHint).trim().toLowerCase();
-    const byCode = wardList.find((w) => String(w.WardCode).trim().toLowerCase() === targetCode);
+    const byCode = wardList.find((w) => {
+      const wCode = String(w.WardCode || w._id || '').trim().toLowerCase();
+      return wCode && wCode === targetCode;
+    });
     if (byCode) return byCode;
   }
 
   // 3. Khớp chính xác tên đã chuẩn hóa
   if (cHint) {
-    const exact = wardList.find((w) => cleanText(w.WardName) === cHint);
+    const exact = wardList.find((w) => cleanText(w.WardName || w.name) === cHint);
     if (exact) return exact;
   }
 
-  // 4. Khớp qua NameExtension của GHN
+  // 4. Khớp qua NameExtension / extension_names của GHN
   if (cHint) {
     const byExt = wardList.find((w) => {
-      if (!Array.isArray(w.NameExtension)) return false;
-      return w.NameExtension.some((ext) => cleanText(ext) === cHint || cleanText(ext).includes(cHint));
+      const exts = Array.isArray(w.NameExtension) ? w.NameExtension : Array.isArray(w.extension_names) ? w.extension_names : [];
+      return exts.some((ext) => cleanText(ext) === cHint || cleanText(ext).includes(cHint));
     });
     if (byExt) return byExt;
   }
 
-  // 5. Khớp qua từ điển danh pháp / khu vực đặc thù (VD: Hòa Lạc -> Thạch Hòa)
-  if (cHint || cFull) {
-    for (const [aliasKey, targetList] of Object.entries(WARD_ALIASES)) {
-      if (cHint.includes(aliasKey) || cFull.includes(aliasKey)) {
-        for (const target of targetList) {
-          const byAlias = wardList.find((w) => {
-            const wClean = cleanText(w.WardName);
-            return wClean === target || wClean.includes(target) || target.includes(wClean);
-          });
-          if (byAlias) return byAlias;
-        }
-      }
-    }
-  }
-
-  // 6. Khớp substring tên xã
+  // 5. Khớp substring tên xã
   if (cHint && cHint.length > 2) {
     const sub = wardList.find((w) => {
-      const wClean = cleanText(w.WardName);
+      const wClean = cleanText(w.WardName || w.name);
       return wClean.includes(cHint) || cHint.includes(wClean);
     });
     if (sub) return sub;
   }
 
-  // 7. Khớp từ chuỗi địa chỉ đầy đủ
+  // 6. Khớp từ chuỗi địa chỉ đầy đủ
   if (cFull) {
     const byAddr = wardList.find((w) => {
-      const wClean = cleanText(w.WardName);
+      const wClean = cleanText(w.WardName || w.name);
       return wClean.length > 3 && cFull.includes(wClean);
     });
     if (byAddr) return byAddr;
@@ -173,8 +165,7 @@ export const autoMatchWard = (wardNameHint, wardCodeHint = '', fullAddr = '', wa
 };
 
 /**
- * Trích xuất và bóc tách thông minh dữ liệu địa chỉ khách hàng từ đơn hàng
- * Tách biệt rõ ràng Số nhà/Đường chi tiết (toAddress) và Phường/Xã (toWardCode)
+ * Trích xuất và bóc tách dữ liệu địa chỉ khách hàng từ đơn hàng
  */
 export const extractOrderAddressInfo = (order) => {
   if (!order) return {};
@@ -183,8 +174,7 @@ export const extractOrderAddressInfo = (order) => {
   const info = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
   const shipAddr = order.shippingAddress || {};
 
-  // 1. Tên người nhận
-  let receiverName =
+  const receiverName =
     shipAddr.receiverName ||
     shipAddr.toName ||
     shipAddr.name ||
@@ -193,8 +183,7 @@ export const extractOrderAddressInfo = (order) => {
     customer.name ||
     '';
 
-  // 2. Số điện thoại nhận hàng
-  let receiverPhone =
+  const receiverPhone =
     shipAddr.phone ||
     shipAddr.toPhone ||
     info.Phone ||
@@ -202,19 +191,7 @@ export const extractOrderAddressInfo = (order) => {
     customer.Phone ||
     '';
 
-  // 3. Bóc tách note nếu có định dạng [Giao tận nơi: Name - Phone - FullAddress]
-  let noteAddr = '';
-  if (order.note) {
-    const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
-    if (match) {
-      if (!shipAddr.receiverName && !customer.FullName) receiverName = match[1].trim();
-      if (!shipAddr.phone && !info.Phone) receiverPhone = match[2].trim();
-      noteAddr = match[3].trim();
-    }
-  }
-
-  // 4. Gợi ý Tỉnh / Thành
-  let provHint =
+  const provHint =
     shipAddr.city ||
     shipAddr.province ||
     shipAddr.provinceName ||
@@ -222,56 +199,25 @@ export const extractOrderAddressInfo = (order) => {
     info.ProvinceCode ||
     '';
 
-  // 5. Gợi ý Phường / Xã
-  let wardHint =
+  const wardHint =
     shipAddr.ward ||
     shipAddr.wardName ||
     info.WardName ||
     '';
 
-  let wardCodeHint =
+  const wardCodeHint =
     shipAddr.wardCode ||
     info.WardCode ||
     '';
 
-  // 6. Bóc tách địa chỉ chi tiết (Số nhà, tên đường)
-  let rawStreet = shipAddr.street || shipAddr.address || '';
-  if (!rawStreet && info.AddressDetail) {
-    rawStreet = info.AddressDetail;
-  }
-  if (!rawStreet && noteAddr) {
-    const parts = noteAddr.split(',').map((p) => p.trim()).filter(Boolean);
-    if (parts.length > 0) rawStreet = parts[0];
-  }
-  if (!rawStreet && info.Address) {
-    const parts = info.Address.split(',').map((p) => p.trim()).filter(Boolean);
-    if (parts.length > 0) rawStreet = parts[0];
-  }
+  const detailedAddress =
+    shipAddr.street ||
+    shipAddr.address ||
+    info.AddressDetail ||
+    customer.address ||
+    '';
 
-  const cWard = cleanText(wardHint);
-  const cProv = cleanText(provHint);
-
-  let detailedAddress = rawStreet;
-
-  // Nếu detailedAddress có dấu phẩy: loại bỏ các đoạn trùng với xã hoặc tỉnh
-  if (detailedAddress && detailedAddress.includes(',')) {
-    const parts = detailedAddress.split(',').map((p) => p.trim()).filter(Boolean);
-    const nonWardProvParts = parts.filter((p) => {
-      const cp = cleanText(p);
-      return cp && cp !== cWard && !cWard.includes(cp) && cp !== cProv && !cProv.includes(cp);
-    });
-    detailedAddress = nonWardProvParts.join(', ');
-  }
-
-  // Nếu sau khi lọc hoặc nếu rawStreet trùng hoàn toàn với xã hoặc tỉnh
-  // (ví dụ: khách chỉ điền "Hoà Lạc" vào ô chi tiết, mà xã cũng là "Xã Hòa Lạc")
-  // thì ô số nhà/tên đường thực chất đang chứa tên xã -> chuyển về rỗng để không bị fill nhầm trường xã vào ô địa chỉ
-  const cFinal = cleanText(detailedAddress);
-  if (cFinal && ((cWard && (cFinal === cWard || cWard.includes(cFinal))) || (cProv && (cFinal === cProv || cProv.includes(cFinal))))) {
-    detailedAddress = '';
-  }
-
-  const fullAddr = [detailedAddress, rawStreet, wardHint, provHint, noteAddr, info.Address].filter(Boolean).join(', ');
+  const fullAddr = [detailedAddress, wardHint, provHint].filter(Boolean).join(', ');
 
   return {
     receiverName,
@@ -282,6 +228,9 @@ export const extractOrderAddressInfo = (order) => {
     wardCodeHint,
     provinceIdHint: shipAddr.provinceId || null,
     districtIdHint: shipAddr.districtId || null,
+    provinceNameHint: shipAddr.city || shipAddr.province || shipAddr.provinceName || '',
+    wardNameHint: shipAddr.ward || shipAddr.wardName || '',
+    isNewAddress: Boolean(shipAddr.isNewAddress || (shipAddr.provinceId && Number(shipAddr.provinceId) >= 1000000)),
     fullAddr,
   };
 };

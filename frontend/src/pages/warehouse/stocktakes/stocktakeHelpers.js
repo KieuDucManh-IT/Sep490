@@ -40,7 +40,7 @@ export const selectedPreviewLines = (items, excludedKeys) => items
   .filter((item) => !excludedKeys.has(item.key))
   .map((item) => ({ variantId: item.variantId, storageId: item.storageId || null }));
 
-export const emptyNewItem = () => ({ variantId: '', storageId: '', itemCode: '', countedQuantity: 1 });
+export const emptyNewItem = () => ({ variantId: '', storageId: '', itemCode: '', serialNumber: '', countedCondition: 'good' });
 
 const isWholeWarehouse = (row) => {
   if (row.scopeType === 'full') return true;
@@ -61,47 +61,70 @@ export function scopeLabel(row) {
   return parts.join(' · ');
 }
 
-/** Dòng kiểm từng món (hàng quản lý theo mã) có `itemId`; dòng theo số lượng thì không. */
-export const isIndividualLine = (line) => Boolean(line.itemId);
+/**
+ * Mọi sản phẩm quản lý theo món (TASK-015): mỗi dòng chụp số là một món (`itemId`).
+ * Dòng không có `itemId` là món lạ đã ghi nhận thêm (qua `newItems`), số đếm 0 hoặc 1.
+ */
+export const isItemLine = (line) => Boolean(line.itemId);
 
-/** Tình trạng đang chọn của một dòng kiểm từng món. */
+/** Tình trạng đang chọn của một dòng món; mặc định = tình trạng hiện có của món ("như cũ"). */
 export function lineCondition(line, itemConditions) {
   return itemConditions[line._id] || line.countedCondition || line.itemId?.condition || 'good';
 }
 
-/** Số lượng thực tế của một dòng: món thiếu = 0, món còn = 1, dòng số lượng = số đã nhập. */
+/** Số lượng thực tế của một dòng: món thiếu = 0, món còn = 1, món lạ = số đã ghi (0 / 1). */
 export function actualQuantity(line, counts, itemConditions) {
-  if (isIndividualLine(line)) return lineCondition(line, itemConditions) === 'missing' ? 0 : 1;
+  if (isItemLine(line)) return lineCondition(line, itemConditions) === 'missing' ? 0 : 1;
   return Number(counts[line._id] || 0);
 }
 
-/** Chênh lệch = thực tế + biến động sau lúc đếm - tồn sổ (dòng kiểm từng món không tính biến động). */
-export function lineVariance(line, actual) {
-  if (isIndividualLine(line)) return actual - Number(line.systemQuantity || 0);
-  return actual + Number(line.movementAfterCount || 0) - Number(line.systemQuantity || 0);
+/** Chênh lệch = thực tế - tồn sổ. */
+export const lineVariance = (line, actual) => actual - Number(line.systemQuantity || 0);
+
+/** Dòng khác thường: món thiếu, đổi tình trạng so với hiện có, hoặc món lạ. */
+export function isUnusualLine(line, itemConditions) {
+  if (!isItemLine(line)) return true;
+  const condition = lineCondition(line, itemConditions);
+  return condition === 'missing' || condition !== (line.itemId?.condition || 'good');
 }
 
-/** Số hỏng đang nhập của dòng hàng số lượng (ô trống = 0). */
-export const damagedOf = (line, damaged = {}) => {
-  if (isIndividualLine(line)) return 0;
-  const value = damaged[line._id] ?? line.damagedQuantity;
-  return Number(value || 0);
-};
-
 /** Số liệu tổng của phiếu đang mở cho hàng thẻ KPI. */
-export function countSummary(lines, counts, itemConditions, damaged = {}) {
+export function countSummary(lines, counts, itemConditions) {
   return lines.reduce((summary, line) => {
-    const condition = itemConditions[line._id] || line.countedCondition || line.itemId?.condition;
+    const condition = isItemLine(line) ? lineCondition(line, itemConditions) : line.countedCondition;
     summary.expected += Number(line.systemQuantity || 0);
     summary.counted += actualQuantity(line, counts, itemConditions);
     if (condition === 'missing') summary.missing += 1;
     if (['damaged', 'unrepairable'].includes(condition)) summary.damaged += 1;
-    summary.damagedQuantity += damagedOf(line, damaged);
     return summary;
-  }, { expected: 0, counted: 0, missing: 0, damaged: 0, damagedQuantity: 0 });
+  }, { expected: 0, counted: 0, missing: 0, damaged: 0 });
 }
 
-/** Số đếm, tình trạng và số hỏng ban đầu khi mở phiếu (lấy theo kết quả đã lưu / số đề xuất lúc chụp). */
+/** Mã kệ dùng để nhóm / sắp xếp dòng kiểm kê. */
+const storageCodeOf = (line) => line.storageId?.code || '';
+
+/**
+ * Nhóm dòng kiểm kê theo kệ (sắp theo mã kệ), lọc theo mã hàng / SKU và tùy chọn chỉ dòng khác thường.
+ * @returns {{ key: string, label: string, lines: object[] }[]}
+ */
+export function groupLinesByStorage(lines, { query = '', onlyUnusual = false, itemConditions = {} } = {}) {
+  const keyword = query.trim().toLowerCase();
+  const groups = new Map();
+  const sorted = [...lines].sort((a, b) => storageCodeOf(a).localeCompare(storageCodeOf(b))
+    || String(a.itemId?.itemCode || '').localeCompare(String(b.itemId?.itemCode || '')));
+  for (const line of sorted) {
+    const text = [line.itemId?.itemCode, line.itemId?.serialNumber, line.countedItemCode, line.variantId?.sku]
+      .filter(Boolean).join(' ').toLowerCase();
+    if (keyword && !text.includes(keyword)) continue;
+    if (onlyUnusual && !isUnusualLine(line, itemConditions)) continue;
+    const key = idOf(line.storageId) || 'none';
+    if (!groups.has(key)) groups.set(key, { key, label: storageCodeOf(line) ? `Kệ ${storageCodeOf(line)}` : 'Chưa gán kệ', lines: [] });
+    groups.get(key).lines.push(line);
+  }
+  return [...groups.values()];
+}
+
+/** Số đếm và tình trạng ban đầu khi mở phiếu: món có mặt, tình trạng như cũ (hoặc kết quả đã lưu). */
 export function initialCounts(stocktake) {
   const lines = stocktake.items || [];
   const counts = Object.fromEntries(lines.map((line) => {
@@ -112,10 +135,7 @@ export function initialCounts(stocktake) {
   const conditions = Object.fromEntries(lines
     .filter((line) => line.itemId)
     .map((line) => [line._id, line.countedCondition || line.itemId.condition || 'good']));
-  const damaged = Object.fromEntries(lines
-    .filter((line) => !line.itemId && line.damagedQuantity != null)
-    .map((line) => [line._id, String(line.damagedQuantity)]));
-  return { counts, conditions, damaged };
+  return { counts, conditions };
 }
 
 /** Biến thể được phép ghi nhận là hàng mới phát hiện: thuộc phạm vi sản phẩm của phiếu (nếu có). */
@@ -127,65 +147,39 @@ export function variantsInScope(variants, stocktake) {
     || variantIds.includes(idOf(variant)));
 }
 
-/** Biến thể thuộc sản phẩm quản lý theo từng mã hàng (có mã riêng cho mỗi món). */
-export function isIndividualVariant(variants, variantId) {
-  const variant = variants.find((row) => idOf(row) === variantId);
-  return variant?.productId?.trackingType === 'individual';
-}
-
-const isNonNegativeInteger = (value) => Number.isInteger(Number(value)) && Number(value) >= 0;
 const hasValue = (value) => value !== '' && value !== null && value !== undefined;
 
-/** Lỗi số hỏng của một dòng hàng số lượng: số nguyên ≥ 0 và không quá số đếm. Trả message hoặc ''. */
-export function damagedError(count, damagedValue) {
-  if (!hasValue(damagedValue)) return '';
-  if (!isNonNegativeInteger(damagedValue)) return 'Số hỏng phải là số nguyên không âm.';
-  if (hasValue(count) && Number(damagedValue) > Number(count)) return 'Số hỏng không được lớn hơn số lượng thực tế.';
-  return '';
-}
-
-/** Kiểm tra số đếm và hàng mới trước khi lưu; trả message lỗi hoặc ''. */
-export function validateCounts(lines, counts, newItems, variants, damaged = {}) {
-  const badDamaged = lines.find((line) => !line.itemId && damagedError(counts[line._id], damaged[line._id]));
-  if (badDamaged) return `${damagedError(counts[badDamaged._id], damaged[badDamaged._id])} (dòng ${badDamaged.variantId?.sku || ''}).`;
+/** Kiểm tra món lạ trước khi lưu (mã hàng không bắt buộc — trống thì hệ thống tự sinh); trả message lỗi hoặc ''. */
+export function validateCounts(lines, counts, newItems) {
   const badCount = lines.some((line) => !line.itemId && hasValue(counts[line._id])
-    && !isNonNegativeInteger(counts[line._id]));
-  const badNewItem = newItems.some((item) => {
-    if (!item.variantId || !item.storageId) return true;
-    if (isIndividualVariant(variants, item.variantId)) return !item.itemCode?.trim();
-    return !Number.isInteger(Number(item.countedQuantity)) || Number(item.countedQuantity) < 1;
-  });
-  if (badCount || badNewItem) {
-    return 'Số lượng kiểm phải là số nguyên không âm; hàng mới cần đủ biến thể, vị trí và mã / số lượng hợp lệ.';
-  }
+    && !['0', '1'].includes(String(counts[line._id])));
+  const badNewItem = newItems.some((item) => !item.variantId || !item.storageId);
+  if (badCount || badNewItem) return 'Món lạ cần chọn đủ biến thể và vị trí.';
   return '';
 }
 
-/** Còn dòng số lượng chưa nhập số đếm thì chưa được gửi kết quả. */
+/** Còn dòng món lạ chưa ghi số đếm thì chưa được gửi kết quả. */
 export function hasMissingCount(lines, counts) {
   return lines.some((line) => !line.itemId && !hasValue(counts[line._id]));
 }
 
-/** Dữ liệu gửi API lưu số đếm (giữ đúng định dạng backend đang nhận). */
-export function buildCountPayload(lines, counts, itemConditions, newItems, variants, damaged = {}) {
+/** Dữ liệu gửi API lưu số đếm: dòng món gửi tình trạng (`missing` = mất), món lạ mỗi phần tử một món. */
+export function buildCountPayload(lines, counts, itemConditions, newItems) {
   const items = lines
     .filter((line) => line.itemId || hasValue(counts[line._id]))
     .map((line) => {
-      if (!line.itemId) {
-        return {
-          detailId: line._id,
-          countedQuantity: Number(counts[line._id]),
-          countedCondition: undefined,
-          // Phiếu cũ chưa có số hỏng và người dùng không nhập → không gửi (giữ hành vi cũ khi duyệt).
-          damagedQuantity: hasValue(damaged[line._id]) ? Number(damaged[line._id]) : undefined,
-        };
-      }
-      const condition = itemConditions[line._id];
+      if (!line.itemId) return { detailId: line._id, countedQuantity: Number(counts[line._id]) };
+      const condition = lineCondition(line, itemConditions);
       return { detailId: line._id, countedQuantity: condition === 'missing' ? 0 : 1, countedCondition: condition };
     });
   const validNewItems = newItems
-    .filter((item) => item.variantId && item.storageId
-      && (!isIndividualVariant(variants, item.variantId) || item.itemCode.trim()))
-    .map((item) => ({ ...item, countedQuantity: Number(item.countedQuantity || 1) }));
+    .filter((item) => item.variantId && item.storageId)
+    .map(({ variantId, storageId, itemCode, serialNumber, countedCondition }) => ({
+      variantId,
+      storageId,
+      itemCode: itemCode?.trim() || undefined,
+      serialNumber: serialNumber?.trim() || undefined,
+      countedCondition: countedCondition || 'good',
+    }));
   return { items, newItems: validNewItems };
 }

@@ -1,5 +1,5 @@
 // TASK-011 — Hàm thuần gom báo cáo tồn kho từ InventoryBalance (không truy vấn DB, có unit test).
-// Mọi loại hàng (quantity + individual) lấy số từ balance; "Đang cho thuê" = balance.quantityRenting;
+// Mọi sản phẩm (quản lý theo món, TASK-015) lấy số từ balance; "Đang cho thuê" = balance.quantityRenting;
 // "Quá hạn trả" tính lúc đọc (RentalOrderItem handed_over của đơn quá dueDate) và gắn vào dòng storageId null.
 import { availableOf } from './balanceQueryService.js';
 
@@ -43,7 +43,7 @@ export const storagePathFor = (storageId, storageById) => {
 /**
  * Dòng cơ sở (location, kệ, biến thể) từ balance.
  * - `overdue`: [{ locationId, variantId, quantity }] → cộng vào dòng `storageId: null` (nơi ghi quantityRenting).
- * - `itemCount` (hàng individual) = quantityOnHand của balance — không đếm món.
+ * - `itemCount` = quantityOnHand của balance (mọi sản phẩm quản lý theo món, TASK-015) — không đếm món.
  */
 export const buildBalanceReportRows = ({ balances = [], overdue = [], variantById, locationById, storageById = new Map() }) => {
   const rows = new Map();
@@ -52,7 +52,6 @@ export const buildBalanceReportRows = ({ balances = [], overdue = [], variantByI
     if (!rows.has(key)) {
       rows.set(key, {
         key,
-        trackingType: variant.productId?.trackingType === 'individual' ? 'individual' : 'quantity',
         locationId: location._id,
         locationCode: location.code,
         locationName: location.name,
@@ -103,7 +102,7 @@ export const buildBalanceReportRows = ({ balances = [], overdue = [], variantByI
     if (!found || !num(entry.quantity)) continue;
     ensureRow(found.location, null, found.variant).quantityOverdue += num(entry.quantity);
   }
-  for (const row of rows.values()) row.itemCount = row.trackingType === 'individual' ? row.quantityOnHand : 0;
+  for (const row of rows.values()) row.itemCount = row.quantityOnHand;
   return [...rows.values()];
 };
 

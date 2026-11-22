@@ -1,4 +1,3 @@
-import { damagedQuantityError } from '../../services/warehouse/stocktakeRules.js';
 
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
 const isObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -60,15 +59,11 @@ export const validateStocktakeCountInput = (payload) => {
     if (!Number.isInteger(Number(item.countedQuantity)) || Number(item.countedQuantity) < 0) throw invalid('Số lượng thực tế phải là số nguyên không âm.');
     if (item.countedItemStatus != null && !['available', 'reserved', 'maintenance', 'unavailable'].includes(item.countedItemStatus)) throw invalid('Trạng thái món hàng kiểm kê không hợp lệ.');
     if (item.countedCondition != null && !['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'].includes(item.countedCondition)) throw invalid('Tình trạng món hàng kiểm kê không hợp lệ.');
-    const damagedError = damagedQuantityError(item.damagedQuantity, item.countedQuantity);
-    if (damagedError) throw invalid(damagedError);
   }
   for (const item of newItems) {
     if (!isObject(item) || !/^[a-f\d]{24}$/i.test(String(item.variantId || ''))) throw invalid('Dòng hàng ngoài hệ thống có biến thể không hợp lệ.');
     if (item.countedItemStatus != null && !['available', 'reserved', 'maintenance', 'unavailable'].includes(item.countedItemStatus)) throw invalid('Trạng thái món hàng mới không hợp lệ.');
     if (item.countedCondition != null && !['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'].includes(item.countedCondition)) throw invalid('Tình trạng món hàng mới không hợp lệ.');
-    const damagedError = damagedQuantityError(item.damagedQuantity, item.countedQuantity ?? null);
-    if (damagedError) throw invalid(damagedError);
   }
   return { items, newItems };
 };

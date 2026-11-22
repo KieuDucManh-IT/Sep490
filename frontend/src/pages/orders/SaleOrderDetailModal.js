@@ -15,6 +15,7 @@ import {
   Phone,
   Mail,
   Store,
+  Undo2,
 } from 'lucide-react';
 import { getSaleOrderDetailApi } from '../../services/orderApi';
 import {
@@ -28,6 +29,7 @@ import {
   ShipmentCreateModal,
 } from '../shipping';
 import { cancelShipmentApi } from '../../services/shippingApi';
+import SalesReturnModal from './SalesReturnModal';
 import '../../styles/ShopBranches.css';
 import '../../styles/OrderMonitoring.css';
 
@@ -44,6 +46,7 @@ export default function SaleOrderDetailModal({
   const [error, setError] = useState('');
   const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
   const [retryShipment, setRetryShipment] = useState(null);
+  const [isReturnOpen, setIsReturnOpen] = useState(false);
 
   const refetchOrder = () => {
     if (orderId) {
@@ -498,6 +501,17 @@ export default function SaleOrderDetailModal({
                 </button>
               )}
 
+              {order.orderStatus === 'completed' && (
+                <button
+                  type="button"
+                  className="btn-modal-secondary d-flex align-items-center gap-1"
+                  onClick={() => setIsReturnOpen(true)}
+                >
+                  <Undo2 size={15} />
+                  <span>Trả hàng</span>
+                </button>
+              )}
+
               {order.orderStatus === 'processing' && (
                 <button
                   type="button"
@@ -526,6 +540,16 @@ export default function SaleOrderDetailModal({
         orderType="sale"
         onSuccess={() => refetchOrder()}
       />
+
+      {/* TASK-015: trả hàng bán theo món (chỉ đơn đã hoàn tất, Branch Manager) */}
+      {!isReadOnly && (
+        <SalesReturnModal
+          show={isReturnOpen}
+          order={order}
+          onHide={() => setIsReturnOpen(false)}
+          onCreated={refetchOrder}
+        />
+      )}
     </Modal>
   );
 }

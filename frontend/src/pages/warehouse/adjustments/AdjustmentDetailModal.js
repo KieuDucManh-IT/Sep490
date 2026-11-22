@@ -2,7 +2,9 @@ import React from 'react';
 import { Button, Modal } from 'react-bootstrap';
 import WarehouseWorkflowProgress from '../../../components/WarehouseWorkflowProgress';
 import { StatusBadge } from '../../../components/warehouse';
-import { ADJUSTMENT_STATUS_LABELS, formatVariantName } from '../../../constants/warehouseLabels';
+import {
+  ADJUSTMENT_STATUS_LABELS, CONDITION_LABELS, formatVariantName, labelOf,
+} from '../../../constants/warehouseLabels';
 import { codeAndName, idOf } from '../shared/slipHelpers';
 
 /** Số thay đổi có dấu: "+3", "-2", "0". */
@@ -12,12 +14,8 @@ export function formatChange(value) {
   return String(number);
 }
 
-/** Hàng số lượng từ kiểm kê: "không khả dụng" trước → sau (sau = min(số hỏng, tồn sau)). */
-function damagedLabel(line) {
-  if (line.damagedQuantity == null) return '—';
-  const after = Math.min(Number(line.damagedQuantity), Number(line.quantityAfter || 0));
-  return `${line.unavailableBefore ?? 0} → ${after}`;
-}
+/** Tình trạng món ghi theo dòng điều chỉnh (mỗi dòng một món). */
+const conditionLabel = (line) => (line.itemCondition ? labelOf(CONDITION_LABELS, line.itemCondition, line.itemCondition) : '—');
 
 function AdjustmentLinesTable({ lines }) {
   return (
@@ -30,7 +28,7 @@ function AdjustmentLinesTable({ lines }) {
             <th>Tồn trước</th>
             <th>Thay đổi</th>
             <th>Tồn sau</th>
-            <th>Không khả dụng (hỏng)</th>
+            <th>Tình trạng món</th>
           </tr>
         </thead>
         <tbody>
@@ -38,18 +36,16 @@ function AdjustmentLinesTable({ lines }) {
             <tr key={idOf(line._id)}>
               <td>
                 {formatVariantName(line.variantId)}
-                {line.itemCode && (
-                  <small className="wm-stock-subline">
-                    {line.itemCode}
-                    {line.serialNumber ? ` · ${line.serialNumber}` : ''}
-                  </small>
-                )}
+                <small className="wm-stock-subline">
+                  {line.itemCode || (line.quantityChange > 0 ? 'Món mới (mã tự sinh khi áp dụng)' : '—')}
+                  {line.serialNumber ? ` · ${line.serialNumber}` : ''}
+                </small>
               </td>
               <td>{line.storageId?.code || 'Chưa gán'}</td>
               <td>{line.quantityBefore}</td>
               <td>{formatChange(line.quantityChange)}</td>
               <td>{line.quantityAfter}</td>
-              <td>{damagedLabel(line)}</td>
+              <td>{conditionLabel(line)}</td>
             </tr>
           ))}
         </tbody>

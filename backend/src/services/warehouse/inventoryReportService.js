@@ -34,7 +34,7 @@ const overdueByVariantLocation = async (locationIds, now = new Date()) => {
     .filter((row) => row.quantity > 0);
 };
 
-/** TASK-011: mọi số lượng (cả hàng individual) đọc từ InventoryBalance; "Đang giữ" gồm giữ chỗ của đơn thuê/bán và phiếu kho. */
+/** TASK-011: mọi số lượng đọc từ InventoryBalance; "Đang giữ" gồm giữ chỗ của đơn thuê/bán và phiếu kho. */
 export const getInventoryReport = async ({ locationId = '', storageLevel = 'shelf', itemLevel = 'variant' } = {}) => {
   if (locationId && !mongoose.isValidObjectId(locationId)) throw invalid('Kho/cửa hàng không hợp lệ.');
   if (!['zone', 'row', 'shelf'].includes(storageLevel)) throw invalid('Cấp vị trí không hợp lệ.');
@@ -51,7 +51,7 @@ export const getInventoryReport = async ({ locationId = '', storageLevel = 'shel
   const variantIds = [...new Set([...balances, ...overdue].map((row) => String(row.variantId)))];
   const variants = await ProductVariant.find({ _id: { $in: variantIds } })
     .select('sku size color productId')
-    .populate({ path: 'productId', select: 'productCode name trackingType tag categoryId', populate: { path: 'categoryId', select: 'name' } })
+    .populate({ path: 'productId', select: 'productCode name tag categoryId', populate: { path: 'categoryId', select: 'name' } })
     .lean();
   const variantById = new Map(variants.map((variant) => [String(variant._id), variant]));
   const baseRows = buildBalanceReportRows({ balances, overdue, variantById, locationById, storageById });

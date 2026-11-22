@@ -8,8 +8,8 @@ const idOf = (value) => String(value?._id || value || '');
 /**
  * Form chi nhánh tạo yêu cầu trả hàng về kho tổng. Chi nhánh gửi lấy theo chi nhánh đang chọn
  * trên thanh điều hướng. Chọn sản phẩm một lần rồi nhập số lượng nhiều biến thể (VariantQuantityPicker,
- * TASK-014 B), không cho vượt "Khả dụng tại chi nhánh". Hàng theo mã (individual) chỉ nhập số lượng ở đây;
- * mã hàng cụ thể vẫn do hệ thống giữ ở bước duyệt như trước. Payload tạo phiếu giữ nguyên.
+ * TASK-014 B), không cho vượt "Khả dụng tại chi nhánh". Ở đây chỉ nhập số món;
+ * mã hàng cụ thể do hệ thống giữ (FIFO) ở bước duyệt. Payload tạo phiếu giữ nguyên.
  */
 export default function BranchReturnCreateForm({ activeBranch, branchId, lines, setLines, busy, onSubmit, onCancel }) {
   const [stock, setStock] = useState(() => new Map());

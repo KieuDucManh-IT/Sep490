@@ -183,6 +183,32 @@ export const ITEM_STATUS_LABELS = {
   sold: 'Đã bán',
 };
 
+/** Kết quả nhận của một món (màn nhận hàng: mặc định "Nhận tốt", chỉ đánh dấu món hỏng / thiếu). */
+export const RECEIPT_STATE_LABELS = {
+  good: 'Nhận tốt',
+  damaged: 'Hỏng',
+  missing: 'Thiếu',
+};
+
+/* ---------------- Trả hàng bán ---------------- */
+
+/** Cách xử lý món khách trả (SalesReturnDetail.disposition). */
+export const SALES_RETURN_DISPOSITION_LABELS = {
+  restock: 'Nhập lại kho',
+  quarantine: 'Cách ly',
+  repair: 'Sửa chữa',
+  dispose: 'Hủy bỏ',
+};
+
+/** Tình trạng món khi khách trả (SalesReturnDetail.conditionOnReturn). */
+export const SALES_RETURN_CONDITION_LABELS = {
+  new: 'Mới',
+  good: 'Tốt',
+  worn: 'Đã qua sử dụng',
+  damaged: 'Hỏng',
+  unrepairable: 'Không thể sửa',
+};
+
 /* ---------------- Giặt / sửa / thanh lý ---------------- */
 
 /** Loại phiếu giặt / sửa. */

@@ -1,132 +1,126 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Form } from 'react-bootstrap';
 import { formatVariantName, labelOf, CONDITION_LABELS } from '../../../constants/warehouseLabels';
 import {
-  COUNT_CONDITION_OPTIONS, actualQuantity, damagedError, isIndividualLine, lineCondition, lineVariance,
+  COUNT_CONDITION_OPTIONS, actualQuantity, groupLinesByStorage, isItemLine, isUnusualLine, lineCondition, lineVariance,
 } from './stocktakeHelpers';
 
-/** "Trong đó hỏng" — chỉ hàng số lượng; hàng theo mã ghi hỏng bằng tình trạng từng món. */
-function DamagedCell({ line, editable, count, value, onChange }) {
-  if (isIndividualLine(line)) return <td>—</td>;
-  if (!editable) return <td>{line.damagedQuantity ?? '—'}</td>;
-  const error = damagedError(count, value);
-  return (
-    <td>
-      <input
-        className={`wm-count-input${error ? ' is-invalid' : ''}`}
-        type="number"
-        min="0"
-        step="1"
-        aria-label="Số hàng hỏng trong số đếm được"
-        value={value ?? ''}
-        onChange={(event) => onChange(line._id, event.target.value)}
-      />
-      {error && <small className="text-danger d-block">{error}</small>}
-    </td>
-  );
-}
-
 function LineName({ line }) {
-  const individual = isIndividualLine(line);
   return (
     <td>
-      {formatVariantName(line.variantId)}
-      <small className="wm-stock-subline">{individual ? 'Kiểm từng mã hàng' : 'Nhập tổng số lượng'}</small>
-      {line.itemId && (
-        <small className="wm-stock-subline">
-          {line.itemId.itemCode}
-          {line.itemId.serialNumber ? ` · ${line.itemId.serialNumber}` : ''}
-        </small>
-      )}
-      {line.countedItemCode && <small className="wm-stock-subline">Mã mới: {line.countedItemCode}</small>}
+      <strong>{line.itemId?.itemCode || line.countedItemCode || 'Món lạ (mã tự sinh)'}</strong>
+      {line.itemId?.serialNumber && <small className="wm-stock-subline">{line.itemId.serialNumber}</small>}
+      <small className="wm-stock-subline">{formatVariantName(line.variantId)}</small>
+      {!isItemLine(line) && <small className="wm-stock-subline">Món lạ phát hiện khi kiểm</small>}
     </td>
   );
 }
 
-function ConditionCell({ line, editable, condition, onConditionChange }) {
-  if (!isIndividualLine(line)) return <td>—</td>;
+/** Ô tình trạng: mặc định "như cũ"; chỉ đổi món hỏng / thiếu. Món lạ chọn còn ghi nhận hay bỏ. */
+function ConditionCell({ line, editable, condition, count, onConditionChange, onCountChange }) {
+  if (!isItemLine(line)) {
+    const saved = line.countedCondition || 'good';
+    if (!editable) return <td>{labelOf(CONDITION_LABELS, saved, saved)}</td>;
+    return (
+      <td>
+        <select aria-label="Ghi nhận món lạ" value={String(count ?? '1')} onChange={(event) => onCountChange(line._id, event.target.value)}>
+          <option value="1">Có mặt · {labelOf(CONDITION_LABELS, saved, saved)}</option>
+          <option value="0">Bỏ ghi nhận</option>
+        </select>
+      </td>
+    );
+  }
+  const current = line.itemId?.condition || 'good';
   if (!editable) {
-    const saved = line.countedCondition || line.itemId.condition || 'good';
+    const saved = line.countedCondition || current;
     return <td>{labelOf(CONDITION_LABELS, saved, saved)}</td>;
   }
   return (
     <td>
-      <select
-        aria-label="Tình trạng thực tế của món hàng"
-        value={condition}
-        onChange={(event) => onConditionChange(line._id, event.target.value)}
-      >
-        {COUNT_CONDITION_OPTIONS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+      <select aria-label="Tình trạng thực tế của món hàng" value={condition} onChange={(event) => onConditionChange(line._id, event.target.value)}>
+        {COUNT_CONDITION_OPTIONS.map(([value, text]) => (
+          <option key={value} value={value}>{value === current ? `Có mặt · như cũ (${text})` : text}</option>
+        ))}
       </select>
     </td>
   );
 }
 
+/** Tóm tắt một kệ: "Kệ A-01-03: 12 món · thiếu 1 · khác thường 2". */
+function groupSummary(group, counts, itemConditions) {
+  const missing = group.lines.filter((line) => actualQuantity(line, counts, itemConditions) === 0).length;
+  const unusual = group.lines.filter((line) => isUnusualLine(line, itemConditions)).length;
+  const parts = [`${group.label}: ${group.lines.length} món`];
+  if (missing) parts.push(`thiếu ${missing}`);
+  if (unusual) parts.push(`khác thường ${unusual}`);
+  return parts.join(' · ');
+}
+
 /**
- * Bảng số đếm của phiếu kiểm kê. Khi phiếu đang kiểm (`editable`), dòng số lượng cho nhập số đếm,
- * dòng kiểm từng món cho chọn tình trạng thực tế.
+ * Bảng kiểm kê theo món, nhóm theo kệ. Khi phiếu đang kiểm (`editable`), mọi món mặc định
+ * "có mặt – tình trạng như cũ"; người kiểm chỉ sửa món khác thường. Có ô lọc theo mã.
  */
 export default function StocktakeCountTable({
-  lines, editable, counts, itemConditions, damaged = {}, onCountChange, onConditionChange, onDamagedChange,
+  lines, editable, counts, itemConditions, onCountChange, onConditionChange,
 }) {
+  const [query, setQuery] = useState('');
+  const [onlyUnusual, setOnlyUnusual] = useState(false);
+  const groups = groupLinesByStorage(lines, { query, onlyUnusual, itemConditions });
+
   return (
-    <div className="wm-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Mặt hàng / mã hàng</th>
-            <th>Vị trí</th>
-            <th>Tồn sổ</th>
-            <th>Tình trạng thực tế</th>
-            <th>SL thực tế</th>
-            <th>Trong đó hỏng</th>
-            <th>Chênh lệch</th>
-            <th>Ghi nhận</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((line) => {
-            const actual = actualQuantity(line, counts, itemConditions);
-            const countEditable = editable && !isIndividualLine(line);
-            return (
-              <tr key={line._id}>
-                <LineName line={line} />
-                <td>{line.storageId?.code || 'Chưa gán'}</td>
-                <td>{line.systemQuantity}</td>
-                <ConditionCell
-                  line={line}
-                  editable={editable}
-                  condition={lineCondition(line, itemConditions)}
-                  onConditionChange={onConditionChange}
-                />
-                <td>
-                  {countEditable ? (
-                    <input
-                      className="wm-count-input"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={counts[line._id] ?? ''}
-                      onChange={(event) => onCountChange(line._id, event.target.value)}
-                    />
-                  ) : actual}
-                </td>
-                <DamagedCell
-                  line={line}
-                  editable={editable}
-                  count={counts[line._id]}
-                  value={damaged[line._id]}
-                  onChange={onDamagedChange}
-                />
-                <td>{lineVariance(line, actual)}</td>
-                <td>{line.isCounted ? line.countedBy?.FullName || 'Đã kiểm' : 'Chưa kiểm'}</td>
-              </tr>
-            );
-          })}
-          {lines.length === 0 && (
-            <tr><td colSpan="8">Không có tồn hệ thống trong phạm vi này.</td></tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="d-flex gap-3 align-items-center my-2 flex-wrap">
+        <Form.Control size="sm" style={{ maxWidth: 280 }} placeholder="Lọc theo mã hàng / SKU..." value={query}
+          onChange={(event) => setQuery(event.target.value)} />
+        <Form.Check type="switch" id="stocktake-only-unusual" label="Chỉ hiện món khác thường"
+          checked={onlyUnusual} onChange={(event) => setOnlyUnusual(event.target.checked)} />
+      </div>
+      <div className="wm-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Mã hàng / mặt hàng</th>
+              <th>Tồn sổ</th>
+              <th>Tình trạng thực tế</th>
+              <th>Thực tế</th>
+              <th>Chênh lệch</th>
+              <th>Ghi nhận</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((group) => (
+              <React.Fragment key={group.key}>
+                <tr className="table-light">
+                  <td colSpan="6"><strong>{groupSummary(group, counts, itemConditions)}</strong></td>
+                </tr>
+                {group.lines.map((line) => {
+                  const actual = actualQuantity(line, counts, itemConditions);
+                  return (
+                    <tr key={line._id}>
+                      <LineName line={line} />
+                      <td>{line.systemQuantity}</td>
+                      <ConditionCell
+                        line={line}
+                        editable={editable}
+                        condition={lineCondition(line, itemConditions)}
+                        count={counts[line._id]}
+                        onConditionChange={onConditionChange}
+                        onCountChange={onCountChange}
+                      />
+                      <td>{actual}</td>
+                      <td>{lineVariance(line, actual)}</td>
+                      <td>{line.isCounted ? line.countedBy?.FullName || 'Đã kiểm' : 'Chưa kiểm'}</td>
+                    </tr>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+            {groups.length === 0 && (
+              <tr><td colSpan="6">{lines.length ? 'Không có món khớp bộ lọc.' : 'Không có tồn hệ thống trong phạm vi này.'}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

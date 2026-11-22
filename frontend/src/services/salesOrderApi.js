@@ -135,3 +135,20 @@ export async function updateSalesOrderStatus(orderId, { orderStatus, note }) {
     body: { orderStatus, note },
   });
 }
+
+/* ---------------- Trả hàng bán (TASK-015) ---------------- */
+
+/** Món còn trả được của đơn, theo dòng đơn (BM chi nhánh của đơn / admin). */
+export async function getSalesReturnableItems(orderId) {
+  return salesRequest(`/${orderId}/returnable-items`, { method: 'GET' });
+}
+
+/** Danh sách phiếu trả hàng của đơn. */
+export async function getSalesReturns(orderId) {
+  return salesRequest(`/${orderId}/returns`, { method: 'GET' });
+}
+
+/** Tạo phiếu trả hàng theo món: `{ returnReason, items: [{ salesOrderDetailId, itemIds, conditionOnReturn, disposition, note }] }`. */
+export async function createSalesReturn(orderId, payload) {
+  return salesRequest(`/${orderId}/returns`, { method: 'POST', body: payload });
+}

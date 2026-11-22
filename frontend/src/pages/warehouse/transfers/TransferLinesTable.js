@@ -1,5 +1,6 @@
 import React from 'react';
 import { StockDiscrepancyBadge } from '../../../components/StockDiscrepancyDetail';
+import { ItemCodeGroup } from '../../../components/warehouse';
 import { itemCodeOf, lineName } from './transferHelpers';
 
 /**
@@ -25,7 +26,7 @@ export default function TransferLinesTable({
     <tbody>{(transfer.items || []).map((line) => <tr key={line._id} className={rowClassName?.(line) || undefined}>
       <td>
         {lineName(line)}
-        {line.itemIds?.length > 0 && <small className="wm-stock-subline">Mã hàng: {line.itemIds.map(itemCodeOf).join(', ')}</small>}
+        {line.itemIds?.length > 0 && <ItemCodeGroup label="Mã hàng đã xuất" items={line.itemIds} codeOf={itemCodeOf} />}
       </td>
       <td>{line.quantityRequested}</td>
       <td>{renderApproved ? renderApproved(line) : line.quantityApproved ?? '—'}</td>

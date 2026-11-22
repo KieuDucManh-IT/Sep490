@@ -4,6 +4,8 @@ const salesReturnDetailSchema = new mongoose.Schema({
   salesReturnId: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesReturn', required: true, index: true },
   salesOrderDetailId: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesOrderDetail', required: true },
   quantityReturned: { type: Number, required: true, min: 1 },
+  // TASK-015: các món được trả (chọn trong số món đã bán của đơn); số món = quantityReturned.
+  itemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }],
   unitRefundAmount: { type: Number, required: true, min: 0 },
   conditionOnReturn: { type: String, required: true, enum: ['new', 'good', 'worn', 'damaged', 'unrepairable'] },
   disposition: { type: String, required: true, enum: ['restock', 'quarantine', 'repair', 'dispose'] },

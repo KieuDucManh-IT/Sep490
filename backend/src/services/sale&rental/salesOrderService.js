@@ -23,7 +23,7 @@ import {
 } from '../walletService.js';
 import { checkSalesAvailability } from '../warehouse/productInventoryHelper.js';
 import {
-  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes, sellItems, withStatus,
+  reserveStock, closeReservations, releaseReserved, sellItems, withStatus,
 } from '../warehouse/orderStockService.js';
 import {
   createSalesOrderSchema,
@@ -637,10 +637,9 @@ export const updateSalesOrderStatus = async ({
         updateFields.paymentStatus = 'paid';
       }
 
-      // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật.
-      // - individual: chọn FIFO món `available` (condition dùng được) → `sold` qua itemStateService, gộp reserved −qty;
-      //   StockMovement mỗi món một dòng có itemId.
-      // - quantity: giữ hành vi cũ (onHand −qty, reserved −qty) trên dòng chi nhánh, có chặn âm.
+      // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật:
+      // chọn FIFO món `available` (condition dùng được) → `sold` qua itemStateService, gộp reserved −qty;
+      // StockMovement mỗi món một dòng có itemId (trả hàng bán tra lại món qua các dòng này).
       const details = await SalesOrderDetail.find({ salesOrderId: order._id }).populate('variantId', 'sku').session(session);
       const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'sale' }, 'consumed', session);
       const lines = new Map();
@@ -649,46 +648,22 @@ export const updateSalesOrderStatus = async ({
         if (!lines.has(variantId)) lines.set(variantId, { variantId: it.variantId?._id || it.variantId, sku: it.variantId?.sku, quantity: 0 });
         lines.get(variantId).quantity += it.quantity;
       }
-      const tracking = await trackingTypes([...lines.keys()], session);
       for (const [variantId, line] of lines) {
         const reservedQuantity = reservedByVariant.get(variantId) || 0;
-        if (tracking.get(variantId) === 'individual') {
-          const soldItems = await sellItems({
-            locationId: order.locationId, variantId: line.variantId, quantity: line.quantity, reservedQuantity, sku: line.sku,
-          }, session);
-          await StockMovement.insertMany(soldItems.map((item) => ({
-            variantId: line.variantId,
-            itemId: item._id,
-            locationId: order.locationId,
-            storageId: item.storageId ?? null,
-            movementType: 'sale',
-            quantityChange: -1,
-            referenceType: 'sales_order',
-            referenceId: order._id,
-            createdBy: user._id,
-          })), { session });
-        } else {
-          await incBranchBalance({
-            locationId: order.locationId,
-            variantId: line.variantId,
-            inc: { quantityOnHand: -line.quantity, quantityReserved: -reservedQuantity },
-          }, session);
-          await StockMovement.create(
-            [
-              {
-                variantId: line.variantId,
-                locationId: order.locationId,
-                storageId: null,
-                movementType: 'sale',
-                quantityChange: -line.quantity,
-                referenceType: 'sales_order',
-                referenceId: order._id,
-                createdBy: user._id,
-              },
-            ],
-            { session }
-          );
-        }
+        const soldItems = await sellItems({
+          locationId: order.locationId, variantId: line.variantId, quantity: line.quantity, reservedQuantity, sku: line.sku,
+        }, session);
+        await StockMovement.insertMany(soldItems.map((item) => ({
+          variantId: line.variantId,
+          itemId: item._id,
+          locationId: order.locationId,
+          storageId: item.storageId ?? null,
+          movementType: 'sale',
+          quantityChange: -1,
+          referenceType: 'sales_order',
+          referenceId: order._id,
+          createdBy: user._id,
+        })), { session });
       }
     } else if (orderStatus === 'cancelled') {
       updateFields.cancelledAt = new Date();

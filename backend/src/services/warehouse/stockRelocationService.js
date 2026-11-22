@@ -6,6 +6,7 @@
 // - Quản lý kho: tạo phiếu (giữ hàng ở kệ nguồn ngay lúc tạo) và giao nhân viên, hủy khi phiếu chưa hoàn tất.
 // - Nhân viên kho được giao: bắt đầu thực hiện, xác nhận đã chuyển (kệ nguồn giảm, kệ đích tăng).
 // Sức chứa kệ đích (và các cấp cha) được kiểm lúc tạo phiếu, tính cả các phiếu di chuyển khác đang mở.
+// TASK-015: mỗi dòng là danh sách món (`itemIds`); `quantity` / `confirmedQuantity` = số món.
 import mongoose from 'mongoose';
 import { StockRelocation } from '../../models/warehouse/transfer/StockRelocation.js';
 import { StockRelocationDetail } from '../../models/warehouse/transfer/StockRelocationDetail.js';
@@ -14,9 +15,7 @@ import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBala
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import User from '../../models/system/User.js';
-import {
-  increaseInventoryBalance, recordStockMovement, releaseReservedBalance, reserveInventoryBalance,
-} from './inventoryLedgerService.js';
+import { recordStockMovement } from './inventoryLedgerService.js';
 import { moveItems } from './itemStateService.js';
 import { availableOf, stockMismatchError } from './balanceQueryService.js';
 import { appError } from './shared/errors.js';
@@ -52,17 +51,12 @@ const findDetails = (ids) => StockRelocationDetail.find({ relocationId: { $in: i
   .populate({
     path: 'variantId',
     select: 'sku size color productId',
-    populate: { path: 'productId', select: 'name productCode trackingType' },
+    populate: { path: 'productId', select: 'name productCode' },
   })
   .populate('fromStorageId', 'code name type')
   .populate('toStorageId', 'code name type')
   .populate('itemIds', 'itemCode serialNumber condition status')
   .populate('confirmedItemIds', 'itemCode serialNumber condition status');
-
-const isIndividualVariant = async (variantId, session) => {
-  const variant = await ProductVariant.findById(variantId).populate('productId', 'trackingType').session(session);
-  return variant?.productId?.trackingType === 'individual';
-};
 
 const load = async (id, user, session) => {
   if (!validId(id)) throw appError('Mã phiếu di chuyển không hợp lệ.');
@@ -164,32 +158,27 @@ const checkCapacity = async (locationId, lines, session) => {
 
 /* ------------------------------ Tạo phiếu ------------------------------ */
 
-const loadVariantTracking = async (items, session) => {
+/** Mọi biến thể trên phiếu phải còn hoạt động (biến thể và sản phẩm). */
+const assertVariantsActive = async (items, session) => {
   const variantIds = [...new Set(items.map((x) => x.variantId))];
   const variantRows = await ProductVariant.find({ _id: { $in: variantIds }, status: 'active', isDeleted: { $ne: true } })
-    .populate('productId', 'trackingType status isDeleted').session(session).lean();
+    .populate('productId', 'status isDeleted').session(session).lean();
   const inactive = (v) => !v.productId || v.productId.status !== 'active' || v.productId.isDeleted;
   if (variantRows.length !== variantIds.length || variantRows.some(inactive)) {
     throw appError('Có biến thể không tồn tại hoặc đã ngừng kinh doanh.');
   }
-  return new Map(variantRows.map((v) => [String(v._id), v.productId.trackingType || 'quantity']));
 };
 
 /**
- * Giữ hàng ở kệ nguồn cho một dòng: kiểm khả dụng trên balance trước; hàng individual giữ các món cũ nhất
- * (chọn thiếu = dữ liệu lệch), hàng quantity tăng reserved bằng lệnh có điều kiện.
+ * Giữ hàng ở kệ nguồn cho một dòng: kiểm khả dụng trên balance trước, rồi giữ các món cũ nhất
+ * (chọn thiếu = dữ liệu lệch giữa balance và món).
  */
-const holdSourceStock = async ({ central, line, individual, session }) => {
+const holdSourceStock = async ({ central, line, session }) => {
   const place = { locationId: central._id, storageId: line.fromStorageId, variantId: line.variantId };
   const balance = await InventoryBalance.findOne(place).session(session);
   const available = availableOf(balance);
   const message = `Tồn khả dụng tại kệ nguồn không đủ (${available}/${line.quantity}).`;
   if (!balance || available < line.quantity) throw appError(message, 409);
-  if (!individual) {
-    await reserveInventoryBalance({ ...place, quantity: line.quantity, session, message });
-    line.itemIds = [];
-    return;
-  }
   const items = await InventoryItem.find({ ...place, status: 'available', condition: { $nin: UNMOVABLE_CONDITIONS } })
     .sort({ createdAt: 1 }).limit(line.quantity).session(session);
   if (items.length !== line.quantity) {
@@ -212,12 +201,11 @@ export const createStockRelocation = async (payload, user, validated) => {
       const staff = await User.findOne({ _id: validated.assignedStaffId, Role: WAREHOUSE_STAFF_ROLE_PATTERN, Status: /^active$/i })
         .session(session);
       if (!staff) throw appError('Nhân viên kho được giao không tồn tại hoặc đã ngừng hoạt động.');
-      const tracking = await loadVariantTracking(validated.items, session);
+      await assertVariantsActive(validated.items, session);
       for (const line of validated.items) {
         await storageChain(line.fromStorageId, central._id, session);
         await storageChain(line.toStorageId, central._id, session);
-        const individual = tracking.get(line.variantId) === 'individual';
-        await holdSourceStock({ central, line, individual, session });
+        await holdSourceStock({ central, line, session });
       }
       await checkCapacity(central._id, validated.items, session);
       const [doc] = await StockRelocation.create([{
@@ -253,17 +241,13 @@ export const startStockRelocation = async (id, user) => {
 /* ------------------------------ Hoàn tất ------------------------------ */
 
 /** Số và món xác nhận phải khớp đúng phần đã giữ cho phiếu; chênh lệch thì báo quản lý xử lý. */
-const checkConfirmation = (row, result, individual) => {
+const checkConfirmation = (row, result) => {
   if (result.quantityMoved !== row.quantity) {
     throw appError('Số lượng xác nhận phải khớp số đã được giao; nếu phát hiện chênh lệch hãy báo quản lý kho xử lý phiếu.', 409);
   }
-  if (individual) {
-    const reserved = new Set(row.itemIds.map(String));
-    if (result.itemIds.length !== row.quantity || result.itemIds.some((itemId) => !reserved.has(itemId))) {
-      throw appError('Danh sách món đã chọn phải khớp số lượng và các món đã được giữ cho phiếu.', 409);
-    }
-  } else if (result.itemIds.length) {
-    throw appError('Dòng quản lý theo số lượng không nhận danh sách mã hàng.');
+  const reserved = new Set(row.itemIds.map(String));
+  if (result.itemIds.length !== row.quantity || result.itemIds.some((itemId) => !reserved.has(itemId))) {
+    throw appError('Danh sách món đã chọn phải khớp số lượng và các món đã được giữ cho phiếu.', 409);
   }
 };
 
@@ -297,28 +281,6 @@ const moveReservedItemsToTarget = async ({ doc, row, result, user, session }) =>
   }
 };
 
-/** Hàng quantity: kệ nguồn nhả giữ và giảm tồn, kệ đích tăng tồn. */
-const moveReservedQuantityToTarget = async ({ doc, row, user, session }) => {
-  await releaseReservedBalance({
-    locationId: doc.locationId,
-    storageId: row.fromStorageId,
-    variantId: row.variantId,
-    quantity: row.quantity,
-    alsoRemoveOnHand: true,
-    session,
-    message: 'Tồn kho nguồn đã thay đổi, không thể hoàn tất phiếu.',
-  });
-  await increaseInventoryBalance({
-    locationId: doc.locationId, storageId: row.toStorageId, variantId: row.variantId, quantity: row.quantity, session,
-  });
-  await recordStockMovement(relocationMovement(doc, row, user, {
-    storageId: row.fromStorageId, movementType: 'transfer_out', quantityChange: -row.quantity,
-  }), session);
-  await recordStockMovement(relocationMovement(doc, row, user, {
-    storageId: row.toStorageId, movementType: 'transfer_in', quantityChange: row.quantity,
-  }), session);
-};
-
 /** Nhân viên xác nhận đã chuyển xong từng dòng: hàng rời kệ nguồn sang kệ đích. */
 export const completeStockRelocation = async (id, user, confirmations) => {
   if (!validId(id)) throw appError('Mã phiếu di chuyển không hợp lệ.');
@@ -339,10 +301,8 @@ export const completeStockRelocation = async (id, user, confirmations) => {
       }
       for (const row of rows) {
         const result = incoming.get(String(row._id));
-        const individual = await isIndividualVariant(row.variantId, session);
-        checkConfirmation(row, result, individual);
-        if (individual) await moveReservedItemsToTarget({ doc, row, result, user, session });
-        else await moveReservedQuantityToTarget({ doc, row, user, session });
+        checkConfirmation(row, result);
+        await moveReservedItemsToTarget({ doc, row, result, user, session });
         row.confirmedQuantity = result.quantityMoved;
         row.confirmedItemIds = result.itemIds;
         row.confirmedBy = user._id;
@@ -378,22 +338,12 @@ export const cancelStockRelocation = async (id, user) => {
       const rows = await StockRelocationDetail.find({ relocationId: id }).session(session);
       for (const row of rows) {
         const source = { locationId: doc.locationId, storageId: row.fromStorageId };
-        if (await isIndividualVariant(row.variantId, session)) {
-          const items = await InventoryItem.find({ _id: { $in: row.itemIds }, ...source, status: 'reserved' })
-            .session(session);
-          if (items.length !== row.itemIds.length) {
-            throw appError('Có món hàng của phiếu không còn được giữ ở kệ nguồn; hãy tải lại và báo quản lý kho đối soát.', 409);
-          }
-          await moveItems(items, { status: 'available', warehouseHold: -1 }, session);
-        } else {
-          await releaseReservedBalance({
-            ...source,
-            variantId: row.variantId,
-            quantity: row.quantity,
-            session,
-            message: 'Số đang giữ ở kệ nguồn không khớp phiếu; hãy tải lại và báo quản lý kho đối soát.',
-          });
+        const items = await InventoryItem.find({ _id: { $in: row.itemIds }, ...source, status: 'reserved' })
+          .session(session);
+        if (items.length !== row.itemIds.length) {
+          throw appError('Có món hàng của phiếu không còn được giữ ở kệ nguồn; hãy tải lại và báo quản lý kho đối soát.', 409);
         }
+        await moveItems(items, { status: 'available', warehouseHold: -1 }, session);
       }
     });
   } finally {

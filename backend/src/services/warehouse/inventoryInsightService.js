@@ -1,5 +1,5 @@
 // Màn tồn kho (TASK-014 G), chỉ đọc:
-// - Lịch sử một mã hàng (`individual`): sổ biến động có itemId, và giặt / sửa / thanh lý của món.
+// - Lịch sử một mã hàng: sổ biến động có itemId, và giặt / sửa / thanh lý của món.
 // - Sức chứa kho tổng: dùng lại capacitySnapshot (shared/capacity.js) — không có công thức "đang chứa" thứ hai.
 import mongoose from 'mongoose';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';

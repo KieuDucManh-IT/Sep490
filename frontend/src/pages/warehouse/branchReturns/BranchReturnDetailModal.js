@@ -2,7 +2,7 @@ import React from 'react';
 import { Button, Modal } from 'react-bootstrap';
 import { PackageCheck } from 'lucide-react';
 import WarehouseWorkflowProgress from '../../../components/WarehouseWorkflowProgress';
-import { StatusBadge } from '../../../components/warehouse';
+import { ItemCodeGroup, StatusBadge } from '../../../components/warehouse';
 import { BRANCH_RETURN_STATUS_LABELS, formatVariantName } from '../../../constants/warehouseLabels';
 import { idOf } from '../shared/slipHelpers';
 import { PutawayCell, ReceiptCell } from './ReturnLineCells';
@@ -23,11 +23,7 @@ function LineName({ line }) {
   return (
     <td>
       {formatVariantName(line.variantId)}
-      {line.itemIds?.length > 0 && (
-        <small className="wm-stock-subline">
-          {line.itemIds.map((item) => item.itemCode || idOf(item).slice(-6)).join(', ')}
-        </small>
-      )}
+      {line.itemIds?.length > 0 && <ItemCodeGroup label="Mã hàng" items={line.itemIds} />}
     </td>
   );
 }

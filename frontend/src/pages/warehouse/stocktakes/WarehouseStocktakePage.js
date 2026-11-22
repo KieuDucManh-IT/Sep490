@@ -17,27 +17,24 @@ import {
   buildCountPayload, emptyCreateForm, hasMissingCount, initialCounts, validateCounts,
 } from './stocktakeHelpers';
 
-/** Số đếm đang nhập của phiếu đang mở (dòng số lượng, tình trạng từng món, hàng mới phát hiện). */
+/** Số đếm đang nhập của phiếu đang mở (tình trạng từng món, món lạ đã ghi, món lạ mới phát hiện). */
 function useCounting() {
   const [counts, setCounts] = useState({});
   const [itemConditions, setItemConditions] = useState({});
-  const [damaged, setDamaged] = useState({});
   const [newItems, setNewItems] = useState([]);
   const reset = (stocktake) => {
     const initial = initialCounts(stocktake);
     setCounts(initial.counts);
     setItemConditions(initial.conditions);
-    setDamaged(initial.damaged);
   };
   const setCount = (lineId, value) => setCounts((old) => ({ ...old, [lineId]: value }));
-  const setDamagedCount = (lineId, value) => setDamaged((old) => ({ ...old, [lineId]: value }));
   // Kiểm từng món: chọn "mất" thì số thực tế là 0, còn lại là 1.
   const setCondition = (lineId, condition) => {
     setItemConditions((old) => ({ ...old, [lineId]: condition }));
     setCounts((old) => ({ ...old, [lineId]: condition === 'missing' ? '0' : '1' }));
   };
   return {
-    counts, itemConditions, damaged, newItems, setNewItems, setCount, setDamagedCount, setCondition, reset,
+    counts, itemConditions, newItems, setNewItems, setCount, setCondition, reset,
   };
 }
 
@@ -129,13 +126,13 @@ export default function WarehouseStocktakePage() {
 
   const saveCounts = async () => {
     const lines = selected.items || [];
-    const message = validateCounts(lines, counting.counts, counting.newItems, master.variants, counting.damaged);
+    const message = validateCounts(lines, counting.counts, counting.newItems);
     if (message) {
       setError(message);
       return false;
     }
     const payload = buildCountPayload(
-      lines, counting.counts, counting.itemConditions, counting.newItems, master.variants, counting.damaged,
+      lines, counting.counts, counting.itemConditions, counting.newItems,
     );
     const result = await runAction(() => stocktakeService.saveCounts(selected._id, payload), 'Đã lưu số đếm.');
     if (result) counting.setNewItems([]);
@@ -144,7 +141,7 @@ export default function WarehouseStocktakePage() {
 
   const submitCounts = async () => {
     if (hasMissingCount(selected.items || [], counting.counts)) {
-      setError('Cần nhập số lượng thực tế cho tất cả mặt hàng trước khi gửi kết quả.');
+      setError('Cần ghi nhận đủ các món lạ trước khi gửi kết quả.');
       return;
     }
     const saved = await saveCounts();

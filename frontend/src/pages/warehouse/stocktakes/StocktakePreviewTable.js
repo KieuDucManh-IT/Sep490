@@ -4,8 +4,7 @@ import { EmptyState, Pagination } from '../../../components/warehouse';
 const PAGE_LIMIT = 20;
 
 const variantLabel = (variant) => [variant?.sku, variant?.size, variant?.color].filter(Boolean).join(' · ') || '—';
-const trackingLabel = (item) => (item.trackingType === 'individual' ? 'Theo từng mã hàng' : 'Theo số lượng');
-const systemLabel = (item) => (item.trackingType === 'individual' ? `${item.systemQuantity} món` : item.systemQuantity);
+const systemLabel = (item) => `${item.systemQuantity} món`;
 const storageLabel = (item) => {
   if (!item.storageId) return 'Không có kệ';
   return item.storage?.code || item.storage?.name || 'Vị trí không xác định';
@@ -51,7 +50,6 @@ export default function StocktakePreviewTable({ items, excludedKeys, onToggle, o
               <th>Sản phẩm</th>
               <th>Biến thể</th>
               <th>Vị trí</th>
-              <th>Kiểu quản lý</th>
               <th>Tồn sổ hiện tại</th>
             </tr>
           </thead>
@@ -69,7 +67,6 @@ export default function StocktakePreviewTable({ items, excludedKeys, onToggle, o
                 <td>{item.variant?.productId?.name || '—'}</td>
                 <td>{variantLabel(item.variant)}</td>
                 <td>{storageLabel(item)}</td>
-                <td>{trackingLabel(item)}</td>
                 <td>{systemLabel(item)}</td>
               </tr>
             ))}

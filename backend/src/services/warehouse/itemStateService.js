@@ -1,4 +1,6 @@
-// TASK-009 — Helper DUY NHẤT để đổi trạng thái / location / kệ của InventoryItem (hàng `individual`).
+// TASK-009 — Helper DUY NHẤT để đổi trạng thái / location / kệ của InventoryItem.
+// TASK-015: mọi sản phẩm đều quản lý theo từng món, nên đây là nơi DUY NHẤT ghi InventoryBalance
+// (ngoại lệ: công cụ đối soát `inventoryReconcileService --fix`).
 // Mọi thay đổi đi kèm cập nhật InventoryBalance trong CÙNG transaction (bắt buộc truyền `session`).
 // Quy tắc quy đổi nằm ở itemBalanceRules.js (hàm thuần, có unit test).
 import { InventoryItem as InventoryItemModel } from '../../models/warehouse/inventory/InventoryItem.js';
@@ -8,6 +10,7 @@ import {
   assertBalanceInvariant, bucketOf, computeBalanceDeltas, idOf, mergeBalanceDeltas,
 } from './itemBalanceRules.js';
 
+import { itemCodePattern, nextItemCodesFrom } from './itemCodeRules.js';
 import { appError as fail } from './shared/errors.js';
 export {
   bucketOf, computeBalanceDeltas, mergeBalanceDeltas, checkBalanceInvariant, assertBalanceInvariant,
@@ -120,11 +123,62 @@ export const createItemStateService = ({ InventoryItem, InventoryBalance, hasRen
     return created;
   };
 
-  return { moveItems, moveItem, createItems, applyDeltas };
+  /**
+   * Sinh `count` mã món mới theo mẫu `<SKU>-<4 số>`, đánh tiếp sau số lớn nhất đang có của SKU (TASK-015, quyết định 3).
+   * Hai giao dịch cùng sinh mã cho một SKU có thể ra trùng: index unique của `itemCode` chặn, transaction rollback.
+   */
+  const generateItemCodes = async (sku, count, session) => {
+    if (!sku) throw new Error('generateItemCodes cần SKU của biến thể.');
+    if (!count) return [];
+    const rows = await InventoryItem.find({ itemCode: itemCodePattern(sku) }).select('itemCode').session(session || null).lean();
+    return nextItemCodesFrom(sku, count, rows.map((row) => row.itemCode));
+  };
+
+  /**
+   * Giữ chỗ / nhả giữ chỗ của ĐƠN thuê/bán trên dòng chi nhánh (storageId null) — TASK-015 chuyển từ orderStockService
+   * về đây, hành vi không đổi. Phần giữ chỗ này không gắn với món (món chỉ chọn khi bàn giao/bán).
+   * - quantity > 0: giữ thêm, chỉ khi khả dụng (onHand − reserved − unavailable) ≥ quantity.
+   * - quantity < 0: nhả, chỉ khi reserved ≥ |quantity|.
+   * Không upsert. Không có dòng thỏa điều kiện → trả về null để caller báo lỗi theo nghiệp vụ.
+   */
+  const adjustOrderReservation = async ({ locationId, variantId, quantity }, session) => {
+    requireSession(session);
+    const amount = Number(quantity) || 0;
+    if (!amount) return null;
+    const filter = orderReservationFilter({ locationId, variantId, quantity: amount });
+    const row = await InventoryBalance.findOneAndUpdate(filter, { $inc: { quantityReserved: amount } }, { returnDocument: 'after', session });
+    if (!row) return null;
+    const plain = typeof row.toObject === 'function' ? row.toObject() : row;
+    assertBalanceInvariant(plain, 'Tồn kho chi nhánh');
+    return plain;
+  };
+
+  return {
+    moveItems, moveItem, createItems, applyDeltas, generateItemCodes, adjustOrderReservation,
+  };
 };
 
 /**
- * TASK-014 G1: sổ biến động của hàng `individual` luôn ghi MỖI MÓN MỘT DÒNG có `itemId`, để xem lịch sử
+ * Filter nguyên tử cho giữ chỗ / nhả giữ chỗ của đơn trên dòng chi nhánh (locationId, storageId: null, variantId).
+ * Giữ (quantity > 0): `$expr` khả dụng ≥ quantity. Nhả (quantity < 0): reserved ≥ |quantity|.
+ */
+export const orderReservationFilter = ({ locationId, variantId, quantity }) => {
+  const filter = { locationId, storageId: null, variantId };
+  if (quantity > 0) {
+    filter.$expr = {
+      $gte: [
+        { $subtract: [{ $ifNull: ['$quantityOnHand', 0] }, { $add: [{ $ifNull: ['$quantityReserved', 0] }, { $ifNull: ['$quantityUnavailable', 0] }] }] },
+        quantity,
+      ],
+    };
+  } else {
+    filter.quantityReserved = { $gte: -quantity };
+  }
+  return filter;
+};
+
+/**
+ * TASK-014 G1: sổ biến động luôn ghi MỖI MÓN MỘT DÒNG có `itemId`, để xem lịch sử
  * di chuyển của từng mã hàng. `movement` là phần chung (variantId, locationId, storageId, movementType,
  * referenceType, referenceId, createdBy...); `quantityChange` mặc định ±1 theo dấu của movement.quantityChange.
  */
@@ -147,5 +201,7 @@ export const recordItemMovements = async (items, movement, session) => {
 };
 
 const defaultService = createItemStateService({ InventoryItem: InventoryItemModel, InventoryBalance: InventoryBalanceModel });
-export const { moveItems, moveItem, createItems } = defaultService;
+export const {
+  moveItems, moveItem, createItems, generateItemCodes, adjustOrderReservation,
+} = defaultService;
 export const applyItemBalanceDeltas = defaultService.applyDeltas;

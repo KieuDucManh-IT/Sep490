@@ -37,7 +37,7 @@ export default function InboundReceiveForm({ receipt, onReceive, onBack, onDone 
       <Modal.Body className="wm-receive-list">
         <RecountNotice receipt={receipt} />
         {error && <div className="wm-error">{error}</div>}
-        <p>Nhập số lượng thực nhận và số lượng hỏng cho từng mặt hàng.</p>
+        <p>Mặc định nhận đủ số dự kiến và không có hàng hỏng; chỉ sửa dòng nhận thiếu hoặc có hàng hỏng.</p>
         {receipt.items.map((item, index) => (
           <div className="wm-receive-row" key={item._id}>
             <strong>{lineName(item)} <small>Dự kiến: {item.quantityExpected}</small></strong>

@@ -23,9 +23,9 @@ function panelFor(mode, status) {
 
 function guidanceFor(mode, status) {
   if (mode === 'warehouse' && status === 'requested') return 'Kiểm tra số lượng khả dụng, chọn nhân viên phụ trách rồi duyệt phiếu.';
-  if (mode === 'staff' && status === 'approved') return 'Chọn vị trí lấy hàng và tick đúng món hàng nếu sản phẩm theo dõi từng món.';
+  if (mode === 'staff' && status === 'approved') return 'Bấm "Lấy theo gợi ý" để điền sẵn kệ và món, sửa nếu cần rồi lưu phân bổ.';
   if (mode === 'staff' && status === 'preparing') return 'Rà soát phân bổ trước khi xác nhận xuất hàng khỏi kho tổng.';
-  if (mode === 'branch' && RECEIVING_STATUSES.includes(status)) return 'Chi nhánh kiểm đếm số thực nhận, đánh dấu món hỏng nếu có, rồi xác nhận.';
+  if (mode === 'branch' && RECEIVING_STATUSES.includes(status)) return 'Mặc định mọi món đã xuất là nhận tốt; chỉ đánh dấu món hỏng hoặc thiếu rồi xác nhận.';
   return '';
 }
 

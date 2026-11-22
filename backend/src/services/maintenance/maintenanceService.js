@@ -1,4 +1,4 @@
-// Giặt / sửa và thanh lý món hàng (UC-24) tại kho tổng. Chỉ áp dụng cho hàng quản lý theo từng món (individual).
+// Giặt / sửa và thanh lý món hàng (UC-24) tại kho tổng. Mọi sản phẩm quản lý theo từng món (TASK-015).
 // Phiếu giặt/sửa:     pending → in_progress → completed   (pending / in_progress có thể bị cancelled).
 // Đề xuất thanh lý:   requested → completed (duyệt) | rejected (từ chối).
 // Ai làm bước nào:
@@ -12,7 +12,6 @@ import { ItemDisposal } from '../../models/maintenance/ItemDisposal.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
-import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { StockRelocation } from '../../models/warehouse/transfer/StockRelocation.js';
 import { StockRelocationDetail } from '../../models/warehouse/transfer/StockRelocationDetail.js';
 import User from '../../models/system/User.js';
@@ -50,7 +49,7 @@ const itemPopulate = {
   path: 'itemId',
   select: 'itemCode serialNumber condition status storageId variantId locationId',
   populate: [
-    { path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode trackingType' } },
+    { path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode' } },
     { path: 'storageId', select: 'code name type' },
   ],
 };
@@ -80,12 +79,6 @@ const requireWarehouseUser = (user) => {
   if (!isManager(user) && !isStaff(user)) throw appError('Bạn không có quyền xem phiếu giặt/sửa.', 403);
 };
 
-const isIndividualVariant = async (variantId, session) => {
-  const variant = await ProductVariant.findById(variantId).select('productId').populate('productId', 'trackingType')
-    .session(session || null).lean();
-  return variant?.productId?.trackingType === 'individual';
-};
-
 /** Món ở kho tổng, đang available/unavailable, không có phiếu giặt/sửa hay đề xuất thanh lý đang mở. */
 const loadEligibleItem = async (itemId, centralId, session) => {
   const item = await InventoryItem.findById(itemId).session(session).lean();
@@ -96,9 +89,6 @@ const loadEligibleItem = async (itemId, centralId, session) => {
   }
   if (!ELIGIBLE_STATUSES.includes(item.status) || item.condition === 'missing') {
     throw appError('Món hàng không ở trạng thái có thể xử lý.', 409);
-  }
-  if (!(await isIndividualVariant(item.variantId, session))) {
-    throw appError('Chỉ xử lý được hàng quản lý theo từng món.', 409);
   }
   const [openRecord, pendingDisposal] = await Promise.all([
     ItemMaintenanceRecord.exists({ itemId: item._id, isOpen: true }).session(session),
@@ -142,11 +132,11 @@ export const listMaintenanceCandidates = async (user) => {
   if (excluded.length) filter._id = { $nin: excluded };
   const rows = await InventoryItem.find(filter)
     .select('itemCode serialNumber condition status storageId variantId locationId updatedAt')
-    .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode trackingType' } })
+    .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode' } })
     .populate('storageId', 'code name type')
     .sort({ status: -1, updatedAt: -1 })
     .lean();
-  return rows.filter((row) => row.variantId?.productId?.trackingType === 'individual');
+  return rows;
 };
 
 export const listMaintenanceStaff = (user) => {

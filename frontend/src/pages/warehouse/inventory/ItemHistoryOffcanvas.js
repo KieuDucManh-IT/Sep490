@@ -123,7 +123,7 @@ function TabBody({ tabState, emptyTitle, children, footnote }) {
 }
 
 /**
- * Ngăn bên phải: chi tiết một mã hàng (individual) + 2 tab lịch sử (di chuyển, giặt / sửa / thanh lý).
+ * Ngăn bên phải: chi tiết một mã hàng (một món) + 2 tab lịch sử (di chuyển, giặt / sửa / thanh lý).
  * Lịch sử di chuyển chỉ có từ khi hệ thống ghi sổ theo mã hàng; dữ liệu cũ không suy ngược.
  */
 export default function ItemHistoryOffcanvas({ itemId, onHide }) {

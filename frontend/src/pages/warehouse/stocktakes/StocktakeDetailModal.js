@@ -18,12 +18,6 @@ function summaryCards(summary) {
     { key: 'counted', label: 'Thực tế dự kiến', value: summary.counted },
     { key: 'missing', label: 'Thiếu / mất', value: summary.missing, tone: summary.missing > 0 ? 'danger' : 'default' },
     { key: 'damaged', label: 'Hỏng / không sửa được', value: summary.damaged, tone: summary.damaged > 0 ? 'warn' : 'default' },
-    {
-      key: 'damagedQuantity',
-      label: 'Hỏng (hàng số lượng)',
-      value: summary.damagedQuantity,
-      tone: summary.damagedQuantity > 0 ? 'warn' : 'default',
-    },
   ];
 }
 
@@ -62,7 +56,7 @@ export default function StocktakeDetailModal({
 }) {
   const lines = stocktake.items || [];
   const editable = stocktake.status === 'in_progress';
-  const summary = countSummary(lines, counting.counts, counting.itemConditions, counting.damaged);
+  const summary = countSummary(lines, counting.counts, counting.itemConditions);
   const storagesOfLocation = storages.filter((storage) => idOf(storage.locationId) === idOf(stocktake.locationId));
 
   return (
@@ -82,8 +76,7 @@ export default function StocktakeDetailModal({
         )}
         {editable && (
           <p className="wm-stock-subline">
-            Hàng quản lý theo số lượng: nhập số đếm được và "Trong đó hỏng" (hàng hỏng vẫn tính trong tồn
-            nhưng không bán / cho thuê được). Số hỏng điền sẵn là số đang ghi nhận không khả dụng.
+            Mọi món mặc định có mặt, tình trạng như cũ. Chỉ sửa món thiếu hoặc đổi tình trạng (vd hỏng); dùng ô lọc để tìm theo mã.
           </p>
         )}
         {error && <div className="wm-error">{error}</div>}
@@ -93,10 +86,8 @@ export default function StocktakeDetailModal({
           editable={editable}
           counts={counting.counts}
           itemConditions={counting.itemConditions}
-          damaged={counting.damaged}
           onCountChange={counting.setCount}
           onConditionChange={counting.setCondition}
-          onDamagedChange={counting.setDamagedCount}
         />
         {editable && (
           <StocktakeNewItems

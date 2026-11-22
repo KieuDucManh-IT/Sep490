@@ -1,4 +1,4 @@
-// Quy tắc quy đổi trạng thái InventoryItem → InventoryBalance cho hàng trackingType `individual` (TASK-009).
+// Quy tắc quy đổi trạng thái InventoryItem → InventoryBalance (TASK-009; TASK-015: áp dụng cho mọi sản phẩm).
 // File này KHÔNG import model/DB để unit test chạy được không cần MongoDB.
 //
 // Với mỗi dòng balance (locationId, storageId, variantId):

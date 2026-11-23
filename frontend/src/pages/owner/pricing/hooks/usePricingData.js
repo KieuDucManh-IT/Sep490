@@ -191,7 +191,7 @@ export function usePricingData() {
 
     let initDepositPct = 50;
     if (sale > 0 && currentDep > 0) {
-      initDepositPct = Math.round((currentDep / sale) * 100);
+      initDepositPct = Math.min(100, Math.round((currentDep / sale) * 100));
     }
 
     const calculatedRental = calculateRentalPrice(sale, initRentalPct);
@@ -245,7 +245,7 @@ export function usePricingData() {
 
   // Handler khi Shop Owner nhập số % cọc bằng tay (hoặc click nút % gợi ý nhanh)
   const handleDepositPercentChange = useCallback((val) => {
-    const p = val === '' ? '' : Math.max(0, Math.min(200, Number(val)));
+    const p = val === '' ? '' : Math.max(0, Math.min(100, Number(val)));
     setEditForm((prev) => {
       const autoDeposit = calculateDeposit(prev.salePrice, p);
       return {
@@ -281,6 +281,11 @@ export function usePricingData() {
 
     if (isNaN(dep) || dep < 0) {
       setModalError('Vui lòng nhập tiền cọc hợp lệ (không âm).');
+      return;
+    }
+
+    if (sale > 0 && dep > sale) {
+      setModalError(`Tiền cọc bảo đảm không được vượt quá 100% giá trị trang phục (tối đa ${sale.toLocaleString('vi-VN')} VND).`);
       return;
     }
 

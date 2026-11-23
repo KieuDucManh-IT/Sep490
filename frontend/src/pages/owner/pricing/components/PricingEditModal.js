@@ -277,7 +277,7 @@ function PricingEditModal({
                     id="input-deposit-percent"
                     type="number"
                     min="1"
-                    max="200"
+                    max="100"
                     inputMode="numeric"
                     value={editForm.depositPercent}
                     onChange={(e) => onDepositPercentChange(e.target.value)}

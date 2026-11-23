@@ -11,7 +11,6 @@ export const ALLOWED_ROLES = [
   'customer',
   'shopOwner',
   'branch_manager',
-  'brandmanager',
   'warehouse_manager',
   'warehouse_staff',
   'admin'

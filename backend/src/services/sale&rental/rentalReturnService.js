@@ -43,6 +43,9 @@ import {
   settleDepositRefundSchema,
 } from '../../validations/sale&rental/rentalReturnValidation.js';
 import { ServiceError, generateWalletTxCode } from './rentalOrderService.js';
+import { createNotification, notifyRoles } from '../system/notificationService.js';
+import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
+import { Shop } from '../../models/shop/Shop.js';
 
 export const generateReturnCode = () => {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -296,6 +299,86 @@ export const createReturnReceiptAndSettle = async ({
 
     if (isInternal) await session.commitTransaction();
 
+    // Thông báo cho khách hàng về kết quả nghiệm thu và hoàn cọc
+    if (isInternal && order.customerId) {
+      createNotification({
+        userId: order.customerId,
+        type: 'order_status',
+        title: 'Hoàn tất nghiệm thu & quyết toán đơn thuê',
+        message: `Đơn thuê #${order.orderCode} đã được nghiệm thu hoàn tất. Tiền cọc hoàn trả: ${refundDeposit.toLocaleString('vi-VN')} đ đã được chuyển vào ví của bạn. Cảm ơn bạn đã lựa chọn VESTORA!`,
+        link: '/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, refundDeposit, excessDebt },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo nghiệm thu hoàn cọc:', err.message));
+    }
+
+    // Thông báo cho Quản lý chi nhánh & Chủ shop
+    if (isInternal) {
+      (async () => {
+        try {
+          const location = await InventoryLocation.findById(order.locationId).select('managerId shopId name').lean().catch(() => null);
+          let shop = null;
+          if (location?.shopId) {
+            shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+          } else if (order.locationId) {
+            shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+          }
+          const branchName = shop?.name || location?.name || 'Chi nhánh';
+          const branchManagerId = shop?.managerId || location?.managerId;
+          const mgrMsg = `Đơn thuê #${order.orderCode} tại ${branchName} đã hoàn tất nghiệm thu và quyết toán cọc (Hoàn cọc: ${refundDeposit.toLocaleString('vi-VN')} đ).`;
+
+          if (branchManagerId) {
+            createNotification({
+              userId: branchManagerId,
+              type: 'order_status',
+              title: `Đơn thuê #${order.orderCode} đã hoàn tất nghiệm thu`,
+              message: mgrMsg,
+              link: '/branch/rental-orders',
+              referenceType: 'RentalOrder',
+              referenceId: order._id,
+              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
+            }).catch(() => {});
+          } else {
+            notifyRoles(['branch_manager'], {
+              type: 'order_status',
+              title: `Đơn thuê #${order.orderCode} đã hoàn tất nghiệm thu`,
+              message: mgrMsg,
+              link: '/branch/rental-orders',
+              referenceType: 'RentalOrder',
+              referenceId: order._id,
+              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
+            }).catch(() => {});
+          }
+
+          if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+            createNotification({
+              userId: shop.ownerId,
+              type: 'order_status',
+              title: `Đơn thuê #${order.orderCode} đã hoàn tất nghiệm thu`,
+              message: mgrMsg,
+              link: '/owner/rental-orders',
+              referenceType: 'RentalOrder',
+              referenceId: order._id,
+              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
+            }).catch(() => {});
+          } else if (!shop?.ownerId) {
+            notifyRoles(['shopOwner', 'owner'], {
+              type: 'order_status',
+              title: `Đơn thuê #${order.orderCode} đã hoàn tất nghiệm thu`,
+              message: mgrMsg,
+              link: '/owner/rental-orders',
+              referenceType: 'RentalOrder',
+              referenceId: order._id,
+              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
+            }).catch(() => {});
+          }
+        } catch (err) {
+          console.error('[Notification] Lỗi gửi thông báo nghiệm thu cho quản lý:', err.message);
+        }
+      })();
+    }
+
     // TASK-012: Trả hàng → tồn kho thay đổi → kiểm tra lại hết hàng
     // - Món đạt: available tăng → isOutOfStock có thể thành false
     // - Món cần xử lý / mất: không ảnh hưởng available, nhưng vẫn refresh để chắc chắn
@@ -349,7 +432,6 @@ const staffRole = user =>
     String(user?.Role || user?.role || '')
       .toLowerCase()
       .replace(/[\s_-]/g, '')
-      .replace('brandmanager', 'branchmanager')
   );
 
 export const EVIDENCE_FIELDS = Object.freeze({

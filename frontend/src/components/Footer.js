@@ -64,18 +64,7 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Col 3: Dành cho shop */}
-          <div className="footer-col">
-            <h4 className="footer-col-title">Dành cho shop</h4>
-            <ul className="footer-nav-list">
-              <li><Link to="/register-shop">Đăng ký shop</Link></li>
-              <li><Link to="/login">Đăng nhập shop</Link></li>
-              <li><a href="#guide">Hướng dẫn đăng bán</a></li>
-              <li><a href="#commission">Chính sách hoa hồng</a></li>
-            </ul>
-          </div>
-
-          {/* Col 4: Liên hệ */}
+          {/* Col 3: Liên hệ */}
           <div className="footer-col footer-contact-col">
             <h4 className="footer-col-title">Liên hệ</h4>
             <div className="footer-contact-item">

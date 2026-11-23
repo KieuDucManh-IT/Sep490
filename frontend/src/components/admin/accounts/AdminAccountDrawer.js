@@ -171,7 +171,7 @@ export default function AdminAccountDrawer({
                         </div>
                       );
                     }
-                    if (cleanRole === 'branch_manager' || cleanRole === 'brandmanager') {
+                    if (cleanRole === 'branch_manager' || cleanRole === 'branchmanager') {
                       return (
                         <div className="admin-acc-kv-row">
                           <span className="admin-acc-kv-key">Cơ sở trực thuộc</span>

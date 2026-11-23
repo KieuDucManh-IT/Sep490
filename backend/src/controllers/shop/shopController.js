@@ -399,8 +399,7 @@ export const getBranchPerformanceReport = async (req, res) => {
     const normalizedRole = String(req.user?.Role || req.user?.role || '')
       .trim()
       .toLowerCase()
-      .replace(/[\s_-]/g, '')
-      .replace('brandmanager', 'branchmanager');
+      .replace(/[\s_-]/g, '');
 
     if (!['branchmanager', 'admin', 'shopowner', 'owner'].includes(normalizedRole)) {
       return res.status(403).json({

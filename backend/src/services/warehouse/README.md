@@ -37,7 +37,7 @@ Thanh lý                           requested → completed | rejected
 | File | Việc |
 |---|---|
 | `shared/errors.js` | `appError(message, statusCode, code)` — lỗi nghiệp vụ có mã HTTP. |
-| `shared/roles.js` | `normalizeRole` (bỏ khoảng trắng, `_`, `-`; `brandmanager` → `branchmanager`), `isWarehouseManager`, `isWarehouseStaff`, `isBranchManager`, `isAdmin`, `requireRole`. |
+| `shared/roles.js` | `normalizeRole` (bỏ khoảng trắng, `_`, `-`), `isWarehouseManager`, `isWarehouseStaff`, `isBranchManager`, `isAdmin`, `requireRole`. |
 | `shared/locations.js` | `getCentralWarehouse(session)` — đúng một kho tổng đang hoạt động, nếu không thì 409. |
 | `shared/capacity.js` | Sức chứa: `assertBranchCapacity` (chi nhánh), `capacitySnapshot` (kho tổng, gồm phần đã cam kết cho phiếu đang mở), `addToStorageChain`. |
 | `shared/pagination.js` | `parsePaging`, `pagedResult`, `searchRegex` — hàm thuần, có unit test. |

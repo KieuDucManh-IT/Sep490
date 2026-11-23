@@ -22,8 +22,7 @@ const normalizeRole = (role) =>
   String(role || '')
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, '')
-    .replace('brandmanager', 'branchmanager');
+    .replace(/[\s_-]/g, '');
 
 const extractCustomerName = (customer, shippingAddress) =>
   customer?.FullName || customer?.fullName || shippingAddress?.receiverName || 'Khách hàng';

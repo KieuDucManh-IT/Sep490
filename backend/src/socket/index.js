@@ -105,12 +105,6 @@ export function initSocket(httpServer, allowedOrigins) {
         return next(new Error('AUTHORIZATION_ERROR: Tài khoản đã bị khóa'));
       }
 
-      // Theo yêu cầu người dùng: bỏ role admin không can thiệp vào chat
-      const roleStr = String(user.Role || user.role || '').toLowerCase();
-      if (roleStr === 'admin') {
-        return next(new Error('AUTHORIZATION_ERROR: Admin không có quyền truy cập Chat tư vấn'));
-      }
-
       socket.user = user;
       return next();
     } catch (err) {
@@ -143,6 +137,7 @@ export function initSocket(httpServer, allowedOrigins) {
       }
       if (cleanRole === 'branchmanager' || cleanRole === 'brandmanager') {
         socket.join('role:branch_manager');
+        socket.join('role:branchmanager');
       }
     }
 

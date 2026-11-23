@@ -46,6 +46,296 @@ import {
   computeCalendarRentalDays,
 } from '../../validations/sale&rental/rentalOrderValidation.js';
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import { createNotification, notifyRoles } from '../system/notificationService.js';
+import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
+import { Shop } from '../../models/shop/Shop.js';
+import User from '../../models/system/User.js';
+
+/**
+ * Phát thông báo bất đồng bộ khi đơn thuê mới được tạo thành công
+ */
+async function notifyNewRentalOrder(order, customerId) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+
+    // 1. Thông báo cho Khách hàng
+    createNotification({
+      userId: customerId,
+      type: 'order_created',
+      title: 'Đặt đơn thuê thành công',
+      message: `Đơn thuê #${order.orderCode} đã được khởi tạo thành công tại ${branchName}. VESTORA sẽ sớm chuẩn bị và liên hệ giao trang phục cho bạn!`,
+      link: '/rental-orders',
+      referenceType: 'RentalOrder',
+      referenceId: order._id,
+      metadata: { orderCode: order.orderCode },
+    }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho khách hàng:', err.message));
+
+    // 2. Thông báo cho Branch Manager của chi nhánh
+    const branchManagerId = shop?.managerId || location?.managerId;
+    if (branchManagerId) {
+      createNotification({
+        userId: branchManagerId,
+        type: 'order_created',
+        title: 'Đơn thuê mới từ khách hàng',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}. Vui lòng kiểm tra và chuẩn bị trang phục!`,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Branch Manager:', err.message));
+    } else {
+      // Nếu chi nhánh chưa có quản lý chỉ định, phát cho tất cả tài khoản Quản lý chi nhánh
+      notifyRoles(['branch_manager'], {
+        type: 'order_created',
+        title: 'Đơn thuê mới từ khách hàng',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}. Vui lòng kiểm tra và chuẩn bị trang phục!`,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Branch Managers:', err.message));
+    }
+
+    // 3. Thông báo cho Shop Owner / Owner
+    if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+      createNotification({
+        userId: shop.ownerId,
+        type: 'order_created',
+        title: 'Đơn thuê mới tại hệ thống',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}.`,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Shop Owner:', err.message));
+    } else if (!shop?.ownerId) {
+      notifyRoles(['shopOwner', 'owner'], {
+        type: 'order_created',
+        title: 'Đơn thuê mới tại hệ thống',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}.`,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Shop Owner:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo đơn thuê mới:', err.message);
+  }
+}
+
+/**
+ * Phát thông báo khi đơn thuê bị hủy
+ */
+async function notifyCancelledRentalOrder(order, cancelReason) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(order.customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+    const msg = `Khách hàng ${customerName} đã hủy đơn thuê #${order.orderCode} tại ${branchName}. Lý do: ${cancelReason || 'Không có lý do'}.`;
+
+    // 1. Khách hàng
+    createNotification({
+      userId: order.customerId,
+      type: 'order_status',
+      title: 'Hủy đơn thuê thành công',
+      message: `Đơn thuê #${order.orderCode} đã được hủy thành công. Tiền hoàn đã được chuyển về ví của bạn.`,
+      link: '/rental-orders',
+      referenceType: 'RentalOrder',
+      referenceId: order._id,
+      metadata: { orderCode: order.orderCode },
+    }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho khách:', err.message));
+
+    // 2. Branch Manager
+    const branchManagerId = shop?.managerId || location?.managerId;
+    if (branchManagerId) {
+      createNotification({
+        userId: branchManagerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã bị hủy`,
+        message: msg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho Branch Manager:', err.message));
+    } else {
+      notifyRoles(['branch_manager'], {
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã bị hủy`,
+        message: msg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho Branch Managers:', err.message));
+    }
+
+    // 3. Shop Owner
+    if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+      createNotification({
+        userId: shop.ownerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã bị hủy`,
+        message: msg,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho Shop Owner:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo hủy đơn thuê:', err.message);
+  }
+}
+
+/**
+ * Phát thông báo khi đơn thuê được bàn giao trang phục (renting)
+ */
+async function notifyHandoverRentalOrder(order) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(order.customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+    const dueDateStr = order.dueDate ? new Date(order.dueDate).toLocaleDateString('vi-VN') : '';
+
+    // 1. Khách hàng
+    createNotification({
+      userId: order.customerId,
+      type: 'order_status',
+      title: 'Trang phục đã được bàn giao',
+      message: `Đơn thuê #${order.orderCode} đã được bàn giao thành công. Vui lòng kiểm tra và hoàn trả trang phục đúng hạn trước ngày ${dueDateStr}. Chúc bạn có trải nghiệm tuyệt vời cùng VESTORA!`,
+      link: '/rental-orders',
+      referenceType: 'RentalOrder',
+      referenceId: order._id,
+      metadata: { orderCode: order.orderCode },
+    }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho khách:', err.message));
+
+    // 2. Branch Manager
+    const branchManagerId = shop?.managerId || location?.managerId;
+    const mgrMsg = `Đơn thuê #${order.orderCode} của khách ${customerName} tại ${branchName} đã được bàn giao thành công (Trạng thái: Đang thuê). Hạn trả đồ: ${dueDateStr}.`;
+    if (branchManagerId) {
+      createNotification({
+        userId: branchManagerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Branch Manager:', err.message));
+    } else {
+      notifyRoles(['branch_manager'], {
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Branch Managers:', err.message));
+    }
+
+    // 3. Shop Owner
+    if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+      createNotification({
+        userId: shop.ownerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Shop Owner:', err.message));
+    } else if (!shop?.ownerId) {
+      notifyRoles(['shopOwner', 'owner'], {
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Shop Owner:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo bàn giao:', err.message);
+  }
+}
+
+/**
+ * Phát thông báo khi đơn thuê được chuẩn bị & gán hiện vật trang phục
+ */
+async function notifyAssignedRentalOrder(order) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(order.customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+
+    // Thông báo cho khách hàng
+    if (order.customerId) {
+      createNotification({
+        userId: order.customerId,
+        type: 'order_status',
+        title: 'Trang phục đã sẵn sàng bàn giao',
+        message: `Đơn thuê #${order.orderCode} đã được nhân viên chuẩn bị trang phục hoàn tất tại ${branchName}. Bạn có thể đến chi nhánh để nhận đồ!`,
+        link: '/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo chuẩn bị cho khách:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo chuẩn bị trang phục:', err.message);
+  }
+}
 
 export class ServiceError extends Error {
   constructor(status, message, code = null, details = null) {
@@ -442,6 +732,9 @@ export const createRentalOrder = async ({
       await session.commitTransaction();
     }
 
+    // Phát thông báo real-time tới Khách hàng, Quản lý chi nhánh (Branch Manager) và Chủ shop
+    notifyNewRentalOrder(order, customerId);
+
     return {
       order,
       details: createdDetails,
@@ -589,7 +882,10 @@ export const assignPhysicalItems = async ({
       });
     }
 
-    if (isInternal) await session.commitTransaction();
+    if (isInternal) {
+      await session.commitTransaction();
+      notifyAssignedRentalOrder(order);
+    }
     return { success: true, assignedResults };
   } catch (err) {
     if (isInternal) await session.abortTransaction();
@@ -698,6 +994,9 @@ export const handoverRentalOrder = async ({
     if (movementDocs.length) await StockMovement.insertMany(movementDocs, { session });
 
     if (isInternal) await session.commitTransaction();
+
+    // Phát thông báo bàn giao trang phục cho khách hàng
+    notifyHandoverRentalOrder(order);
 
     // TASK-012: Bàn giao → tồn kho renting tăng → kiểm tra hết hàng tại store
     if (isInternal) {
@@ -887,6 +1186,9 @@ export const cancelRentalOrder = async ({
     await order.save({ session });
 
     if (isInternal) await session.commitTransaction();
+
+    // Phát thông báo hủy đơn cho khách hàng và quản lý chi nhánh
+    notifyCancelledRentalOrder(order, validation.data.cancelReason);
 
     return {
       success: true,

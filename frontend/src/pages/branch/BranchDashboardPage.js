@@ -85,7 +85,7 @@ export default function BranchDashboardPage() {
   const [activeOrderModal, setActiveOrderModal] = useState(null);
 
   const userRole = String(user?.Role || user?.role || '').trim().toUpperCase();
-  const isBranchManagerRole = ['BRANCH_MANAGER', 'BRAND_MANAGER'].includes(userRole);
+  const isBranchManagerRole = userRole === 'BRANCH_MANAGER';
 
   const loadDashboard = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);

@@ -1,47 +1,22 @@
 import React, { useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
-import { StatusBadge } from '../../../components/warehouse';
+import { ItemCodeGroup, StatusBadge } from '../../../components/warehouse';
 import {
   RELOCATION_STATUS_LABELS, RELOCATION_TYPE_LABELS, formatVariantName, labelOf,
 } from '../../../constants/warehouseLabels';
 import { codeAndName, idOf } from '../shared/slipHelpers';
-import { confirmationError, initialConfirmations, isIndividualLine } from './relocationHelpers';
+import { confirmationError, initialConfirmations } from './relocationHelpers';
 
-/** Ô xác nhận của nhân viên khi phiếu đang thực hiện: số thực tế (hàng số lượng) hoặc đánh dấu món đã chuyển. */
-function ConfirmCell({ line, value, onChange }) {
+/** Ô xác nhận của nhân viên khi phiếu đang thực hiện: điền sẵn các món đã giữ, không phải tích từng món. */
+function ConfirmCell({ line, value }) {
   const error = confirmationError(line, value);
-  if (isIndividualLine(line)) {
-    const toggle = (itemId) => {
-      const has = value.itemIds.includes(itemId);
-      onChange({ ...value, itemIds: has ? value.itemIds.filter((id) => id !== itemId) : [...value.itemIds, itemId] });
-    };
-    return (
-      <td>
-        {(line.itemIds || []).map((item) => (
-          <label key={idOf(item)} className="d-block">
-            <input type="checkbox" checked={value.itemIds.includes(idOf(item))} onChange={() => toggle(idOf(item))} />
-            {' '}{item.itemCode || idOf(item).slice(-6)}
-          </label>
-        ))}
-        {error && <small className="text-danger d-block">{error}</small>}
-      </td>
-    );
-  }
   return (
     <td>
-      <input
-        type="number"
-        min="0"
-        step="1"
-        aria-label="Số lượng thực tế đã chuyển"
-        value={value.quantity}
-        onChange={(event) => onChange({ ...value, quantity: event.target.value })}
-      />
+      <ItemCodeGroup label="Chuyển đủ" items={line.itemIds || []} />
       {error && <small className="text-danger d-block">{error}</small>}
     </td>
   );
 }
-
 function confirmedText(line) {
   if (line.confirmedQuantity == null) return '—';
   return line.confirmedQuantity;
@@ -57,7 +32,7 @@ export default function RelocationDetailModal({
   const lines = relocation.items || [];
   const status = relocation.status;
   const confirming = isStaff && status === 'in_progress';
-  const [confirmations, setConfirmations] = useState(() => initialConfirmations(relocation));
+  const [confirmations] = useState(() => initialConfirmations(relocation));
   const hasErrors = confirming && lines.some((line) => confirmationError(line, confirmations[idOf(line)]));
   const canCancel = isManager && ['assigned', 'in_progress'].includes(status);
 
@@ -79,7 +54,7 @@ export default function RelocationDetailModal({
         )}
         {confirming && (
           <p className="wm-stock-subline">
-            Chuyển hàng từ kệ nguồn sang kệ đích, nhập số thực tế đã chuyển (hàng theo mã: đánh dấu từng món) rồi bấm “Hoàn tất”.
+            Chuyển đủ các món đã giữ từ kệ nguồn sang kệ đích rồi bấm “Hoàn tất”. Nếu thực tế không đủ món, báo quản lý kho xử lý phiếu.
           </p>
         )}
         <div className="wm-table-wrap">
@@ -98,21 +73,13 @@ export default function RelocationDetailModal({
                 <tr key={idOf(line)}>
                   <td>
                     {formatVariantName(line.variantId)}
-                    {!confirming && line.itemIds?.length > 0 && (
-                      <small className="wm-stock-subline">
-                        {line.itemIds.map((item) => item.itemCode || idOf(item).slice(-6)).join(', ')}
-                      </small>
-                    )}
+                    {!confirming && line.itemIds?.length > 0 && <ItemCodeGroup label="Mã hàng" items={line.itemIds} />}
                   </td>
                   <td>{codeAndName(line.fromStorageId)}</td>
                   <td>{codeAndName(line.toStorageId)}</td>
                   <td>{line.quantity}</td>
                   {confirming ? (
-                    <ConfirmCell
-                      line={line}
-                      value={confirmations[idOf(line)]}
-                      onChange={(value) => setConfirmations((old) => ({ ...old, [idOf(line)]: value }))}
-                    />
+                    <ConfirmCell line={line} value={confirmations[idOf(line)]} />
                   ) : <td>{confirmedText(line)}</td>}
                 </tr>
               ))}

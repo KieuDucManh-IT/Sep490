@@ -6,16 +6,12 @@ const stockAdjustmentDetailSchema = new mongoose.Schema({
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
   itemCode: { type: String, trim: true, default: null },
   serialNumber: { type: String, trim: true, default: null },
-  itemStatus: { type: String, enum: ['available', 'reserved', 'maintenance', 'unavailable'], default: 'available' },
-  itemCondition: { type: String, enum: ['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'], default: null },
+  // TASK-016: bỏ `itemCondition`; thêm `lost`. Kiểm kê không còn sinh phiếu điều chỉnh (chỉ còn phiếu cũ / tạo tay).
+  itemStatus: { type: String, enum: ['available', 'reserved', 'maintenance', 'unavailable', 'lost'], default: 'available' },
   storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
   quantityBefore: { type: Number, min: 0 },
   quantityChange: { type: Number, required: true },
   quantityAfter: { type: Number, min: 0 },
-  // Hàng số lượng từ kiểm kê: số hỏng đếm được và "không khả dụng" của dòng balance lúc duyệt kiểm kê.
-  // null = dòng không ghi số hỏng (dữ liệu cũ / hàng individual) → không đụng quantityUnavailable.
-  damagedQuantity: { type: Number, default: null, validate: { validator: (value) => value == null || (Number.isInteger(value) && value >= 0) } },
-  unavailableBefore: { type: Number, default: null, validate: { validator: (value) => value == null || (Number.isInteger(value) && value >= 0) } },
   reason: { type: String, trim: true },
 }, { timestamps: true });
 

@@ -6,6 +6,7 @@
 import express from 'express';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
 import * as salesOrderController from '../controllers/sale&rental/salesOrderController.js';
+import * as salesReturnController from '../controllers/sale&rental/salesReturnController.js';
 import { withStatus } from '../services/warehouse/orderStockService.js';
 import { SalesOrder } from '../models/sale&rental/SalesOrder.js';
 import * as salesFlow from '../services/sale&rental/salesOrderService.js';
@@ -100,6 +101,11 @@ router.get(
   requireRole('branchstaff', 'branchmanager', 'warehouse_staff', 'staff', 'admin'),
   salesOrderController.getBranchOrders
 );
+
+// TASK-015/016: trả hàng bán theo món (quản lý chi nhánh của đơn / admin; service kiểm chi nhánh).
+router.get('/:id/returns', requireRole('branchmanager', 'admin'), salesReturnController.listReturns);
+router.get('/:id/returnable-items', requireRole('branchmanager', 'admin'), salesReturnController.getReturnableItems);
+router.post('/:id/returns', requireRole('branchmanager', 'admin'), salesReturnController.createReturn);
 
 // 4. Chi tiết đơn mua của khách hàng theo ID
 router.get('/:id', requireRole('customer'), salesOrderController.getOrderById);

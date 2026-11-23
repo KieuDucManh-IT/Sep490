@@ -82,7 +82,9 @@ export async function returnDisputeRequest(endpoint = '', options = {}) {
 // -------------------------------------------------------------
 
 /**
- * Lập biên bản nghiệm thu trả đồ & quyết toán cọc
+ * Lập biên bản nghiệm thu trả đồ & quyết toán cọc.
+ * TASK-016: `items: [{ itemId, inspectionResult: 'ok' | 'needs_service' | 'missing', damageFee?, note? }]`
+ * (Đạt / Cần xử lý / Mất).
  * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-013..REQ-RENT-017
  */
 export async function createRentalReturn(rentalOrderId, returnPayload) {

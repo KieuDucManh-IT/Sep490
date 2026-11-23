@@ -5,6 +5,7 @@ import branchReturnService from '../../../services/warehouse/branchReturnService
 import { ConfirmModal, EmptyState, PageHeader, Pagination, StatusBadge } from '../../../components/warehouse';
 import { BRANCH_RETURN_STATUS_LABELS } from '../../../constants/warehouseLabels';
 import WarehousePageLayout from '../shared/WarehousePageLayout';
+import WarehouseCancelSlipModal from '../../../components/WarehouseCancelSlipModal';
 import SlipListToolbar, { statusOptionsFrom } from '../shared/SlipListToolbar';
 import { codeAndName, formatDateTime } from '../shared/slipHelpers';
 import BranchReturnCreateForm from './BranchReturnCreateForm';
@@ -229,16 +230,14 @@ export default function BranchReturnsPage({ mode = 'branch' }) {
         onHide={() => setConfirm('')}
         onConfirm={() => runConfirmed(() => decideRequest('reject'))}
       />
-      <ConfirmModal
-        show={confirm === 'cancel'}
-        title={`Hủy phiếu trả ${selected?.transferCode || ''}`}
-        body="Phiếu bị hủy và số lượng đang khóa tại chi nhánh được mở lại."
-        confirmText="Hủy phiếu"
-        variant="danger"
+      <WarehouseCancelSlipModal
+        show={confirm === 'cancel' && Boolean(selected)}
+        slipLabel="phiếu trả"
+        slipCode={selected?.transferCode}
         onHide={() => setConfirm('')}
-        onConfirm={() => runConfirmed(() => act(
-          () => branchReturnService.cancel(selected._id),
-          'Đã hủy phiếu và mở khóa tồn tại chi nhánh.',
+        onConfirm={(reason) => runConfirmed(() => act(
+          () => branchReturnService.cancel(selected._id, reason),
+          'Đã hủy phiếu; món đang giữ tại chi nhánh (nếu có) đã được mở lại.',
         ))}
       />
     </PageFrame>

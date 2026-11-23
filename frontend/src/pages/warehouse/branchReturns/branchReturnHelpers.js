@@ -1,13 +1,12 @@
 /**
  * Hàm thuần cho luồng trả hàng chi nhánh → kho tổng:
  * requested → approved → shipped → receipt_submitted → receipt_approved → completed.
+ * Mọi sản phẩm quản lý theo từng món (TASK-015): số lượng nhận / xếp kệ = số món.
  */
+import { defaultReceipt } from '../../../components/warehouse/itemSelectionRules';
 import { idOf } from '../shared/slipHelpers';
 
 export const emptyReturnLine = () => ({ variantId: '', quantityRequested: 1 });
-
-/** Dòng hàng theo mã (mỗi món có mã riêng) thì kiểm nhận bằng cách tick từng món. */
-export const isIndividualLine = (line) => line.variantId?.productId?.trackingType === 'individual';
 
 /** Số lượng hàng tốt cần xếp kệ của một dòng (thực nhận - hỏng). */
 export const acceptedQuantity = (line) => Math.max(0, (line.quantityReceived || 0) - (line.quantityDamaged || 0));
@@ -35,12 +34,15 @@ export const buildCreatePayload = (branchId, lines) => ({
 export const initialApproval = (transfer) => Object.fromEntries((transfer.items || [])
   .map((line) => [line._id, String(line.quantityApproved ?? line.quantityRequested)]));
 
-export const initialReceipt = (transfer) => Object.fromEntries((transfer.items || []).map((line) => [line._id, {
-  quantityReceived: String(line.quantityReceived || 0),
-  quantityDamaged: String(line.quantityDamaged || 0),
-  receivedItemIds: (line.receivedItemIds || []).map(idOf),
-  damagedItemIds: (line.damagedItemIds || []).map(idOf),
-}]));
+/** Kết quả nhận mặc định: giữ kết quả đã ghi, chưa có thì mọi món đã gửi là "nhận tốt". */
+export const initialReceipt = (transfer) => Object.fromEntries((transfer.items || []).map((line) => [
+  line._id,
+  defaultReceipt({
+    shippedIds: (line.itemIds || []).map(idOf),
+    receivedIds: (line.receivedItemIds || []).map(idOf),
+    damagedIds: (line.damagedItemIds || []).map(idOf),
+  }),
+]));
 
 /** Phân bổ kệ đã lưu, nếu chưa có thì một dòng trống chứa toàn bộ hàng tốt. */
 export const initialAllocations = (transfer) => Object.fromEntries((transfer.items || []).map((line) => {
@@ -60,37 +62,48 @@ export const buildDecisionItems = (transfer, approval) => (transfer.items || [])
   quantityApproved: Number(approval[line._id] ?? line.quantityRequested),
 }));
 
-/** Kết quả nhận: hàng theo mã lấy số món đã tick, hàng số lượng lấy số đã nhập. */
+/** Kết quả nhận: số nhận / hỏng = số món đã đánh dấu. */
 export const buildReceiptItems = (transfer, receipt) => transfer.items.map((line) => {
   const data = receipt[line._id] || {};
-  const individual = isIndividualLine(line);
-  const receivedItemIds = individual ? (data.receivedItemIds || []) : [];
-  const damagedItemIds = individual ? (data.damagedItemIds || []) : [];
+  const receivedItemIds = data.receivedItemIds || [];
+  const damagedItemIds = data.damagedItemIds || [];
   return {
     detailId: line._id,
-    quantityReceived: individual ? receivedItemIds.length : Number(data.quantityReceived || 0),
-    quantityDamaged: individual ? damagedItemIds.length : Number(data.quantityDamaged || 0),
+    quantityReceived: receivedItemIds.length,
+    quantityDamaged: damagedItemIds.length,
     receivedItemIds,
     damagedItemIds,
   };
 });
 
-/** Xếp kệ: với hàng theo mã, chia lần lượt các món tốt (đã nhận, không hỏng) vào từng kệ theo số lượng. */
-export const buildPutawayItems = (transfer, allocations) => transfer.items.map((line) => {
-  const individual = isIndividualLine(line);
-  const damagedIds = (line.damagedItemIds || []).map(idOf);
-  const acceptedIds = (line.receivedItemIds || []).map(idOf).filter((itemId) => !damagedIds.includes(itemId));
-  let cursor = 0;
-  const rows = (allocations[line._id] || [])
-    .filter((row) => row.storageId && Number(row.quantity) > 0)
-    .map((row) => {
-      const count = Number(row.quantity);
-      const itemIds = individual ? acceptedIds.slice(cursor, cursor + count) : [];
-      cursor += count;
-      return { storageId: row.storageId, quantity: count, itemIds };
-    });
-  return { detailId: line._id, allocations: rows };
-});
+/** Món tốt (đã nhận, không hỏng) của một dòng, theo thứ tự nhận. */
+export const acceptedItems = (line) => {
+  const damagedIds = new Set((line.damagedItemIds || []).map(idOf));
+  return (line.receivedItemIds || []).filter((item) => !damagedIds.has(idOf(item)));
+};
 
-/** Bật / tắt một món trong danh sách id (giữ thứ tự). */
-export const toggleId = (ids, id, checked) => (checked ? [...ids, id] : ids.filter((value) => value !== id));
+/**
+ * Chia lần lượt các món tốt vào từng kệ theo số lượng nhập.
+ * @returns {{ storageId: string, quantity: number, items: Array<object|string> }[]}
+ */
+export const splitAcceptedItems = (line, rows = []) => {
+  const accepted = acceptedItems(line);
+  let cursor = 0;
+  return rows.map((row) => {
+    const count = Math.max(0, Number(row.quantity) || 0);
+    const items = accepted.slice(cursor, cursor + count);
+    cursor += count;
+    return { storageId: row.storageId, quantity: count, items };
+  });
+};
+
+/** Xếp kệ: mỗi kệ nhận các món tốt theo thứ tự (itemIds bắt buộc). */
+export const buildPutawayItems = (transfer, allocations) => transfer.items.map((line) => {
+  const rows = (allocations[line._id] || []).filter((row) => row.storageId && Number(row.quantity) > 0);
+  return {
+    detailId: line._id,
+    allocations: splitAcceptedItems(line, rows).map((row) => ({
+      storageId: row.storageId, quantity: row.quantity, itemIds: row.items.map(idOf),
+    })),
+  };
+});

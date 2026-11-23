@@ -1,4 +1,4 @@
-// TASK-011 — Đọc số lượng tồn dùng chung cho mọi màn (kho, chi nhánh, khách) và mọi loại hàng (quantity + individual).
+// TASK-011 — Đọc số lượng tồn dùng chung cho mọi màn (kho, chi nhánh, khách) (TASK-015: mọi sản phẩm quản lý theo món, balance là số tổng hợp).
 // Nguồn duy nhất là InventoryBalance; công thức khả dụng chỉ viết ở đây:
 //   khả dụng = max(0, quantityOnHand − quantityReserved − quantityUnavailable)   (quantityRenting không tham gia)
 // InventoryItem chỉ đọc ở chỗ chọn/liệt kê từng món; nếu chọn không đủ món so với balance → stockMismatchError (409).

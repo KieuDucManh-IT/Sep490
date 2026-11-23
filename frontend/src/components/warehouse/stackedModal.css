@@ -1,0 +1,3 @@
+/* Modal mở chồng lên một modal khác (nhận hàng theo món, trả hàng bán). Cùng giá trị với transfers.css. */
+.wm-transfer-stacked-backdrop { z-index: 1060; }
+.modal.wm-transfer-stacked { z-index: 1065; }

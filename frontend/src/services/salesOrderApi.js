@@ -136,6 +136,26 @@ export async function updateSalesOrderStatus(orderId, { orderStatus, note }) {
     body: { orderStatus, note },
   });
 }
+
+/* ---------------- Trả hàng bán theo món (TASK-015/016) ---------------- */
+
+/** Món còn trả được của đơn, theo dòng đơn (BM chi nhánh của đơn / admin). */
+export async function getSalesReturnableItems(orderId) {
+  return salesRequest(`/${orderId}/returnable-items`, { method: 'GET' });
+}
+
+/** Danh sách phiếu trả hàng của đơn. */
+export async function getSalesReturns(orderId) {
+  return salesRequest(`/${orderId}/returns`, { method: 'GET' });
+}
+
+/** Tạo phiếu trả hàng theo món: `{ returnReason, items: [{ salesOrderDetailId, itemIds, inspectionResults: [{ itemId, result }], note }] }`. */
+export async function createSalesReturn(orderId, payload) {
+  return salesRequest(`/${orderId}/returns`, { method: 'POST', body: payload });
+}
+
+/* ---------------- Luồng trả hàng mua có video (main2) ---------------- */
+
 export const getSalesReturnFlow = id =>
   apiClient.get(`/sales-orders/${id}/return-flow`);
 

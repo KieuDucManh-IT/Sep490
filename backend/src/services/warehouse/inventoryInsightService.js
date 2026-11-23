@@ -1,5 +1,5 @@
 // Màn tồn kho (TASK-014 G), chỉ đọc:
-// - Lịch sử một mã hàng (`individual`): sổ biến động có itemId, và giặt / sửa / thanh lý của món.
+// - Lịch sử một mã hàng: sổ biến động có itemId, và giặt / sửa / thanh lý của món.
 // - Sức chứa kho tổng: dùng lại capacitySnapshot (shared/capacity.js) — không có công thức "đang chứa" thứ hai.
 import mongoose from 'mongoose';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
@@ -15,6 +15,8 @@ import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { RentalReturn } from '../../models/sale&rental/RentalReturn.js';
 import { SalesReturn } from '../../models/sale&rental/SalesReturn.js';
+import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
+import { Stocktake } from '../../models/warehouse/stocktake/Stocktake.js';
 import { appError } from './shared/errors.js';
 import { getCentralWarehouse } from './shared/locations.js';
 import { capacitySnapshot } from './shared/capacity.js';
@@ -33,6 +35,7 @@ const REFERENCE_MODELS = {
   rental_order: [RentalOrder, 'orderCode'],
   rental_return: [RentalReturn, 'returnCode'],
   sales_return: [SalesReturn, 'returnCode'],
+  stocktake: [Stocktake, 'stocktakeCode'],
 };
 
 /** Mã phiếu của các dòng sổ: mỗi loại phiếu một truy vấn $in (không N+1). */
@@ -60,6 +63,12 @@ const loadItem = async (itemId) => {
     .populate('storageId', 'code name type')
     .lean();
   if (!item) throw appError('Không tìm thấy mã hàng.', 404);
+  // TASK-016 C4: món đã bán hiện mã đơn bán.
+  if (item.status === 'sold') {
+    const detail = await SalesOrderDetail.findOne({ itemIds: item._id }).sort({ createdAt: -1 })
+      .populate('salesOrderId', 'orderCode').lean();
+    if (detail?.salesOrderId) item.soldOrder = { _id: detail.salesOrderId._id, orderCode: detail.salesOrderId.orderCode };
+  }
   return item;
 };
 

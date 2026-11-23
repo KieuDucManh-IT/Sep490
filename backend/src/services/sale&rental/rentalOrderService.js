@@ -27,8 +27,8 @@ import { Product } from '../../models/masterdata/Product.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import {
-  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes,
-  reserveItemsForOrder, releaseItemsFromOrder, handoverItems, UNUSABLE_CONDITIONS, withStatus,
+  reserveStock, closeReservations, releaseReserved,
+  reserveItemsForOrder, releaseItemsFromOrder, handoverItems, withStatus,
 } from '../warehouse/orderStockService.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
@@ -558,12 +558,6 @@ export const assignPhysicalItems = async ({
             `Hiện vật [${item.itemCode || item._id}] không ở trạng thái sẵn sàng (hiện tại: ${item.status})`
           );
         }
-        if (!alreadyMine && UNUSABLE_CONDITIONS.includes(item.condition)) {
-          throw new ServiceError(
-            422,
-            `Hiện vật [${item.itemCode || item._id}] đang hỏng/thiếu (${item.condition}), không thể cho thuê`
-          );
-        }
         if (!alreadyMine) toReserve.push(item);
       }
 
@@ -671,7 +665,6 @@ export const handoverRentalOrder = async ({
 
     // 3. TASK-010: nhả giữ chỗ của đơn (InventoryReservation active → consumed) và lấy số đã giữ theo biến thể.
     const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'rental' }, 'consumed', session);
-    const tracking = await trackingTypes(details.map((d) => d.variantId), session);
 
     // 4. Món reserved → renting qua itemStateService, GỘP với reserved −qty trong cùng bước (onHand −1, renting +1 mỗi món).
     const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session);
@@ -683,22 +676,9 @@ export const handoverRentalOrder = async ({
         throw new ServiceError(409, `Hiện vật [${item.itemCode || item._id}] không còn ở trạng thái đã gán cho đơn (hiện tại: ${item.status}).`);
       }
     }
-    const individualReserved = new Map([...reservedByVariant].filter(([variantId]) => tracking.get(variantId) === 'individual'));
-    await handoverItems({ locationId: order.locationId, items, reservedByVariant: individualReserved }, session);
+    await handoverItems({ locationId: order.locationId, items, reservedByVariant }, session);
 
-    // Hàng `quantity` (không có món): giữ hành vi cũ — onHand −qty, reserved −(số đang giữ).
-    for (const d of details) {
-      const variantId = String(d.variantId);
-      if (tracking.get(variantId) === 'individual') continue;
-      await incBranchBalance({
-        locationId: order.locationId,
-        variantId: d.variantId,
-        inc: { quantityOnHand: -d.quantity, quantityReserved: -(reservedByVariant.get(variantId) || 0) },
-      }, session);
-      reservedByVariant.delete(variantId);
-    }
-
-    // 5. Ghi StockMovement xuất kho thuê (individual: mỗi món một dòng có itemId)
+    // 5. Ghi StockMovement xuất kho thuê (mỗi món một dòng có itemId)
     const itemById = new Map(items.map((item) => [String(item._id), item]));
     const movementDocs = [];
     for (const a of assignedItems) {
@@ -710,19 +690,6 @@ export const handoverRentalOrder = async ({
         storageId: null,
         movementType: 'rental_out',
         quantityChange: -1,
-        referenceType: 'rental_order',
-        referenceId: order._id,
-        createdBy: operatorId || order.createdBy,
-      });
-    }
-    for (const d of details) {
-      if (tracking.get(String(d.variantId)) === 'individual') continue;
-      movementDocs.push({
-        variantId: d.variantId,
-        locationId: order.locationId,
-        storageId: null,
-        movementType: 'rental_out',
-        quantityChange: -d.quantity,
         referenceType: 'rental_order',
         referenceId: order._id,
         createdBy: operatorId || order.createdBy,

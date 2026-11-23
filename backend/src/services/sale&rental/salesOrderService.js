@@ -26,9 +26,7 @@ import { checkSalesAvailability } from '../warehouse/productInventoryHelper.js';
 import {
   reserveStock,
   closeReservations,
-  incBranchBalance,
   releaseReserved,
-  trackingTypes,
   sellItems,
   withStatus,
   aggregateLines,
@@ -38,6 +36,7 @@ import {
   updateSalesOrderStatusSchema,
 } from '../../validations/sale&rental/salesOrderValidation.js';
 import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import { splitItemsByLines } from './salesReturnRules.js';
 import cloudinary from '../../config/cloudinary.js';
 import { encryptValue } from '../../utils/walletSecurity.js';
 import { SalesReturn } from '../../models/sale&rental/SalesReturn.js';
@@ -670,10 +669,9 @@ export const updateSalesOrderStatus = async ({
         updateFields.paidAmount = order.totalAmount;
       }
 
-      // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật.
-      // - individual: chọn FIFO món `available` (condition dùng được) → `sold` qua itemStateService, gộp reserved −qty;
-      //   StockMovement mỗi món một dòng có itemId.
-      // - quantity: giữ hành vi cũ (onHand −qty, reserved −qty) trên dòng chi nhánh, có chặn âm.
+      // TASK-010: nhả giữ chỗ (InventoryReservation active → consumed) và trừ tồn thật:
+      // chọn FIFO món `available` → `sold` qua itemStateService, gộp reserved −qty;
+      // StockMovement mỗi món một dòng có itemId. TASK-016 C: ghi món đã bán vào `itemIds` của từng dòng đơn.
       const details = await SalesOrderDetail.find({ salesOrderId: order._id }).populate('variantId', 'sku').session(session);
       const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'sale' }, 'consumed', session);
       const lines = new Map();
@@ -682,45 +680,25 @@ export const updateSalesOrderStatus = async ({
         if (!lines.has(variantId)) lines.set(variantId, { variantId: it.variantId?._id || it.variantId, sku: it.variantId?.sku, quantity: 0 });
         lines.get(variantId).quantity += it.quantity;
       }
-      const tracking = await trackingTypes([...lines.keys()], session);
       for (const [variantId, line] of lines) {
         const reservedQuantity = reservedByVariant.get(variantId) || 0;
-        if (tracking.get(variantId) === 'individual') {
-          const soldItems = await sellItems({
-            locationId: order.locationId, variantId: line.variantId, quantity: line.quantity, reservedQuantity, sku: line.sku,
-          }, session);
-          await StockMovement.insertMany(soldItems.map((item) => ({
-            variantId: line.variantId,
-            itemId: item._id,
-            locationId: order.locationId,
-            storageId: item.storageId ?? null,
-            movementType: 'sale',
-            quantityChange: -1,
-            referenceType: 'sales_order',
-            referenceId: order._id,
-            createdBy: user._id,
-          })), { session });
-        } else {
-          await incBranchBalance({
-            locationId: order.locationId,
-            variantId: line.variantId,
-            inc: { quantityOnHand: -line.quantity, quantityReserved: -reservedQuantity },
-          }, session);
-          await StockMovement.create(
-            [
-              {
-                variantId: line.variantId,
-                locationId: order.locationId,
-                storageId: null,
-                movementType: 'sale',
-                quantityChange: -line.quantity,
-                referenceType: 'sales_order',
-                referenceId: order._id,
-                createdBy: user._id,
-              },
-            ],
-            { session }
-          );
+        const soldItems = await sellItems({
+          locationId: order.locationId, variantId: line.variantId, quantity: line.quantity, reservedQuantity, sku: line.sku,
+        }, session);
+        await StockMovement.insertMany(soldItems.map((item) => ({
+          variantId: line.variantId,
+          itemId: item._id,
+          locationId: order.locationId,
+          storageId: item.storageId ?? null,
+          movementType: 'sale',
+          quantityChange: -1,
+          referenceType: 'sales_order',
+          referenceId: order._id,
+          createdBy: user._id,
+        })), { session });
+        const variantDetails = details.filter((it) => String(it.variantId?._id || it.variantId) === variantId);
+        for (const { detailId, itemIds } of splitItemsByLines(variantDetails, soldItems)) {
+          await SalesOrderDetail.updateOne({ _id: detailId }, { $set: { itemIds } }, { session });
         }
       }
     } else if (orderStatus === 'cancelled') {
@@ -1438,17 +1416,14 @@ export async function restoreSalesReturnStock(
     );
   }
 
+  // TASK-015: mọi sản phẩm quản lý theo món — dòng sổ bán không có itemId là dữ liệu cũ, cần đối soát.
   const itemMovements = movements.filter(m => m.itemId);
-  const quantityMovements = movements.filter(m => !m.itemId);
 
   if (
+    itemMovements.length !== movements.length ||
     itemMovements.some(m => m.quantityChange !== -1) ||
     new Set(itemMovements.map(m => String(m.itemId))).size !==
-      itemMovements.length ||
-    quantityMovements.some(m =>
-      m.storageId ||
-      itemMovements.some(i => String(i.variantId) === String(m.variantId))
-    )
+      itemMovements.length
   ) {
     throw new ServiceError(
       409,
@@ -1480,26 +1455,11 @@ export async function restoreSalesReturnStock(
       );
     }
 
-    await moveItems(items, item => ({
+    // TASK-016: món không còn `condition`; nhận đủ hàng nguyên vẹn → available.
+    await moveItems(items, {
       status: 'available',
-      condition: item.condition === 'new' ? 'new' : 'good',
       locationId: order.locationId,
       storageId: null,
-    }), session);
-  }
-
-  const quantityLines = aggregateLines(
-    quantityMovements.map(m => ({
-      variantId: m.variantId,
-      quantity: -m.quantityChange,
-    }))
-  );
-
-  for (const line of quantityLines) {
-    await incBranchBalance({
-      locationId: order.locationId,
-      variantId: line.variantId,
-      inc: { quantityOnHand: line.quantity },
     }, session);
   }
 
@@ -1655,14 +1615,15 @@ export async function completeSalesReturn(user, id) {
       session
     );
 
+    // TASK-016: dòng trả ghi món theo `itemIds` của dòng đơn, kết quả kiểm "Đạt" (shop xác nhận nguyên vẹn).
     await SalesReturnDetail.insertMany(
       details.map(d => ({
         salesReturnId: receipt._id,
         salesOrderDetailId: d._id,
         quantityReturned: d.quantity,
+        itemIds: d.itemIds || [],
+        inspectionResults: (d.itemIds || []).map(itemId => ({ itemId, result: 'ok' })),
         unitRefundAmount: d.lineTotal / d.quantity,
-        conditionOnReturn: 'good',
-        disposition: 'restock',
         note: 'Shop xác nhận nhận đủ hàng nguyên vẹn.',
       })),
       { session }

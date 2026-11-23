@@ -35,22 +35,37 @@ export const validateReceiptCheck = (payload, detailIds) => {
   return items;
 };
 
+/** Danh sách phân bổ kệ `[{ storageId, quantity }]`: kệ hợp lệ, số nguyên dương, không lặp kệ. */
+const parseAllocations = (list) => {
+  const seenStorage = new Set();
+  return list.map((allocation) => {
+    if (!isObjectId(allocation?.storageId) || !isQuantity(allocation.quantity) || allocation.quantity === 0 || seenStorage.has(allocation.storageId)) {
+      throw badRequest('Mỗi phân bổ cần một kệ hợp lệ, số lượng nguyên dương và không được lặp kệ.');
+    }
+    seenStorage.add(allocation.storageId);
+    return { storageId: allocation.storageId, quantity: allocation.quantity };
+  });
+};
+
+/**
+ * Phân bổ xếp kệ cho từng dòng phiếu nhập.
+ * - `allocations`: kệ cho phần nhận tốt (thực nhận − hỏng).
+ * - `damagedAllocations` (TASK-015, không bắt buộc khi dòng không có hàng hỏng): kệ cho phần hỏng. Hàng hỏng cũng
+ *   sinh món (`damaged` / `unavailable`) và nằm trên kệ như hàng thường.
+ */
 export const validatePutaway = (payload, detailIds) => {
   if (!Array.isArray(payload?.items) || payload.items.length !== detailIds.length) throw badRequest('Cần phân bổ đầy đủ tất cả dòng hàng của phiếu.');
   const seen = new Set();
   return payload.items.map((item) => {
     if (!isObjectId(item?.detailId) || !detailIds.includes(item.detailId) || seen.has(item.detailId)) throw badRequest('Dòng hàng phân bổ không hợp lệ hoặc bị lặp.');
     if (!Array.isArray(item.allocations)) throw badRequest('Mỗi dòng hàng cần có danh sách vị trí phân bổ.');
-    const seenStorage = new Set();
-    const allocations = item.allocations.map((allocation) => {
-      if (!isObjectId(allocation?.storageId) || !isQuantity(allocation.quantity) || allocation.quantity === 0 || seenStorage.has(allocation.storageId)) {
-        throw badRequest('Mỗi phân bổ cần một kệ hợp lệ, số lượng nguyên dương và không được lặp kệ.');
-      }
-      seenStorage.add(allocation.storageId);
-      return { storageId: allocation.storageId, quantity: allocation.quantity };
-    });
+    if (item.damagedAllocations != null && !Array.isArray(item.damagedAllocations)) throw badRequest('Danh sách vị trí cho hàng hỏng không hợp lệ.');
     seen.add(item.detailId);
-    return { detailId: item.detailId, allocations };
+    return {
+      detailId: item.detailId,
+      allocations: parseAllocations(item.allocations),
+      damagedAllocations: parseAllocations(item.damagedAllocations || []),
+    };
   });
 };
 

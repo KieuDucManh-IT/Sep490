@@ -99,40 +99,28 @@ export const buildRelocationItems = (lines) => lines.map((line) => ({
   quantity: Number(line.quantity),
 }));
 
+
 /* ---------------- Nhân viên xác nhận hoàn tất ---------------- */
 
-export const isIndividualLine = (line) => line.variantId?.productId?.trackingType === 'individual';
-
-/** Giá trị xác nhận ban đầu: số lượng thực tế = số được giao, món = các món đã giữ cho dòng. */
+/** Giá trị xác nhận ban đầu: các món đã giữ cho dòng (backend yêu cầu khớp đúng các món này). */
 export const initialConfirmations = (relocation) => Object.fromEntries((relocation.items || []).map((line) => [
   idOf(line),
-  { quantity: String(line.quantity), itemIds: (line.itemIds || []).map(idOf) },
+  { itemIds: (line.itemIds || []).map(idOf) },
 ]));
 
 /** Lỗi xác nhận của một dòng (trả '' nếu hợp lệ). Server vẫn kiểm lại. */
 export function confirmationError(line, value) {
   if (!value) return 'Chưa xác nhận dòng này.';
-  if (isIndividualLine(line)) {
-    if (value.itemIds.length !== line.quantity) return `Cần đánh dấu đủ ${line.quantity} món đã chuyển.`;
-    return '';
-  }
-  const quantity = Number(value.quantity);
-  if (!Number.isInteger(quantity) || quantity < 0) return 'Số lượng thực tế phải là số nguyên không âm.';
-  if (quantity !== Number(line.quantity)) {
-    return 'Số thực tế khác số được giao: hãy báo quản lý kho xử lý phiếu (hủy và tạo lại) thay vì hoàn tất.';
+  if (value.itemIds.length !== Number(line.quantity)) {
+    return `Dòng có ${value.itemIds.length}/${line.quantity} món đã giữ: hãy báo quản lý kho xử lý phiếu (hủy và tạo lại).`;
   }
   return '';
 }
 
-/** Payload hoàn tất: [{ detailId, quantityMoved, itemIds }]. */
+/** Payload hoàn tất: [{ detailId, quantityMoved, itemIds }] — số chuyển = số món. */
 export const buildCompletePayload = (relocation, confirmations) => ({
   items: (relocation.items || []).map((line) => {
     const value = confirmations[idOf(line)];
-    const individual = isIndividualLine(line);
-    return {
-      detailId: idOf(line),
-      quantityMoved: individual ? value.itemIds.length : Number(value.quantity),
-      itemIds: individual ? value.itemIds : [],
-    };
+    return { detailId: idOf(line), quantityMoved: value.itemIds.length, itemIds: value.itemIds };
   }),
 });

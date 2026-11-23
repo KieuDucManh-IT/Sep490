@@ -10,7 +10,8 @@ const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   description: { type: String, trim: true },
   tag: { type: String, enum: ['sale', 'rental', 'both'] },
-  trackingType: { type: String, default: 'quantity', enum: ['quantity', 'individual'] },
+  // TASK-015: bỏ `trackingType` — mọi sản phẩm quản lý theo từng món (InventoryItem). Dữ liệu cũ gỡ bằng
+  // `migrateQuantityToItems.js --unset-field --apply`.
   brand: { type: String, trim: true },
   material: { type: String, trim: true },
   rating: { type: Number, default: 5.0, min: 0, max: 5 },

@@ -1,50 +1,51 @@
 import React, { useMemo, useState } from 'react';
 import { Button, Form, Modal } from 'react-bootstrap';
 import WarehouseItemChecklist from '../../../components/WarehouseItemChecklist';
+import { ItemCodeGroup, fillItemIds } from '../../../components/warehouse';
 import { unresolvedItems, discrepancyVariantLabel } from '../../../components/StockDiscrepancyDetail';
 import { RESPONSIBLE_PARTY_LABELS } from '../../../constants/warehouseLabels';
 import { codeAndName, idOf } from '../shared/slipHelpers';
 import {
-  buildResolvePayload, emptyResolveForm, isIndividualDiscrepancy, permissionMessage, remainingQuantity,
+  buildResolvePayload, emptyResolveForm, permissionMessage, remainingQuantity,
   targetOptions, validateResolveForm,
 } from './discrepancyHelpers';
 
+/**
+ * Số món kết luận: nhập số, hệ thống tự chọn các món còn đang điều tra theo thứ tự;
+ * muốn chọn đúng món cụ thể thì mở "Đổi món".
+ */
 function AmountField({ discrepancy, form, setForm, remaining }) {
   const candidates = useMemo(() => unresolvedItems(discrepancy), [discrepancy]);
-  if (isIndividualDiscrepancy(discrepancy)) {
-    const toggle = (itemId, checked) => setForm((old) => ({
-      ...old,
-      itemIds: checked ? [...old.itemIds, itemId] : old.itemIds.filter((id) => id !== itemId),
-    }));
-    return (
-      <Form.Group className="mb-3">
-        <Form.Label>Chọn món hàng</Form.Label>
-        <WarehouseItemChecklist
-          items={candidates}
-          selectedIds={form.itemIds}
-          maxSelectable={remaining}
-          onToggle={toggle}
-          emptyMessage="Không còn món nào đang điều tra."
-        />
-      </Form.Group>
-    );
-  }
+  const [editing, setEditing] = useState(false);
+  const setCount = (value) => setForm((old) => ({ ...old, itemIds: fillItemIds(old.itemIds, candidates, Number(value)) }));
+  const toggle = (itemId, checked) => setForm((old) => ({
+    ...old,
+    itemIds: checked ? [...old.itemIds, itemId] : old.itemIds.filter((id) => id !== itemId),
+  }));
   return (
     <Form.Group className="mb-3" controlId="discrepancy-quantity">
-      <Form.Label>Số lượng</Form.Label>
-      <Form.Control
-        type="number"
-        min="1"
-        max={remaining}
-        step="1"
-        value={form.quantity}
-        onChange={(event) => setForm({ ...form, quantity: event.target.value })}
-      />
-      <Form.Text muted>Tối đa {remaining}.</Form.Text>
+      <Form.Label>Số món kết luận</Form.Label>
+      <div className="d-flex gap-2 align-items-center">
+        <Form.Control style={{ maxWidth: 120 }} type="number" min="1" max={remaining} step="1"
+          value={form.itemIds.length || ''} onChange={(event) => setCount(event.target.value)} />
+        <Button size="sm" variant="outline-secondary" type="button" onClick={() => setCount(remaining)}>Tất cả ({remaining})</Button>
+        <Button size="sm" variant="link" type="button" onClick={() => setEditing(!editing)}>{editing ? 'Ẩn danh sách món' : 'Đổi món'}</Button>
+      </div>
+      <div className="mt-2"><ItemCodeGroup label="Món được chọn" items={candidates.filter((item) => form.itemIds.includes(idOf(item)))} /></div>
+      {editing && (
+        <div className="mt-2">
+          <WarehouseItemChecklist
+            items={candidates}
+            selectedIds={form.itemIds}
+            maxSelectable={remaining}
+            onToggle={toggle}
+            emptyMessage="Không còn món nào đang điều tra."
+          />
+        </div>
+      )}
     </Form.Group>
   );
 }
-
 function FoundFields({ form, setForm, options, shelves }) {
   return (
     <>

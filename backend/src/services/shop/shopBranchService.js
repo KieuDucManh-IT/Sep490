@@ -7,6 +7,62 @@ const cleanUserRole = (u) => String(u?.Role || u?.role || '').trim().toLowerCase
 const isShopOwner = (u, s) => Boolean(u && (['shopowner', 'owner'].includes(cleanUserRole(u)) || (s?.ownerId && s.ownerId.toString() === u._id.toString())));
 
 /**
+ * Kiểm tra tính duy nhất của tên chi nhánh (không phân biệt hoa/thường).
+ * Bỏ qua các chi nhánh đã xóa mềm (isDeleted: true).
+ */
+export const checkDuplicateBranchName = async (name, excludeShopId = null) => {
+  if (!name || typeof name !== 'string') return;
+  const trimmed = name.trim();
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const filter = {
+    name: { $regex: new RegExp(`^${escaped}$`, 'i') },
+    isDeleted: { $ne: true },
+  };
+  if (excludeShopId) {
+    filter._id = { $ne: excludeShopId };
+  }
+  const query = Shop.findOne(filter);
+  const existing = query && typeof query.select === 'function'
+    ? await query.select('_id name').lean()
+    : await query;
+
+  if (existing && (!excludeShopId || String(existing._id) !== String(excludeShopId))) {
+    const existingName = String(existing.name || '').trim().toLowerCase();
+    if (existingName === trimmed.toLowerCase()) {
+      throw validationError(`Tên chi nhánh "${trimmed}" đã tồn tại trong hệ thống. Vui lòng chọn tên khác.`, 400);
+    }
+  }
+};
+
+/**
+ * Kiểm tra ràng buộc 1:1 giữa Quản lý và Chi nhánh:
+ * Mỗi chi nhánh chỉ được quản lý bởi 1 quản lý, và mỗi quản lý chỉ phụ trách duy nhất 1 chi nhánh.
+ */
+export const checkManagerAssignment1to1 = async (managerId, excludeShopId = null) => {
+  if (!managerId) return;
+  const filter = {
+    managerId,
+    isDeleted: { $ne: true },
+  };
+  if (excludeShopId) {
+    filter._id = { $ne: excludeShopId };
+  }
+  const query = Shop.findOne(filter);
+  const existingShop = query && typeof query.select === 'function'
+    ? await query.select('_id name managerId').lean()
+    : await query;
+
+  if (existingShop && existingShop.managerId && String(existingShop.managerId) === String(managerId)) {
+    if (!excludeShopId || String(existingShop._id) !== String(excludeShopId)) {
+      throw validationError(
+        `Quản lý này đã được bổ nhiệm phụ trách chi nhánh "${existingShop.name || 'khác'}". Mỗi chi nhánh chỉ được quản lý bởi 1 quản lý duy nhất.`,
+        400
+      );
+    }
+  }
+};
+
+/**
  * Đảm bảo bất biến toàn hệ thống: Chỉ được phép có DUY NHẤT 1 Trụ sở chính (Single-HQ Invariant).
  * 1. Nếu có nhiều hơn 1 HQ trong hệ thống: giữ lại 1 chi nhánh (ưu tiên chi nhánh tạo sớm nhất), hủy cờ HQ của tất cả các chi nhánh còn lại.
  * 2. Nếu có chi nhánh tồn tại nhưng không có chi nhánh nào là HQ: tự động gán chi nhánh đầu tiên làm HQ.
@@ -477,7 +533,10 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
     }
   }
 
-  if (validated.name !== undefined) shop.name = validated.name;
+  if (validated.name !== undefined && validated.name !== shop.name) {
+    await checkDuplicateBranchName(validated.name, shop._id);
+    shop.name = validated.name;
+  }
   if (validated.description !== undefined) shop.description = validated.description;
   if (validated.phone !== undefined) shop.phone = validated.phone;
   if (validated.address !== undefined) shop.address = validated.address;
@@ -511,7 +570,8 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
         throw validationError('Chỉ có thể bổ nhiệm tài khoản có vai trò Quản lý chi nhánh (Branch Manager).', 400);
       }
 
-      // Mô hình 1:N: Một Quản lý có thể phụ trách nhiều chi nhánh cùng lúc
+      // Ràng buộc 1:1: Một chi nhánh chỉ do 1 quản lý phụ trách, và mỗi quản lý chỉ phụ trách 1 chi nhánh
+      await checkManagerAssignment1to1(mgrUser._id, shop._id);
       shop.managerId = mgrUser._id;
     }
   }
@@ -550,6 +610,8 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
  * Khởi tạo một chi nhánh mới trong mạng lưới chuỗi cửa hàng
  */
 export const createNewBranch = async (validated, currentUser) => {
+  await checkDuplicateBranchName(validated.name);
+
   let resolvedOwnerId = currentUser?._id;
   if (cleanUserRole(currentUser) === 'admin' && validated.ownerId) {
     resolvedOwnerId = validated.ownerId;
@@ -580,6 +642,7 @@ export const createNewBranch = async (validated, currentUser) => {
       throw validationError('Chỉ có thể bổ nhiệm tài khoản có vai trò Quản lý chi nhánh (Branch Manager).', 400);
     }
 
+    await checkManagerAssignment1to1(managerUser._id);
     validManagerId = managerUser._id;
   }
 

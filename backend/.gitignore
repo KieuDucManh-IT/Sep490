@@ -28,6 +28,12 @@ dist/
 build/
 coverage/
 
+# Tests
+tests/
+test/
+*.test.js
+*.spec.js
+
 # Uploads / temp
 uploads/
 temp/

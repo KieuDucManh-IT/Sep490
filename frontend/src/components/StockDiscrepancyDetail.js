@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
 import stockDiscrepancyService from '../services/warehouse/stockDiscrepancyService';
+import { ItemCodeGroup } from './warehouse/ItemCodeGroups';
 
 import {
-  DISCREPANCY_CONDITION_LABELS,
   DISCREPANCY_OUTCOME_LABELS,
+  ITEM_STATUS_LABELS,
   DISCREPANCY_STATUS_CLASS,
   DISCREPANCY_STATUS_LABELS,
   RESPONSIBLE_PARTY_LABELS,
@@ -32,8 +33,6 @@ export const unresolvedItems = (discrepancy) => {
 
 export function StockDiscrepancyDetailBody({ discrepancy }) {
   if (!discrepancy) return null;
-  const individual = discrepancy.trackingType === 'individual';
-  const previous = new Map((discrepancy.itemPreviousConditions || []).map((row) => [idOf(row.itemId), row.condition]));
   const resolvedItemIds = new Set((discrepancy.resolutions || []).flatMap((row) => (row.itemIds || []).map(idOf)));
   return <div className="wm-discrepancy-detail">
     <div className="wm-detail-grid">
@@ -46,22 +45,22 @@ export function StockDiscrepancyDetailBody({ discrepancy }) {
       <div><small>Ngày mở</small><strong>{discrepancy.createdAt ? new Date(discrepancy.createdAt).toLocaleString('vi-VN') : '—'}</strong></div>
       <div><small>Người mở</small><strong>{discrepancy.createdBy?.FullName || '—'}</strong></div>
     </div>
-    {individual && <>
+    <>
       <h3 className="wm-discrepancy-heading">Các món thiếu</h3>
-      <div className="wm-table-wrap"><table><thead><tr><th>Mã hàng</th><th>Serial</th><th>Tình trạng trước khi thiếu</th><th>Kết luận</th></tr></thead><tbody>
+      <div className="wm-table-wrap"><table><thead><tr><th>Mã hàng</th><th>Serial</th><th>Trạng thái món</th><th>Kết luận</th></tr></thead><tbody>
         {(discrepancy.itemIds || []).length ? discrepancy.itemIds.map((item) => <tr key={idOf(item)}>
           <td><strong>{item.itemCode || idOf(item).slice(-6)}</strong></td><td>{item.serialNumber || '—'}</td>
-          <td>{labelOf(DISCREPANCY_CONDITION_LABELS, previous.get(idOf(item)), previous.get(idOf(item)) || '—')}</td>
+          <td>{labelOf(ITEM_STATUS_LABELS, item.status, item.status || '—')}</td>
           <td>{resolvedItemIds.has(idOf(item)) ? 'Đã kết luận' : 'Đang điều tra'}</td>
         </tr>) : <tr><td colSpan="4">Không có mã hàng.</td></tr>}
       </tbody></table></div>
-    </>}
+    </>
     <h3 className="wm-discrepancy-heading">Lịch sử kết luận</h3>
     <div className="wm-table-wrap"><table><thead><tr><th>Thời điểm</th><th>Kết luận</th><th>Số lượng</th><th>Nơi nhập lại / bên chịu trách nhiệm</th><th>Ghi chú</th><th>Người kết luận</th></tr></thead><tbody>
       {(discrepancy.resolutions || []).length ? discrepancy.resolutions.map((row) => <tr key={row._id}>
         <td>{row.resolvedAt ? new Date(row.resolvedAt).toLocaleString('vi-VN') : '—'}</td>
         <td>{labelOf(DISCREPANCY_OUTCOME_LABELS, row.outcome, row.outcome)}</td>
-        <td>{row.quantity}{row.itemIds?.length ? <small className="wm-stock-subline">{row.itemIds.map((item) => item.itemCode || idOf(item).slice(-6)).join(', ')}</small> : null}</td>
+        <td>{row.quantity}{row.itemIds?.length ? <ItemCodeGroup label="Mã hàng" items={row.itemIds} /> : null}</td>
         <td>{row.outcome === 'found'
           ? `${locationLabel(row.targetLocationId)}${row.targetStorageId ? ` / ${row.targetStorageId.code || ''}` : ''}`
           : labelOf(RESPONSIBLE_PARTY_LABELS, row.responsibleParty, '—')}</td>

@@ -30,6 +30,8 @@ import { createRentalOrder } from '../../services/rentalOrderApi';
 import GhnAddressSelector from '../../components/common/GhnAddressSelector';
 import '../../styles/Cart.css';
 
+const formatSuccessAmount = (amount) => new Intl.NumberFormat('vi-VN').format(Number(amount) || 0);
+
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const submissionLock = useRef(false);
@@ -125,6 +127,7 @@ export default function CheckoutPage() {
     provinceId: null,
     districtId: null,
     wardCode: '',
+    isNewAddress: true,
   });
 
   const handleAddressChange = (field, value) => {
@@ -140,6 +143,7 @@ export default function CheckoutPage() {
       district: divisionData.district,
       wardCode: divisionData.wardCode,
       ward: divisionData.ward,
+      isNewAddress: true,
     }));
   }, []);
 
@@ -213,10 +217,6 @@ export default function CheckoutPage() {
       setValidationError('Vui lòng chọn Tỉnh/Thành phố nhận trang phục.');
       return;
     }
-    if (!shippingAddress.districtId) {
-      setValidationError('Vui lòng chọn Quận/Huyện nhận trang phục.');
-      return;
-    }
     if (!shippingAddress.wardCode) {
       setValidationError('Vui lòng chọn Phường/Xã nhận trang phục.');
       return;
@@ -261,6 +261,7 @@ export default function CheckoutPage() {
             provinceId: shippingAddress.provinceId ? Number(shippingAddress.provinceId) : null,
             districtId: shippingAddress.districtId ? Number(shippingAddress.districtId) : null,
             wardCode: shippingAddress.wardCode ? String(shippingAddress.wardCode).trim() : null,
+            isNewAddress: true,
           },
           ...(note.trim() ? { note: note.trim() } : {}),
         };
@@ -284,6 +285,15 @@ export default function CheckoutPage() {
   };
 
   const isSubmitDisabled = !hasSelectedItems || submitting || resolvingBranches;
+  const successOrderCodes = createdOrders.map(order => order.orderCode || order._id).filter(Boolean).join(', ');
+  const successTotalAmount = createdOrders.reduce(
+    (total, order) => total + (Number(order.rentalFee) || 0) + (Number(order.depositAmount) || 0),
+    0
+  );
+  const successHeldDeposit = createdOrders.reduce(
+    (total, order) => total + (order.depositStatus === 'held' ? Number(order.depositAmount) || 0 : 0),
+    0
+  );
 
   // ── Styles ─────────────────────────────────────────────────────────────────
   const styles = {
@@ -1052,8 +1062,7 @@ export default function CheckoutPage() {
                 margin: '0 0 24px 0',
               }}
             >
-              Đơn thuê trang phục Haute Couture của quý khách đã được tạo và lưu vào hệ thống.
-              Tiền thuê và tiền cọc tương ứng đã được xử lý qua Ví Vestora.
+              Đặt thuê thành công. Mã đơn: {successOrderCodes || confirmedOrderId || '—'}. Tổng thanh toán: {formatSuccessAmount(successTotalAmount)} đồng. Tiền cọc đang được giữ: {formatSuccessAmount(successHeldDeposit)} đồng.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

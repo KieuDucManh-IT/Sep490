@@ -8,8 +8,8 @@ import { Plus, Check, Layers } from 'lucide-react';
  */
 function PolicyNavList({
   policies = [],
-  activeKey,
-  onSelectKey,
+  activeId,
+  onSelectId,
   onOpenCreateModal,
 }) {
   const list = useMemo(() => (Array.isArray(policies) ? policies : []), [policies]);
@@ -37,15 +37,15 @@ function PolicyNavList({
       }
 
       if (nextIndex !== null) {
-        const nextKey = list[nextIndex].key;
-        onSelectKey(nextKey);
-        const nextButton = document.getElementById(`policy-tab-${nextKey}`);
+        const nextId = list[nextIndex]._id;
+        onSelectId(nextId);
+        const nextButton = document.getElementById(`policy-tab-${nextId}`);
         if (nextButton) {
           nextButton.focus();
         }
       }
     },
-    [list, onSelectKey]
+    [list, onSelectId]
   );
 
   return (
@@ -67,22 +67,23 @@ function PolicyNavList({
         aria-label="Danh mục các chính sách kinh doanh toàn chuỗi"
       >
         {list.map((item, idx) => {
-          const isSelected = activeKey === item.key;
+          const itemId = item._id;
+          const isSelected = activeId === itemId;
           const isItemActive = item.isActive !== false;
           const isFilled = Boolean(item.title && item.content);
-          const displayTitle = item.title || item.key;
+          const displayTitle = item.title || `Chính sách ${idx + 1}`;
           const displaySummary = item.summary || 'Chính sách vận hành áp dụng toàn chuỗi';
 
           return (
             <button
-              key={item.key}
-              id={`policy-tab-${item.key}`}
+              key={itemId}
+              id={`policy-tab-${itemId}`}
               role="tab"
               type="button"
               tabIndex={isSelected ? 0 : -1}
               aria-selected={isSelected}
-              aria-controls={`policy-tabpanel-${item.key}`}
-              onClick={() => onSelectKey(item.key)}
+              aria-controls={`policy-tabpanel-${itemId}`}
+              onClick={() => onSelectId(itemId)}
               onKeyDown={(e) => handleKeyDown(e, idx)}
               className={`policy-nav-item ${isSelected ? 'active' : ''}`}
             >

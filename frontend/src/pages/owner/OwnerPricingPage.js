@@ -172,6 +172,7 @@ export default function OwnerPricingPage() {
             ) : null}
 
             {/* TASK-008: Lọc theo trạng thái định giá */}
+            {/* TASK-008: Cảnh báo nếu có sản phẩm chưa định giá */}
             {pricingCounts.unset > 0 ? (
               <div role="status" className="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3">
                 <AlertCircle size={16} aria-hidden="true" />
@@ -180,29 +181,15 @@ export default function OwnerPricingPage() {
                 </span>
               </div>
             ) : null}
-            <div className="btn-group mb-3" role="group" aria-label="Lọc theo trạng thái định giá">
-              {[
-                ['unset', 'Chưa định giá', pricingCounts.unset],
-                ['set', 'Đã định giá', pricingCounts.set],
-                ['all', 'Tất cả', pricingCounts.all],
-              ].map(([value, label, count]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`btn btn-sm ${pricingFilter === value ? (value === 'unset' ? 'btn-warning' : 'btn-dark') : 'btn-outline-secondary'}`}
-                  aria-pressed={pricingFilter === value}
-                  onClick={() => setPricingFilter(value)}
-                >
-                  {label} ({count})
-                </button>
-              ))}
-            </div>
 
-            {/* Thanh Công Cụ Tìm Kiếm & Lọc Danh Mục */}
+            {/* Thanh Công Cụ Tìm Kiếm, Lọc Trạng Thái & Danh Mục Chuẩn Hệ Thống Vestora */}
             <PricingFilterBar
               search={search}
               onSearchChange={setSearch}
               onClearSearch={() => setSearch('')}
+              pricingFilter={pricingFilter}
+              onSelectPricingFilter={setPricingFilter}
+              pricingCounts={pricingCounts}
               selectedCategory={selectedCategory}
               onSelectCategory={setSelectedCategory}
               categoryOptions={categoryOptions}

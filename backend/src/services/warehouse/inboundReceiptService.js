@@ -6,6 +6,7 @@
 // - Quản lý kho: tạo phiếu và giao nhân viên, duyệt / yêu cầu kiểm nhận lại kết quả ghi nhận, hủy phiếu.
 // - Nhân viên kho được giao: ghi nhận số thực nhận / hỏng, xếp hàng lên kệ.
 // Tồn chỉ được cộng ở bước xếp hàng lên kệ (completed); trước đó phiếu chỉ "giữ chỗ" sức chứa kho.
+// TASK-015: mỗi đơn vị thực nhận thành một món trên kệ (mã `<SKU>-<4 số>`); hàng hỏng là món `damaged` / `unavailable`.
 import mongoose from 'mongoose';
 import { InboundReceipt } from '../../models/warehouse/inbound/InboundReceipt.js';
 import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
@@ -18,9 +19,9 @@ import User from '../../models/system/User.js';
 import {
   validateCancelReason, validateCreateInboundReceipt, validatePutaway, validateReceiptCheck, validateReceiptDecision,
 } from '../../validations/warehouse/inboundReceiptValidation.js';
-import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
-import { createItems, recordItemMovements } from './itemStateService.js';
+import { createItems, generateItemCodes, recordItemMovements } from './itemStateService.js';
+import { buildPutawayPlan, inboundItemDocs } from './inboundPutawayRules.js';
 import { refreshOutOfStockStatus, markRestockRequested } from './productStockStatusService.js';
 import { appError } from './shared/errors.js';
 import { WAREHOUSE_STAFF_ROLE_PATTERN, isSameUser, isWarehouseManagerOrAdmin, isWarehouseStaff } from './shared/roles.js';
@@ -67,9 +68,10 @@ const findDetails = (receiptIds) => InboundReceiptDetail.find({ receiptId: { $in
   .populate({
     path: 'variantId',
     select: 'sku size color productId',
-    populate: { path: 'productId', select: 'name productCode trackingType' },
+    populate: { path: 'productId', select: 'name productCode' },
   })
   .populate('storageAllocations.storageId', 'code name type')
+  .populate('damagedStorageAllocations.storageId', 'code name type')
   .populate('storageId', 'code name type');
 
 /**
@@ -110,20 +112,22 @@ const getPhysicalCapacity = async (locationId, session = null) => {
   return { location, storageLocations, storageById, usedByStorage, used };
 };
 
-/** Phiếu nhập khác đang mở cũng chiếm chỗ: chờ nhận tính số dự kiến, đã nhận tính số đạt chất lượng. */
+/**
+ * Phiếu nhập khác đang mở cũng chiếm chỗ: chờ nhận tính số dự kiến, đã nhận tính số thực nhận
+ * (TASK-015: hàng hỏng cũng lên kệ nên chiếm chỗ như hàng thường).
+ */
 const getOpenCommitment = async (locationId, excludeReceiptId = null, session = null) => {
   const query = { locationId, status: { $in: OPEN_STATUSES } };
   if (excludeReceiptId) query._id = { $ne: excludeReceiptId };
   const receipts = await InboundReceipt.find(query).select('_id status').session(session).lean();
   if (!receipts.length) return 0;
-  const acceptedExpr = { $subtract: ['$quantityReceived', '$quantityDamaged'] };
   const details = await InboundReceiptDetail.aggregate([
     { $match: { receiptId: { $in: receipts.map((receipt) => receipt._id) } } },
     {
       $group: {
         _id: '$receiptId',
         expected: { $sum: '$quantityExpected' },
-        accepted: { $sum: { $cond: [{ $gt: [acceptedExpr, 0] }, acceptedExpr, 0] } },
+        received: { $sum: { $max: ['$quantityReceived', 0] } },
       },
     },
   ]).session(session);
@@ -131,7 +135,7 @@ const getOpenCommitment = async (locationId, excludeReceiptId = null, session = 
   return details.reduce((total, detail) => {
     const receipt = receiptById.get(String(detail._id));
     if (receipt.status === RECEIPT_STATUS.AWAITING_RECEIVING) return total + detail.expected;
-    return total + detail.accepted;
+    return total + detail.received;
   }, 0);
 };
 
@@ -336,22 +340,6 @@ export const approveReceipt = async (receiptId, userId, payload = {}) => {
 
 /* ------------------------------ Xếp hàng lên kệ ------------------------------ */
 
-/** Số đạt chất lượng của từng dòng phải được phân bổ hết lên kệ. Trả về các dòng kèm phân bổ. */
-const matchAllocationsToAcceptedLines = (details, allocations) => {
-  const allocationByDetail = new Map(allocations.map((item) => [item.detailId, item.allocations]));
-  const acceptedLines = details.map((detail) => ({
-    detail,
-    quantity: Math.max(0, detail.quantityReceived - detail.quantityDamaged),
-    allocations: allocationByDetail.get(String(detail._id)) || [],
-  }));
-  for (const line of acceptedLines) {
-    if (sum(line.allocations, 'quantity') !== line.quantity) {
-      throw appError(`Tổng số lượng phân bổ cho ${line.detail.variantId} phải bằng số lượng hàng đạt chất lượng (${line.quantity}).`, 400);
-    }
-  }
-  return acceptedLines;
-};
-
 const assertShelvesValid = async (receipt, toStore, session) => {
   const shelfIds = toStore.map((line) => line.storageId);
   const shelves = await StorageLocation.find({
@@ -383,27 +371,15 @@ const assertReceiptCapacity = async (receipt, toStore, snapshot, session) => {
   }
 };
 
-/** Hàng individual tạo món mới trên kệ (balance cộng theo món); hàng quantity cộng thẳng balance. Rồi ghi sổ. */
-const storeOnShelf = async ({ receipt, line, individual, user, session }) => {
-  if (individual) {
-    const items = Array.from({ length: line.quantity }, () => ({
-      variantId: line.detail.variantId,
-      locationId: receipt.locationId,
-      storageId: line.storageId,
-      inboundReceiptDetail: line.detail._id,
-      itemCode: `ITM-${new mongoose.Types.ObjectId().toString().toUpperCase()}`,
-      condition: 'new',
-      status: 'available',
-    }));
-    const created = await createItems(items, session);
-    // Mỗi món một dòng sổ có itemId (lịch sử mã hàng, TASK-014 G1); tổng số lượng không đổi.
-    await recordItemMovements(created, { ...inboundMovement(receipt, line, user), quantityChange: 1 }, session);
-    return;
-  }
-  await increaseInventoryBalance({
-    locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId, quantity: line.quantity, session,
-  });
-  await recordStockMovement({ ...inboundMovement(receipt, line, user), quantityChange: line.quantity }, session);
+/**
+ * Tạo món mới trên kệ cho một phân bổ (balance cộng theo món qua itemStateService), mã `<SKU>-<4 số>`,
+ * rồi ghi sổ mỗi món một dòng có itemId (TASK-014 G1). Phần hỏng: món `damaged` / `unavailable`.
+ */
+const storeOnShelf = async ({ receipt, line, sku, user, session }) => {
+  const itemCodes = await generateItemCodes(sku, line.quantity, session);
+  const docs = inboundItemDocs({ line, locationId: receipt.locationId, itemCodes });
+  const created = await createItems(docs, session);
+  await recordItemMovements(created, { ...inboundMovement(receipt, line, user), quantityChange: 1 }, session);
 };
 
 const inboundMovement = (receipt, line, user) => ({
@@ -416,19 +392,20 @@ const inboundMovement = (receipt, line, user) => ({
   createdBy: user._id,
 });
 
-const saveDetailAllocations = async (acceptedLines, session) => {
-  for (const { detail, allocations } of acceptedLines) {
+const saveDetailAllocations = async (lines, session) => {
+  for (const { detail, allocations, damagedAllocations } of lines) {
     await InboundReceiptDetail.findByIdAndUpdate(detail._id, {
       $set: {
         storageId: allocations.length === 1 ? allocations[0].storageId : null,
         storageAllocations: allocations,
+        damagedStorageAllocations: damagedAllocations,
       },
     }, { session });
   }
 };
 
 /**
- * Nhân viên xếp hàng đạt chất lượng lên kệ: kiểm kệ và sức chứa, cộng tồn, ghi sổ, lưu vị trí từng dòng.
+ * Nhân viên xếp hàng thực nhận lên kệ (cả phần hỏng): kiểm kệ và sức chứa, tạo món, ghi sổ, lưu vị trí từng dòng.
  * Trạng thái được giành (approved → completed) ngay đầu transaction để không cộng tồn cho phiếu vừa bị hủy.
  */
 export const putawayReceipt = async (receiptId, payload, user) => {
@@ -445,19 +422,18 @@ export const putawayReceipt = async (receiptId, payload, user) => {
       if (String(receipt.assignedStaffId) !== String(user._id)) throw appError(NOT_ASSIGNED_MESSAGE, 403);
       const details = await InboundReceiptDetail.find({ receiptId }).session(session);
       const allocations = validatePutaway(payload, details.map((item) => String(item._id)));
-      const acceptedLines = matchAllocationsToAcceptedLines(details, allocations);
-      const toStore = acceptedLines.flatMap((line) => line.allocations.map((allocation) => ({ detail: line.detail, ...allocation })));
+      const { lines, toStore } = buildPutawayPlan(details, allocations);
       const snapshot = await getPhysicalCapacity(receipt.locationId, session);
       await assertShelvesValid(receipt, toStore, session);
       await assertReceiptCapacity(receipt, toStore, snapshot, session);
       const variants = await ProductVariant.find({ _id: { $in: toStore.map((line) => line.detail.variantId) } })
-        .select('productId').populate('productId', 'trackingType').session(session).lean();
-      const tracking = new Map(variants.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
+        .select('sku').session(session).lean();
+      const skuByVariant = new Map(variants.map((variant) => [String(variant._id), variant.sku]));
       for (const line of toStore) {
-        const individual = tracking.get(String(line.detail.variantId)) === 'individual';
-        await storeOnShelf({ receipt, line, individual, user, session });
+        const sku = skuByVariant.get(String(line.detail.variantId));
+        await storeOnShelf({ receipt, line, sku, user, session });
       }
-      await saveDetailAllocations(acceptedLines, session);
+      await saveDetailAllocations(lines, session);
     });
   } finally {
     await session.endSession();

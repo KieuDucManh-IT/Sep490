@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { Button, Modal } from 'react-bootstrap';
 import WarehouseWorkflowProgress from '../../../components/WarehouseWorkflowProgress';
 import { WarehouseCancelledNote } from '../../../components/WarehouseCancelSlipModal';
@@ -12,18 +11,26 @@ import { countSummary, scopeLabel, variantsInScope } from './stocktakeHelpers';
 
 const CANCELLABLE_STATUSES = ['draft', 'in_progress', 'counted'];
 
-function summaryCards(summary) {
+/** Thẻ số liệu khi đang kiểm: tổng món, cần xử lý, không thấy, khác kệ, món lạ. */
+function countingCards(summary) {
   return [
-    { key: 'expected', label: 'Tồn sổ', value: summary.expected },
-    { key: 'counted', label: 'Thực tế dự kiến', value: summary.counted },
-    { key: 'missing', label: 'Thiếu / mất', value: summary.missing, tone: summary.missing > 0 ? 'danger' : 'default' },
-    { key: 'damaged', label: 'Hỏng / không sửa được', value: summary.damaged, tone: summary.damaged > 0 ? 'warn' : 'default' },
-    {
-      key: 'damagedQuantity',
-      label: 'Hỏng (hàng số lượng)',
-      value: summary.damagedQuantity,
-      tone: summary.damagedQuantity > 0 ? 'warn' : 'default',
-    },
+    { key: 'total', label: 'Món trong danh sách', value: summary.total },
+    { key: 'needsService', label: 'Cần xử lý', value: summary.needsService, tone: summary.needsService > 0 ? 'warn' : 'default' },
+    { key: 'notFound', label: 'Không thấy', value: summary.notFound, tone: summary.notFound > 0 ? 'danger' : 'default' },
+    { key: 'moved', label: 'Khác kệ', value: summary.moved },
+    { key: 'extra', label: 'Món lạ', value: summary.extra },
+  ];
+}
+
+/** Thẻ tổng kết sau khi duyệt (TASK-016 B3): đúng / cần xử lý / mất / tìm thấy / chuyển kệ / bị bỏ qua. */
+function approvedCards(summary) {
+  return [
+    { key: 'unchanged', label: 'Đúng', value: summary.unchanged },
+    { key: 'needsService', label: 'Cần xử lý', value: summary.needsService, tone: summary.needsService > 0 ? 'warn' : 'default' },
+    { key: 'lost', label: 'Mất', value: summary.lost, tone: summary.lost > 0 ? 'danger' : 'default' },
+    { key: 'found', label: 'Tìm thấy', value: summary.found },
+    { key: 'relocated', label: 'Chuyển kệ', value: summary.relocated },
+    { key: 'skipped', label: 'Bị bỏ qua', value: summary.skipped, tone: summary.skipped > 0 ? 'warn' : 'default' },
   ];
 }
 
@@ -39,15 +46,12 @@ function DetailActions({ stocktake, isManager, busy, actions }) {
       )}
       {status === 'in_progress' && (
         <>
-          <Button variant="outline-secondary" disabled={busy} onClick={actions.onSave}>Lưu số đếm</Button>
+          <Button variant="outline-secondary" disabled={busy} onClick={actions.onSave}>Lưu kết quả</Button>
           <Button variant="dark" disabled={busy} onClick={actions.onSubmit}>Gửi kết quả</Button>
         </>
       )}
       {status === 'counted' && isManager && (
-        <Button variant="dark" disabled={busy} onClick={actions.onApprove}>Duyệt và tạo điều chỉnh</Button>
-      )}
-      {status === 'approved' && isManager && (
-        <Link className="btn btn-dark" to="/warehousemanager/adjustments">Mở phiếu điều chỉnh</Link>
+        <Button variant="dark" disabled={busy} onClick={actions.onApprove}>Duyệt và áp dụng</Button>
       )}
     </>
   );
@@ -62,8 +66,12 @@ export default function StocktakeDetailModal({
 }) {
   const lines = stocktake.items || [];
   const editable = stocktake.status === 'in_progress';
-  const summary = countSummary(lines, counting.counts, counting.itemConditions, counting.damaged);
-  const storagesOfLocation = storages.filter((storage) => idOf(storage.locationId) === idOf(stocktake.locationId));
+  const cards = stocktake.status === 'approved' && stocktake.summary
+    ? approvedCards(stocktake.summary)
+    : countingCards(countSummary(lines, counting.results));
+  const shelves = storages
+    .filter((storage) => idOf(storage.locationId) === idOf(stocktake.locationId) && storage.type === 'shelf' && storage.status !== 'inactive')
+    .sort((left, right) => String(left.code).localeCompare(String(right.code)));
 
   return (
     <Modal show onHide={onClose} size="xl" centered scrollable>
@@ -82,28 +90,25 @@ export default function StocktakeDetailModal({
         )}
         {editable && (
           <p className="wm-stock-subline">
-            Hàng quản lý theo số lượng: nhập số đếm được và "Trong đó hỏng" (hàng hỏng vẫn tính trong tồn
-            nhưng không bán / cho thuê được). Số hỏng điền sẵn là số đang ghi nhận không khả dụng.
+            Mọi món mặc định "Có mặt – dùng được". Chỉ sửa món cần xử lý, không thấy hoặc nằm ở kệ khác; món gặp trên kệ mà không có
+            trong danh sách thì thêm ở mục "Món lạ". Duyệt sẽ áp dụng ngay vào tồn kho.
           </p>
         )}
         {error && <div className="wm-error">{error}</div>}
-        <KpiCards items={summaryCards(summary)} />
+        <KpiCards items={cards} />
         <StocktakeCountTable
           lines={lines}
           editable={editable}
-          counts={counting.counts}
-          itemConditions={counting.itemConditions}
-          damaged={counting.damaged}
-          onCountChange={counting.setCount}
-          onConditionChange={counting.setCondition}
-          onDamagedChange={counting.setDamagedCount}
+          results={counting.results}
+          shelves={shelves}
+          onResultChange={counting.setResult}
         />
         {editable && (
           <StocktakeNewItems
             newItems={counting.newItems}
             setNewItems={counting.setNewItems}
             variants={variantsInScope(variants, stocktake)}
-            storages={storagesOfLocation}
+            shelves={shelves}
           />
         )}
       </Modal.Body>

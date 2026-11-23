@@ -3,7 +3,8 @@
 // - Hệ thống tự mở phiếu khi chi nhánh chốt nhận hàng thiếu (stockTransferService) hoặc kho tổng xếp
 //   hàng trả về bị thiếu (branchReturnService).
 // - Quản lý kho tổng (hoặc admin) kết luận: "tìm thấy" → nhập lại về nơi nhận ban đầu hoặc kệ kho tổng;
-//   "mất" → món chuyển disposed (hàng số lượng chỉ ghi số, vì lúc xuất đã trừ tồn).
+//   "mất" → món chuyển `lost` (lúc xuất đã trừ tồn). TASK-015: phiếu luôn theo món (`itemIds`).
+// - TASK-016: bỏ `condition`; món thiếu giữ `in_transit` tới khi kết luận, tìm thấy → `available`.
 // - Quản lý chi nhánh chỉ xem phiếu liên quan tới chi nhánh mình.
 import mongoose from 'mongoose';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
@@ -11,7 +12,7 @@ import { InventoryLocation } from '../../models/warehouse/location/InventoryLoca
 import { Shop } from '../../models/shop/Shop.js';
 import { StockDiscrepancy } from '../../models/warehouse/transfer/StockDiscrepancy.js';
 import { discrepancyStatuses, validateResolveDiscrepancy } from '../../validations/warehouse/stockDiscrepancyValidation.js';
-import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
+import { recordStockMovement } from './inventoryLedgerService.js';
 import { moveItem, moveItems } from './itemStateService.js';
 import { appError } from './shared/errors.js';
 import { isBranchManager, isWarehouseManagerOrAdmin } from './shared/roles.js';
@@ -43,9 +44,9 @@ const population = [
   {
     path: 'variantId',
     select: 'sku size color productId',
-    populate: { path: 'productId', select: 'productCode name trackingType' },
+    populate: { path: 'productId', select: 'productCode name' },
   },
-  { path: 'itemIds', select: 'itemCode serialNumber condition status locationId storageId' },
+  { path: 'itemIds', select: 'itemCode serialNumber status locationId storageId' },
   { path: 'createdBy', select: 'FullName Email' },
   { path: 'resolutions.resolvedBy', select: 'FullName Email' },
   { path: 'resolutions.targetLocationId', select: 'code name type' },
@@ -55,36 +56,27 @@ const population = [
 
 /* ------------------------------ Mở phiếu khi nhận thiếu ------------------------------ */
 
-/** Món thiếu = món đã xuất nhưng không có trong danh sách nhận; đánh dấu missing, nhớ condition cũ. */
-const markMissingItems = async (detail, missing, session) => {
+/** Món thiếu = món đã xuất nhưng không có trong danh sách nhận (vẫn `in_transit`, không nằm trong balance). */
+const findMissingItems = async (detail, missing, session) => {
   const received = new Set((detail.receivedItemIds || []).map(String));
   const missingIds = (detail.itemIds || []).map(String).filter((id) => !received.has(id));
   const items = await InventoryItem.find({ _id: { $in: missingIds }, status: 'in_transit' })
-    .select('_id itemCode variantId locationId storageId status condition').session(session).lean();
+    .select('_id').session(session).lean();
   if (items.length !== missing) throw appError('Số món thiếu không khớp với danh sách mã hàng đang điều chuyển.', 409);
-  // Món vẫn in_transit (không nằm trong balance), chỉ đổi tình trạng; đi qua itemStateService cho thống nhất.
-  await moveItems(items, { condition: 'missing' }, session);
-  return {
-    itemIds: items.map((item) => item._id),
-    itemPreviousConditions: items.map((item) => ({ itemId: item._id, condition: item.condition || 'good' })),
-  };
+  return { itemIds: items.map((item) => item._id) };
 };
 
 /**
  * Mở phiếu chênh lệch cho các dòng điều chuyển bị thiếu. Gọi trong transaction của bước chốt nhận hàng.
- * Hàng individual: món thiếu giữ `in_transit` nhưng đặt `condition: 'missing'` để không bị chọn nhầm,
- * condition cũ được lưu lại để khôi phục khi tìm thấy. Hàng quantity chỉ ghi số thiếu.
+ * Món thiếu giữ `in_transit` cho tới khi phiếu kết luận (không luồng nào chọn được món `in_transit`).
  * Không ghi sổ biến động vì lúc xuất đã ghi transfer_out đủ số lượng.
  */
-export const openTransferDiscrepancies = async ({ transfer, details, tracking, user, session }) => {
+export const openTransferDiscrepancies = async ({ transfer, details, user, session }) => {
   const created = [];
   for (const detail of details) {
     const missing = Number(detail.quantityMissing || 0);
     if (missing <= 0 || detail.discrepancyId) continue;
-    const individual = tracking.get(String(detail.variantId)) === 'individual';
-    const missingItems = individual
-      ? await markMissingItems(detail, missing, session)
-      : { itemIds: [], itemPreviousConditions: [] };
+    const missingItems = await findMissingItems(detail, missing, session);
     const [discrepancy] = await StockDiscrepancy.create([{
       discrepancyCode: makeCode(),
       transferId: transfer._id,
@@ -93,7 +85,6 @@ export const openTransferDiscrepancies = async ({ transfer, details, tracking, u
       fromLocationId: transfer.fromLocationId,
       toLocationId: transfer.toLocationId,
       variantId: detail.variantId,
-      trackingType: individual ? 'individual' : 'quantity',
       quantityMissing: missing,
       ...missingItems,
       status: DISCREPANCY_STATUS.OPEN,
@@ -177,8 +168,8 @@ const loadOpenDiscrepancyOrThrow = async (id, session) => {
   throw appError('Phiếu chênh lệch đã được kết luận xong.', 409);
 };
 
-/** Hàng individual: món chọn phải thuộc phiếu và chưa được kết luận ở lần trước. */
-const pickIndividualItems = (discrepancy, data) => {
+/** Món chọn phải thuộc phiếu, chưa được kết luận ở lần trước và không vượt số còn đang điều tra. */
+const pickResolutionQuantity = (discrepancy, data) => {
   if (!data.itemIds.length) throw appError('Chọn các món hàng cần kết luận.');
   const resolvedIds = new Set(discrepancy.resolutions.flatMap((row) => row.itemIds.map(String)));
   const allowed = new Set(discrepancy.itemIds.map(String));
@@ -186,18 +177,7 @@ const pickIndividualItems = (discrepancy, data) => {
     throw appError('Có món hàng không thuộc phiếu chênh lệch hoặc đã được kết luận.', 409);
   }
   if (data.quantity != null && data.quantity !== data.itemIds.length) throw appError('Số lượng phải bằng số món đã chọn.');
-  return { itemIds: data.itemIds, quantity: data.itemIds.length };
-};
-
-const pickResolutionQuantity = (discrepancy, data) => {
-  let picked;
-  if (discrepancy.trackingType === 'individual') {
-    picked = pickIndividualItems(discrepancy, data);
-  } else {
-    if (data.itemIds.length) throw appError('Mặt hàng quản lý theo số lượng không chọn mã cá thể.');
-    if (data.quantity == null) throw appError('Nhập số lượng cần kết luận.');
-    picked = { itemIds: [], quantity: data.quantity };
-  }
+  const picked = { itemIds: data.itemIds, quantity: data.itemIds.length };
   const remaining = discrepancy.quantityMissing - discrepancy.quantityResolved;
   if (picked.quantity > remaining) throw appError(`Số lượng kết luận vượt số còn đang điều tra (${remaining}).`, 409);
   return picked;
@@ -227,12 +207,11 @@ const claimResolution = async ({ discrepancy, data, picked, user, session }) => 
   if (!claimed) throw appError('Phiếu chênh lệch vừa được người khác cập nhật. Hãy tải lại phiếu.', 409);
 };
 
-/** Mất: món in_transit → disposed (balance không đổi vì món đã rời sổ lúc xuất). Hàng số lượng không ghi gì. */
-const writeOffLostItems = async (discrepancy, itemIds, session) => {
-  if (discrepancy.trackingType !== 'individual') return;
+/** Mất: món in_transit → lost (balance không đổi vì món đã rời sổ lúc xuất). */
+const writeOffLostItems = async (itemIds, session) => {
   const items = await InventoryItem.find({ _id: { $in: itemIds }, status: 'in_transit' }).session(session);
   if (items.length !== itemIds.length) throw appError('Một số món hàng không còn ở trạng thái đang điều tra.', 409);
-  await moveItems(items, { status: 'disposed', condition: 'missing' }, session);
+  await moveItems(items, { status: 'lost' }, session);
 };
 
 /** Nơi nhập lại: kho tổng (bắt buộc chọn kệ) hoặc đúng nơi nhận ban đầu (không chọn kệ). */
@@ -276,20 +255,12 @@ const assertCentralShelfCapacity = async (location, storageId, quantity, session
   }
 };
 
-/** Món tìm thấy: in_transit → available (hoặc unavailable nếu trước đó hỏng) tại nơi nhập lại. */
-const restoreFoundItems = async ({ discrepancy, itemIds, location, storageId, movementBase, session }) => {
-  const previous = new Map(discrepancy.itemPreviousConditions.map((row) => [String(row.itemId), row.condition]));
+/** Món tìm thấy: in_transit → available tại nơi nhập lại (TASK-016 A3). */
+const restoreFoundItems = async ({ itemIds, location, storageId, movementBase, session }) => {
   for (const itemId of itemIds) {
-    const condition = previous.get(itemId) || 'good';
     const item = await InventoryItem.findOne({ _id: itemId, status: 'in_transit' }).session(session);
     if (!item) throw appError('Một số món hàng không còn ở trạng thái đang điều tra.', 409);
-    const damaged = ['damaged', 'unrepairable'].includes(condition);
-    await moveItem(item, {
-      status: damaged ? 'unavailable' : 'available',
-      condition,
-      locationId: location._id,
-      storageId,
-    }, session);
+    await moveItem(item, { status: 'available', locationId: location._id, storageId }, session);
     await recordStockMovement({ ...movementBase, itemId: item._id, quantityChange: 1 }, session);
   }
 };
@@ -309,18 +280,12 @@ const restockFoundGoods = async ({ discrepancy, data, picked, user, session }) =
     referenceId: discrepancy._id,
     createdBy: user._id,
   };
-  if (discrepancy.trackingType === 'individual') {
-    await restoreFoundItems({ discrepancy, itemIds: picked.itemIds, location, storageId, movementBase, session });
-    return;
-  }
-  const { quantity } = picked;
-  await increaseInventoryBalance({ locationId: location._id, storageId, variantId: discrepancy.variantId, quantity, session });
-  await recordStockMovement({ ...movementBase, quantityChange: quantity }, session);
+  await restoreFoundItems({ itemIds: picked.itemIds, location, storageId, movementBase, session });
 };
 
 /**
  * Kết luận một phần hoặc toàn bộ số thiếu. Phiếu được "giành" trước bằng cập nhật có điều kiện,
- * sau đó mới đổi trạng thái món / cộng tồn, tất cả trong một transaction.
+ * sau đó mới đổi trạng thái món (balance đổi theo món qua itemStateService), tất cả trong một transaction.
  */
 export const resolveDiscrepancy = async (id, payload, user) => {
   if (!isWarehouseManagerOrAdmin(user)) throw appError('Chỉ quản lý kho tổng mới được kết luận phiếu chênh lệch.', 403);
@@ -333,7 +298,7 @@ export const resolveDiscrepancy = async (id, payload, user) => {
       const picked = pickResolutionQuantity(discrepancy, data);
       await claimResolution({ discrepancy, data, picked, user, session });
       if (data.outcome === 'lost') {
-        await writeOffLostItems(discrepancy, picked.itemIds, session);
+        await writeOffLostItems(picked.itemIds, session);
         return;
       }
       await restockFoundGoods({ discrepancy, data, picked, user, session });

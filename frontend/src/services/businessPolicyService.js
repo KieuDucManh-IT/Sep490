@@ -37,11 +37,11 @@ export const updateMyPolicies = async (policiesData) => {
 };
 
 /**
- * Cập nhật một chính sách cụ thể theo key (Dành cho Shop Owner)
+ * Cập nhật một chính sách cụ thể theo ID (Dành cho Shop Owner)
  */
-export const updatePolicyByKey = async (key, policyData) => {
+export const updatePolicyByKey = async (id, policyData) => {
   try {
-    const res = await apiClient.put(`/shops/policies/${key}`, policyData);
+    const res = await apiClient.put(`/shops/policies/${id}`, policyData);
     return res?.data || null;
   } catch (error) {
     throw error;
@@ -49,11 +49,11 @@ export const updatePolicyByKey = async (key, policyData) => {
 };
 
 /**
- * Xóa một chính sách theo key (Dành cho Shop Owner)
+ * Xóa một chính sách theo ID (Dành cho Shop Owner)
  */
-export const deletePolicy = async (key) => {
+export const deletePolicy = async (id) => {
   try {
-    const res = await apiClient.delete(`/shops/policies/${key}`);
+    const res = await apiClient.delete(`/shops/policies/${id}`);
     return res?.data || null;
   } catch (error) {
     throw error;

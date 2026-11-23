@@ -1,20 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Modal } from 'react-bootstrap';
 import inventoryReportService from '../services/warehouse/inventoryReportService';
-import { CONDITION_LABELS, ITEM_STATUS_LABELS, labelOf } from '../constants/warehouseLabels';
+import { HIDDEN_ITEM_STATUSES, ITEM_STATUS_LABELS, labelOf } from '../constants/warehouseLabels';
 import '../styles/WarehouseManager.css';
 
 const NO_RECEIPT_KEY = 'no-receipt';
 const receiptKeyOf = (serial) => String(serial.inboundReceiptDetail?._id || NO_RECEIPT_KEY);
 
-function loadDetails(item) {
+/** Bộ lọc trạng thái: mặc định chỉ món đang trong kho; các trạng thái đã rời kho xem riêng (TASK-016 C4). */
+const STATUS_FILTERS = [
+  { value: '', label: 'Đang trong kho' },
+  ...HIDDEN_ITEM_STATUSES.map((status) => ({ value: status, label: ITEM_STATUS_LABELS[status] })),
+];
+
+function loadDetails(item, statuses) {
   if (item.branchId) {
     return inventoryReportService.getBranchItemDetails({
-      branchId: item.branchId, storageId: item.storageId, variantId: item.variantId, productId: item.productId, itemLevel: item.itemLevel,
+      branchId: item.branchId, storageId: item.storageId, variantId: item.variantId, productId: item.productId, itemLevel: item.itemLevel, statuses,
     });
   }
   return inventoryReportService.getItemDetails({
-    locationId: item.locationId, storageId: item.storageId, variantId: item.variantId, productId: item.productId, itemLevel: item.itemLevel,
+    locationId: item.locationId, storageId: item.storageId, variantId: item.variantId, productId: item.productId, itemLevel: item.itemLevel, statuses,
   });
 }
 
@@ -50,7 +56,7 @@ function ReceiptGroup({ group, isOpen, onToggle, onItemClick }) {
         <div className="wm-table-wrap">
           <table>
             <thead>
-              <tr><th>Biến thể</th><th>Mã hàng</th><th>Serial</th><th>Tình trạng</th><th>Trạng thái</th></tr>
+              <tr><th>Biến thể</th><th>Mã hàng</th><th>Serial</th><th>Trạng thái</th></tr>
             </thead>
             <tbody>
               {items.map((serial) => (
@@ -62,8 +68,10 @@ function ReceiptGroup({ group, isOpen, onToggle, onItemClick }) {
                     ) : serial.itemCode}
                   </td>
                   <td>{serial.serialNumber || 'Chưa ghi serial'}</td>
-                  <td>{labelOf(CONDITION_LABELS, serial.condition, serial.condition)}</td>
-                  <td>{labelOf(ITEM_STATUS_LABELS, serial.status, serial.status)}</td>
+                  <td>
+                    {labelOf(ITEM_STATUS_LABELS, serial.status, serial.status)}
+                    {serial.soldOrder?.orderCode && <small className="d-block text-muted">Đơn bán {serial.soldOrder.orderCode}</small>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -84,10 +92,13 @@ export default function InventorySerialsModal({ item, onClose, onItemClick }) {
   const [expanded, setExpanded] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
     let active = true;
-    loadDetails(item)
+    setLoading(true);
+    setError('');
+    loadDetails(item, statusFilter)
       .then((rows) => {
         if (!active) return;
         setSerials(rows);
@@ -102,7 +113,7 @@ export default function InventorySerialsModal({ item, onClose, onItemClick }) {
     return () => {
       active = false;
     };
-  }, [item]);
+  }, [item, statusFilter]);
 
   const groups = groupByReceipt(serials);
   const toggleGroup = (key) => setExpanded((value) => ({ ...value, [key]: !value[key] }));
@@ -117,6 +128,11 @@ export default function InventorySerialsModal({ item, onClose, onItemClick }) {
         </div>
       </Modal.Header>
       <Modal.Body>
+        <div className="d-flex justify-content-end mb-2">
+          <select aria-label="Lọc theo trạng thái món" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            {STATUS_FILTERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
         {error && <div className="wm-error">{error}</div>}
         {loading && <div className="wm-tree-empty">Đang tải các món hàng...</div>}
         {!loading && groups.length > 0 && (

@@ -13,6 +13,7 @@
 /src/
 slides/
 tests/
+test/
 plans/
 *.plan.md
 plan.md

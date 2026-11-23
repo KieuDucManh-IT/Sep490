@@ -45,7 +45,7 @@ function ReportRow({ row, onShowItems }) {
         <small>{[row.productCode, row.sku, row.size, row.color].filter(Boolean).join(' · ')}</small>
       </td>
       <td>
-        <span>{row.trackingType === 'individual' ? `${number(row.itemCount)} mã hàng` : 'Quản lý theo số lượng'}</span><br />
+        <span>{`${number(row.itemCount ?? row.quantityOnHand)} mã hàng`}</span><br />
         <button type="button" className="wm-text-button" onClick={() => onShowItems(row)}>Xem các món hàng tại vị trí</button>
       </td>
       <td>{number(row.quantityOnHand)}</td>

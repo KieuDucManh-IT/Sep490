@@ -576,7 +576,7 @@ export async function getBranchPerformanceReportData({
     }),
     StockTransfer.countDocuments({
       toLocationId: { $in: locationIds },
-      status: { $in: ['shipped', 'partially_received'] },
+      status: 'shipped',
     }),
     // TASK-011: số đang cho thuê đọc balance.quantityRenting (mọi loại hàng), không đếm món.
     InventoryBalance.aggregate([

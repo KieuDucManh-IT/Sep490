@@ -55,6 +55,7 @@ export const shippingAddressSchema = z.object({
   provinceId: z.number().int().nullish(),
   districtId: z.number().int().nullish(),
   wardCode: z.string().trim().nullish(),
+  isNewAddress: z.boolean().optional().default(false),
 });
 
 export const rentalOrderItemInputSchema = z.object({

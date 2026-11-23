@@ -9,6 +9,11 @@ const inboundReceiptDetailSchema = new mongoose.Schema({
     storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', required: true },
     quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
   }],
+  // TASK-015: kệ đặt phần hàng hỏng (món `damaged` / `unavailable`), xếp kệ như hàng thường.
+  damagedStorageAllocations: [{
+    storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', required: true },
+    quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
+  }],
   quantityExpected: { type: Number, required: true, min: 0 },
   quantityReceived: { type: Number, required: true, min: 0, default: 0 }, // physically received, including damaged goods
   quantityDamaged: { type: Number, required: true, min: 0, default: 0 }, // must not exceed quantityReceived

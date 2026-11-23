@@ -33,7 +33,8 @@ export default function TransferListTable({ rows, total, query, searchInput, loa
           <td><strong>{row.transferCode}</strong><small className="wm-row-summary">{row.createdBy?.FullName || 'Người tạo chưa rõ'}</small></td>
           <td>{locationName(isCentral ? row.toLocationId : row.fromLocationId)}</td>
           <td>{row.lineCount || 0} dòng<small className="wm-row-summary">Tổng {row.totalQuantity || 0} sản phẩm</small></td>
-          <td><StatusBadge status={row.status} labels={TRANSFER_STATUS_LABELS} fallback={row.status} /></td>
+          <td><StatusBadge status={row.status} labels={TRANSFER_STATUS_LABELS} fallback={row.status} />
+            {row.hasDiscrepancy && <small className="wm-row-summary text-danger">Có chênh lệch</small>}</td>
           <td>{new Date(row.createdAt).toLocaleString('vi-VN')}</td>
           <td><button type="button" className="secondary" onClick={() => onOpen(row._id)}>Mở phiếu</button></td>
         </tr>)}

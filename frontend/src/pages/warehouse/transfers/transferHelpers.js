@@ -3,9 +3,6 @@ import { formatVariantName } from '../../../constants/warehouseLabels';
 /** Lấy id dạng chuỗi từ object đã populate hoặc id thô. */
 export const idOf = (value) => String(value?._id || value || '');
 
-/** Dòng phiếu thuộc sản phẩm theo dõi từng món (có mã hàng riêng). */
-export const isIndividual = (line) => line?.variantId?.productId?.trackingType === 'individual';
-
 /** "Mã · Tên" của kho / chi nhánh. */
 export const locationName = (location) => `${location?.code || ''} · ${location?.name || ''}`;
 

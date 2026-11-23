@@ -325,7 +325,7 @@ export const completeDisputeKCS = async ({
 
       // TASK-010: đồ lỗi ban đầu khách gửi về → nhận lại tại chi nhánh qua itemStateService.
       // Trước đây updateMany → `maintenance` trực tiếp (balance không đổi, lệch onHand/renting). Theo quy tắc nhận trả
-      // (không dùng `maintenance` ở chi nhánh; bảo trì chỉ tạo ở kho tổng): món `renting` → `unavailable` + condition `damaged`
+      // (không dùng `maintenance` ở chi nhánh; bảo trì chỉ tạo ở kho tổng): món `renting` → `unavailable` (cần xử lý)
       // (renting −1, onHand +1, unavailable +1), chờ chuyển về kho tổng xử lý. Món không còn `renting` (đã trả/khác) bỏ qua.
       const details = await RentalOrderDetail.find({ rentalOrderId: order._id }).session(session);
       const orderItems = await RentalOrderItem.find({
@@ -335,7 +335,7 @@ export const completeDisputeKCS = async ({
       const invItems = orderItems.length
         ? await InventoryItem.find({ _id: { $in: orderItems.map((it) => it.itemId) }, status: 'renting' }).session(session)
         : [];
-      await returnItems(invItems.map((item) => ({ item, conditionOnReturn: 'damaged' })), session);
+      await returnItems(invItems.map((item) => ({ item, inspectionResult: 'needs_service' })), session);
       if (invItems.length) {
         await StockMovement.insertMany(invItems.map((item) => ({
           variantId: item.variantId,

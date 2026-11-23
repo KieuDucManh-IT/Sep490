@@ -3,7 +3,7 @@ import { Button, Modal } from 'react-bootstrap';
 import { Plus, Trash2 } from 'lucide-react';
 import { idOf } from '../shared/slipHelpers';
 import {
-  acceptedQuantity, buildPutawayPayload, initialPutawayLines, lineName, sumAllocated, validatePutaway,
+  buildPutawayPayload, initialPutawayLines, lineName, sumAllocated, validatePutaway,
 } from './inboundHelpers';
 
 function AllocationRow({ allocation, shelves, usedIds, canRemove, onChange, onRemove }) {
@@ -16,13 +16,13 @@ function AllocationRow({ allocation, shelves, usedIds, canRemove, onChange, onRe
           <option value="">Chọn kệ</option>
           {choices.map((shelf) => (
             <option key={shelf._id} value={shelf._id}>
-              {shelf.code} — {shelf.name} (tối đa {shelf.maxCapacity ?? 0} cái)
+              {shelf.code} — {shelf.name} (tối đa {shelf.maxCapacity ?? 0} món)
             </option>
           ))}
         </select>
       </label>
       <label>
-        Số lượng
+        Số món
         <input required type="number" min="1" step="1" value={allocation.quantity}
           onChange={(event) => onChange('quantity', event.target.value)} />
       </label>
@@ -36,8 +36,42 @@ function AllocationRow({ allocation, shelves, usedIds, canRemove, onChange, onRe
 }
 
 /**
- * Nhân viên kho xếp hàng đạt chất lượng của phiếu nhập lên kệ. Một dòng hàng có thể chia ra nhiều kệ;
- * backend kiểm sức chứa còn lại của kệ, dãy, khu và kho.
+ * Danh sách kệ của một phần hàng (tốt hoặc hỏng) trong một dòng phiếu.
+ * @param {{ title: string, total: number, allocations: object[], shelves: object[], onChange: (next: object[]) => void }} props
+ */
+function AllocationList({ title, total, allocations, shelves, onChange }) {
+  const allocated = sumAllocated(allocations);
+  const usedIds = allocations.map((allocation) => allocation.storageId).filter(Boolean);
+  const update = (index, key, value) => onChange(allocations
+    .map((allocation, j) => (j === index ? { ...allocation, [key]: value } : allocation)));
+  const add = () => onChange([...allocations, { storageId: '', quantity: Math.max(1, total - allocated) }]);
+  const remove = (index) => onChange(allocations.filter((_, j) => j !== index));
+  return (
+    <div className="wm-allocation-list">
+      <small><strong>{title}</strong></small>
+      {allocations.map((allocation, index) => (
+        <AllocationRow
+          key={index}
+          allocation={allocation}
+          shelves={shelves}
+          usedIds={usedIds}
+          canRemove={allocations.length > 1}
+          onChange={(key, value) => update(index, key, value)}
+          onRemove={() => remove(index)}
+        />
+      ))}
+      <button type="button" className="wm-add-allocation" disabled={allocated >= total} onClick={add}>
+        <Plus size={14} />Thêm vị trí
+      </button>
+      <small>Đã phân bổ {allocated} / {total} món</small>
+    </div>
+  );
+}
+
+/**
+ * Nhân viên kho xếp hàng của phiếu nhập lên kệ. Mỗi đơn vị thực nhận thành một món có mã:
+ * phần tốt sẵn sàng bán / thuê; phần hỏng vẫn xếp lên kệ (không khả dụng) để xử lý tiếp.
+ * Một dòng hàng có thể chia ra nhiều kệ; backend kiểm sức chứa còn lại của kệ, dãy, khu và kho.
  */
 export default function InboundPutawayForm({ receipt, shelves, onPutaway, onBack, onDone }) {
   const [lines, setLines] = useState(() => initialPutawayLines(receipt));
@@ -45,17 +79,8 @@ export default function InboundPutawayForm({ receipt, shelves, onPutaway, onBack
   const [saving, setSaving] = useState(false);
   const receiptShelves = shelves.filter((shelf) => idOf(shelf.locationId) === idOf(receipt.locationId));
 
-  const updateLine = (lineIndex, mapAllocations) => {
-    setLines((old) => old.map((line, i) => (i === lineIndex ? { ...line, allocations: mapAllocations(line) } : line)));
-  };
-  const updateAllocation = (lineIndex, allocationIndex, key, value) => updateLine(lineIndex, (line) => line.allocations
-    .map((allocation, j) => (j === allocationIndex ? { ...allocation, [key]: value } : allocation)));
-  const addAllocation = (lineIndex) => updateLine(lineIndex, (line) => [
-    ...line.allocations,
-    { storageId: '', quantity: Math.max(1, line.accepted - sumAllocated(line.allocations)) },
-  ]);
-  const removeAllocation = (lineIndex, allocationIndex) => updateLine(lineIndex, (line) => line.allocations
-    .filter((_, j) => j !== allocationIndex));
+  const setLineField = (lineIndex, key, value) => setLines((old) => old
+    .map((line, i) => (i === lineIndex ? { ...line, [key]: value } : line)));
 
   const submit = async (event) => {
     event.preventDefault();
@@ -80,35 +105,30 @@ export default function InboundPutawayForm({ receipt, shelves, onPutaway, onBack
     <form onSubmit={submit}>
       <Modal.Body className="wm-receive-list">
         {error && <div className="wm-error">{error}</div>}
-        <p>Chọn kệ cho từng dòng hàng đạt chất lượng. Phân bổ được kiểm tra với sức chứa còn lại của kệ, dãy, khu và kho.</p>
+        <p>
+          Chọn kệ cho từng dòng hàng. Mỗi món nhận được sẽ có mã hàng riêng; món hỏng cũng xếp lên kệ (không bán / cho thuê)
+          để xử lý tiếp. Phân bổ được kiểm tra với sức chứa còn lại của kệ, dãy, khu và kho.
+        </p>
         {receipt.items.map((item, index) => {
-          const accepted = acceptedQuantity(item);
-          const allocations = lines[index]?.allocations || [];
-          const allocated = sumAllocated(allocations);
-          const usedIds = allocations.map((allocation) => allocation.storageId).filter(Boolean);
+          const line = lines[index] || { accepted: 0, damaged: 0, allocations: [], damagedAllocations: [] };
+          const nothing = line.accepted <= 0 && line.damaged <= 0;
           return (
             <div className="wm-putaway-row" key={item._id}>
-              <strong>{lineName(item)}<small>{accepted} cái cần xếp</small></strong>
-              {accepted > 0 ? (
-                <div className="wm-allocation-list">
-                  {allocations.map((allocation, allocationIndex) => (
-                    <AllocationRow
-                      key={`${item._id}-${allocationIndex}`}
-                      allocation={allocation}
-                      shelves={receiptShelves}
-                      usedIds={usedIds}
-                      canRemove={allocations.length > 1}
-                      onChange={(key, value) => updateAllocation(index, allocationIndex, key, value)}
-                      onRemove={() => removeAllocation(index, allocationIndex)}
-                    />
-                  ))}
-                  <button type="button" className="wm-add-allocation" disabled={allocated >= accepted}
-                    onClick={() => addAllocation(index)}>
-                    <Plus size={14} />Thêm vị trí
-                  </button>
-                  <small>Đã phân bổ {allocated} / {accepted} cái</small>
-                </div>
-              ) : <span>Không có hàng tốt cần xếp.</span>}
+              <strong>
+                {lineName(item)}
+                <small>{line.accepted} món tốt{line.damaged > 0 ? ` · ${line.damaged} món hỏng` : ''} cần xếp</small>
+              </strong>
+              {nothing && <span>Không có hàng cần xếp.</span>}
+              <div>
+                {line.accepted > 0 && (
+                  <AllocationList title="Hàng tốt" total={line.accepted} allocations={line.allocations}
+                    shelves={receiptShelves} onChange={(next) => setLineField(index, 'allocations', next)} />
+                )}
+                {line.damaged > 0 && (
+                  <AllocationList title="Hàng hỏng" total={line.damaged} allocations={line.damagedAllocations}
+                    shelves={receiptShelves} onChange={(next) => setLineField(index, 'damagedAllocations', next)} />
+                )}
+              </div>
             </div>
           );
         })}

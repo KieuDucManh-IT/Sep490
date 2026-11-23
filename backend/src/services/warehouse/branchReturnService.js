@@ -1,13 +1,14 @@
 // Trả hàng từ chi nhánh về kho tổng (phiếu StockTransfer có direction = 'branch_to_central').
 // Luồng trạng thái: requested → approved → shipped → receipt_submitted → receipt_approved → completed
-//                   (requested có thể bị rejected; approved có thể bị cancelled; receipt_submitted bị trả lại → shipped).
+//                   (requested có thể bị rejected; requested / approved có thể bị cancelled; receipt_submitted bị trả lại → shipped).
+// TASK-016 D2: chỉ hủy trước khi gửi (requested / approved), người hủy là quản lý chi nhánh tạo phiếu hoặc WM, bắt buộc lý do.
 // Ai làm bước nào:
-// - Quản lý chi nhánh: tạo phiếu, gửi hàng (trừ tồn chi nhánh), hủy khi đã duyệt nhưng chưa gửi.
+// - Quản lý chi nhánh: tạo phiếu, gửi hàng (trừ tồn chi nhánh), hủy trước khi gửi.
 // - Quản lý kho tổng: duyệt số lượng (giữ tồn chi nhánh) + giao nhân viên, duyệt kết quả kiểm nhận.
 // - Nhân viên kho tổng được giao: ghi nhận số nhận / hỏng, xếp hàng lên kệ (cộng tồn kho tổng).
 // Hàng thiếu khi xếp lên kệ → mở phiếu chênh lệch thay vì loại bỏ ngay.
+// TASK-015: mọi dòng theo món (giữ món FIFO khi duyệt, nhận / hỏng / xếp kệ theo danh sách món).
 import mongoose from 'mongoose';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
@@ -15,12 +16,10 @@ import { Shop } from '../../models/shop/Shop.js';
 import { StockTransfer } from '../../models/warehouse/transfer/StockTransfer.js';
 import { StockTransferDetail } from '../../models/warehouse/transfer/StockTransferDetail.js';
 import User from '../../models/system/User.js';
-import {
-  increaseInventoryBalance, recordStockMovement, releaseReservedBalance, reserveInventoryBalance,
-} from './inventoryLedgerService.js';
+import { recordStockMovement } from './inventoryLedgerService.js';
 import { openTransferDiscrepancies } from './stockDiscrepancyService.js';
 import { moveItem, moveItems } from './itemStateService.js';
-import { availableOf, getAvailable, stockMismatchError } from './balanceQueryService.js';
+import { getAvailable, stockMismatchError } from './balanceQueryService.js';
 import { appError } from './shared/errors.js';
 import {
   WAREHOUSE_STAFF_ROLE_PATTERN, isAdmin, isBranchManager, isSameUser, isWarehouseManagerOrAdmin, isWarehouseStaff,
@@ -29,6 +28,7 @@ import { getCentralWarehouse } from './shared/locations.js';
 import { addToStorageChain, capacitySnapshot } from './shared/capacity.js';
 import { parsePaging } from './shared/pagination.js';
 import { andFilter, buildSearchFilter, listSlips } from './shared/listing.js';
+import { validateCancelReason } from '../../validations/warehouse/stockTransferValidation.js';
 
 // Giữ export cũ cho nơi khác còn import capacitySnapshot từ file này.
 export { capacitySnapshot };
@@ -46,8 +46,6 @@ export const RETURN_STATUS = {
 const LISTABLE_STATUSES = Object.values(RETURN_STATUS);
 const RETURN_DIRECTION = { direction: 'branch_to_central' };
 const NOT_ASSIGNED_MESSAGE = 'Phiếu này chưa được giao cho bạn.';
-/** Món có tình trạng này không được chọn để trả (không gửi hàng hỏng/mất về kho tổng qua phiếu trả). */
-const UNRETURNABLE_CONDITIONS = ['damaged', 'unrepairable', 'missing'];
 
 const isBranchManagerOrAdmin = (user) => isBranchManager(user) || isAdmin(user);
 const validId = (id) => mongoose.isValidObjectId(id);
@@ -79,21 +77,13 @@ const findDetails = (ids) => StockTransferDetail.find({ transferId: { $in: ids }
   .populate({
     path: 'variantId',
     select: 'sku size color productId',
-    populate: { path: 'productId', select: 'name productCode trackingType' },
+    populate: { path: 'productId', select: 'name productCode' },
   })
-  .populate('itemIds', 'itemCode serialNumber condition status')
-  .populate('receivedItemIds', 'itemCode serialNumber condition status')
-  .populate('damagedItemIds', 'itemCode serialNumber condition status')
+  .populate('itemIds', 'itemCode serialNumber status')
+  .populate('receivedItemIds', 'itemCode serialNumber status')
+  .populate('damagedItemIds', 'itemCode serialNumber status')
   .populate('putawayAllocations.storageId', 'code name type')
   .populate('discrepancyId', 'discrepancyCode status quantityMissing quantityResolved');
-
-/** Map variantId → trackingType cho các dòng phiếu. */
-const loadTrackingTypes = async (details, session) => {
-  const variants = await ProductVariant.find({ _id: { $in: details.map((row) => row.variantId) } })
-    .select('productId').populate('productId', 'trackingType').session(session).lean();
-  return new Map(variants.map((row) => [String(row._id), row.productId?.trackingType || 'quantity']));
-};
-const isIndividualIn = (tracking, detail) => tracking.get(String(detail.variantId)) === 'individual';
 
 /* ------------------------------ Quyền và đọc phiếu ------------------------------ */
 
@@ -264,27 +254,18 @@ const readApprovalLines = (payload, details) => {
   return approved;
 };
 
-/** Hàng individual: kiểm khả dụng trên balance trước, rồi giữ các món cũ nhất (FIFO). Chọn thiếu = dữ liệu lệch. */
+/** Kiểm khả dụng trên balance trước, rồi giữ các món cũ nhất (FIFO). Chọn thiếu = dữ liệu lệch. */
 const reserveReturnItems = async ({ transfer, detail, quantity, session }) => {
   const place = { locationId: transfer.fromLocationId, variantId: detail.variantId };
   const available = await getAvailable(place, session);
   if (available < quantity) throw appError(`Chi nhánh chỉ còn ${available} cái khả dụng để trả.`, 409);
-  const locked = await InventoryItem.find({ ...place, status: 'available', condition: { $nin: UNRETURNABLE_CONDITIONS } })
+  const locked = await InventoryItem.find({ ...place, status: 'available' })
     .sort({ createdAt: 1 }).limit(quantity).session(session);
   if (locked.length < quantity) {
     throw stockMismatchError({ ...place, expected: available, found: locked.length, context: 'decideBranchReturn' });
   }
   detail.itemIds = locked.map((item) => item._id);
   await moveItems(locked, { status: 'reserved', warehouseHold: 1 }, session);
-};
-
-/** Hàng quantity: giữ số lượng trên dòng balance chi nhánh bằng một lệnh có điều kiện. */
-const reserveReturnQuantity = async ({ transfer, detail, quantity, session }) => {
-  const place = { locationId: transfer.fromLocationId, storageId: null, variantId: detail.variantId };
-  const balance = await InventoryBalance.findOne(place).session(session);
-  const message = `Chi nhánh chỉ còn ${availableOf(balance)} cái khả dụng để trả.`;
-  if (!balance || availableOf(balance) < quantity) throw appError(message, 409);
-  await reserveInventoryBalance({ ...place, quantity, session, message });
 };
 
 /** Quản lý kho tổng duyệt số lượng trả (giữ tồn chi nhánh) và giao nhân viên nhận, hoặc từ chối. */
@@ -302,7 +283,6 @@ export const decideBranchReturn = async (id, payload, user) => {
       }
       const staff = await loadReturnStaffOrThrow(payload.assignedStaffId, session);
       const details = await StockTransferDetail.find({ transferId: id }).session(session);
-      const tracking = await loadTrackingTypes(details, session);
       const approved = readApprovalLines(payload, details);
       for (const detail of details) {
         const quantity = integer(approved.get(String(detail._id)), 'Số lượng duyệt');
@@ -310,8 +290,7 @@ export const decideBranchReturn = async (id, payload, user) => {
           throw appError('Số lượng duyệt không được lớn hơn số lượng chi nhánh yêu cầu.');
         }
         detail.quantityApproved = quantity;
-        if (quantity > 0 && isIndividualIn(tracking, detail)) await reserveReturnItems({ transfer, detail, quantity, session });
-        else if (quantity > 0) await reserveReturnQuantity({ transfer, detail, quantity, session });
+        if (quantity > 0) await reserveReturnItems({ transfer, detail, quantity, session });
         await detail.save({ session });
       }
       if (!details.some((row) => row.quantityApproved > 0)) {
@@ -359,19 +338,6 @@ const dispatchReturnItems = async ({ transfer, detail, quantity, user, session }
   }
 };
 
-const dispatchReturnQuantity = async ({ transfer, detail, quantity, user, session }) => {
-  await releaseReservedBalance({
-    locationId: transfer.fromLocationId,
-    storageId: null,
-    variantId: detail.variantId,
-    quantity,
-    alsoRemoveOnHand: true,
-    session,
-    message: 'Tồn chi nhánh đã thay đổi, không thể gửi phiếu.',
-  });
-  await recordStockMovement(transferOutMovement(transfer, detail, user, { quantityChange: -quantity }), session);
-};
-
 /** Chi nhánh xác nhận đã gửi hàng về kho tổng: phần đã giữ rời khỏi tồn chi nhánh. */
 export const dispatchBranchReturn = async (id, user) => {
   if (!validId(id)) throw appError('Mã phiếu trả hàng không hợp lệ.');
@@ -382,13 +348,10 @@ export const dispatchBranchReturn = async (id, user) => {
       const transfer = await loadReturnInStatus(id, RETURN_STATUS.APPROVED, session, 'Phiếu chưa được duyệt hoặc đã gửi hàng.');
       await assertBranchAccess(transfer, user);
       const details = await StockTransferDetail.find({ transferId: id }).session(session);
-      const tracking = await loadTrackingTypes(details, session);
       for (const detail of details) {
         const quantity = detail.quantityApproved || 0;
         if (!quantity) continue;
-        const context = { transfer, detail, quantity, user, session };
-        if (isIndividualIn(tracking, detail)) await dispatchReturnItems(context);
-        else await dispatchReturnQuantity(context);
+        await dispatchReturnItems({ transfer, detail, quantity, user, session });
         detail.quantityShipped = quantity;
         await detail.save({ session });
       }
@@ -403,36 +366,43 @@ export const dispatchBranchReturn = async (id, user) => {
   return loadReturn(id, user);
 };
 
-/** Chi nhánh hủy phiếu đã duyệt nhưng chưa gửi: nhả phần tồn đã giữ. */
-export const cancelBranchReturn = async (id, user) => {
+/** Phiếu trả chỉ hủy được trước khi chi nhánh gửi hàng (TASK-016 D2). */
+export const CANCELLABLE_RETURN_STATUSES = Object.freeze([RETURN_STATUS.REQUESTED, RETURN_STATUS.APPROVED]);
+
+/** WM / admin hủy mọi phiếu; quản lý chi nhánh chỉ hủy phiếu mình tạo của chi nhánh mình. */
+const assertCanCancelReturn = async (transfer, user) => {
+  if (isWarehouseManagerOrAdmin(user)) return;
+  if (!isBranchManager(user)) throw appError('Chỉ quản lý chi nhánh tạo phiếu hoặc quản lý kho mới được hủy phiếu trả hàng.', 403);
+  if (!isSameUser(transfer.createdBy, user)) throw appError('Chỉ quản lý chi nhánh đã tạo phiếu mới được hủy phiếu này.', 403);
+  await assertBranchAccess(transfer, user);
+};
+
+/**
+ * Hủy phiếu trả trước khi gửi hàng: requested / approved → cancelled (cập nhật có điều kiện; sai trạng thái → 409).
+ * Phiếu đã duyệt đang giữ món ở chi nhánh → nhả về `available`.
+ */
+export const cancelBranchReturn = async (id, payload, user) => {
   if (!validId(id)) throw appError('Mã phiếu trả hàng không hợp lệ.');
-  if (!isBranchManagerOrAdmin(user)) throw appError('Chỉ quản lý chi nhánh mới được hủy phiếu trả hàng.', 403);
+  const { reason } = validateCancelReason(payload);
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const transfer = await loadReturnInStatus(id, RETURN_STATUS.APPROVED, session, 'Chỉ có thể hủy phiếu đã duyệt nhưng chưa gửi hàng.');
-      await assertBranchAccess(transfer, user);
+      const current = await StockTransfer.findOne({ _id: id, ...RETURN_DIRECTION }).session(session);
+      if (!current) throw appError('Không tìm thấy phiếu trả hàng.', 404);
+      await assertCanCancelReturn(current, user);
+      const previous = await StockTransfer.findOneAndUpdate(
+        { _id: id, ...RETURN_DIRECTION, status: { $in: CANCELLABLE_RETURN_STATUSES } },
+        { $set: { status: RETURN_STATUS.CANCELLED, cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
+        { returnDocument: 'before', session },
+      );
+      if (!previous) throw appError('Chỉ hủy được phiếu trả đang chờ duyệt hoặc đã duyệt nhưng chưa gửi hàng.', 409);
+      if (previous.status !== RETURN_STATUS.APPROVED) return;
       const details = await StockTransferDetail.find({ transferId: id }).session(session);
-      const tracking = await loadTrackingTypes(details, session);
       for (const detail of details) {
-        const quantity = detail.quantityApproved || 0;
-        if (!quantity) continue;
-        if (isIndividualIn(tracking, detail)) {
-          const locked = await findReservedItems(transfer, detail, session);
-          await moveItems(locked, { status: 'available', warehouseHold: -1 }, session);
-          continue;
-        }
-        await releaseReservedBalance({
-          locationId: transfer.fromLocationId,
-          storageId: null,
-          variantId: detail.variantId,
-          quantity,
-          session,
-          message: 'Không thể giải phóng khóa tồn kho; cần kiểm tra số dư chi nhánh.',
-        });
+        if (!detail.quantityApproved) continue;
+        const locked = await findReservedItems(previous, detail, session);
+        await moveItems(locked, { status: 'available', warehouseHold: -1 }, session);
       }
-      transfer.status = RETURN_STATUS.CANCELLED;
-      await transfer.save({ session });
     });
   } finally {
     await session.endSession();
@@ -453,7 +423,7 @@ const readLinesByDetail = (payload, details, invalidMessage, incompleteMessage) 
   return byId;
 };
 
-/** Hàng individual: danh sách món nhận / hỏng không trùng, thuộc phiếu gửi và khớp số lượng. */
+/** Danh sách món nhận / hỏng không trùng, thuộc phiếu gửi và khớp số lượng. */
 const readReceivedItemIds = (line, detail, quantityReceived, quantityDamaged) => {
   const receivedRaw = line.receivedItemIds ?? [];
   const damagedRaw = line.damagedItemIds ?? [];
@@ -473,17 +443,15 @@ const readReceivedItemIds = (line, detail, quantityReceived, quantityDamaged) =>
   return { receivedIds, damagedIds };
 };
 
-const recordReceiptLine = async ({ detail, line, individual, session }) => {
+const recordReceiptLine = async ({ detail, line, session }) => {
   const quantityReceived = integer(line.quantityReceived, 'Số lượng nhận');
   const quantityDamaged = integer(line.quantityDamaged || 0, 'Số lượng hỏng');
   if (quantityReceived > detail.quantityShipped || quantityDamaged > quantityReceived) {
     throw appError('Số lượng nhận hoặc hỏng vượt số lượng đã gửi.');
   }
-  if (individual) {
-    const { receivedIds, damagedIds } = readReceivedItemIds(line, detail, quantityReceived, quantityDamaged);
-    detail.receivedItemIds = receivedIds;
-    detail.damagedItemIds = damagedIds;
-  }
+  const { receivedIds, damagedIds } = readReceivedItemIds(line, detail, quantityReceived, quantityDamaged);
+  detail.receivedItemIds = receivedIds;
+  detail.damagedItemIds = damagedIds;
   detail.quantityReceived = quantityReceived;
   detail.quantityDamaged = quantityDamaged;
   detail.quantityMissing = detail.quantityShipped - quantityReceived;
@@ -503,10 +471,9 @@ export const submitBranchReturnReceipt = async (id, payload, user) => {
       assertAssignedStaff(transfer, user);
       const details = await StockTransferDetail.find({ transferId: id }).session(session);
       const byId = readLinesByDetail(payload, details, 'Dòng nhận hàng không hợp lệ.', 'Cần ghi nhận đầy đủ các dòng hàng trong phiếu.');
-      const tracking = await loadTrackingTypes(details, session);
       for (const detail of details) {
         const line = byId.get(String(detail._id));
-        await recordReceiptLine({ detail, line, individual: isIndividualIn(tracking, detail), session });
+        await recordReceiptLine({ detail, line, session });
       }
       transfer.status = RETURN_STATUS.RECEIPT_SUBMITTED;
       transfer.receivedBy = user._id;
@@ -557,18 +524,14 @@ export const decideBranchReturnReceipt = async (id, payload, user) => {
 
 /* ------------------------------ Xếp hàng lên kệ ------------------------------ */
 
-/** Kiểm một vị trí xếp: phải là kệ đang hoạt động của kho tổng; hàng individual phải chọn đúng món đạt. */
-const checkPutawayAllocation = ({ allocation, detail, individual, snapshot }) => {
+/** Kiểm một vị trí xếp: phải là kệ đang hoạt động của kho tổng và chọn đúng món đạt. */
+const checkPutawayAllocation = ({ allocation, detail, snapshot }) => {
   if (!validId(allocation.storageId)) throw appError('Chọn kệ hợp lệ trong kho tổng.');
   const rawItemIds = allocation.itemIds ?? [];
   if (!Array.isArray(rawItemIds)) throw appError('Danh sách món hàng theo kệ không hợp lệ.');
   const storage = snapshot.storageById.get(String(allocation.storageId));
   if (!storage || storage.type !== 'shelf' || storage.status !== 'active') {
     throw appError('Vị trí xếp phải là kệ đang hoạt động thuộc kho tổng.');
-  }
-  if (!individual) {
-    if (rawItemIds.length) throw appError('Mặt hàng quản lý theo số lượng không dùng danh sách mã hàng.');
-    return { storage, itemIds: [] };
   }
   const ids = [...new Set(rawItemIds.map(String))];
   if (ids.length !== rawItemIds.length) throw appError('Món hàng không được phân bổ trùng kệ.');
@@ -580,7 +543,7 @@ const checkPutawayAllocation = ({ allocation, detail, individual, snapshot }) =>
 };
 
 /** Kiểm phân bổ một dòng và cộng dồn số sắp thêm vào từng kệ / cấp cha (`storageAdds`). */
-const planPutawayLine = ({ detail, line, individual, snapshot, storageAdds }) => {
+const planPutawayLine = ({ detail, line, snapshot, storageAdds }) => {
   if (!Array.isArray(line.allocations)) throw appError('Danh sách vị trí xếp hàng không hợp lệ.');
   if (line.allocations.some((allocation) => !isRecord(allocation))) throw appError('Phân bổ kệ không hợp lệ.');
   const accepted = detail.quantityReceived - detail.quantityDamaged;
@@ -590,11 +553,11 @@ const planPutawayLine = ({ detail, line, individual, snapshot, storageAdds }) =>
   }
   const assignedItems = [];
   for (const allocation of line.allocations) {
-    const { storage, itemIds } = checkPutawayAllocation({ allocation, detail, individual, snapshot });
+    const { storage, itemIds } = checkPutawayAllocation({ allocation, detail, snapshot });
     assignedItems.push(...itemIds);
     addToStorageChain(storageAdds, snapshot.storageById, String(storage._id), allocation.quantity);
   }
-  if (individual && (new Set(assignedItems).size !== assignedItems.length || assignedItems.length !== accepted)) {
+  if (new Set(assignedItems).size !== assignedItems.length || assignedItems.length !== accepted) {
     throw appError('Mỗi món đạt chất lượng cần được gán đúng một kệ.');
   }
   detail.putawayAllocations = line.allocations.map((row) => ({
@@ -638,7 +601,7 @@ const putawayReturnItems = async ({ transfer, detail, line, user, session }) => 
       .session(session);
     if (!item) throw appError('Một món hàng không còn ở trạng thái đang điều chuyển.', 409);
     let change = { locationId: transfer.toLocationId, storageId: shelfByItem.get(itemId), status: 'available' };
-    if (damaged.has(itemId)) change = { locationId: transfer.toLocationId, storageId: null, status: 'unavailable', condition: 'damaged' };
+    if (damaged.has(itemId)) change = { locationId: transfer.toLocationId, storageId: null, status: 'unavailable' };
     await moveItem(item, change, session);
     await recordStockMovement(transferInMovement(transfer, detail, user, {
       itemId: item._id, storageId: item.storageId, quantityChange: 1,
@@ -646,31 +609,9 @@ const putawayReturnItems = async ({ transfer, detail, line, user, session }) => 
   }
 };
 
-/** Hàng quantity: cộng tồn từng kệ; phần hỏng vào dòng không kệ và tính là không khả dụng. */
-const putawayReturnQuantity = async ({ transfer, detail, line, user, session }) => {
-  for (const allocation of line.allocations) {
-    await increaseInventoryBalance({
-      locationId: transfer.toLocationId, storageId: allocation.storageId, variantId: detail.variantId, quantity: allocation.quantity, session,
-    });
-    await recordStockMovement(transferInMovement(transfer, detail, user, {
-      storageId: allocation.storageId, quantityChange: allocation.quantity,
-    }), session);
-  }
-  if (detail.quantityDamaged <= 0) return;
-  await increaseInventoryBalance({
-    locationId: transfer.toLocationId,
-    storageId: null,
-    variantId: detail.variantId,
-    quantity: detail.quantityDamaged,
-    increments: { quantityUnavailable: detail.quantityDamaged },
-    session,
-  });
-  await recordStockMovement(transferInMovement(transfer, detail, user, { quantityChange: detail.quantityDamaged }), session);
-};
-
 /**
  * Xếp hàng trả về lên kệ kho tổng (sau khi kết quả kiểm nhận được duyệt): kiểm sức chứa toàn bộ trước,
- * rồi mới cộng tồn. Dòng thiếu mở phiếu chênh lệch thay vì chuyển món thiếu sang disposed.
+ * rồi mới đổi trạng thái món (balance theo món). Dòng thiếu mở phiếu chênh lệch thay vì chuyển món thiếu sang disposed.
  */
 export const putawayBranchReturn = async (id, payload, user) => {
   if (!validId(id)) throw appError('Mã phiếu trả hàng không hợp lệ.');
@@ -686,22 +627,19 @@ export const putawayBranchReturn = async (id, payload, user) => {
       const byId = readLinesByDetail(payload, details, 'Dòng phân bổ vị trí không hợp lệ.', 'Cần phân bổ vị trí cho toàn bộ mặt hàng.');
       const snapshot = await capacitySnapshot(transfer.toLocationId, session, transfer._id);
       if (!snapshot.location) throw appError('Không tìm thấy kho tổng.', 404);
-      const tracking = await loadTrackingTypes(details, session);
       const storageAdds = new Map();
       let totalAdded = 0;
       for (const detail of details) {
         const line = byId.get(String(detail._id));
-        planPutawayLine({ detail, line, individual: isIndividualIn(tracking, detail), snapshot, storageAdds });
+        planPutawayLine({ detail, line, snapshot, storageAdds });
         totalAdded += detail.quantityReceived;
       }
       assertPutawayCapacity(snapshot, storageAdds, totalAdded);
       for (const detail of details) {
-        const context = { transfer, detail, line: byId.get(String(detail._id)), user, session };
-        if (isIndividualIn(tracking, detail)) await putawayReturnItems(context);
-        else await putawayReturnQuantity(context);
+        await putawayReturnItems({ transfer, detail, line: byId.get(String(detail._id)), user, session });
         await detail.save({ session });
       }
-      await openTransferDiscrepancies({ transfer, details, tracking, user, session });
+      await openTransferDiscrepancies({ transfer, details, user, session });
       transfer.status = RETURN_STATUS.COMPLETED;
       transfer.putawayBy = user._id;
       transfer.putawayAt = new Date();

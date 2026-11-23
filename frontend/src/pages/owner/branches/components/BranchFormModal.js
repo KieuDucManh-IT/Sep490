@@ -73,7 +73,7 @@ export default function BranchFormModal({
     }
   };
 
-  // Chuẩn bị danh sách Quản lý: Hiển thị số chi nhánh đang phụ trách (hỗ trợ mô hình 1 quản lý : N chi nhánh)
+  // Chuẩn bị danh sách Quản lý: Hiển thị trạng thái phân công (Ràng buộc 1:1)
   const managerOptions = [
     {
       value: '',
@@ -82,11 +82,12 @@ export default function BranchFormModal({
     },
     ...managers.map((m) => {
       const branchCount = m.assignedBranchesCount || 0;
-      let branchLabel = 'Chưa phụ trách chi nhánh nào';
-      if (branchCount === 1) {
-        branchLabel = 'Đang quản lý 1 chi nhánh';
-      } else if (branchCount > 1) {
-        branchLabel = `Đang quản lý ${branchCount} chi nhánh`;
+      const isCurrentBranchManager = activeBranch?.managerId?._id && String(activeBranch.managerId._id) === String(m._id);
+      let branchLabel = 'Sẵn sàng bổ nhiệm';
+      if (isCurrentBranchManager) {
+        branchLabel = 'Đang quản lý chi nhánh này';
+      } else if (branchCount > 0) {
+        branchLabel = 'Đã quản lý chi nhánh khác';
       }
 
       return {
@@ -506,8 +507,14 @@ export default function BranchFormModal({
                     onChange={(val) => onFieldChange('managerId', val)}
                     placeholder="Tìm theo tên, email, số điện thoại của Quản lý chi nhánh..."
                   />
+                  {formErrors.managerId && (
+                    <div className="vestora-invalid-feedback">
+                      <AlertCircle size={12} />
+                      <span>{formErrors.managerId}</span>
+                    </div>
+                  )}
                   <Form.Text className="text-muted small">
-                    Hệ thống chỉ cho phép bổ nhiệm các tài khoản đã được cấp quyền Quản lý chi nhánh. Một quản lý có thể phụ trách nhiều chi nhánh.
+                    Hệ thống áp dụng ràng buộc 1:1: Mỗi chi nhánh chỉ được quản lý bởi 1 quản lý và mỗi quản lý chỉ phụ trách duy nhất 1 chi nhánh.
                   </Form.Text>
                 </Form.Group>
               </Col>

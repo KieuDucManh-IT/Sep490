@@ -410,6 +410,12 @@ export function useBranchForm({ provinces, fetchWardsByProvince, setWards, showT
         throw new Error(response?.message || 'Thao tác không thành công.');
       }
     } catch (err) {
+      if (err.message && err.message.toLowerCase().includes('tên chi nhánh')) {
+        setFormErrors((prev) => ({ ...prev, name: err.message }));
+      }
+      if (err.message && err.message.toLowerCase().includes('quản lý')) {
+        setFormErrors((prev) => ({ ...prev, managerId: err.message }));
+      }
       showToast(err.message || 'Có lỗi xảy ra khi lưu chi nhánh.', 'warning');
       return false;
     } finally {

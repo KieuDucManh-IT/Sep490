@@ -44,6 +44,209 @@ import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { moveItems } from '../warehouse/itemStateService.js';
 import { fetchOrderAndValidateScope } from '../shipping/shipmentHelpers.js';
+import { createNotification, notifyRoles } from '../system/notificationService.js';
+import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
+import { Shop } from '../../models/shop/Shop.js';
+import User from '../../models/system/User.js';
+
+/**
+ * Phát thông báo bất đồng bộ khi đơn mua hàng mới được tạo thành công
+ */
+async function notifyNewSalesOrder(order, customerId) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+
+    // 1. Thông báo cho Khách hàng
+    createNotification({
+      userId: customerId,
+      type: 'order_created',
+      title: 'Đặt mua hàng thành công',
+      message: `Đơn mua hàng #${order.orderCode} đã được khởi tạo thành công tại ${branchName}. VESTORA sẽ sớm chuẩn bị và giao hàng cho bạn!`,
+      link: '/rental-orders?tab=sale',
+      referenceType: 'SalesOrder',
+      referenceId: order._id,
+      metadata: { orderCode: order.orderCode },
+    }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho khách hàng:', err.message));
+
+    // 2. Thông báo cho Branch Manager của chi nhánh
+    const branchManagerId = shop?.managerId || location?.managerId;
+    if (branchManagerId) {
+      createNotification({
+        userId: branchManagerId,
+        type: 'order_created',
+        title: 'Đơn mua hàng mới từ khách hàng',
+        message: `Khách hàng ${customerName} vừa đặt đơn mua #${order.orderCode} tại ${branchName}. Vui lòng kiểm tra và chuẩn bị sản phẩm!`,
+        link: '/branch/sale-orders',
+        referenceType: 'SalesOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Branch Manager:', err.message));
+    } else {
+      // Nếu chi nhánh chưa có quản lý chỉ định, phát cho tất cả tài khoản Quản lý chi nhánh
+      notifyRoles(['branch_manager'], {
+        type: 'order_created',
+        title: 'Đơn mua hàng mới từ khách hàng',
+        message: `Khách hàng ${customerName} vừa đặt đơn mua #${order.orderCode} tại ${branchName}. Vui lòng kiểm tra và chuẩn bị sản phẩm!`,
+        link: '/branch/sale-orders',
+        referenceType: 'SalesOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Branch Managers:', err.message));
+    }
+
+    // 3. Thông báo cho Shop Owner / Owner
+    if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+      createNotification({
+        userId: shop.ownerId,
+        type: 'order_created',
+        title: 'Đơn mua hàng mới tại hệ thống',
+        message: `Khách hàng ${customerName} vừa đặt đơn mua #${order.orderCode} tại ${branchName}.`,
+        link: '/owner/sale-orders',
+        referenceType: 'SalesOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Shop Owner:', err.message));
+    } else if (!shop?.ownerId) {
+      notifyRoles(['shopOwner', 'owner'], {
+        type: 'order_created',
+        title: 'Đơn mua hàng mới tại hệ thống',
+        message: `Khách hàng ${customerName} vừa đặt đơn mua #${order.orderCode} tại ${branchName}.`,
+        link: '/owner/sale-orders',
+        referenceType: 'SalesOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Shop Owner:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo đơn mua mới:', err.message);
+  }
+}
+
+/**
+ * Phát thông báo khi trạng thái đơn mua hàng thay đổi
+ */
+async function notifySalesOrderStatusChanged(order, newStatus, note = '') {
+  try {
+    if (!order) return;
+
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(order.customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+
+    let custTitle = '';
+    let custMessage = '';
+    let mgrTitle = '';
+    let mgrMessage = '';
+
+    if (newStatus === 'shipped') {
+      custTitle = 'Đơn mua hàng đang được vận chuyển';
+      custMessage = `Đơn mua hàng #${order.orderCode} của bạn đang trên đường vận chuyển. Vui lòng chú ý điện thoại khi shipper liên hệ!`;
+      mgrTitle = `Đơn mua #${order.orderCode} đang được vận chuyển`;
+      mgrMessage = `Đơn mua #${order.orderCode} của khách ${customerName} tại ${branchName} đã được chuyển sang trạng thái đang giao hàng.`;
+    } else if (newStatus === 'completed') {
+      custTitle = 'Đơn mua hàng đã hoàn tất';
+      custMessage = `Đơn mua hàng #${order.orderCode} đã được giao thành công. Cảm ơn bạn đã mua sắm tại VESTORA!`;
+      mgrTitle = `Đơn mua #${order.orderCode} đã hoàn tất`;
+      mgrMessage = `Đơn mua #${order.orderCode} của khách ${customerName} tại ${branchName} đã giao thành công và hoàn tất đơn hàng.`;
+    } else if (newStatus === 'cancelled') {
+      custTitle = `Đơn mua hàng #${order.orderCode} đã bị hủy`;
+      custMessage = `Đơn mua hàng #${order.orderCode} đã bị hủy.${note ? ` Lý do: ${note}.` : ''}${order.paymentMethod === 'wallet' ? ' Tiền hoàn đã được chuyển về ví của bạn.' : ''}`;
+      mgrTitle = `Đơn mua #${order.orderCode} đã bị hủy`;
+      mgrMessage = `Đơn mua #${order.orderCode} của khách ${customerName} tại ${branchName} đã bị hủy.${note ? ` Lý do: ${note}.` : ''}`;
+    }
+
+    // 1. Gửi thông báo cho khách hàng
+    if (custTitle && custMessage && order.customerId) {
+      createNotification({
+        userId: order.customerId,
+        type: 'order_status',
+        title: custTitle,
+        message: custMessage,
+        link: '/rental-orders?tab=sale',
+        referenceType: 'SalesOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, orderStatus: newStatus },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo đổi trạng thái đơn mua cho khách:', err.message));
+    }
+
+    // 2. Gửi thông báo cho Quản lý chi nhánh
+    const branchManagerId = shop?.managerId || location?.managerId;
+    if (mgrTitle && mgrMessage) {
+      if (branchManagerId) {
+        createNotification({
+          userId: branchManagerId,
+          type: 'order_status',
+          title: mgrTitle,
+          message: mgrMessage,
+          link: '/branch/sale-orders',
+          referenceType: 'SalesOrder',
+          referenceId: order._id,
+          metadata: { orderCode: order.orderCode, orderStatus: newStatus, locationId: order.locationId },
+        }).catch((err) => console.error('[Notification] Lỗi gửi thông báo đổi trạng thái đơn mua cho Branch Manager:', err.message));
+      } else {
+        notifyRoles(['branch_manager'], {
+          type: 'order_status',
+          title: mgrTitle,
+          message: mgrMessage,
+          link: '/branch/sale-orders',
+          referenceType: 'SalesOrder',
+          referenceId: order._id,
+          metadata: { orderCode: order.orderCode, orderStatus: newStatus, locationId: order.locationId },
+        }).catch((err) => console.error('[Notification] Lỗi gửi thông báo đổi trạng thái đơn mua cho Branch Managers:', err.message));
+      }
+
+      // 3. Gửi thông báo cho Shop Owner
+      if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+        createNotification({
+          userId: shop.ownerId,
+          type: 'order_status',
+          title: mgrTitle,
+          message: mgrMessage,
+          link: '/owner/sale-orders',
+          referenceType: 'SalesOrder',
+          referenceId: order._id,
+          metadata: { orderCode: order.orderCode, orderStatus: newStatus, locationId: order.locationId },
+        }).catch((err) => console.error('[Notification] Lỗi gửi thông báo đổi trạng thái đơn mua cho Shop Owner:', err.message));
+      } else if (!shop?.ownerId) {
+        notifyRoles(['shopOwner', 'owner'], {
+          type: 'order_status',
+          title: mgrTitle,
+          message: mgrMessage,
+          link: '/owner/sale-orders',
+          referenceType: 'SalesOrder',
+          referenceId: order._id,
+          metadata: { orderCode: order.orderCode, orderStatus: newStatus, locationId: order.locationId },
+        }).catch((err) => console.error('[Notification] Lỗi gửi thông báo đổi trạng thái đơn mua cho Shop Owner:', err.message));
+      }
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo trạng thái đơn mua:', err.message);
+  }
+}
 
 export class ServiceError extends Error {
   constructor(status, message, code = null, details = null) {
@@ -359,6 +562,9 @@ export const createSalesOrder = async ({
     if (isInternalSession) {
       await session.commitTransaction();
     }
+
+    // Phát thông báo real-time tới Khách hàng, Quản lý chi nhánh và Chủ shop
+    notifyNewSalesOrder(order, customerId);
 
     return {
       order,
@@ -750,6 +956,9 @@ export const updateSalesOrderStatus = async ({
 
     await session.commitTransaction();
 
+    // Phát thông báo thay đổi trạng thái đơn mua hàng
+    notifySalesOrderStatusChanged(updatedOrder, orderStatus, note);
+
     // TASK-012: Sau khi bán (delivered) → kiểm tra lại tồn kho, có thể hết hàng
     if (orderStatus === 'delivered') {
       try {
@@ -783,7 +992,6 @@ const salesManager = user =>
     String(user?.Role || user?.role || '')
       .toLowerCase()
       .replace(/[\s_-]/g, '')
-      .replace('brandmanager', 'branchmanager')
   );
 
 const saleReturnable = order =>

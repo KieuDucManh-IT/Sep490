@@ -44,7 +44,7 @@ export function useBranchesData() {
             .toLowerCase()
             .replace(/[\s_-]/g, '');
 
-          const isManagerRole = roleNormalized === 'branchmanager' || roleNormalized === 'brandmanager';
+          const isManagerRole = roleNormalized === 'branchmanager';
           const isNotCustomer = roleNormalized !== 'customer';
 
           return isManagerRole && isNotCustomer;

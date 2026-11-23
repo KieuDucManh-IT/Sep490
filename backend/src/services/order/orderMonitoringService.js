@@ -82,8 +82,7 @@ const normalizeRole = (r) =>
   String(r || '')
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, '')
-    .replace('brandmanager', 'branchmanager');
+    .replace(/[\s_-]/g, '');
 
 const isLocationAllowed = (scope, orderLocationId) => {
   if (!scope || !scope.locationFilter) return true;
@@ -1319,17 +1318,22 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
       type: 'order_created',
       title: orderTitle,
       message: 'Đơn hàng của bạn đã được khởi tạo thành công. VESTORA sẽ sớm chuẩn bị và giao hàng cho bạn!',
-      link: '/customer/orders',
+      link: isRental ? '/rental-orders' : '/customer/orders',
       referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
       referenceId: targetOrder?._id
     }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho khách hàng:', err.message));
 
     // 2. Thông báo cho Admin, Shop Owner và Quản lý chi nhánh
-    notifyRoles([ 'shopOwner', 'branch_manager'], {
+    notifyRoles(['shopOwner', 'branch_manager'], {
       type: 'order_created',
       title: 'Đơn hàng mới từ khách',
       message: `Khách hàng ${user.FullName || user.email || 'Khách'} vừa đặt ${isRental ? 'đơn thuê' : 'đơn mua'}. Vui lòng kiểm tra và xử lý.`,
-      link: '/owner/orders',
+      link: isRental ? '/owner/rental-orders' : '/owner/orders',
+      linkByRole: {
+        branch_manager: isRental ? '/branch/rental-orders' : '/branch/sale-orders',
+        shopOwner: isRental ? '/owner/rental-orders' : '/owner/orders',
+        owner: isRental ? '/owner/rental-orders' : '/owner/orders',
+      },
       referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
       referenceId: targetOrder?._id
     }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho quản trị:', err.message));

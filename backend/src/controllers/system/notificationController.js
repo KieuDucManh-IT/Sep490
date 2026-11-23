@@ -15,6 +15,7 @@ export const getNotificationsHandler = async (req, res, next) => {
     res.json({
       success: true,
       data: result.notifications,
+      notifications: result.notifications,
       total: result.total,
       unreadCount: result.unreadCount,
       page: result.page,

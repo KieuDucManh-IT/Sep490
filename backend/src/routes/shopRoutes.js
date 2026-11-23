@@ -50,7 +50,7 @@ router.post(
   authMiddleware,
   async (req, res, next) => {
     const userRole = String(req.user?.Role || req.user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '');
-    if (['admin', 'shopowner', 'owner', 'branchmanager', 'brandmanager'].includes(userRole)) {
+    if (['admin', 'shopowner', 'owner', 'branchmanager'].includes(userRole)) {
       return next();
     }
     try {

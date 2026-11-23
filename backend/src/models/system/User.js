@@ -114,9 +114,9 @@ const userSchema = new mongoose.Schema(
         values: [
           "customer", "admin", "owner", "branch_manager", "warehouse_manager", "warehouse_staff",
           "shop_owner", "operation_staff",
-          "shopOwner", "shopowner", "brandmanager", "brandManager", "warehousestaff", "warehouseStaff", "warehouseManager",
+          "shopOwner", "shopowner", "warehousestaff", "warehouseStaff", "warehouseManager",
           "CUSTOMER", "ADMIN", "OWNER", "BRANCH_MANAGER", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF",
-          "SHOP_OWNER", "OPERATION_STAFF", "SHOPOWNER", "BRANDMANAGER", "WAREHOUSESTAFF", "WAREHOUSEMANAGER"
+          "SHOP_OWNER", "OPERATION_STAFF", "SHOPOWNER", "WAREHOUSESTAFF", "WAREHOUSEMANAGER"
         ],
         message: "Role không hợp lệ",
       },

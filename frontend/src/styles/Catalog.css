@@ -1207,12 +1207,13 @@ input:checked+.catalog-slider:before {
 /* Bottom Value Props Bar - matching HomePage Pill / Feature Style */
 .catalog-trust-bar {
   max-width: 1360px;
-  margin: 48px auto 0 auto;
-  padding: 24px 32px 0 32px;
+  margin: 56px auto 0 auto;
+  padding: 32px 32px 56px 32px;
   border-top: 1px solid #eeebe4;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 24px;
+  box-sizing: border-box;
 }
 
 .catalog-trust-item {

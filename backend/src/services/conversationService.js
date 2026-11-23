@@ -17,8 +17,7 @@ const cleanRole = (role) =>
   String(role || '')
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, '')
-    .replace('brandmanager', 'branchmanager');
+    .replace(/[\s_-]/g, '');
 
 /**
  * Kiểm tra xem user có phải là admin không

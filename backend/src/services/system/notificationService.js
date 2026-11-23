@@ -3,6 +3,42 @@ import User from '../../models/system/User.js';
 import { getIO } from '../../socket/index.js';
 
 /**
+ * Kiểm tra xem thông báo có liên quan đến Đơn hàng / Đơn thuê / Đổi trả không
+ */
+export function isOrderNotification(notif = {}) {
+  const type = String(notif.type || '').toLowerCase();
+  const ref = String(notif.referenceType || '').toLowerCase();
+  const link = String(notif.link || '').toLowerCase();
+
+  if (
+    type.startsWith('order') ||
+    type.includes('rental') ||
+    type === 'payment' ||
+    type.includes('return')
+  ) {
+    return true;
+  }
+
+  if (
+    ref.includes('order') ||
+    ref.includes('rental') ||
+    ref.includes('return')
+  ) {
+    return true;
+  }
+
+  if (
+    link.includes('order') ||
+    link.includes('rental') ||
+    link.includes('return')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Gửi thông báo tới 1 người dùng cụ thể
  * @param {Object} payload
  * @param {string} payload.userId - ID người nhận
@@ -27,6 +63,15 @@ export async function createNotification({
   if (!userId) return null;
 
   try {
+    // Admin chỉ quản lý tài khoản, tuyệt đối chặn không nhận thông báo về đơn hàng / đơn thuê
+    if (isOrderNotification({ type, referenceType, link })) {
+      const recipient = await User.findById(userId).select('Role role').lean();
+      const rawRole = String(recipient?.Role || recipient?.role || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+      if (rawRole === 'admin') {
+        return null;
+      }
+    }
+
     const notification = await Notification.create({
       userId,
       title: title.trim(),
@@ -53,34 +98,136 @@ export async function createNotification({
 }
 
 /**
- * Gửi thông báo tới một nhóm vai trò (VD: tất cả Admin hoặc Shop Owner)
+ * Chuyển đổi danh sách role thành danh sách RegExp hỗ trợ đầy đủ các biến thể role
+ * (VD: branch_manager vs branchmanager, shopOwner vs owner, etc.)
+ */
+export function getRoleRegexList(roles) {
+  const roleList = Array.isArray(roles) ? roles : [roles];
+  const regexes = [];
+
+  for (const r of roleList) {
+    if (!r) continue;
+    const cleaned = String(r).trim().toLowerCase().replace(/[_\s-]/g, '');
+    if (cleaned === 'branchmanager' || cleaned === 'brandmanager') {
+      regexes.push(new RegExp('^(branch|brand)[\\s_-]?manager$', 'i'));
+    } else if (cleaned === 'shopowner' || cleaned === 'owner') {
+      regexes.push(new RegExp('^(shop[\\s_-]?owner|owner)$', 'i'));
+    } else if (cleaned === 'warehousemanager') {
+      regexes.push(new RegExp('^warehouse[\\s_-]?manager$', 'i'));
+    } else if (cleaned === 'warehousestaff' || cleaned === 'warehouse') {
+      regexes.push(new RegExp('^warehouse[\\s_-]?staff$', 'i'));
+    } else if (cleaned === 'operationstaff' || cleaned === 'ops') {
+      regexes.push(new RegExp('^operation[\\s_-]?staff$', 'i'));
+    } else if (cleaned === 'admin') {
+      regexes.push(new RegExp('^admin$', 'i'));
+    } else if (cleaned === 'customer') {
+      regexes.push(new RegExp('^customer$', 'i'));
+    } else {
+      regexes.push(new RegExp(`^${cleaned}$`, 'i'));
+    }
+  }
+
+  return regexes;
+}
+
+/**
+ * Điều hướng link phù hợp cho từng role để tránh lỗi phân quyền 403
+ */
+function resolveLinkForUser(userRole, notifData) {
+  const cleanRole = String(userRole || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+  const linkByRole = notifData.linkByRole || {};
+
+  if (linkByRole[cleanRole]) return linkByRole[cleanRole];
+  if (linkByRole[userRole]) return linkByRole[userRole];
+
+  const defaultLink = notifData.link || '';
+
+  // Quản trị viên (Admin): chỉ quản lý tài khoản (/admin/accounts), không quản lý đơn hàng
+  if (cleanRole === 'admin') {
+    if (linkByRole.admin) return linkByRole.admin;
+    return '/admin/accounts';
+  }
+
+  // Quản lý chi nhánh: điều hướng về /branch/*
+  if (cleanRole === 'branchmanager') {
+    if (linkByRole.branch_manager) return linkByRole.branch_manager;
+    if (defaultLink.startsWith('/owner/rental-orders') || defaultLink.startsWith('/owner/orders')) {
+      return '/branch/rental-orders';
+    }
+    if (defaultLink.startsWith('/owner/sale-orders')) {
+      return '/branch/sale-orders';
+    }
+  }
+
+  // Chủ shop: điều hướng về /owner/*
+  if (cleanRole === 'shopowner' || cleanRole === 'owner') {
+    if (linkByRole.shopOwner) return linkByRole.shopOwner;
+    if (linkByRole.owner) return linkByRole.owner;
+    if (defaultLink.startsWith('/branch/rental-orders')) {
+      return '/owner/rental-orders';
+    }
+    if (defaultLink.startsWith('/branch/sale-orders')) {
+      return '/owner/sale-orders';
+    }
+  }
+
+  return defaultLink;
+}
+
+/**
+ * Gửi thông báo tới một nhóm vai trò (VD: tất cả Admin, Shop Owner hoặc Branch Manager)
  * @param {string|string[]} roles - 'admin', 'shopOwner', 'branch_manager'...
  * @param {Object} notifData - Dữ liệu thông báo
  */
 export async function notifyRoles(roles, notifData) {
   try {
-    const roleList = Array.isArray(roles) ? roles : [roles];
-    const normalizedRegex = roleList.map(r => new RegExp(`^${r.replace(/[_\s-]/g, '')}$`, 'i'));
+    let roleList = Array.isArray(roles) ? roles : [roles];
+
+    // Nếu thông báo liên quan đến đơn hàng, loại trừ hoàn toàn role admin vì admin chỉ quản lý tài khoản
+    const isOrder = isOrderNotification(notifData);
+    if (isOrder) {
+      roleList = roleList.filter((r) => {
+        const clean = String(r || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+        return clean !== 'admin';
+      });
+    }
+
+    const roleRegexes = getRoleRegexList(roleList);
+    if (!roleRegexes.length) return [];
 
     // Tìm tất cả người dùng thuộc các vai trò được chỉ định
     const users = await User.find({
-      Role: { $in: normalizedRegex },
+      Role: { $in: roleRegexes },
       Status: { $in: ['active', 'ACTIVE'] }
     }).select('_id Role').lean();
 
     if (!users || users.length === 0) return [];
 
-    // Lưu vào DB cho từng người dùng
+    // Lọc bỏ trùng lặp người dùng và đảm bảo loại bỏ role admin đối với đơn hàng
+    const seenUsers = new Map();
+    for (const u of users) {
+      if (isOrder) {
+        const clean = String(u.Role || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+        if (clean === 'admin') continue;
+      }
+      if (!seenUsers.has(String(u._id))) {
+        seenUsers.set(String(u._id), u);
+      }
+    }
+
+    // Lưu vào DB và phát socket cho từng người dùng
     const notifications = await Promise.all(
-      users.map(u =>
-        createNotification({
+      Array.from(seenUsers.values()).map(u => {
+        const link = resolveLinkForUser(u.Role, notifData);
+        return createNotification({
           ...notifData,
+          link,
           userId: u._id
-        })
-      )
+        });
+      })
     );
 
-    return notifications;
+    return notifications.filter(Boolean);
   } catch (error) {
     console.error('[NotificationService] Lỗi khi gửi thông báo theo vai trò:', error.message);
     return [];
@@ -91,7 +238,17 @@ export async function notifyRoles(roles, notifData) {
  * Lấy danh sách thông báo phân trang của người dùng
  */
 export async function getUserNotifications(userId, { page = 1, limit = 20, isRead = null } = {}) {
+  // Lấy role của user để loại trừ đơn hàng nếu là admin (admin chỉ quản lý account)
+  const currentUser = await User.findById(userId).select('Role role').lean();
+  const rawRole = String(currentUser?.Role || currentUser?.role || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+
   const query = { userId };
+  if (rawRole === 'admin') {
+    query.type = { $nin: ['order_created', 'order_status', 'rental_due', 'payment', 'order_cancelled', 'order_completed', 'order_delayed', 'order_assigned', 'order_issue'] };
+    query.referenceType = { $nin: ['Order', 'RentalOrder', 'SalesOrder', 'RentalReturn', 'RentalOrderDetail'] };
+    query.link = { $not: /\b(order|rental|return)\b/i };
+  }
+
   if (isRead !== null) {
     query.isRead = isRead === true || isRead === 'true';
   }
@@ -107,7 +264,7 @@ export async function getUserNotifications(userId, { page = 1, limit = 20, isRea
       .limit(l)
       .lean(),
     Notification.countDocuments(query),
-    Notification.countDocuments({ userId, isRead: false })
+    Notification.countDocuments({ ...query, isRead: false })
   ]);
 
   return {
@@ -124,7 +281,17 @@ export async function getUserNotifications(userId, { page = 1, limit = 20, isRea
  * Đếm số lượng thông báo chưa đọc
  */
 export async function getUnreadCount(userId) {
-  return Notification.countDocuments({ userId, isRead: false });
+  const currentUser = await User.findById(userId).select('Role role').lean();
+  const rawRole = String(currentUser?.Role || currentUser?.role || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+
+  const query = { userId, isRead: false };
+  if (rawRole === 'admin') {
+    query.type = { $nin: ['order_created', 'order_status', 'rental_due', 'payment', 'order_cancelled', 'order_completed', 'order_delayed', 'order_assigned', 'order_issue'] };
+    query.referenceType = { $nin: ['Order', 'RentalOrder', 'SalesOrder', 'RentalReturn', 'RentalOrderDetail'] };
+    query.link = { $not: /\b(order|rental|return)\b/i };
+  }
+
+  return Notification.countDocuments(query);
 }
 
 /**

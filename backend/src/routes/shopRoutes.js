@@ -75,7 +75,7 @@ router.post(
 router.get(
   '/managers',
   authMiddleware,
-  requireRole('admin', 'shop_owner', 'owner', 'operation_staff'),
+  requireRole('admin', 'shop_owner', 'owner'),
   getBranchManagers
 );
 
@@ -165,13 +165,13 @@ router.delete(
 router.put(
   '/:id/toggle-suspend',
   authMiddleware,
-  requireRole('admin', 'shop_owner', 'owner', 'operation_staff'),
+  requireRole('admin', 'shop_owner', 'owner'),
   toggleSuspendShop
 );
 router.put(
   '/:id/operating-status',
   authMiddleware,
-  requireRole('admin', 'operation_staff'),
+  requireRole('admin'),
   updateShopOperatingStatus
 );
 

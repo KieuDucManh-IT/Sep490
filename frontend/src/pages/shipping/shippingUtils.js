@@ -210,6 +210,12 @@ export const extractOrderAddressInfo = (order) => {
     info.WardCode ||
     '';
 
+  const districtHint =
+    shipAddr.district ||
+    shipAddr.districtName ||
+    info.DistrictName ||
+    '';
+
   const detailedAddress =
     shipAddr.street ||
     shipAddr.address ||
@@ -217,18 +223,20 @@ export const extractOrderAddressInfo = (order) => {
     customer.address ||
     '';
 
-  const fullAddr = [detailedAddress, wardHint, provHint].filter(Boolean).join(', ');
+  const fullAddr = [detailedAddress, wardHint, districtHint, provHint].filter(Boolean).join(', ');
 
   return {
     receiverName,
     receiverPhone: String(receiverPhone || '').trim(),
     detailedAddress,
     provHint,
+    districtHint,
     wardHint,
     wardCodeHint,
     provinceIdHint: shipAddr.provinceId || null,
     districtIdHint: shipAddr.districtId || null,
     provinceNameHint: shipAddr.city || shipAddr.province || shipAddr.provinceName || '',
+    districtNameHint: districtHint,
     wardNameHint: shipAddr.ward || shipAddr.wardName || '',
     isNewAddress: Boolean(shipAddr.isNewAddress || (shipAddr.provinceId && Number(shipAddr.provinceId) >= 1000000)),
     fullAddr,

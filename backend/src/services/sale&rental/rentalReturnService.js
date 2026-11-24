@@ -36,6 +36,7 @@ import { Wallet } from '../../models/finance/Wallet.js';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
 import { fetchOrderAndValidateScope } from '../shipping/shipmentHelpers.js';
+import { createReturnShipment } from '../shipping/shipmentService.js';
 import cloudinary from '../../config/cloudinary.js';
 
 import {
@@ -123,7 +124,16 @@ export const createReturnReceiptAndSettle = async ({
   }
 
   const now = new Date();
-  const { lateDays, lateFee } = calculateLateFee(order, now);
+  // Tìm vận đơn thu hồi để lấy mốc bưu tá nhận hàng từ khách (shippedAt), tính phạt trễ hạn công bằng
+  const returnShipment = await OrderShipment.findOne({
+    orderId: order._id,
+    orderType: 'rental',
+    shipmentType: 'return',
+    shipmentStatus: { $in: ['shipped', 'delivered'] },
+  }).sort({ createdAt: -1 });
+
+  const effectiveReturnDate = returnShipment?.shippedAt || returnShipment?.deliveredAt || now;
+  const { lateDays, lateFee } = calculateLateFee(order, effectiveReturnDate);
 
   // Tổng hợp phí hư hại từ KCS các hiện vật
   let totalDamageFee = 0;
@@ -631,9 +641,9 @@ export async function getReturnFlow(user, id) {
     ),
     videoPermissions,
     shipment,
-    canManage: manager,
-    simulatorEnabled: returnSimulatorEnabled(),
-    canRequest: returnable(order) && !shipment,
+    canManage: String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager') === 'branchmanager',
+    simulatorEnabled: returnSimulatorEnabled() && String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager') === 'branchmanager',
+    canRequest: returnable(order) && (!shipment || ['cancelled', 'failed'].includes(shipment.shipmentStatus)),
     completed: order.rentalStatus === 'returned',
     refundedAmount:
       order.depositStatus === 'refunded'
@@ -693,125 +703,8 @@ export async function requestSimulatedReturn(user, id) {
 
   await accessReturnOrder(user, id);
 
-  return inTransaction(async session => {
-    const { order } = await accessReturnOrder(
-      user,
-      id,
-      false,
-      session
-    );
-
-    if (!returnable(order)) {
-      throw new ServiceError(
-        409,
-        'Chỉ trả đồ khi đang thuê hoặc quá hạn.'
-      );
-    }
-
-    // Khóa ghi theo đơn để chống tạo hai vận đơn đồng thời.
-    await RentalOrder.updateOne(
-      { _id: id },
-      { $inc: { returnFlowVersion: 1 } },
-      { session }
-    );
-
-    const existing = await OrderShipment.findOne({
-      orderId: id,
-      orderType: 'rental',
-      shipmentType: 'return',
-    }).session(session);
-
-    if (existing) return existing;
-
-    if (
-      !order.actualDeliveryDate &&
-      !order.actualPickupDate &&
-      order.deliveryMethod !== 'pickup'
-    ) {
-      const delivered = await OrderShipment.exists({
-        orderId: id,
-        orderType: 'rental',
-        shipmentType: 'outbound',
-        shipmentStatus: 'delivered',
-      }).session(session);
-
-      if (!delivered) {
-        throw new ServiceError(
-          409,
-          'Chưa xác nhận khách đã nhận đồ.'
-        );
-      }
-    }
-
-    await order.populate({
-      path: 'locationId',
-      populate: { path: 'shopId' },
-    });
-
-    const shop =
-      order.locationId?.shopId || order.locationId || {};
-    const address = order.shippingAddress || {};
-
-    if (
-      !address.phone ||
-      !address.street ||
-      !shop.address ||
-      !shop.phone
-    ) {
-      throw new ServiceError(
-        422,
-        'Thiếu địa chỉ hoặc số điện thoại người trả/chi nhánh.'
-      );
-    }
-
-    const [shipment] = await OrderShipment.create(
-      [
-        {
-          orderId: id,
-          orderCode: order.orderCode,
-          orderType: 'rental',
-          shipmentType: 'return',
-          isSimulated: true,
-          trackingCode: `SIM-RET-${crypto.randomUUID()}`,
-          shipmentStatus: 'preparing',
-          carrierName: 'Vận chuyển mô phỏng',
-          codAmount: 0,
-          fromLocationId: order.locationId._id,
-          createdBy: user._id,
-
-          senderInfo: {
-            name: address.receiverName,
-            phone: address.phone,
-            address: [
-              address.street,
-              address.ward,
-              address.district,
-              address.city,
-            ]
-              .filter(Boolean)
-              .join(', '),
-          },
-
-          receiverInfo: {
-            name: shop.name,
-            phone: shop.phone,
-            address: shop.address,
-          },
-
-          statusHistory: [
-            {
-              status: 'preparing',
-              description:
-                'Đã tạo đơn trả đồ, chờ lấy hàng (mô phỏng)',
-            },
-          ],
-        },
-      ],
-      { session }
-    );
-
-    return shipment;
-  });
+  // Tạo vận đơn thu hồi GHN thật
+  return await createReturnShipment(user, { orderId: id });
 }
 
 export async function simulateReturnProgress(
@@ -826,6 +719,18 @@ export async function simulateReturnProgress(
     );
   }
 
+  const userRole = String(user?.Role || user?.role || '')
+    .toLowerCase()
+    .replace(/[\s_-]/g, '')
+    .replace('brandmanager', 'branchmanager');
+
+  if (userRole !== 'branchmanager') {
+    throw new ServiceError(
+      403,
+      'Chỉ có Quản lý chi nhánh (Branch Manager) mới có quyền mô phỏng trạng thái vận đơn.'
+    );
+  }
+
   await accessReturnOrder(user, id, true);
 
   const transitions = {
@@ -837,13 +742,12 @@ export async function simulateReturnProgress(
     orderId: id,
     orderType: 'rental',
     shipmentType: 'return',
-    isSimulated: true,
-  });
+  }).sort({ createdAt: -1 });
 
   if (!shipment) {
     throw new ServiceError(
       404,
-      'Chưa có vận đơn trả đồ mô phỏng.'
+      'Chưa có vận đơn trả đồ.'
     );
   }
 
@@ -887,6 +791,13 @@ export async function simulateReturnProgress(
     throw new ServiceError(
       409,
       'Trạng thái vừa thay đổi, hãy tải lại.'
+    );
+  }
+
+  if (newStatus === 'delivered') {
+    await RentalOrder.updateOne(
+      { _id: id },
+      { $set: { lastReturnDeliveredAt: now } }
     );
   }
 
@@ -1065,6 +976,18 @@ export async function completeSimulatedReturn(user, id) {
     );
   }
 
+  const userRole = String(user?.Role || user?.role || '')
+    .toLowerCase()
+    .replace(/[\s_-]/g, '')
+    .replace('brandmanager', 'branchmanager');
+
+  if (userRole !== 'branchmanager') {
+    throw new ServiceError(
+      403,
+      'Chỉ có Quản lý chi nhánh (Branch Manager) mới có quyền hoàn tất đơn qua luồng mô phỏng.'
+    );
+  }
+
   await accessReturnOrder(user, id, true);
 
   return inTransaction(async session => {
@@ -1093,7 +1016,6 @@ export async function completeSimulatedReturn(user, id) {
       orderId: id,
       orderType: 'rental',
       shipmentType: 'return',
-      isSimulated: true,
       shipmentStatus: 'delivered',
     }).session(session);
 

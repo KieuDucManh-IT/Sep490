@@ -43,17 +43,31 @@ router.get('/master-data/wards-by-province/:provinceId', getWardsByProvinceHandl
 // 3. Tra cứu tiến trình vận chuyển cho người dùng đã xác thực (Customer chính chủ hoặc Quản lý)
 router.get('/track/:trackingCode', authMiddleware, trackShipmentHandler);
 
-// 4. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role nhân viên / quản lý
+// 4. API tạo vận đơn thu hồi đồ thuê qua GHN (Khách hàng tự trả đồ hoặc Quản lý thu hồi hộ)
+router.post(
+  '/create-return',
+  authMiddleware,
+  requireRoles('customer', 'branch_manager', 'shop_owner', 'owner', 'admin'),
+  createReturnHandler
+);
+
+// 5. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role nhân viên / quản lý
 router.use(authMiddleware);
+
+// Giả lập GHN sandbox: CHỈ CHO PHÉP Branch Manager
+router.post(
+  '/dev/simulate-ghn',
+  requireRoles('branch_manager'),
+  simulateGhnHandler
+);
+
 router.use(requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'));
 
 // Nghiệp vụ vận đơn
 router.post('/calculate-fee', calculateFeeHandler);
 router.post('/create-outbound', createOutboundHandler);
-router.post('/create-return', createReturnHandler);
 router.put('/:id/cancel', cancelShipmentHandler);
 router.put('/:id/manual-status', updateManualStatusHandler);
-router.post('/dev/simulate-ghn', simulateGhnHandler);
 router.get('/order/:orderType/:orderId', getShipmentsByOrderHandler);
 router.get('/print-token/:trackingCode', getPrintTokenHandler);
 

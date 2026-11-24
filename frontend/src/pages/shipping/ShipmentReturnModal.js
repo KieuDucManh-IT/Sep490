@@ -60,6 +60,7 @@ export default function ShipmentReturnModal({
   order,
   initialShipment = null,
   onSuccess,
+  isCustomer = false,
 }) {
   const {
     provinces,
@@ -77,7 +78,14 @@ export default function ShipmentReturnModal({
   const [fromPhone, setFromPhone] = useState('');
   const [fromAddress, setFromAddress] = useState('');
   const [weight, setWeight] = useState(500);
-  const [note, setNote] = useState('Thu hồi trang phục cho thuê hoàn trả về shop');
+  const [length, setLength] = useState(20);
+  const [width, setWidth] = useState(20);
+  const [height, setHeight] = useState(10);
+  const [note, setNote] = useState(
+    isCustomer
+      ? 'Khách hàng gửi trả lại trang phục thuê về cửa hàng'
+      : 'Thu hồi trang phục cho thuê hoàn trả về shop'
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -117,8 +125,18 @@ export default function ShipmentReturnModal({
     setFromName(finalName);
     setFromPhone(finalPhone);
     setFromAddress(finalAddress);
-    if (initialShipment?.weight) setWeight(Number(initialShipment.weight));
-    if (initialShipment?.note) setNote(initialShipment.note);
+
+    // Tự động kế thừa kích thước & cân nặng từ đơn gửi đi (Outbound) nếu có
+    const outbound = (order?.shipments && Array.isArray(order.shipments))
+      ? order.shipments.find((s) => s.shipmentType === 'outbound')
+      : null;
+    const sourceShipment = initialShipment || outbound;
+
+    if (sourceShipment?.weight) setWeight(Number(sourceShipment.weight));
+    if (sourceShipment?.length) setLength(Number(sourceShipment.length));
+    if (sourceShipment?.width) setWidth(Number(sourceShipment.width));
+    if (sourceShipment?.height) setHeight(Number(sourceShipment.height));
+    if (sourceShipment?.note) setNote(sourceShipment.note);
     setErrorMsg('');
     setCooldown(0);
 
@@ -200,6 +218,9 @@ export default function ShipmentReturnModal({
         fromWardName: wardName,
         isNewFromAddress: isNewAddress,
         weight: Number(weight) || 500,
+        length: Number(length) || 20,
+        width: Number(width) || 20,
+        height: Number(height) || 10,
         note: note.trim(),
       };
 
@@ -243,7 +264,7 @@ export default function ShipmentReturnModal({
               </div>
               <div>
                 <h6 className="modal-title fw-bold text-dark mb-0">
-                  Tạo Vận Đơn Thu Hồi Đồ Thuê (GHN)
+                  {isCustomer ? 'Yêu Cầu Trả Đồ Thuê Qua GHN' : 'Tạo Vận Đơn Thu Hồi Đồ Thuê (GHN)'}
                 </h6>
                 <small className="text-muted">
                   Đơn hàng: <strong>{order.orderCode}</strong>
@@ -272,7 +293,7 @@ export default function ShipmentReturnModal({
               <div className="mb-3 p-3 bg-light rounded-3 border">
                 <div className="d-flex align-items-center justify-content-between mb-2">
                   <div className="small fw-bold text-uppercase text-primary d-flex align-items-center gap-1">
-                    <Store size={15} /> 1. Cửa hàng tiếp nhận đồ hoàn (Shipper giao trả về)
+                    <Store size={15} /> {isCustomer ? '1. Cửa hàng tiếp nhận đồ hoàn trả' : '1. Cửa hàng tiếp nhận đồ hoàn (Shipper giao trả về)'}
                   </div>
                   {storeLat && storeLng ? (
                     <a
@@ -307,7 +328,7 @@ export default function ShipmentReturnModal({
               {/* Thông tin người trả hàng (Khách hàng) */}
               <div className="mb-3">
                 <div className="small fw-bold text-uppercase text-muted mb-2">
-                  2. Địa điểm shipper tới lấy đồ từ khách
+                  {isCustomer ? '2. Địa chỉ shipper tới lấy đồ từ quý khách' : '2. Địa điểm shipper tới lấy đồ từ khách'}
                 </div>
                 <div className="row g-2">
                   <div className="col-12 col-md-6">
@@ -383,9 +404,9 @@ export default function ShipmentReturnModal({
                 <div className="small fw-bold text-uppercase text-muted mb-2">
                   <Package size={14} className="me-1 inline" /> 3. Thông số kiện hàng & Ghi chú
                 </div>
-                <div className="row g-2">
-                  <div className="col-12 col-md-4">
-                    <label className="form-label small text-muted mb-1">Khối lượng (gram) *</label>
+                <div className="row g-2 mb-2">
+                  <div className="col-6 col-md-3">
+                    <label className="form-label small text-muted mb-1">Cân nặng (g) *</label>
                     <input
                       type="number"
                       min="100"
@@ -396,7 +417,39 @@ export default function ShipmentReturnModal({
                       required
                     />
                   </div>
-                  <div className="col-12 col-md-8">
+                  <div className="col-6 col-md-3">
+                    <label className="form-label small text-muted mb-1">Dài (cm)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      className="form-control form-control-sm"
+                      value={length}
+                      onChange={(e) => setLength(e.target.value)}
+                    />
+                  </div>
+                  <div className="col-6 col-md-3">
+                    <label className="form-label small text-muted mb-1">Rộng (cm)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      className="form-control form-control-sm"
+                      value={width}
+                      onChange={(e) => setWidth(e.target.value)}
+                    />
+                  </div>
+                  <div className="col-6 col-md-3">
+                    <label className="form-label small text-muted mb-1">Cao (cm)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      className="form-control form-control-sm"
+                      value={height}
+                      onChange={(e) => setHeight(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="row g-2">
+                  <div className="col-12">
                     <label className="form-label small text-muted mb-1">Ghi chú cho shipper</label>
                     <input
                       type="text"
@@ -439,7 +492,9 @@ export default function ShipmentReturnModal({
               ) : (
                 <>
                   <CheckCircle size={14} />
-                  <span>Xác nhận tạo đơn thu hồi GHN</span>
+                  <span>
+                    {isCustomer ? 'Gửi yêu cầu shipper tới lấy đồ' : 'Xác nhận tạo đơn thu hồi GHN'}
+                  </span>
                 </>
               )}
             </button>
@@ -972,100 +1027,107 @@ function RentalReturnWorkflowBody({
               </div>
             )}
 
-            {!data.completed && data.canRequest && !readOnly && (
-              <button
-                className="btn btn-primary"
-                disabled={busy || !data.simulatorEnabled}
-                onClick={() =>
-                  run(() =>
-                    isSale
-                      ? api.request(orderId, reason)
-                      : api.request(orderId)
-                  )
-                }
-              >
-                {isSale ? 'Tạo đơn trả hàng mua' : 'Tạo đơn trả đồ'}
-              </button>
+            {!data.completed && (!shipment || ['cancelled', 'failed'].includes(status)) && data.canRequest && !readOnly && (
+              <div className="mt-3">
+                {['cancelled', 'failed'].includes(status) && (
+                  <div className="alert alert-warning py-2 mb-2 small">
+                    Vận đơn trước đó đã bị {status === 'cancelled' ? 'hủy' : 'thất bại'}. Bạn có thể tạo lại vận đơn thu hồi GHN mới.
+                  </div>
+                )}
+                <button
+                  className="btn btn-primary"
+                  disabled={busy}
+                  onClick={() =>
+                    run(() =>
+                      isSale
+                        ? api.request(orderId, reason)
+                        : api.request(orderId)
+                    )
+                  }
+                >
+                  {isSale ? 'Tạo đơn trả hàng mua (GHN)' : 'Tạo đơn thu hồi đồ (GHN)'}
+                </button>
+              </div>
             )}
 
             {!data.completed &&
               data.canManage &&
-              !readOnly &&
-              data.simulatorEnabled &&
-              shipment?.isSimulated && (
-                <div className="mt-3">
-                  {status === 'preparing' && (
-                    <button
-                      className="btn btn-outline-primary"
-                      disabled={busy}
-                      onClick={() =>
-                        run(() => api.advance(orderId, 'shipped'))
-                      }
-                    >
-                      Mô phỏng: đã lấy đồ
-                    </button>
-                  )}
-
-                  {status === 'shipped' && (
-                    <button
-                      className="btn btn-outline-primary"
-                      disabled={busy}
-                      onClick={() =>
-                        run(() => api.advance(orderId, 'delivered'))
-                      }
-                    >
-                      Mô phỏng: đã giao về shop
-                    </button>
-                  )}
-
-                  {status === 'delivered' && (
-                    <>
-                      <label className="d-block mb-2">
-                        <input
-                          type="checkbox"
-                          checked={confirmed}
+              !readOnly && (
+                <>
+                  {data.simulatorEnabled ? (
+                    <div className="mt-3">
+                      {status === 'preparing' && (
+                        <button
+                          className="btn btn-outline-primary"
                           disabled={busy}
-                          onChange={event => setConfirmed(event.target.checked)}
-                        />{' '}
-                        Đã kiểm tra và nhận đủ đồ nguyên vẹn
-                      </label>
-
-                      {!data.returnReceivedVideo && (
-                        <div
-                          role="alert"
-                          className="alert alert-warning py-2"
+                          onClick={() =>
+                            run(() => api.advance(orderId, 'shipped'))
+                          }
                         >
-                          {isSale
-                            ? 'Shop cần tải video nhận hàng trả ở mục phía trên trước khi hoàn tất và hoàn tiền.'
-                            : 'Shop cần tải video nhận đồ trả ở mục phía trên trước khi hoàn tất và hoàn cọc.'}
-                        </div>
+                          Mô phỏng: đã lấy đồ
+                        </button>
                       )}
 
-                      <button
-                        className="btn btn-success"
-                        disabled={
-                          busy ||
-                          !confirmed ||
-                          !data.returnReceivedVideo
-                        }
-                        onClick={() =>
-                          run(() => api.complete(orderId))
-                        }
-                      >
-                        {isSale
-                          ? 'Hoàn tất trả hàng & hoàn tiền'
-                          : 'Hoàn tất trả đồ & hoàn cọc'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+                      {status === 'shipped' && (
+                        <button
+                          className="btn btn-outline-primary"
+                          disabled={busy}
+                          onClick={() =>
+                            run(() => api.advance(orderId, 'delivered'))
+                          }
+                        >
+                          Mô phỏng: đã giao về shop
+                        </button>
+                      )}
 
-            {!data.simulatorEnabled && !data.completed && (
-              <p className="text-muted mt-3">
-                Mô phỏng trả đồ chưa được bật trên máy chủ.
-              </p>
-            )}
+                      {status === 'delivered' && (
+                        <>
+                          <label className="d-block mb-2">
+                            <input
+                              type="checkbox"
+                              checked={confirmed}
+                              disabled={busy}
+                              onChange={event => setConfirmed(event.target.checked)}
+                            />{' '}
+                            Đã kiểm tra và nhận đủ đồ nguyên vẹn
+                          </label>
+
+                          {!data.returnReceivedVideo && (
+                            <div
+                              role="alert"
+                              className="alert alert-warning py-2"
+                            >
+                              {isSale
+                                ? 'Shop cần tải video nhận hàng trả ở mục phía trên trước khi hoàn tất và hoàn tiền.'
+                                : 'Shop cần tải video nhận đồ trả ở mục phía trên trước khi hoàn tất và hoàn cọc.'}
+                            </div>
+                          )}
+
+                          <button
+                            className="btn btn-success"
+                            disabled={
+                              busy ||
+                              !confirmed ||
+                              !data.returnReceivedVideo
+                            }
+                            onClick={() =>
+                              run(() => api.complete(orderId))
+                            }
+                          >
+                            {isSale
+                              ? 'Hoàn tất trả hàng & hoàn tiền'
+                              : 'Hoàn tất trả đồ & hoàn cọc'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-muted mt-3">
+                      Mô phỏng trả đồ chưa được bật trên máy chủ.
+                    </p>
+                  )}
+                </>
+              )}
 
             {busy && <p role="status">Đang xử lý…</p>}
           </>

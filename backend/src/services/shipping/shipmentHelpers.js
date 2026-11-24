@@ -74,7 +74,17 @@ export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
     throw fail(`Không tìm thấy ${isRental ? 'đơn thuê' : 'đơn bán'} yêu cầu.`, 404);
   }
 
-  // Kiểm tra quyền theo chi nhánh
+  // Khách hàng chính chủ chỉ được thao tác đơn của chính mình
+  const role = String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
+  if (role === 'customer') {
+    const custId = String(order.customerId?._id || order.customerId || '');
+    if (custId !== String(user._id)) {
+      throw fail('Bạn không có quyền thao tác đơn hàng này.', 403);
+    }
+    return order;
+  }
+
+  // Kiểm tra quyền theo chi nhánh đối với quản lý và nhân viên
   const scope = await resolveLocationScope(user);
   const shopManagerId = order.locationId?.shopId?.managerId;
   const isManagerOfThisShop = shopManagerId && String(shopManagerId) === String(user._id);

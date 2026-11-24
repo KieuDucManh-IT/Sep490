@@ -10,6 +10,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import OrderTrackingDetailModal from '../../components/customer/OrderTrackingDetailModal';
+import { resolveOrderDisplayStatus } from '../orders/orderUtils';
 import { getRentalOrders } from '../../services/rentalOrderApi';
 import { getMySalesOrders } from '../../services/salesOrderApi';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
@@ -23,6 +24,7 @@ import {
   Truck,
   Wallet,
   Banknote,
+  RotateCcw,
 } from 'lucide-react';
 import '../../styles/RentalOrdersHistory.css';
 
@@ -148,6 +150,28 @@ function getSaleStatusInfo(status) {
       bg: '#F3F4F6',
     }
   );
+}
+
+function getOrderSmartStatus(order, type = 'rental') {
+  const resolved = resolveOrderDisplayStatus(order, type, false);
+  const colorMap = {
+    renting: { color: '#0284C7', bg: '#F0F9FF' },
+    confirmed: { color: '#2563EB', bg: '#EFF6FF' },
+    processing: { color: '#7C3AED', bg: '#F5F3FF' },
+    warning: { color: '#D97706', bg: '#FFFBEB' },
+    returned: { color: '#16A34A', bg: '#F0FDF4' },
+    completed: { color: '#16A34A', bg: '#F0FDF4' },
+    overdue: { color: '#DC2626', bg: '#FEF2F2' },
+    cancelled: { color: '#6B7280', bg: '#F3F4F6' },
+    partially_returned: { color: '#B45309', bg: '#FFF7ED' },
+  };
+  const theme = colorMap[resolved.chipClass] || { color: '#4B5563', bg: '#F3F4F6' };
+  return {
+    label: resolved.text,
+    color: theme.color,
+    bg: theme.bg,
+    chipClass: resolved.chipClass,
+  };
 }
 
 function formatDate(dateStr) {
@@ -406,14 +430,18 @@ export default function RentalOrdersHistoryPage() {
             ) : (
               <div className="rental-history-list">
                 {displayedRentalOrders.map((o) => {
-                  const statusInfo = getRentalStatusInfo(
-                    o.rentalStatus
-                  );
+                  const statusInfo = getOrderSmartStatus(o, 'rental');
 
                   const items = o.items || o.orderDetails || [];
 
                   const orderLabel =
                     o.orderCode || o._id?.slice(-6).toUpperCase();
+
+                  const allShipments = Array.isArray(o.shipments) ? o.shipments : (o.shipment ? [o.shipment] : []);
+                  const hasActiveReturn = allShipments.some(
+                    (s) => s.shipmentType === 'return' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+                  );
+                  const canReturn = ['renting', 'overdue'].includes(o.rentalStatus) && !hasActiveReturn;
 
                   return (
                     <div
@@ -589,9 +617,7 @@ export default function RentalOrdersHistoryPage() {
             ) : (
               <div className="rental-history-list">
                 {displayedSaleOrders.map((o) => {
-                  const statusInfo = getSaleStatusInfo(
-                    o.orderStatus
-                  );
+                  const statusInfo = getOrderSmartStatus(o, 'sale');
 
                   const items = o.items || [];
                   const firstItem = items[0];

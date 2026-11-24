@@ -339,7 +339,10 @@ export const createReturnShipment = async (user, payload = {}) => {
     fromProvinceName,
     fromWardName,
     isNewFromAddress,
-    weight = 500,
+    weight,
+    length,
+    width,
+    height,
     note = 'Lấy lại trang phục cho thuê hoàn trả về shop',
   } = payload;
 
@@ -349,15 +352,34 @@ export const createReturnShipment = async (user, payload = {}) => {
     throw fail(`Không thể tạo đơn thu hồi đồ cho đơn thuê ở trạng thái "${order.rentalStatus}".`, 400);
   }
 
-  // Kiểm tra đơn thu hồi đang active
+  if (order.rentalStatus === 'returned') {
+    throw fail('Đơn thuê đã hoàn tất trả đồ, không thể tạo thêm yêu cầu thu hồi.', 400);
+  }
+
+  // Tự động kế thừa thông số kiện hàng từ outbound shipment nếu không truyền
+  const outboundShipment = await OrderShipment.findOne({
+    orderType: 'rental',
+    orderId: order._id,
+    shipmentType: 'outbound',
+  }).sort({ createdAt: -1 }).lean();
+
+  const effectiveWeight = Number(weight) || outboundShipment?.weight || 500;
+  const effectiveLength = Number(length) || outboundShipment?.length || 20;
+  const effectiveWidth = Number(width) || outboundShipment?.width || 20;
+  const effectiveHeight = Number(height) || outboundShipment?.height || 10;
+
+  // Kiểm tra đơn thu hồi đang active hoặc đã giao về shop
   const activeReturnShipment = await OrderShipment.findOne({
     orderType: 'rental',
     orderId: order._id,
     shipmentType: 'return',
-    shipmentStatus: { $in: ['preparing', 'shipped'] },
+    shipmentStatus: { $in: ['preparing', 'shipped', 'delivered'] },
   }).lean();
 
   if (activeReturnShipment) {
+    if (activeReturnShipment.shipmentStatus === 'delivered') {
+      throw fail(`Trang phục đã được giao về cửa hàng (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'LY...'}), vui lòng tiến hành nghiệm thu KCS để hoàn tất đơn.`, 400);
+    }
     throw fail(`Đơn thuê đã có yêu cầu thu hồi đang xử lý (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'Chờ bưu tá'}).`, 400);
   }
 
@@ -442,6 +464,7 @@ export const createReturnShipment = async (user, payload = {}) => {
 
   const ghnRes = await ghnService.createGHNOrder({
     shopId: storeReceiver.ghnShopId,
+    paymentTypeId: 2, // Chiều thu hồi: Shop (Người nhận) chịu cước và thanh toán cho shipper
     fromName: senderInfo.name,
     fromPhone: senderInfo.phone,
     fromAddress: senderInfo.address,
@@ -455,8 +478,15 @@ export const createReturnShipment = async (user, payload = {}) => {
     toAddress: receiverInfo.address,
     toWardCode: storeReceiver.wardCode,
     toDistrictId: storeReceiver.districtId,
+    returnPhone: storeReceiver.phone || receiverInfo.phone,
+    returnAddress: storeReceiver.address || receiverInfo.address,
+    returnDistrictId: storeReceiver.districtId,
+    returnWardCode: storeReceiver.wardCode,
     codAmount: 0,
-    weight: Number(weight) || 500,
+    weight: effectiveWeight,
+    length: effectiveLength,
+    width: effectiveWidth,
+    height: effectiveHeight,
     note: `[ĐỒ THUÊ HOÀN TRẢ VỀ CỬA HÀNG] ${note}`,
     clientOrderCode,
   });
@@ -470,7 +500,10 @@ export const createReturnShipment = async (user, payload = {}) => {
     senderInfo,
     receiverInfo,
     codAmount: 0,
-    weight,
+    weight: effectiveWeight,
+    length: effectiveLength,
+    width: effectiveWidth,
+    height: effectiveHeight,
     note,
     initialDescription: 'Đã tạo yêu cầu thu hồi trang phục, đang chờ bưu tá đến lấy đồ từ khách hàng',
   });
@@ -592,6 +625,14 @@ const updateOrderStatusOnDelivered = async (shipment, actionTime) => {
         rental.dueDate = new Date(actionTime.getTime() + durationMs);
         await rental.save();
       }
+    } else if (shipment.shipmentType === 'return') {
+      // Vận đơn thu hồi đã giao đồ về Showroom:
+      // - Giữ nguyên depositStatus = 'held' (tuyệt đối KHÔNG tự ý hoàn tiền trước khi Shop KCS)
+      // - Ghi nhận mốc bưu tá giao về shop để mở khóa quyền tải returnReceivedVideo
+      await RentalOrder.updateOne(
+        { _id: shipment.orderId },
+        { $set: { lastReturnDeliveredAt: actionTime } }
+      );
     }
   }
 };

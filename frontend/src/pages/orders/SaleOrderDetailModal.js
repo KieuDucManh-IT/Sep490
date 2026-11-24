@@ -786,7 +786,7 @@ export default function SaleOrderDetailModal({
                 </button>
               )}
 
-              {order.orderStatus === 'completed' && (
+              {order.orderStatus === 'completed' && order.returnStatus !== 'completed' && (
                 <button
                   type="button"
                   className="btn-modal-secondary d-flex align-items-center gap-1"

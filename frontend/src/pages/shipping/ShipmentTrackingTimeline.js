@@ -143,14 +143,18 @@ export default function ShipmentTrackingTimeline({
     let confirmMsg = '';
 
     if (newStatus === 'shipped') {
-      confirmMsg =
-        'Xác nhận kiện hàng đã được bàn giao cho bưu tá GHN bắt đầu đi giao?';
+      confirmMsg = isReturn
+        ? 'Xác nhận bưu tá GHN đã lấy kiện hàng thu hồi từ khách hàng và bắt đầu chuyển về shop?'
+        : 'Xác nhận kiện hàng đã được bàn giao cho bưu tá GHN bắt đầu đi giao?';
     } else if (newStatus === 'delivered') {
-      confirmMsg =
-        'Xác nhận khách hàng đã thực nhận hàng? Hành động này sẽ kích hoạt chu kỳ đơn hàng.';
+      confirmMsg = isReturn
+        ? 'Xác nhận bưu tá GHN đã giao kiện hàng hoàn trả về đến cửa hàng (chuẩn bị kiểm tra KCS và nghiệm thu)?'
+        : 'Xác nhận khách hàng đã thực nhận hàng? Hành động này sẽ kích hoạt chu kỳ đơn hàng.';
     } else if (newStatus === 'failed') {
       const reason = window.prompt(
-        'Nhập lý do giao hàng thất bại (ví dụ: Khách hẹn lại ngày giao):'
+        isReturn
+          ? 'Nhập lý do thu hồi đồ thất bại (ví dụ: Khách không nghe máy, khách đổi lịch):'
+          : 'Nhập lý do giao hàng thất bại (ví dụ: Khách hẹn lại ngày giao):'
       );
 
       if (reason === null) return;
@@ -391,6 +395,7 @@ export default function ShipmentTrackingTimeline({
             </button>
           )}
 
+          {/* Action Buttons cho đơn Outbound */}
           {isBranchManager && isLatest && !isReturn && isShipped && (
             <>
               <button
@@ -416,6 +421,51 @@ export default function ShipmentTrackingTimeline({
                 <XCircle size={14} />
                 <span>Báo giao thất bại</span>
               </button>
+            </>
+          )}
+
+          {/* Action Buttons cho đơn Return (Thu hồi) */}
+          {isBranchManager && isLatest && isReturn && !shipment.isSimulated && (
+            <>
+              {isPreparing && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                  onClick={() => handleManualStatusChange('shipped')}
+                  disabled={updatingStatus}
+                  title="Bưu tá đã lấy đồ từ khách hàng"
+                >
+                  <Truck size={14} />
+                  <span>{updatingStatus ? 'Đang lưu...' : 'Bưu tá đã lấy đồ'}</span>
+                </button>
+              )}
+              {isShipped && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-success d-flex align-items-center gap-1"
+                    onClick={() => handleManualStatusChange('delivered')}
+                    disabled={updatingStatus}
+                    title="Xác nhận shop đã nhận đồ thu hồi"
+                  >
+                    <Check size={14} />
+                    <span>
+                      {updatingStatus ? 'Đang lưu...' : 'Shop đã nhận đồ'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
+                    onClick={() => handleManualStatusChange('failed')}
+                    disabled={updatingStatus}
+                    title="Báo cáo thu hồi thất bại"
+                  >
+                    <XCircle size={14} />
+                    <span>Báo thu hồi thất bại</span>
+                  </button>
+                </>
+              )}
             </>
           )}
 

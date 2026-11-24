@@ -129,7 +129,7 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
   }
 
   // 1. Vận đơn đang trong hành trình giao nhận thực tế (chỉ xét: preparing, shipped, delivered)
-  // Ưu tiên hiển thị theo vận đơn active mới nhất (khi tạo lại vận đơn mới)
+  // Ưu tiên hiển thị theo vận đơn return đang active, hoặc vận đơn active mới nhất
   const allShipments = Array.isArray(order.shipments)
     ? order.shipments
     : (order.shipment ? [order.shipment] : []);
@@ -139,10 +139,15 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
       s => s && ['preparing', 'shipped', 'delivered']
         .includes(s.shipmentStatus)
     )
-    .sort((a, b) =>
-      (new Date(b.createdAt || b.updatedAt || 0).getTime() || 0) -
-      (new Date(a.createdAt || a.updatedAt || 0).getTime() || 0)
-    );
+    .sort((a, b) => {
+      // Ưu tiên vận đơn return đang active trong quá trình thu hồi đồ
+      const aIsReturn = a.shipmentType === 'return';
+      const bIsReturn = b.shipmentType === 'return';
+      if (aIsReturn && !bIsReturn) return -1;
+      if (!aIsReturn && bIsReturn) return 1;
+      return (new Date(b.createdAt || b.updatedAt || 0).getTime() || 0) -
+        (new Date(a.createdAt || a.updatedAt || 0).getTime() || 0);
+    });
 
   const activeShipment = activeShipments[0];
 
@@ -152,7 +157,7 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     if (activeShipment.shipmentStatus === 'shipped') {
       return {
         text: isReturn
-          ? (isBranch ? 'Đang thu hồi về shop' : 'Đang Thu Hồi')
+          ? (isBranch ? 'Đang thu hồi về shop' : 'Đang chuyển về cửa hàng')
           : (isBranch ? 'Đang giao hàng' : 'Đang Giao Hàng'),
         chipClass: 'processing',
       };
@@ -162,7 +167,7 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
       if (isReturn) {
         return {
           text: 'Đã về shop, chờ nghiệm thu',
-          chipClass: 'processing',
+          chipClass: 'warning',
         };
       }
       if (isSale) {
@@ -180,7 +185,7 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     if (activeShipment.shipmentStatus === 'preparing') {
       return {
         text: isReturn
-          ? (isBranch ? 'Chờ lấy hàng thu hồi' : 'Chờ Shipper Thu Hồi')
+          ? (isBranch ? 'Chờ lấy hàng thu hồi' : 'Chờ shipper lấy đồ trả')
           : (isBranch ? 'Chờ lấy hàng' : 'Chờ Lấy Hàng'),
         chipClass: 'confirmed',
       };

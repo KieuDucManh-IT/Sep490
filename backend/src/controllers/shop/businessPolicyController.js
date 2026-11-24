@@ -3,6 +3,15 @@ import { BusinessPolicy } from '../../models/shop/BusinessPolicy.js';
 
 const escapeRegex = (str = '') => str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
+const toSlug = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || `policy-${Date.now()}`;
+
 /**
  * Lấy danh sách toàn bộ chính sách kinh doanh của toàn chuỗi VESTORA (Dành cho Shop Owner)
  * GET /api/shops/policies/my-policy
@@ -50,8 +59,15 @@ export const createPolicy = async (req, res) => {
       });
     }
 
+    let key = toSlug(cleanTitle);
+    const keyExists = await BusinessPolicy.findOne({ key });
+    if (keyExists) {
+      key = `${key}-${Date.now().toString(36)}`;
+    }
+
     const newPolicy = await BusinessPolicy.create({
       title: cleanTitle.slice(0, 200),
+      key,
       summary: typeof summary === 'string' ? summary.trim().slice(0, 500) : '',
       content: typeof content === 'string' ? content.trim() : '',
       isActive: isActive !== false,
@@ -63,9 +79,10 @@ export const createPolicy = async (req, res) => {
       data: newPolicy,
     });
   } catch (error) {
-    return res.status(500).json({
+    const isDup = error.code === 11000;
+    return res.status(isDup ? 400 : 500).json({
       success: false,
-      message: error.message || 'Không thể tạo chính sách mới.',
+      message: isDup ? 'Chính sách này đã tồn tại trong hệ thống.' : (error.message || 'Không thể tạo chính sách mới.'),
     });
   }
 };
@@ -115,6 +132,9 @@ export const updateMyPolicy = async (req, res) => {
           content: typeof item.content === 'string' ? item.content.trim() : item.content,
           isActive: item.isActive !== false,
         };
+        if (!item.key) {
+          updateData.key = toSlug(item.title);
+        }
 
         if (isOid) {
           await BusinessPolicy.findByIdAndUpdate(policyId, { $set: updateData });

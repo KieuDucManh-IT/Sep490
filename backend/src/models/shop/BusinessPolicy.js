@@ -8,6 +8,11 @@ const businessPolicySchema = new mongoose.Schema(
       trim: true,
       maxlength: [200, 'Tên chính sách không được vượt quá 200 ký tự.'],
     },
+    key: {
+      type: String,
+      trim: true,
+      index: true,
+    },
     summary: {
       type: String,
       default: '',

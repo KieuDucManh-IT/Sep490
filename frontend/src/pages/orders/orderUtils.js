@@ -90,6 +90,12 @@ export const formatPeriod = (start, due) => {
   return `${formatSingle(start)} → ${formatEnd(due)}`;
 };
 
+export const truncateText = (val, maxLength = 24) => {
+  const text = String(val ?? '');
+  if (!text || text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trimEnd()}...`;
+};
+
 /**
  * Xác định nhãn và màu sắc trạng thái hiển thị thông minh đồng bộ giữa Khách hàng và Branch Manager
  * Tự động cập nhật theo trạng thái vận đơn GHN (Chờ lấy hàng, Đang giao hàng, Đang thuê, Đã hoàn tất, Đã hủy)

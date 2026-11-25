@@ -43,34 +43,37 @@ router.get('/master-data/wards-by-province/:provinceId', getWardsByProvinceHandl
 // 3. Tra cứu tiến trình vận chuyển cho người dùng đã xác thực (Customer chính chủ hoặc Quản lý)
 router.get('/track/:trackingCode', authMiddleware, trackShipmentHandler);
 
-// 4. API tạo vận đơn thu hồi đồ thuê qua GHN (Khách hàng tự trả đồ hoặc Quản lý thu hồi hộ)
+// 4. API tạo vận đơn thu hồi đồ thuê qua GHN (Khách hàng tự trả đồ hoặc Branch Manager thu hồi hộ)
 router.post(
   '/create-return',
   authMiddleware,
-  requireRoles('customer', 'branch_manager', 'shop_owner', 'owner', 'admin'),
+  requireRoles('customer', 'branch_manager'),
   createReturnHandler
 );
 
 // 5. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role nhân viên / quản lý
 router.use(authMiddleware);
 
-// Giả lập GHN sandbox: CHỈ CHO PHÉP Branch Manager
-router.post(
-  '/dev/simulate-ghn',
-  requireRoles('branch_manager'),
-  simulateGhnHandler
+// Xem danh sách vận đơn theo đơn hàng & lấy token in (chỉ đọc)
+router.get(
+  '/order/:orderType/:orderId',
+  requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'),
+  getShipmentsByOrderHandler
+);
+router.get(
+  '/print-token/:trackingCode',
+  requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'),
+  getPrintTokenHandler
 );
 
-router.use(requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'));
+// Giả lập GHN sandbox & toàn bộ nghiệp vụ thao tác vận đơn: CHỈ CHO PHÉP Branch Manager
+router.use(requireRoles('branch_manager'));
 
-// Nghiệp vụ vận đơn
+router.post('/dev/simulate-ghn', simulateGhnHandler);
 router.post('/calculate-fee', calculateFeeHandler);
 router.post('/create-outbound', createOutboundHandler);
 router.put('/:id/cancel', cancelShipmentHandler);
 router.put('/:id/manual-status', updateManualStatusHandler);
-router.get('/order/:orderType/:orderId', getShipmentsByOrderHandler);
-router.get('/print-token/:trackingCode', getPrintTokenHandler);
-
 router.post('/upload-proof', proofUpload.single('image'), uploadProofHandler);
 
 export default router;

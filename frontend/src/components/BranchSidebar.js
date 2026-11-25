@@ -10,7 +10,6 @@ import {
   Shirt,
   Boxes,
   PackageCheck,
-  Star,
   MessageSquareText,
   Compass,
   LogOut,
@@ -203,12 +202,6 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
             desc: 'Giám sát các đơn bán & giao vận của chi nhánh',
           },
           {
-            path: '/branch/returns',
-            label: 'Kiểm Định Nhận Trả',
-            icon: RotateCcw,
-            desc: 'Kiểm định đồ hoàn trả & xử lý tiền cọc',
-          },
-          {
             path: '/branch/analytics',
             label: 'Doanh Thu Chi Nhánh',
             icon: BarChart3,
@@ -255,12 +248,6 @@ export default function BranchSidebar({ isCollapsed: externalCollapsed, onToggle
             label: 'Tư Vấn Khách Hàng',
             icon: MessageSquareText,
             desc: 'Nhắn tin tư vấn trực tiếp',
-          },
-          {
-            path: '/branch/reviews',
-            label: 'Đánh Giá Khách Hàng',
-            icon: Star,
-            desc: 'Phản hồi và đánh giá trải nghiệm dịch vụ',
           },
         ],
       },

@@ -50,7 +50,6 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
     branchesList,
     activeBranch,
     activeBranchName,
-    isActiveBranchHQ,
     isChainScope,
     pagination,
     selectedOrderId,
@@ -157,9 +156,6 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                   <span className="badge bg-light text-dark border px-3 py-2 d-flex align-items-center gap-1">
                     <MapPin size={13} color="#B45309" />
                     <span>Cơ sở: <strong>{activeBranchName || scopeInfo?.shop?.name}</strong></span>
-                    {(isActiveBranchHQ || scopeInfo?.shop?.isHQ) && (
-                      <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-                    )}
                   </span>
                 ) : (
                   <span className="badge bg-light text-dark border px-3 py-2 d-flex align-items-center gap-1">
@@ -290,13 +286,6 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                           o.branchId?.shopName ||
                           o.branchName ||
                           'Cửa hàng chính';
-                        const isOrderHQ = Boolean(
-                          o.locationId?.shopId?.isHQ ||
-                          o.locationId?.isHQ ||
-                          o.shopId?.isHQ ||
-                          o.isHQ ||
-                          o.branchId?.isHQ
-                        );
 
                         const orderCodeText =
                           o.orderCode ||
@@ -340,9 +329,6 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                                 <div className="order-branch-col-name d-flex align-items-center gap-1 flex-wrap">
                                   <Store size={13} className="text-muted" />
                                   <span title={branchName}>{truncateText(branchName, 22)}</span>
-                                  {isOrderHQ && (
-                                    <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-                                  )}
                                 </div>
                               </td>
 
@@ -432,9 +418,6 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                               <div className="order-branch-col-name d-flex align-items-center gap-1 flex-wrap">
                                 <Store size={13} className="text-muted" />
                                 <span title={branchName}>{truncateText(branchName, 22)}</span>
-                                {isOrderHQ && (
-                                  <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-                                )}
                               </div>
                             </td>
 

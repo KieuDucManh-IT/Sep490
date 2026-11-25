@@ -6,7 +6,6 @@ import {
   Building2,
   ChevronDown,
   Check,
-  Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getAssignedBranchApi } from '../services/shopApi';
@@ -220,7 +219,7 @@ export default function OwnerTopHeader({
       path === '/owner/shops' ||
       path === '/owner/manage-shops'
     ) {
-      return 'Quản Lý Chi Nhánh & Trụ Sở';
+      return 'Quản Lý Chi Nhánh';
     }
     if (path === '/owner/pricing') return 'Bảng Giá & Tiền Đặt Cọc';
     if (path === '/owner/analytics') return 'Báo Cáo Tài Chính Chuỗi';
@@ -279,15 +278,6 @@ export default function OwnerTopHeader({
                       ? sortedBranches[0].name
                       : 'Chưa phân công')}
                 </span>
-                {assignedBranch?.isHQ && (
-                  <span
-                    className="owner-branch-hq-tag"
-                    title="Trụ sở chính (HQ)"
-                    style={{ marginLeft: 4, padding: '1px 4px', fontSize: 9 }}
-                  >
-                    <Star size={9} fill="#D4AF37" color="#D4AF37" />
-                  </span>
-                )}
               </div>
               {sortedBranches.length > 1 && (
                 <span
@@ -349,14 +339,6 @@ export default function OwnerTopHeader({
                                 <span className="owner-branch-item-name">
                                   {branch.name}
                                 </span>
-                                {branch.isHQ && (
-                                  <span
-                                    className="owner-branch-hq-tag"
-                                    title="Trụ sở chính (HQ)"
-                                  >
-                                    <Star size={11} fill="#D4AF37" color="#D4AF37" />
-                                  </span>
-                                )}
                               </div>
                               <span className="owner-branch-item-sub">
                                 {[branch.ward, branch.city]

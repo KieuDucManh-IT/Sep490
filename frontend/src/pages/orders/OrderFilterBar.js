@@ -48,8 +48,6 @@ function BranchSelectDropdown({
     return branches.find((b) => String(b._id) === String(selectedBranchId)) || null;
   }, [activeBranch, branches, selectedBranchId]);
 
-  const isCurrentHQ = Boolean(currentBranch?.isHQ);
-
   const displayTitle = useMemo(() => {
     if (!selectedBranchId) {
       return isBranchMode ? 'Chi nhánh phụ trách' : 'Toàn Hệ Thống';
@@ -60,16 +58,12 @@ function BranchSelectDropdown({
   // If Branch Manager manages only 1 branch, display as a styled static badge
   if (isBranchMode && branches.length <= 1) {
     const singleBranch = branches[0] || currentBranch;
-    const isSingleHQ = Boolean(singleBranch?.isHQ);
     return (
       <div className="taskbar-branch-static-badge">
         <Store size={14} className="text-muted" />
         <span className="taskbar-branch-name text-truncate">
           {singleBranch?.name || singleBranch?.shopName || 'Chi nhánh phụ trách'}
         </span>
-        {isSingleHQ && (
-          <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-        )}
       </div>
     );
   }
@@ -90,9 +84,6 @@ function BranchSelectDropdown({
             <Store size={15} className="text-muted" />
           )}
           <span className="order-branch-btn-text text-truncate">{displayTitle}</span>
-          {isCurrentHQ && (
-            <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-          )}
         </div>
         <ChevronDown
           size={14}
@@ -141,7 +132,6 @@ function BranchSelectDropdown({
 
             {branches.filter(Boolean).map((b) => {
               const isSelected = String(b._id || '') === String(selectedBranchId);
-              const isHQ = Boolean(b.isHQ);
               return (
                 <div
                   key={b._id}
@@ -154,15 +144,12 @@ function BranchSelectDropdown({
                   aria-selected={isSelected}
                 >
                   <div className="order-branch-item-main">
-                    <div className={`order-branch-item-icon ${isHQ ? 'hq' : ''}`}>
+                    <div className="order-branch-item-icon">
                       <Store size={15} />
                     </div>
                     <div>
                       <div className="d-flex align-items-center gap-1 flex-wrap">
                         <span className="order-branch-item-name">{b.name || b.shopName}</span>
-                        {isHQ && (
-                          <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-                        )}
                         {b.branchCode && (
                           <span className="order-branch-code-pill ms-1">{b.branchCode}</span>
                         )}
@@ -286,7 +273,7 @@ export default function OrderFilterBar({
           )}
         </div>
 
-        {/* Custom luxury branch dropdown with "Trụ sở chính" tags */}
+        {/* Custom luxury branch dropdown */}
         <BranchSelectDropdown
           branches={branches}
           selectedBranchId={selectedBranchId}

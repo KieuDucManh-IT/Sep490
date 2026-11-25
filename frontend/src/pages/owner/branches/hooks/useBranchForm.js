@@ -36,7 +36,6 @@ export function useBranchForm({ provinces, fetchWardsByProvince, setWards, showT
         latitude: branchToEdit.latitude != null ? String(branchToEdit.latitude) : fallbackCoords.lat.toFixed(6),
         longitude: branchToEdit.longitude != null ? String(branchToEdit.longitude) : fallbackCoords.lng.toFixed(6),
         managerId: branchToEdit.managerId?._id ? String(branchToEdit.managerId._id) : '',
-        isHQ: Boolean(branchToEdit.isHQ),
         status: branchToEdit.status || 'ACTIVE',
       });
       if (branchToEdit.city) {
@@ -386,7 +385,6 @@ export function useBranchForm({ provinces, fetchWardsByProvince, setWards, showT
         bannerUrl: formData.bannerUrl.trim(),
         openingHours: formData.openingHours.trim(),
         status: formData.status,
-        isHQ: Boolean(formData.isHQ),
         managerId: formData.managerId && formData.managerId !== 'none' ? formData.managerId : null,
       };
 

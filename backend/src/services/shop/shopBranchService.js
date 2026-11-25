@@ -63,40 +63,6 @@ export const checkManagerAssignment1to1 = async (managerId, excludeShopId = null
 };
 
 /**
- * Đảm bảo bất biến toàn hệ thống: Chỉ được phép có DUY NHẤT 1 Trụ sở chính (Single-HQ Invariant).
- * 1. Nếu có nhiều hơn 1 HQ trong hệ thống: giữ lại 1 chi nhánh (ưu tiên chi nhánh tạo sớm nhất), hủy cờ HQ của tất cả các chi nhánh còn lại.
- * 2. Nếu có chi nhánh tồn tại nhưng không có chi nhánh nào là HQ: tự động gán chi nhánh đầu tiên làm HQ.
- */
-export const ensureSingleHQInvariant = async () => {
-  try {
-    const hqs = await Shop.find({ isHQ: true, isDeleted: { $ne: true } })
-      .sort({ createdAt: 1, _id: 1 });
-
-    if (hqs.length > 1) {
-      const activeHQ = hqs.find((h) => h.status === 'ACTIVE') || hqs[0];
-      const primaryHQId = activeHQ._id;
-      await Shop.updateMany(
-        { _id: { $ne: primaryHQId }, isHQ: true },
-        { $set: { isHQ: false } }
-      );
-    } else if (hqs.length === 0) {
-      let targetBranch = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
-        .sort({ createdAt: 1, _id: 1 });
-      if (!targetBranch) {
-        targetBranch = await Shop.findOne({ isDeleted: { $ne: true } })
-          .sort({ createdAt: 1, _id: 1 });
-      }
-      if (targetBranch) {
-        targetBranch.isHQ = true;
-        await targetBranch.save();
-      }
-    }
-  } catch (err) {
-    console.error('[Single-HQ Invariant] Error ensuring single HQ:', err.message);
-  }
-};
-
-/**
  * Lấy danh sách hồ sơ chi nhánh có phân trang, bộ lọc và tìm kiếm đa năng
  */
 export const listShopApplications = async ({
@@ -107,9 +73,6 @@ export const listShopApplications = async ({
   page = 1,
   limit = 10,
 }) => {
-  // Tự động chuẩn hóa dữ liệu: đảm bảo toàn hệ thống luôn có DUY NHẤT 1 Trụ sở chính
-  await ensureSingleHQInvariant();
-
   const filter = { isDeleted: { $ne: true } };
 
   if (status) {
@@ -164,7 +127,7 @@ export const listShopApplications = async ({
     Shop.find(filter)
       .populate('ownerId', 'FullName Email Role Status Information fullName email createdAt updatedAt')
       .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-      .sort({ isHQ: -1, createdAt: 1 })
+      .sort({ createdAt: 1, _id: 1 })
       .skip(skip)
       .limit(safeLimit)
       .lean(),
@@ -357,36 +320,19 @@ export const resolveMyShopProfile = async ({ ownerId, managerId, branchId }) => 
     if (!shop) {
       shop = await Shop.findOne({
         ownerId,
-        isHQ: true,
         status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
         isDeleted: { $ne: true },
       })
-        .populate('ownerId', 'FullName Email Role Status phone')
-        .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-        .lean();
-    }
-
-    if (!shop) {
-      shop = await Shop.findOne({
-        ownerId,
-        status: { $in: ['ACTIVE', 'PENDING', 'SUSPENDED'] },
-        isDeleted: { $ne: true },
-      })
-        .sort({ createdAt: 1 })
+        .sort({ createdAt: 1, _id: 1 })
         .populate('ownerId', 'FullName Email Role Status phone')
         .populate('managerId', 'FullName Email Role Status Information Avatar phone')
         .lean();
     }
   }
 
-  if (!shop) {
-    shop = await Shop.findOne({ isHQ: true, status: 'ACTIVE', isDeleted: { $ne: true } })
-      .populate('ownerId', 'FullName Email Role Status phone')
-      .populate('managerId', 'FullName Email Role Status Information Avatar phone')
-      .lean();
-  }
   if (!shop) {
     shop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
+      .sort({ createdAt: 1, _id: 1 })
       .populate('ownerId', 'FullName Email Role Status phone')
       .populate('managerId', 'FullName Email Role Status Information Avatar phone')
       .lean();
@@ -443,12 +389,12 @@ export const resolveAssignedBranchForUser = async ({ userId, userRole, branchId 
       };
 
       shop = await populateShop(
-        Shop.findOne(fallbackFilter).sort({ isHQ: -1, createdAt: 1, _id: 1 })
+        Shop.findOne(fallbackFilter).sort({ createdAt: 1, _id: 1 })
       );
 
       if (!shop && (isOwnerRole || role === 'admin')) {
         shop = await populateShop(
-          Shop.findOne({ isDeleted: { $ne: true } }).sort({ isHQ: -1, createdAt: 1, _id: 1 })
+          Shop.findOne({ isDeleted: { $ne: true } }).sort({ createdAt: 1, _id: 1 })
         );
       }
     }
@@ -459,7 +405,7 @@ export const resolveAssignedBranchForUser = async ({ userId, userRole, branchId 
     managerId: userId,
     isDeleted: { $ne: true },
   })
-    .select('_id name address city ward status isHQ imageUrl phone createdAt')
+    .select('_id name address city ward status imageUrl phone createdAt')
     .sort({ createdAt: 1, _id: 1 })
     .lean();
 
@@ -526,10 +472,10 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
     throw validationError('Bạn không có quyền cập nhật thông tin chi nhánh này.', 403);
   }
 
-  // Quản lý chi nhánh không được phép tự ý thay đổi Quản lý hoặc cờ Trụ sở chính
+  // Quản lý chi nhánh không được phép tự ý thay đổi Quản lý
   if (isManager && !isOwner && !isAdmin) {
-    if (validated.managerId !== undefined || validated.isHQ !== undefined) {
-      throw validationError('Chỉ Shop Owner mới có quyền thay đổi Quản lý chi nhánh hoặc Trụ sở chính.', 403);
+    if (validated.managerId !== undefined) {
+      throw validationError('Chỉ Shop Owner mới có quyền thay đổi Quản lý chi nhánh.', 403);
     }
   }
 
@@ -573,24 +519,6 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
       // Ràng buộc 1:1: Một chi nhánh chỉ do 1 quản lý phụ trách, và mỗi quản lý chỉ phụ trách 1 chi nhánh
       await checkManagerAssignment1to1(mgrUser._id, shop._id);
       shop.managerId = mgrUser._id;
-    }
-  }
-
-  // Bất biến: Duy nhất 1 Trụ sở chính trên toàn hệ thống (Single-HQ Invariant)
-  if (validated.isHQ !== undefined && (isOwner || isAdmin)) {
-    if (validated.isHQ) {
-      // Khi chi nhánh này được đặt làm Trụ sở chính, hủy cờ HQ của tất cả các chi nhánh khác trên toàn hệ thống
-      await Shop.updateMany(
-        { _id: { $ne: shop._id }, isHQ: true },
-        { $set: { isHQ: false } }
-      );
-      shop.isHQ = true;
-    } else if (shop.isHQ && !validated.isHQ) {
-      // Chi nhánh hiện tại đang là Trụ sở chính duy nhất -> Không thể tự bỏ cờ HQ mà không chuyển giao cho chi nhánh khác
-      throw validationError(
-        'Hệ thống phải luôn có duy nhất một Trụ sở chính. Để thay đổi, vui lòng chọn một chi nhánh khác và đặt làm Trụ sở chính.',
-        400
-      );
     }
   }
 
@@ -649,15 +577,9 @@ export const createNewBranch = async (validated, currentUser) => {
   const finalImageUrl = validated.imageUrl || DEFAULT_SHOP_IMAGE;
   const finalBanner = validated.bannerUrl || DEFAULT_SHOP_BANNER;
 
-  // Bất biến toàn hệ thống: Chỉ duy nhất 1 Trụ sở chính (Single-HQ)
-  const existingHQ = await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } });
-  // Nếu hệ thống chưa có HQ nào -> chi nhánh này tự động là HQ. Nếu đã có HQ -> chỉ là HQ nếu người dùng chủ động chọn.
-  const resolvedIsHQ = Boolean(validated.isHQ || !existingHQ);
-
   const newBranch = new Shop({
     ownerId: resolvedOwnerId,
     managerId: validManagerId,
-    isHQ: resolvedIsHQ,
     name: validated.name,
     description: validated.description,
     phone: validated.phone,
@@ -674,14 +596,6 @@ export const createNewBranch = async (validated, currentUser) => {
 
   await newBranch.save();
 
-  // Bất biến: Nếu chi nhánh mới là Trụ sở chính, hủy cờ HQ của tất cả các chi nhánh khác trên toàn hệ thống
-  if (resolvedIsHQ) {
-    await Shop.updateMany(
-      { _id: { $ne: newBranch._id }, isHQ: true },
-      { $set: { isHQ: false } }
-    );
-  }
-
   await newBranch.populate('ownerId', 'FullName Email Role Status phone');
   await newBranch.populate('managerId', 'FullName Email Role Status Information Avatar phone');
 
@@ -690,9 +604,7 @@ export const createNewBranch = async (validated, currentUser) => {
 
 /**
  * Xóa mềm một chi nhánh khỏi chuỗi cửa hàng
- * Đảm bảo các ràng buộc an toàn tuyệt đối:
- * - Không cho phép xóa Trụ sở chính.
- * - Chuỗi phải duy trì tối thiểu 1 chi nhánh.
+ * Đảm bảo chuỗi duy trì tối thiểu 1 chi nhánh.
  */
 export const removeBranch = async (shopId, currentUser) => {
   validateObjectId(shopId, 'chi nhánh');
@@ -709,12 +621,7 @@ export const removeBranch = async (shopId, currentUser) => {
     throw validationError('Bạn không có quyền xóa chi nhánh này.', 403);
   }
 
-  // Ràng buộc 1: Không được phép xóa Trụ sở chính
-  if (branch.isHQ) {
-    throw validationError('Không thể xóa Trụ sở chính của chuỗi. Hãy chỉ định chi nhánh khác làm Trụ sở chính trước khi xóa.', 400);
-  }
-
-  // Ràng buộc 2: Duy trì tối thiểu một chi nhánh trong hệ thống
+  // Duy trì tối thiểu một chi nhánh trong hệ thống
   const totalBranches = await Shop.countDocuments({
     isDeleted: { $ne: true },
   });
@@ -775,21 +682,23 @@ export const listEligibleBranchManagers = async () => {
 
   const countMap = new Map(branchCounts.map((b) => [String(b._id), b.count]));
 
-  return validBranchManagers.map((u) => {
-    let phone = '';
-    if (Array.isArray(u.Information) && u.Information.length > 0) {
-      phone = u.Information[0]?.Phone || '';
-    }
+  return validBranchManagers
+    .filter((u) => (countMap.get(String(u._id)) || 0) === 0)
+    .map((u) => {
+      let phone = '';
+      if (Array.isArray(u.Information) && u.Information.length > 0) {
+        phone = u.Information[0]?.Phone || '';
+      }
 
-    return {
-      _id: u._id,
-      FullName: u.FullName,
-      Email: u.Email,
-      Role: u.Role,
-      Status: u.Status,
-      Avatar: u.Avatar || '',
-      phone,
-      assignedBranchesCount: countMap.get(String(u._id)) || 0,
-    };
-  });
+      return {
+        _id: u._id,
+        FullName: u.FullName,
+        Email: u.Email,
+        Role: u.Role,
+        Status: u.Status,
+        Avatar: u.Avatar || '',
+        phone,
+        assignedBranchesCount: 0,
+      };
+    });
 };

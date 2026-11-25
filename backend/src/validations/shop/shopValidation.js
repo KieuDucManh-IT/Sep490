@@ -91,7 +91,6 @@ export const validateCreateBranchInput = (body) => {
     bannerUrl,
     openingHours,
     managerId,
-    isHQ = false,
     ownerId,
   } = body;
 
@@ -133,7 +132,6 @@ export const validateCreateBranchInput = (body) => {
     imageUrl: imageUrl?.trim() || '',
     bannerUrl: bannerUrl?.trim() || '',
     openingHours: openingHours?.trim() || '09:00 - 21:30 (Thứ 2 - Chủ Nhật)',
-    isHQ: Boolean(isHQ),
     managerId: (managerId && managerId !== 'null' && managerId !== 'none') ? managerId : null,
     ownerId: ownerId || null,
   };
@@ -245,10 +243,6 @@ export const validateUpdateShopInfoInput = (body) => {
       throw validationError('Trạng thái chỉ có thể là ACTIVE hoặc SUSPENDED.', 400);
     }
     result.status = s;
-  }
-
-  if (body.isHQ !== undefined) {
-    result.isHQ = Boolean(body.isHQ);
   }
 
   if (body.managerId !== undefined) {

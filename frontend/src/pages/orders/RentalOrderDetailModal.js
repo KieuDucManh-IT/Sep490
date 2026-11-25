@@ -162,14 +162,6 @@ export default function RentalOrderDetailModal({
     order.branchName ||
     'Chi nhánh hệ thống';
 
-  const isHQ = Boolean(
-    order.locationId?.shopId?.isHQ ||
-    order.locationId?.isHQ ||
-    order.shopId?.isHQ ||
-    order.isHQ ||
-    order.branchId?.isHQ
-  );
-
   if (returnFlowOpen) {
     return (
       <RentalReturnWorkflow
@@ -220,13 +212,11 @@ export default function RentalOrderDetailModal({
                 <span className="order-active-branch-badge">
                   <MapPin size={12} />
                   <span>{branchName}</span>
-                  {isHQ && <span className="branch-tag-hq ms-1">Trụ sở chính</span>}
                 </span>
               )}
             </div>
             <p className="modal-subtitle-text">
               Ngày tạo: {formatDate(order.createdAt)} • Chi nhánh phục vụ: {branchName}
-              {isHQ && <span className="branch-tag-hq ms-2">Trụ sở chính</span>}
             </p>
           </div>
         </div>

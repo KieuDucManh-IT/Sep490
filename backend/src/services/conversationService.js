@@ -219,11 +219,11 @@ export const getOrCreateConversation = async ({
       }
     }
 
-    // 3. Nếu vẫn chưa có targetShopId, fallback về Trụ sở chính (HQ) hoặc Shop đầu tiên
+    // 3. Nếu vẫn chưa có targetShopId, fallback về Shop đầu tiên
     if (!targetShopId) {
-      const defaultShop =
-        (await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } }).lean()) ||
-        (await Shop.findOne({ isDeleted: { $ne: true } }).lean());
+      const defaultShop = await Shop.findOne({ isDeleted: { $ne: true } })
+        .sort({ createdAt: 1, _id: 1 })
+        .lean();
       if (defaultShop) {
         targetShopId = defaultShop._id;
       }
@@ -255,9 +255,9 @@ export const getOrCreateConversation = async ({
 
   // Fallback an toàn nếu chưa có targetShopId
   if (!targetShopId || !mongoose.Types.ObjectId.isValid(targetShopId)) {
-    const anyShop =
-      (await Shop.findOne({ isHQ: true, isDeleted: { $ne: true } }).lean()) ||
-      (await Shop.findOne({ isDeleted: { $ne: true } }).lean());
+    const anyShop = await Shop.findOne({ isDeleted: { $ne: true } })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
     if (anyShop) {
       targetShopId = anyShop._id;
     } else {
@@ -454,7 +454,7 @@ export const listConversations = async ({ userId, userRole, status, search, page
   const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
   const query = Conversation.find(filter)
-    .populate('shopId', 'name imageUrl phone address managerId ownerId status isHQ')
+    .populate('shopId', 'name imageUrl phone address managerId ownerId status')
     .populate('customerId', 'FullName Email Avatar Phone')
     .populate('assignedManagerId', 'FullName Email Avatar')
     .sort({ lastMessageAt: -1 })
@@ -511,7 +511,7 @@ export const getConversationById = async ({ conversationId, userId, userRole }) 
   }
 
   const conv = await Conversation.findById(conversationId)
-    .populate('shopId', 'name imageUrl phone address managerId ownerId status isHQ')
+    .populate('shopId', 'name imageUrl phone address managerId ownerId status')
     .populate('customerId', 'FullName Email Avatar Phone Status')
     .populate('assignedManagerId', 'FullName Email Avatar Phone')
     .lean();
@@ -849,7 +849,7 @@ export const getTotalUnreadCount = async ({ userId, userRole }) => {
 
 const populateConversation = async (conversationId) => {
   return await Conversation.findById(conversationId)
-    .populate('shopId', 'name imageUrl phone address managerId ownerId status isHQ')
+    .populate('shopId', 'name imageUrl phone address managerId ownerId status')
     .populate('customerId', 'FullName Email Avatar Phone')
     .populate('assignedManagerId', 'FullName Email Avatar Phone')
     .lean();

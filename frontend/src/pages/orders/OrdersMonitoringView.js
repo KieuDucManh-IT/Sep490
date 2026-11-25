@@ -91,13 +91,13 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
   const pageTitle = useMemo(() => {
     if (type === 'rental') {
       return isBranch
-        ? `Quản Lý Đơn Thuê Chi Nhánh${activeBranchName ? ` - ${activeBranchName}` : ''}`
+        ? 'Quản Lý Đơn Thuê Chi Nhánh'
         : 'Theo Dõi Đơn Thuê Chuỗi Cửa Hàng';
     }
     return isBranch
-      ? `Quản Lý Đơn Bán Chi Nhánh${activeBranchName ? ` - ${activeBranchName}` : ''}`
+      ? 'Quản Lý Đơn Bán Chi Nhánh'
       : 'Theo Dõi Đơn Bán Chuỗi Cửa Hàng';
-  }, [type, isBranch, activeBranchName]);
+  }, [type, isBranch]);
 
   const pageDesc = useMemo(() => {
     if (type === 'rental') {

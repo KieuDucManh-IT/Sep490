@@ -273,14 +273,16 @@ export default function OrderFilterBar({
           )}
         </div>
 
-        {/* Custom luxury branch dropdown */}
-        <BranchSelectDropdown
-          branches={branches}
-          selectedBranchId={selectedBranchId}
-          onSelectBranch={onSelectBranch}
-          isBranchMode={isBranchMode}
-          activeBranch={activeBranch}
-        />
+        {/* Custom luxury branch dropdown (Owner chain view only) */}
+        {!isBranchMode && (
+          <BranchSelectDropdown
+            branches={branches}
+            selectedBranchId={selectedBranchId}
+            onSelectBranch={onSelectBranch}
+            isBranchMode={isBranchMode}
+            activeBranch={activeBranch}
+          />
+        )}
 
         {/* 2. Status Segmented Tabs */}
         <div className="taskbar-status-segmented">

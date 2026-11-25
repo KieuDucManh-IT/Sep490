@@ -158,12 +158,21 @@ export default function SalesReturnModal({ order, show, onHide, onCreated }) {
   };
 
   const selectedCount = Object.values(lines).reduce((sum, value) => sum + value.itemIds.length, 0);
-
+  const returnWindowDays = 7;
+  const completedDate = new Date(order?.completedAt || order?.updatedAt || Date.now());
+  const deadline = new Date(completedDate.getTime() + (returnWindowDays * 24 * 60 * 60 * 1000));
+  const isExpired = new Date() > deadline;
   return (
     <Modal show={show} onHide={saving ? undefined : onHide} size="lg" centered scrollable
       className="wm-transfer-stacked" backdropClassName="wm-transfer-stacked-backdrop">
       <Modal.Header closeButton={!saving}>
         <Modal.Title as="h5">Trả hàng · đơn {order?.orderCode || order?.code || ''}</Modal.Title>
+
+        {isExpired ? (
+          <Badge bg="danger" className="ms-3 fw-normal">Quá hạn trả hàng (Hạn chót: {deadline.toLocaleDateString('vi-VN')})</Badge>
+        ) : (
+          <Badge bg="success" className="ms-3 fw-normal">Còn hạn tới {deadline.toLocaleDateString('vi-VN')}</Badge>
+        )}
       </Modal.Header>
       <Modal.Body>
         {error && <Alert variant="danger" className="py-2">{error}</Alert>}
@@ -195,11 +204,12 @@ export default function SalesReturnModal({ order, show, onHide, onCreated }) {
       <Modal.Footer>
         <Button variant="secondary" disabled={saving} onClick={onHide}>Đóng</Button>
         {tab === 'create' && (
-          <Button variant="dark" disabled={saving || loading || !selectedCount} onClick={submit}>
+          /* BỔ SUNG ĐIỀU KIỆN isExpired VÀO THUỘC TÍNH disabled */
+          <Button variant="dark" disabled={saving || loading || !selectedCount || isExpired} onClick={submit}>
             {saving ? 'Đang lưu...' : `Ghi nhận trả ${selectedCount} món`}
           </Button>
         )}
       </Modal.Footer>
-    </Modal>
+    </Modal >
   );
 }

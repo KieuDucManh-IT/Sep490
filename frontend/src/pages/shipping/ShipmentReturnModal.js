@@ -529,7 +529,7 @@ function useRentalEvidence(orderId, orderType = 'rental') {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
+  const [notice, setNotice] = useState('');
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const generation = useRef(0);
@@ -593,9 +593,13 @@ function useRentalEvidence(orderId, orderType = 'rental') {
     generation.current += 1;
     setBusy(true);
     setError('');
+    setNotice('');
 
     try {
-      await action();
+      const res = await action();
+      if (mounted.current && res?.message) {
+        setNotice(res.message);
+      }
       await load();
     } catch (err) {
       if (mounted.current) setError(err.message);
@@ -618,7 +622,7 @@ function useRentalEvidence(orderId, orderType = 'rental') {
 
     run(() => api.upload(orderId, kind, file));
   }
-  return { data, error, busy, run, upload, api };
+  return { data, error, notice, busy, run, upload, api };
 }
 
 function EvidenceVideos({
@@ -800,7 +804,7 @@ function RentalReturnWorkflowBody({
   orderType,
   readOnly,
 }) {
-  const { data, error, busy, run, upload, api } =
+  const { data, error, notice, busy, run, upload, api } =
     useRentalEvidence(orderId, orderType);
 
   const isSale = orderType === 'sale';

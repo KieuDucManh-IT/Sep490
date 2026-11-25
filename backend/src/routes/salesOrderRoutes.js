@@ -34,13 +34,16 @@ router.get('/:id/return-flow', handle(async (req, res) => {
 }));
 
 router.post('/:id/return/request', handle(async (req, res) => {
+  const data = await salesFlow.requestSalesReturn(
+    req.user,
+    req.params.id,
+    req.body.reason
+  );
+
   res.json({
     success: true,
-    data: await salesFlow.requestSalesReturn(
-      req.user,
-      req.params.id,
-      req.body.reason
-    ),
+    message: 'Yêu cầu trả đã được chấp nhận. Vui lòng đợi đơn vị giao hàng đến lấy.',
+    data,
   });
 }));
 

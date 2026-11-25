@@ -230,7 +230,7 @@ export default function AdminAddAccountModal({
                         ) : (
                           shops.map((shop) => (
                             <option key={shop._id} value={shop._id}>
-                              {shop.name} {shop.city ? `(${shop.city})` : ''} {shop.isHQ ? '★ [Trụ sở chính]' : ''}
+                              {shop.name} {shop.city ? `(${shop.city})` : ''}
                             </option>
                           ))
                         )}

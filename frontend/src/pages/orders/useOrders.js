@@ -169,10 +169,6 @@ export function useOrders(type = 'rental', initialBranchId = '', isBranchProp) {
     return '';
   }, [activeBranch]);
 
-  const isActiveBranchHQ = useMemo(() => {
-    return Boolean(activeBranch?.isHQ);
-  }, [activeBranch]);
-
   const isChainScope = !selectedBranchId;
 
   // 4. Lắng nghe sự kiện đồng bộ khi người dùng chọn chi nhánh từ TopHeader
@@ -270,7 +266,6 @@ export function useOrders(type = 'rental', initialBranchId = '', isBranchProp) {
     branchesList,
     activeBranch,
     activeBranchName,
-    isActiveBranchHQ,
     isChainScope,
     isBranchMode,
     selectedOrderId,

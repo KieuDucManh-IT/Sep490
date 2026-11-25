@@ -65,7 +65,7 @@ export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
       select: 'name code address type shopId phone provinceId districtId wardCode ghnShopId',
       populate: {
         path: 'shopId',
-        select: 'name code address phone managerId isHQ provinceId districtId wardCode ghnShopId city ward latitude longitude',
+        select: 'name code address phone managerId provinceId districtId wardCode ghnShopId city ward latitude longitude',
       },
     })
     .lean();
@@ -116,10 +116,11 @@ export const resolveBranchShippingInfo = async (order) => {
     if (foundShop) shop = foundShop;
   }
 
-  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop chính (isHQ: true) hoặc Shop bất kỳ đang active
+  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop đầu tiên đang active
   if (!shop?.phone || !shop?.address) {
-    const fallbackShop = (await Shop.findOne({ isHQ: true, status: 'ACTIVE' }).lean())
-      || (await Shop.findOne({ status: 'ACTIVE' }).lean());
+    const fallbackShop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
     if (fallbackShop) {
       shop = {
         ...fallbackShop,

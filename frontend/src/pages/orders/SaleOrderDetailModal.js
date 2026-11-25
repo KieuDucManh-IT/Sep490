@@ -209,14 +209,6 @@ export default function SaleOrderDetailModal({
     order.branchName ||
     'Chi nhánh hệ thống';
 
-  const isHQ = Boolean(
-    order.locationId?.shopId?.isHQ ||
-      order.locationId?.isHQ ||
-      order.shopId?.isHQ ||
-      order.isHQ ||
-      order.branchId?.isHQ
-  );
-
   const returnButton =
     order.orderStatus === 'completed' ? (
       <button
@@ -287,12 +279,6 @@ export default function SaleOrderDetailModal({
                 <span className="order-active-branch-badge">
                   <MapPin size={12} />
                   <span>{branchName}</span>
-
-                  {isHQ && (
-                    <span className="branch-tag-hq ms-1">
-                      Trụ sở chính
-                    </span>
-                  )}
                 </span>
               )}
             </div>
@@ -300,12 +286,6 @@ export default function SaleOrderDetailModal({
             <p className="modal-subtitle-text">
               Ngày đặt: {formatDate(order.createdAt)} • Chi nhánh xuất
               hàng: {branchName}
-
-              {isHQ && (
-                <span className="branch-tag-hq ms-2">
-                  Trụ sở chính
-                </span>
-              )}
             </p>
           </div>
         </div>

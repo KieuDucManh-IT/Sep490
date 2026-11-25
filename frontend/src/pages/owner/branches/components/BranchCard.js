@@ -25,11 +25,10 @@ export default function BranchCard({
   const avatarImage = branch.imageUrl || DEFAULT_SHOP_IMAGE;
 
   const manager = branch.managerId;
-  const isHQ = Boolean(branch.isHQ);
   const isActive = branch.status === 'ACTIVE';
 
   return (
-    <div className={`clean-branch-card ${isHQ ? 'is-hq' : ''}`}>
+    <div className="clean-branch-card">
       <div className="branch-card-cover-wrap">
         <img
           src={bannerImage}
@@ -38,14 +37,6 @@ export default function BranchCard({
           onClick={() => onOpenLightbox({ url: bannerImage, title: `Ảnh bìa — ${branch.name}` })}
         />
         <div className="branch-card-cover-gradient" />
-
-        {isHQ && (
-          <div className="branch-card-badge-top-left">
-            <span className="branch-card-badge-hq">
-              TRỤ SỞ CHÍNH
-            </span>
-          </div>
-        )}
 
         <div className="branch-card-badge-top-right">
           {isActive ? (
@@ -182,13 +173,11 @@ export default function BranchCard({
             <span>Bản đồ</span>
           </button>
 
-          {/* Quy tắc bảo vệ: Không cho phép xóa Trụ sở chính (HQ) trực tiếp */}
           <button
             type="button"
             className="branch-card-btn danger"
             onClick={() => onDelete(branch)}
-            disabled={isHQ}
-            title={isHQ ? 'Không thể xóa Trụ sở chính' : 'Xóa chi nhánh này'}
+            title="Xóa chi nhánh này"
           >
             <Trash2 size={13} />
             <span>Xóa</span>

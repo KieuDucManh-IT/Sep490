@@ -73,22 +73,25 @@ export default function BranchFormModal({
     }
   };
 
-  // Chuẩn bị danh sách Quản lý: Hiển thị trạng thái phân công (Ràng buộc 1:1)
+  // Chuẩn bị danh sách Quản lý: Chỉ hiển thị tài khoản chưa quản lý chi nhánh nào (+ quản lý hiện tại nếu đang sửa)
+  const currentManager = isEditMode && activeBranch?.managerId?._id ? activeBranch.managerId : null;
+  const eligibleManagers = managers.filter((m) => {
+    const isCurrent = currentManager && String(currentManager._id) === String(m._id);
+    return (m.assignedBranchesCount || 0) === 0 || isCurrent;
+  });
+  if (currentManager && !eligibleManagers.some((m) => String(m._id) === String(currentManager._id))) {
+    eligibleManagers.unshift(currentManager);
+  }
+
   const managerOptions = [
     {
       value: '',
       label: '— Không chỉ định (Chưa có Quản lý) —',
       subtext: 'Chi nhánh sẽ hoạt động độc lập hoặc do Chủ chuỗi quản lý trực tiếp',
     },
-    ...managers.map((m) => {
-      const branchCount = m.assignedBranchesCount || 0;
-      const isCurrentBranchManager = activeBranch?.managerId?._id && String(activeBranch.managerId._id) === String(m._id);
-      let branchLabel = 'Sẵn sàng bổ nhiệm';
-      if (isCurrentBranchManager) {
-        branchLabel = 'Đang quản lý chi nhánh này';
-      } else if (branchCount > 0) {
-        branchLabel = 'Đã quản lý chi nhánh khác';
-      }
+    ...eligibleManagers.map((m) => {
+      const isCurrentBranchManager = currentManager && String(currentManager._id) === String(m._id);
+      const branchLabel = isCurrentBranchManager ? 'Đang quản lý chi nhánh này' : 'Sẵn sàng bổ nhiệm';
 
       return {
         value: String(m._id),
@@ -519,28 +522,7 @@ export default function BranchFormModal({
                 </Form.Group>
               </Col>
 
-              {/* Ràng buộc toàn hệ thống: Chỉ duy nhất 1 chi nhánh được gán isHQ = true */}
-              <Col md={6}>
-                <div className="d-flex align-items-center justify-content-between p-3 border rounded-3 bg-light">
-                  <div>
-                    <div className="small fw-bold text-dark">Đặt Làm Trụ Sở Chính (HQ)</div>
-                    <div className="text-muted form-switch-description">
-                      {isEditMode && Boolean(activeBranch?.isHQ)
-                        ? 'Chi nhánh này đang là Trụ sở chính duy nhất của chuỗi. Để chuyển giao, hãy chỉnh sửa chi nhánh khác và đặt làm Trụ sở chính.'
-                        : 'Toàn hệ thống chỉ có duy nhất 1 Trụ sở chính. Khi kích hoạt, chi nhánh này sẽ thành Trụ sở chính và chi nhánh cũ tự động chuyển thành chi nhánh thường.'}
-                    </div>
-                  </div>
-                  <Form.Check
-                    type="switch"
-                    id="isHQ-switch"
-                    checked={formData.isHQ}
-                    disabled={isEditMode && Boolean(activeBranch?.isHQ)}
-                    onChange={(e) => onFieldChange('isHQ', e.target.checked)}
-                  />
-                </div>
-              </Col>
-
-              <Col md={6}>
+              <Col md={12}>
                 <div className="d-flex align-items-center justify-content-between p-3 border rounded-3 bg-light">
                   <div>
                     <div className="small fw-bold text-dark">Trạng Thái Hoạt Động</div>

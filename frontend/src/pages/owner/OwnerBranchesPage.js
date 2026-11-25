@@ -147,7 +147,7 @@ export default function OwnerBranchesPage() {
         <OwnerTopHeader
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-          breadcrumb="Quản Lý Chi Nhánh & Trụ Sở"
+          breadcrumb="Quản Lý Chi Nhánh"
         />
 
         <main className="owner-branches-main-content">
@@ -155,7 +155,7 @@ export default function OwnerBranchesPage() {
             <div className="admin-page-hero d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
               <div>
                 <h1 className="admin-page-title">
-                  Quản Lý Chi Nhánh & Trụ Sở
+                  Quản Lý Chi Nhánh
                 </h1>
                 <p className="admin-page-desc">
                   Quản lý hồ sơ thương hiệu, mạng lưới cửa hàng, định vị vị trí trên bản đồ và bổ nhiệm Quản lý chi nhánh phụ trách.

@@ -3,7 +3,7 @@ import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import * as ghnService from './ghnService.js';
-import { mapGhnStatus } from './ghnStatusMapper.js';
+import { mapGhnStatus, assertValidSimulatedTransition } from './ghnStatusMapper.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
 import { syncSingleShipmentFromGHN } from './shipmentSyncService.js';
 import { getWebhookSecret } from './ghnConfig.js';
@@ -704,14 +704,16 @@ export const processGHNWebhook = async (payload = {}, secretKey = '', options = 
   const mapped = mapGhnStatus(status);
   const actionTime = time ? new Date(time) : new Date();
 
-  // 1. Rollback Guard & Terminal Guard (chỉ áp dụng đối với Webhook GHN thực tế, không chặn mô phỏng Dev)
+  // 1. Rollback Guard & Terminal Guard
   const STATUS_RANK = { preparing: 1, shipped: 2, failed: 2, delivered: 3, cancelled: 3 };
   const TERMINAL_STATUSES = new Set(['delivered', 'cancelled']);
 
   const currentRank = STATUS_RANK[shipment.shipmentStatus] ?? 0;
   const incomingRank = STATUS_RANK[mapped.internalStatus] ?? 0;
 
-  if (!isSimulated) {
+  if (isSimulated) {
+    assertValidSimulatedTransition(shipment.shipmentStatus, mapped.internalStatus);
+  } else {
     if (TERMINAL_STATUSES.has(shipment.shipmentStatus)) {
       return {
         success: true,

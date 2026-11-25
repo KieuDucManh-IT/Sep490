@@ -24,6 +24,20 @@ const businessPolicySchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    content: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    returnPolicy: {
+      returnWindowDays: { type: Number, default: 7 }, // Mặc định cho phép trả trong 7 ngày
+      allowReturn: { type: Boolean, default: true }
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     isActive: {
       type: Boolean,
       default: true,

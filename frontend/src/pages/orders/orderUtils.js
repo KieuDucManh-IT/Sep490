@@ -141,10 +141,14 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     : (order.shipment ? [order.shipment] : []);
 
   const activeShipments = allShipments
-    .filter(
-      s => s && ['preparing', 'shipped', 'delivered']
-        .includes(s.shipmentStatus)
-    )
+    .filter((s) => {
+      if (!s || !['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)) return false;
+      if (s.shipmentType === 'return' && s.settled) return false;
+      if (!isSale && currentStatus === 'partially_returned' && s.shipmentType !== 'return' && s.shipmentStatus === 'delivered') {
+        return false;
+      }
+      return true;
+    })
     .sort((a, b) => {
       // Ưu tiên vận đơn return đang active trong quá trình thu hồi đồ
       const aIsReturn = a.shipmentType === 'return';

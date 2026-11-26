@@ -12,6 +12,7 @@ import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import cloudinary from '../config/cloudinary.js';
 import { RentalOrder } from '../models/sale&rental/RentalOrder.js';
+import { OrderShipment } from '../models/sale&rental/OrderShipment.js';
 import * as returnFlow from '../services/sale&rental/rentalReturnService.js';
 
 const router = express.Router();
@@ -126,7 +127,11 @@ router.post(
       success: true,
       data: await returnFlow.completeSimulatedReturn(
         req.user,
-        req.params.id
+        req.params.id,
+        {
+          damageFee: req.body.damageFee,
+          note: req.body.note,
+        }
       ),
     });
   })
@@ -202,27 +207,59 @@ export function createEvidenceUploadHandlers({
 
         await checkAccess(req.user, id, kind);
 
+        const videoPayload = {
+          publicId,
+          format: uploaded.format,
+          uploadedBy: req.user._id,
+          uploadedAt: new Date(),
+        };
+
+        const isRentalBatchEvidence =
+          folder === 'rental-evidence' && ['return', 'return-received'].includes(kind);
+        let savedToShipment = null;
+
+        if (isRentalBatchEvidence) {
+          const orderDoc = await Model.findById(id).select('rentalStatus').lean();
+          const { shipment: activeShip } = await returnFlow.findCurrentReturnShipment(
+            id,
+            orderDoc?.rentalStatus
+          );
+
+          if (activeShip && ['preparing', 'shipped', 'delivered'].includes(activeShip.shipmentStatus)) {
+            savedToShipment = await OrderShipment.findOneAndUpdate(
+              { _id: activeShip._id, [field]: null },
+              { $set: { [field]: videoPayload } },
+              { new: true, runValidators: true }
+            );
+            if (!savedToShipment) {
+              throw Object.assign(
+                new Error('Đợt trả này đã có video, không ghi đè bằng chứng.'),
+                { status: 409 }
+              );
+            }
+          }
+        }
+
+        const orderQuery = savedToShipment
+          ? { _id: id, ...statusFilter(kind) }
+          : { _id: id, ...statusFilter(kind), [field]: null };
+
         const saved = await Model.findOneAndUpdate(
+          orderQuery,
           {
-            _id: id,
-            ...statusFilter(kind),
-            [field]: null,
-          },
-          {
-            $set: {
-              [field]: {
-                publicId,
-                format: uploaded.format,
-                uploadedBy: req.user._id,
-                uploadedAt: new Date(),
-              },
-            },
+            $set: { [field]: videoPayload },
             $inc: { returnFlowVersion: 1 },
           },
           { new: true, runValidators: true }
         );
 
         if (!saved) {
+          if (savedToShipment) {
+            await OrderShipment.updateOne(
+              { _id: savedToShipment._id, [`${field}.publicId`]: publicId },
+              { $set: { [field]: null } }
+            ).catch(() => {});
+          }
           throw Object.assign(
             new Error('Đơn vừa thay đổi hoặc đã có video.'),
             { status: 409 }
@@ -233,12 +270,20 @@ export function createEvidenceUploadHandlers({
       } catch (error) {
         if (uploaded) {
           try {
-            const linked = await Model.exists({
+            const linkedOrder = await Model.exists({
               _id: id,
               [`${field}.publicId`]: publicId,
             });
+            const linkedShip = folder === 'rental-evidence'
+              ? await OrderShipment.exists({
+                  orderId: id,
+                  orderType: 'rental',
+                  shipmentType: 'return',
+                  [`${field}.publicId`]: publicId,
+                })
+              : false;
 
-            if (!linked) {
+            if (!linkedOrder && !linkedShip) {
               await cloudinary.uploader.destroy(publicId, {
                 resource_type: 'video',
                 type: 'authenticated',
@@ -265,7 +310,7 @@ router.post(
       rentalStatus: {
         $in: kind === 'packing'
           ? ['draft', 'confirmed']
-          : ['renting', 'overdue'],
+          : ['renting', 'partially_returned', 'overdue'],
       },
     }),
   })

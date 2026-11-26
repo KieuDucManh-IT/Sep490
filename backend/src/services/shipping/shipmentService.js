@@ -5,6 +5,7 @@ import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { SalesReturn } from '../../models/sale&rental/SalesReturn.js';
 import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js';
+import { RentalReturn } from '../../models/sale&rental/RentalReturn.js';
 import * as ghnService from './ghnService.js';
 import { mapGhnStatus, assertValidSimulatedTransition } from './ghnStatusMapper.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
@@ -12,6 +13,7 @@ import { syncSingleShipmentFromGHN } from './shipmentSyncService.js';
 import { getWebhookSecret } from './ghnConfig.js';
 import { inTransaction } from '../walletService.js';
 import { recordSalesDelivery, prepareSalesReturnRequest } from '../sale&rental/salesOrderService.js';
+import { prepareRentalReturnRequest } from '../sale&rental/rentalReturnService.js';
 import {
   fail,
   formatPartyInfo,
@@ -386,12 +388,18 @@ export const createReturnShipment = async (user, payload = {}) => {
   ).lean();
 
   let salePrep = null;
+  let rentalPrep = null;
   if (isSale) {
     salePrep = await prepareSalesReturnRequest(order, {
       reason,
       requestedItems,
       outboundShipment,
     });
+  } else if (
+    mongoose.connection.readyState === 1 ||
+    (Array.isArray(requestedItems) && requestedItems.length > 0)
+  ) {
+    rentalPrep = await prepareRentalReturnRequest(order, { requestedItems });
   }
 
   const effectiveWeight = Number(weight) || outboundShipment?.weight || 500;
@@ -399,19 +407,33 @@ export const createReturnShipment = async (user, payload = {}) => {
   const effectiveWidth = Number(width) || outboundShipment?.width || 20;
   const effectiveHeight = Number(height) || outboundShipment?.height || 10;
 
-  // Kiểm tra đơn thu hồi đang active hoặc đã giao về shop
-  const activeReturnShipment = await OrderShipment.findOne({
-    orderType,
-    orderId: order._id,
-    shipmentType: 'return',
-    shipmentStatus: { $in: ['preparing', 'shipped', 'delivered'] },
-  }).lean();
+  // Kiểm tra đơn thu hồi đang active hoặc chờ nghiệm thu KCS (vận đơn delivered chưa có RentalReturn completed)
+  const activeReturnShipment = await OrderShipment.findOne(
+    {
+      orderType,
+      orderId: order._id,
+      shipmentType: 'return',
+      shipmentStatus: { $in: ['preparing', 'shipped', 'delivered'] },
+    },
+    null,
+    { sort: { createdAt: -1 } }
+  ).lean();
 
   if (activeReturnShipment) {
     if (activeReturnShipment.shipmentStatus === 'delivered') {
-      throw fail(`Hàng đã được giao về cửa hàng (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'LY...'}), vui lòng tiến hành nghiệm thu để hoàn tất đơn.`, 400);
+      const settledRentalBatch = !isSale
+        ? await RentalReturn.exists({
+            rentalOrderId: order._id,
+            shipmentId: activeReturnShipment._id,
+            returnStatus: 'completed',
+          })
+        : false;
+      if (!settledRentalBatch) {
+        throw fail(`Hàng đã được giao về cửa hàng (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'LY...'}), vui lòng tiến hành nghiệm thu để hoàn tất đợt trả này.`, 400);
+      }
+    } else {
+      throw fail(`Đơn hàng đã có yêu cầu thu hồi đang xử lý (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'Chờ bưu tá'}).`, 400);
     }
-    throw fail(`Đơn hàng đã có yêu cầu thu hồi đang xử lý (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'Chờ bưu tá'}).`, 400);
   }
 
   // Tự động suy luận District nếu chỉ có Tỉnh & Xã
@@ -494,6 +516,19 @@ export const createReturnShipment = async (user, payload = {}) => {
     ? `RET-${order.orderCode}-R${previousReturnCount}`
     : `RET-${order.orderCode}`;
 
+  if (!isSale && RentalOrder.db?.readyState === 1) {
+    const versionFilter = order.returnFlowVersion == null
+      ? { $or: [{ returnFlowVersion: 0 }, { returnFlowVersion: null }, { returnFlowVersion: { $exists: false } }] }
+      : { returnFlowVersion: order.returnFlowVersion };
+    const claimedRental = await RentalOrder.updateOne(
+      { _id: order._id, ...versionFilter },
+      { $inc: { returnFlowVersion: 1 } }
+    );
+    if (claimedRental.matchedCount !== 1) {
+      throw fail('Đơn thuê vừa có yêu cầu thu hồi khác đang xử lý, vui lòng tải lại.', 409);
+    }
+  }
+
   const ghnRes = await ghnService.createGHNOrder({
     shopId: storeReceiver.ghnShopId,
     paymentTypeId: 2, // Chiều thu hồi: Shop / Branch Manager (Người nhận) chịu cước và thanh toán cho shipper
@@ -519,7 +554,7 @@ export const createReturnShipment = async (user, payload = {}) => {
     length: effectiveLength,
     width: effectiveWidth,
     height: effectiveHeight,
-    items: isSale ? salePrep.ghnItems : [],
+    items: isSale ? salePrep.ghnItems : (rentalPrep?.ghnItems || []),
     note: isSale
       ? `[HÀNG MUA HOÀN TRẢ VỀ CỬA HÀNG] ${effectiveNote}`
       : `[ĐỒ THUÊ HOÀN TRẢ VỀ CỬA HÀNG] ${effectiveNote}`,
@@ -545,6 +580,7 @@ export const createReturnShipment = async (user, payload = {}) => {
       width: effectiveWidth,
       height: effectiveHeight,
       note: effectiveNote,
+      items: rentalPrep?.snapshotItems || [],
       initialDescription,
     });
   }
@@ -778,13 +814,7 @@ const updateOrderStatusOnDelivered = async (shipment, actionTime) => {
         await rental.save();
       }
     } else if (shipment.shipmentType === 'return') {
-      // Vận đơn thu hồi đã giao đồ về Showroom:
-      // - Giữ nguyên depositStatus = 'held' (tuyệt đối KHÔNG tự ý hoàn tiền trước khi Shop KCS)
-      // - Ghi nhận mốc bưu tá giao về shop để mở khóa quyền tải returnReceivedVideo
-      await RentalOrder.updateOne(
-        { _id: shipment.orderId },
-        { $set: { lastReturnDeliveredAt: actionTime } }
-      );
+      // Vận đơn thu hồi đã giao về Showroom; giữ nguyên tiền cọc chờ Shop KCS.
     }
   }
 };

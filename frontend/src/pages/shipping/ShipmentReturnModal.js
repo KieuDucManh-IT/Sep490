@@ -65,11 +65,23 @@ export default function ShipmentReturnModal({
   orderItemsProp = null,
 }) {
   const isSale = orderType === 'sale';
-  const saleItems = React.useMemo(() => {
-    if (!isSale || !order) return [];
+  const itemIdOf = (it) => String(it._id || it.id || it.detailId || '');
+  const getItemMaxQty = useCallback(
+    (it) => Math.max(1, Number(isSale ? it.quantity : (it.remainingQuantity ?? it.quantity)) || 1),
+    [isSale]
+  );
+  const defaultReturnNote = isSale
+    ? 'Khách hàng gửi trả lại sản phẩm mua về cửa hàng'
+    : (isCustomer ? 'Khách hàng gửi trả lại trang phục thuê về cửa hàng' : 'Thu hồi trang phục cho thuê hoàn trả về shop');
+  const allOrderItems = React.useMemo(() => {
+    if (!order) return [];
     const list = orderItemsProp || order.items || order.details || [];
     return Array.isArray(list) ? list : [];
-  }, [isSale, order, orderItemsProp]);
+  }, [order, orderItemsProp]);
+  const selectableItems = React.useMemo(() => {
+    if (isSale) return allOrderItems;
+    return allOrderItems.filter((it) => Number(it.remainingQuantity ?? it.quantity ?? 1) > 0);
+  }, [isSale, allOrderItems]);
 
   const {
     provinces,
@@ -92,13 +104,7 @@ export default function ShipmentReturnModal({
   const [height, setHeight] = useState(10);
   const [reason, setReason] = useState('');
   const [selectedMap, setSelectedMap] = useState({});
-  const [note, setNote] = useState(
-    isSale
-      ? 'Khách hàng gửi trả lại sản phẩm mua về cửa hàng'
-      : isCustomer
-        ? 'Khách hàng gửi trả lại trang phục thuê về cửa hàng'
-        : 'Thu hồi trang phục cho thuê hoàn trả về shop'
-  );
+  const [note, setNote] = useState(defaultReturnNote);
 
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -138,26 +144,21 @@ export default function ShipmentReturnModal({
     setLength(sourceShipment?.length ? Number(sourceShipment.length) : 20);
     setWidth(sourceShipment?.width ? Number(sourceShipment.width) : 20);
     setHeight(sourceShipment?.height ? Number(sourceShipment.height) : 10);
-    setNote(
-      sourceShipment?.note ||
-        (isSale
-          ? 'Khách hàng gửi trả lại sản phẩm mua về cửa hàng'
-          : isCustomer
-            ? 'Khách hàng gửi trả lại trang phục thuê về cửa hàng'
-            : 'Thu hồi trang phục cho thuê hoàn trả về shop')
-    );
+    setNote(sourceShipment?.note || defaultReturnNote);
     setReason('');
-    if (isSale) {
+    if (selectableItems.length > 0) {
       const initMap = {};
-      saleItems.forEach((it) => {
-        const dId = String(it._id || it.id || it.detailId || '');
-        if (dId) initMap[dId] = { checked: true, quantity: Number(it.quantity || 1) };
+      selectableItems.forEach((it) => {
+        const dId = itemIdOf(it);
+        if (dId) initMap[dId] = { checked: true, quantity: getItemMaxQty(it) };
       });
       setSelectedMap(initMap);
+    } else {
+      setSelectedMap({});
     }
     setErrorMsg('');
     setCooldown(0);
-  }, [show, order, initialShipment, isSale, isCustomer, saleItems]);
+  }, [show, order, initialShipment, isSale, isCustomer, selectableItems, defaultReturnNote, getItemMaxQty]);
 
   // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment (không ghi đè input người dùng)
   useEffect(() => {
@@ -229,19 +230,19 @@ export default function ShipmentReturnModal({
       return;
     }
 
-    const selectedSaleItems = isSale
-      ? saleItems
-          .map((it) => {
-            const dId = String(it._id || it.id || it.detailId || '');
-            const sel = selectedMap[dId];
-            if (!sel?.checked) return null;
-            const qty = Math.max(1, Math.min(Number(it.quantity || 1), Number(sel.quantity || 1)));
-            return { salesOrderDetailId: dId, quantityReturned: qty };
-          })
-          .filter(Boolean)
-      : [];
+    const selectedItems = selectableItems
+      .map((it) => {
+        const dId = itemIdOf(it);
+        const sel = selectedMap[dId];
+        if (!dId || !sel?.checked) return null;
+        const qty = Math.max(1, Math.min(getItemMaxQty(it), Number(sel.quantity || 1)));
+        return isSale
+          ? { salesOrderDetailId: dId, quantityReturned: qty }
+          : { rentalOrderDetailId: dId, quantityReturned: qty };
+      })
+      .filter(Boolean);
 
-    if (isSale && !selectedSaleItems.length) {
+    if ((isSale || selectableItems.length > 0) && !selectedItems.length) {
       setErrorMsg('Vui lòng chọn ít nhất 1 sản phẩm cần hoàn trả.');
       return;
     }
@@ -272,7 +273,9 @@ export default function ShipmentReturnModal({
         width: Number(width) || 20,
         height: Number(height) || 10,
         note: note.trim(),
-        ...(isSale ? { reason: reason.trim(), items: selectedSaleItems } : {}),
+        ...(isSale
+          ? { reason: reason.trim(), items: selectedItems }
+          : (selectedItems.length > 0 ? { items: selectedItems } : {})),
       };
 
       const res = await createReturnShipmentApi(payload);
@@ -293,27 +296,56 @@ export default function ShipmentReturnModal({
 
   if (!show || !order) return null;
 
-  const isFullSaleSelected = isSale && saleItems.length > 0 && saleItems.every((it) => {
-    const dId = String(it._id || it.id || it.detailId || '');
-    const sel = selectedMap[dId];
-    return sel?.checked && Number(sel.quantity || 1) === Number(it.quantity || 1);
+  const isFullSelection = selectableItems.length > 0 && selectableItems.every((it) => {
+    const sel = selectedMap[itemIdOf(it)];
+    return sel?.checked && Number(sel.quantity || 1) === getItemMaxQty(it);
   });
+  const selectedQtyOf = (it) => {
+    const sel = selectedMap[itemIdOf(it)];
+    if (!sel?.checked) return 0;
+    return Math.max(1, Math.min(getItemMaxQty(it), Number(sel.quantity || 1)));
+  };
   const netMerchandise = Math.max(0, Number(order.subtotal || 0) - Number(order.discountAmount || 0))
     || Math.max(0, Number(order.totalAmount || 0) - Number(order.shippingFee || 0));
-  const rawSubtotal = saleItems.reduce((sum, d) => sum + Number(d.lineTotal || 0), 0);
-  const partialRefundSum = saleItems.reduce((sum, it) => {
-    const dId = String(it._id || it.id || it.detailId || '');
-    const sel = selectedMap[dId];
-    if (!sel?.checked) return sum;
-    const qty = Math.max(1, Math.min(Number(it.quantity || 1), Number(sel.quantity || 1)));
+  const rawSubtotal = selectableItems.reduce((sum, d) => sum + Number(d.lineTotal || 0), 0);
+  const partialSaleRefundSum = selectableItems.reduce((sum, it) => {
+    const qty = selectedQtyOf(it);
+    if (!qty) return sum;
     const proportion = rawSubtotal > 0 ? Number(it.lineTotal || 0) / rawSubtotal : 0;
-    return sum + Math.round(netMerchandise * proportion * (qty / Number(it.quantity || 1)));
+    return sum + Math.round(netMerchandise * proportion * (qty / Math.max(1, Number(it.quantity || 1))));
   }, 0);
+
+  const rentalRemainingLocked = Math.max(
+    0,
+    Number(order.depositAmount || 0) - Number(order.refundedDepositAmount || 0) - Number(order.deductedDepositAmount || 0)
+  );
+  const totalRentalFeeBasis = allOrderItems.reduce(
+    (sum, d) => sum + Number(d.lineTotal || (Number(d.unitPrice || 0) * Math.max(1, Number(d.quantity || 1)))),
+    0
+  );
+  const estimateRentalItemDeposit = (it, selQty) => {
+    const perUnit = Number(it.depositPerUnit || 0);
+    if (perUnit > 0) return perUnit * selQty;
+    const origQty = Math.max(1, Number(it.quantity || 1));
+    const lineBasis = Number(it.lineTotal || (Number(it.unitPrice || 0) * origQty));
+    if (totalRentalFeeBasis > 0) {
+      return Math.round(Number(order.depositAmount || 0) * (lineBasis / totalRentalFeeBasis) * (selQty / origQty));
+    }
+    return Math.round(rentalRemainingLocked * (selQty / Math.max(1, getItemMaxQty(it))));
+  };
+  const partialRentalDepositSum = Math.min(
+    rentalRemainingLocked,
+    selectableItems.reduce((sum, it) => {
+      const qty = selectedQtyOf(it);
+      return qty ? sum + estimateRentalItemDeposit(it, qty) : sum;
+    }, 0)
+  );
+
   const estimatedRefundAmount = isSale
-    ? (isFullSaleSelected
+    ? (isFullSelection
       ? Number(order.totalAmount || 0)
-      : Math.min(Number(order.paidAmount || order.totalAmount || 0), Math.max(0, partialRefundSum)))
-    : 0;
+      : Math.min(Number(order.paidAmount || order.totalAmount || 0), Math.max(0, partialSaleRefundSum)))
+    : (isFullSelection ? rentalRemainingLocked : partialRentalDepositSum);
 
   const shop = order.locationId?.shopId || {};
   const storeName = shop.name || order.locationId?.name || 'Cửa hàng Vestora';
@@ -474,11 +506,11 @@ export default function ShipmentReturnModal({
                 </div>
               </div>
 
-              {/* Chọn sản phẩm hoàn trả & Lý do (chỉ hiển thị cho đơn mua) */}
-              {isSale && (
+              {/* Chọn sản phẩm hoàn trả */}
+              {(isSale || selectableItems.length > 0) && (
                 <div className="mb-3 p-3 bg-light rounded-3 border">
                   <div className="small fw-bold text-uppercase text-muted mb-2">
-                    3. Chọn sản phẩm cần trả & Lý do
+                    {isSale ? '3. Chọn sản phẩm cần trả & Lý do' : '3. Chọn trang phục trả đợt này'}
                   </div>
                   <div className="table-responsive mb-2">
                     <table className="table table-sm align-middle mb-0 bg-white rounded">
@@ -487,16 +519,23 @@ export default function ShipmentReturnModal({
                           <th style={{ width: 34 }}>Chọn</th>
                           <th>Sản phẩm</th>
                           <th style={{ width: 110 }}>Số lượng trả</th>
-                          <th className="text-end" style={{ width: 120 }}>Giá dòng</th>
+                          <th className="text-end" style={{ width: 120 }}>
+                            {isSale ? 'Giá dòng' : 'Cọc dự kiến'}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {saleItems.map((it) => {
-                          const dId = String(it._id || it.id || it.detailId || '');
-                          const maxQty = Number(it.quantity || 1);
+                        {selectableItems.map((it) => {
+                          const dId = itemIdOf(it);
+                          const maxQty = getItemMaxQty(it);
                           const sel = selectedMap[dId] || { checked: true, quantity: maxQty };
+                          const selQty = Math.max(1, Math.min(maxQty, Number(sel.quantity || 1)));
                           const pName = it.variantId?.productId?.name || it.productName || it.name || 'Sản phẩm';
                           const sizeColor = [it.variantId?.size || it.size, it.variantId?.color || it.color].filter(Boolean).join(' · ');
+                          const returnedQty = Number(it.returnedQuantity || 0);
+                          const rowAmount = isSale
+                            ? Number(it.lineTotal || 0)
+                            : estimateRentalItemDeposit(it, sel.checked ? selQty : maxQty);
                           return (
                             <tr key={dId} className="small">
                               <td>
@@ -515,6 +554,11 @@ export default function ShipmentReturnModal({
                               <td>
                                 <div className="fw-semibold text-dark">{pName}</div>
                                 {sizeColor && <div className="text-muted" style={{ fontSize: '11px' }}>{sizeColor}</div>}
+                                {!isSale && returnedQty > 0 && (
+                                  <div className="text-info" style={{ fontSize: '11px' }}>
+                                    Đã trả {returnedQty}/{it.quantity}
+                                  </div>
+                                )}
                               </td>
                               <td>
                                 {maxQty > 1 ? (
@@ -542,7 +586,7 @@ export default function ShipmentReturnModal({
                                 )}
                               </td>
                               <td className="text-end fw-semibold">
-                                {Number(it.lineTotal || 0).toLocaleString('vi-VN')}đ
+                                {Number(rowAmount || 0).toLocaleString('vi-VN')}đ
                               </td>
                             </tr>
                           );
@@ -551,30 +595,36 @@ export default function ShipmentReturnModal({
                     </table>
                   </div>
                   <div className="d-flex justify-content-between align-items-center small py-2 px-2 bg-white rounded border mb-2">
-                    <span className="text-muted">Dự kiến hoàn vào Ví Vestora sau KCS:</span>
+                    <span className="text-muted">
+                      {isSale
+                        ? 'Dự kiến hoàn vào Ví Vestora sau KCS:'
+                        : 'Dự kiến hoàn cọc đợt này (chưa trừ phí trễ/hư hỏng nếu có):'}
+                    </span>
                     <strong className="text-success">
                       {estimatedRefundAmount.toLocaleString('vi-VN')}đ
-                      {!isFullSaleSelected && <span className="text-muted fw-normal"> (Trả một phần)</span>}
+                      {!isFullSelection && <span className="text-muted fw-normal"> (Trả một phần)</span>}
                     </strong>
                   </div>
-                  <div>
-                    <label className="form-label small text-muted mb-1">Lý do trả hàng (không bắt buộc)</label>
-                    <input
-                      type="text"
-                      maxLength={1000}
-                      className="form-control form-control-sm"
-                      placeholder="VD: Mặc không vừa, muốn đổi trả..."
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                    />
-                  </div>
+                  {isSale && (
+                    <div>
+                      <label className="form-label small text-muted mb-1">Lý do trả hàng (không bắt buộc)</label>
+                      <input
+                        type="text"
+                        maxLength={1000}
+                        className="form-control form-control-sm"
+                        placeholder="VD: Mặc không vừa, muốn đổi trả..."
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Thông số kiện hàng & Ghi chú */}
               <div className="mb-3">
                 <div className="small fw-bold text-uppercase text-muted mb-2">
-                  <Package size={14} className="me-1 inline" /> {isSale ? '4.' : '3.'} Thông số kiện hàng & Ghi chú
+                  <Package size={14} className="me-1 inline" /> {(isSale || selectableItems.length > 0) ? '4.' : '3.'} Thông số kiện hàng & Ghi chú
                 </div>
                 <div className="row g-2 mb-2">
                   <div className="col-6 col-md-3">
@@ -767,8 +817,9 @@ function useRentalEvidence(orderId, orderType = 'rental') {
     setError('');
 
     try {
-      await action();
+      const result = await action();
       await load();
+      return result;
     } catch (err) {
       if (mounted.current) setError(err.message);
     } finally {
@@ -977,6 +1028,7 @@ function RentalReturnWorkflowBody({
 
   const isSale = orderType === 'sale';
   const [confirmed, setConfirmed] = useState(false);
+  const [batchNotice, setBatchNotice] = useState('');
   const errorRef = useRef(null);
 
   useEffect(() => {
@@ -1055,7 +1107,11 @@ function RentalReturnWorkflowBody({
             </section>
 
             <section className="border rounded p-3 mb-3">
-              <h6>Trang phục hoàn trả ({data.items.length})</h6>
+              <h6>
+                {!isSale && data.isPartialOrder
+                  ? `Trang phục trả đợt này (${data.items.length})`
+                  : `Trang phục hoàn trả (${data.items.length})`}
+              </h6>
 
               <table className="table align-middle mb-0">
                 <thead>
@@ -1158,6 +1214,29 @@ function RentalReturnWorkflowBody({
               </section>
             )}
 
+            {!isSale && data.isPartialOrder && !data.completed && (
+              <div className="alert alert-info py-2 small mb-3">
+                Đã hoàn cọc các đợt trước:{' '}
+                <strong>{Number(data.refundedDepositAmount || 0).toLocaleString('vi-VN')}đ</strong>
+                {Number(data.deductedDepositAmount || 0) > 0 && (
+                  <>
+                    {' · '}
+                    Đã khấu trừ:{' '}
+                    <strong>{Number(data.deductedDepositAmount).toLocaleString('vi-VN')}đ</strong>
+                  </>
+                )}
+                {' · '}
+                Cọc còn lại đang giữ:{' '}
+                <strong>{Number(data.remainingDepositAmount || 0).toLocaleString('vi-VN')}đ</strong>
+              </div>
+            )}
+
+            {batchNotice && !data.completed && (
+              <div role="status" className="alert alert-success">
+                {batchNotice}
+              </div>
+            )}
+
             {data.completed && (
               <div role="status" className="alert alert-success">
                 {isSale ? 'Đã trả hàng hoàn tất. ' : 'Đã hoàn tất trả đồ. '}
@@ -1179,20 +1258,26 @@ function RentalReturnWorkflowBody({
             )}
 
             {!data.completed && (!shipment || ['cancelled', 'failed'].includes(status)) && data.canRequest && !readOnly && !isSale && (
-              <div className="mt-3">
-                {['cancelled', 'failed'].includes(status) && (
-                  <div className="alert alert-warning py-2 mb-2 small">
-                    Vận đơn trước đó đã bị {status === 'cancelled' ? 'hủy' : 'thất bại'}. Bạn có thể tạo lại vận đơn thu hồi GHN mới.
-                  </div>
-                )}
-                <button
-                  className="btn btn-primary"
-                  disabled={busy}
-                  onClick={() => run(() => api.request(orderId))}
-                >
-                  Tạo đơn thu hồi đồ (GHN)
-                </button>
-              </div>
+              data.simulatorEnabled ? (
+                <div className="mt-3">
+                  {['cancelled', 'failed'].includes(status) && (
+                    <div className="alert alert-warning py-2 mb-2 small">
+                      Vận đơn trước đó đã bị {status === 'cancelled' ? 'hủy' : 'thất bại'}. Bạn có thể tạo lại vận đơn thu hồi GHN mới.
+                    </div>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    disabled={busy}
+                    onClick={() => run(() => api.request(orderId))}
+                  >
+                    Tạo đơn thu hồi đồ (GHN)
+                  </button>
+                </div>
+              ) : (
+                <div className="alert alert-info py-2 mb-0 small">
+                  Vui lòng dùng nút thu hồi đồ thuê ở màn hình chi tiết đơn hàng để chọn trang phục trả và tạo vận đơn GHN.
+                </div>
+              )
             )}
             {!data.completed && (!shipment || ['cancelled', 'failed'].includes(status)) && data.canRequest && !readOnly && isSale && (
               <div className="alert alert-info py-2 mb-0 small">
@@ -1234,9 +1319,16 @@ function RentalReturnWorkflowBody({
                           !confirmed ||
                           !data.returnReceivedVideo
                         }
-                        onClick={() =>
-                          run(() => api.complete(orderId))
-                        }
+                        onClick={async () => {
+                          const res = await run(() => api.complete(orderId));
+                          const payload = res?.data || res;
+                          if (payload?.isPartial || payload?.status === 'partially_returned') {
+                            setConfirmed(false);
+                            setBatchNotice(
+                              `Đã hoàn ${Number(payload.refundedAmount || 0).toLocaleString('vi-VN')}đ tiền cọc đợt này; đơn chuyển sang trạng thái đang trả một phần.`
+                            );
+                          }
+                        }}
                       >
                         {isSale
                           ? 'Hoàn tất trả hàng & hoàn tiền'

@@ -71,10 +71,12 @@ export default function ShipmentTrackingTimeline({
 
   const completedRentalReturn =
     shipment.shipmentType === 'return' &&
-    rentalStatus === 'returned';
+    shipment.shipmentStatus === 'delivered' &&
+    (rentalStatus === 'returned' || Boolean(shipment.settled));
 
   const completedSalesReturn =
     shipment.shipmentType === 'return' &&
+    shipment.shipmentStatus === 'delivered' &&
     salesReturnStatus === 'completed';
 
   const waitingForInspection =

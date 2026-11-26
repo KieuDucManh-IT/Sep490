@@ -4,7 +4,10 @@ import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
 import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js';
+import { RentalReturn } from '../../models/sale&rental/RentalReturn.js';
+import { RentalReturnDetail } from '../../models/sale&rental/RentalReturnDetail.js';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
+import { getRentalReturnProgress } from '../sale&rental/rentalReturnService.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { Shop } from '../../models/shop/Shop.js';
 import User from '../../models/system/User.js';
@@ -20,6 +23,59 @@ import { syncSingleShipmentFromGHN } from '../shipping/shipmentSyncService.js';
 import { createNotification, notifyRoles } from '../system/notificationService.js';
 
 import { appError as fail } from '../warehouse/shared/errors.js';
+
+/**
+ * Gắn tiến độ trả từng món (returnedQuantity / remainingQuantity) và cờ settled
+ * cho danh sách đơn thuê, dùng chung cho monitoring & rentalOrderService.
+ */
+export const enrichRentalOrdersPartialProgress = async (orders = [], details = [], shipments = []) => {
+  const orderIds = orders.map((o) => o._id);
+  const completedReturns = orderIds.length
+    ? await RentalReturn.find({ rentalOrderId: { $in: orderIds }, returnStatus: 'completed' })
+        .select('_id rentalOrderId shipmentId')
+        .lean()
+    : [];
+
+  const completedReturnIds = completedReturns.map((r) => r._id);
+  const settledShipmentIds = new Set(completedReturns.map((r) => String(r.shipmentId)).filter(Boolean));
+  const returnDetails = completedReturnIds.length
+    ? await RentalReturnDetail.find({ rentalReturnId: { $in: completedReturnIds } }).lean()
+    : [];
+
+  const returnedByDetail = new Map();
+  for (const rd of returnDetails) {
+    if (rd.rentalOrderDetailId) {
+      const k = String(rd.rentalOrderDetailId);
+      returnedByDetail.set(k, (returnedByDetail.get(k) || 0) + Number(rd.quantityReturned || 1));
+    }
+  }
+
+  const detailsByOrderId = new Map();
+  for (const d of details) {
+    const k = String(d.rentalOrderId);
+    if (!detailsByOrderId.has(k)) detailsByOrderId.set(k, []);
+    const qty = Number(d.quantity || 1);
+    const returnedQuantity = Math.min(qty, returnedByDetail.get(String(d._id)) || 0);
+    detailsByOrderId.get(k).push({
+      ...d,
+      returnedQuantity,
+      remainingQuantity: Math.max(0, qty - returnedQuantity),
+    });
+  }
+
+  const shipmentsByOrderId = new Map();
+  for (const s of shipments) {
+    const plain = s.toObject ? s.toObject() : s;
+    const k = String(plain.orderId);
+    if (!shipmentsByOrderId.has(k)) shipmentsByOrderId.set(k, []);
+    const isSettled = plain.shipmentType === 'return'
+      && plain.shipmentStatus === 'delivered'
+      && settledShipmentIds.has(String(plain._id));
+    shipmentsByOrderId.get(k).push(isSettled ? { ...plain, settled: true } : plain);
+  }
+
+  return { detailsByOrderId, shipmentsByOrderId };
+};
 
 /**
  * Chọn ra vận đơn đại diện đang hoạt động cho đơn hàng
@@ -388,29 +444,19 @@ export const getRentalOrders = async (user, query = {}) => {
 
   await attachProductImages(details);
 
-  const detailsByOrderId = new Map();
-  details.forEach((item) => {
-    const key = String(item.rentalOrderId);
-    if (!detailsByOrderId.has(key)) detailsByOrderId.set(key, []);
-    detailsByOrderId.get(key).push(item);
-  });
-
-  const shipmentsByOrderId = new Map();
-  shipments.forEach((s) => {
-    const key = String(s.orderId);
-    if (!shipmentsByOrderId.has(key)) shipmentsByOrderId.set(key, []);
-    shipmentsByOrderId.get(key).push(s);
-  });
+  const { detailsByOrderId, shipmentsByOrderId } = await enrichRentalOrdersPartialProgress(
+    orders,
+    details,
+    shipments
+  );
 
   const enrichedOrders = orders.map((ord) => {
     const ordShipments = shipmentsByOrderId.get(String(ord._id)) || [];
+    const ordItems = detailsByOrderId.get(String(ord._id)) || [];
     return {
       ...ord,
-      items: detailsByOrderId.get(String(ord._id)) || [],
-      itemCount: (detailsByOrderId.get(String(ord._id)) || []).reduce(
-        (sum, item) => sum + (item.quantity || 1),
-        0
-      ),
+      items: ordItems,
+      itemCount: ordItems.reduce((sum, item) => sum + (item.quantity || 1), 0),
       shipments: ordShipments,
       shipment: resolvePrimaryShipment(ordShipments),
     };
@@ -511,13 +557,29 @@ export const getRentalOrderById = async (user, id) => {
     if (freshOrder) order = freshOrder;
   }
 
-  const resolvedShipments = shipments.map((s) => (s.toObject ? s.toObject() : s));
+  const [progress, settledReturns] = await Promise.all([
+    getRentalReturnProgress(order._id),
+    RentalReturn.find({ rentalOrderId: order._id, returnStatus: 'completed' }).select('_id shipmentId').lean(),
+  ]);
+  const settledShipmentIds = new Set(settledReturns.map((r) => String(r.shipmentId)).filter(Boolean));
+  const enrichedItems = items.map((it) => {
+    const p = progress.progressByDetailId.get(String(it._id));
+    return p
+      ? { ...it, returnedQuantity: p.returnedQuantity, remainingQuantity: p.remainingQuantity }
+      : { ...it, returnedQuantity: 0, remainingQuantity: Number(it.quantity || 1) };
+  });
+
+  const resolvedShipments = shipments.map((s) => {
+    const plain = s.toObject ? s.toObject() : s;
+    const isSettled = plain.shipmentType === 'return' && plain.shipmentStatus === 'delivered' && settledShipmentIds.has(String(plain._id));
+    return isSettled ? { ...plain, settled: true } : plain;
+  });
   const primaryShipment = resolvePrimaryShipment(resolvedShipments);
   order.shipments = resolvedShipments;
   order.shipment = primaryShipment;
-  await attachProductImages(items);
+  await attachProductImages(enrichedItems);
 
-  return { order, items, shipments: resolvedShipments, shipment: primaryShipment };
+  return { order, items: enrichedItems, shipments: resolvedShipments, shipment: primaryShipment };
 };
 
 /**
@@ -818,8 +880,35 @@ export const getOrderMetrics = async (user, { branchId = '' } = {}) => {
             },
           ],
           escrowHeld: [
-            { $match: { depositStatus: 'held' } },
-            { $group: { _id: null, totalEscrowHeld: { $sum: '$depositAmount' } } },
+            {
+              $match: {
+                depositStatus: { $in: ['held', 'partially_refunded', 'partially_deducted'] },
+                rentalStatus: { $ne: 'returned' },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalEscrowHeld: {
+                  $sum: {
+                    $max: [
+                      0,
+                      {
+                        $subtract: [
+                          '$depositAmount',
+                          {
+                            $add: [
+                              { $ifNull: ['$refundedDepositAmount', 0] },
+                              { $ifNull: ['$deductedDepositAmount', 0] },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
           ],
         },
       },
@@ -959,25 +1048,17 @@ export const getCustomerRentalOrders = async (user, query = {}) => {
     });
   }
 
-  const detailsByOrder = {};
-  for (const d of details) {
-    const oid = String(d.rentalOrderId);
-    if (!detailsByOrder[oid]) detailsByOrder[oid] = [];
-    detailsByOrder[oid].push(d);
-  }
-
-  const shipmentsByOrder = {};
-  for (const s of shipments) {
-    const oid = String(s.orderId);
-    if (!shipmentsByOrder[oid]) shipmentsByOrder[oid] = [];
-    shipmentsByOrder[oid].push(s);
-  }
+  const { detailsByOrderId, shipmentsByOrderId } = await enrichRentalOrdersPartialProgress(
+    orders,
+    details,
+    shipments
+  );
 
   return orders.map((o) => {
-    const ordShipments = shipmentsByOrder[String(o._id)] || [];
+    const ordShipments = shipmentsByOrderId.get(String(o._id)) || [];
     return {
       ...o,
-      items: detailsByOrder[String(o._id)] || [],
+      items: detailsByOrderId.get(String(o._id)) || [],
       shipments: ordShipments,
       shipment: resolvePrimaryShipment(ordShipments),
     };

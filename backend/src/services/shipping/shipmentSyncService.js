@@ -150,11 +150,6 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
               rental.dueDate = new Date(actionTime.getTime() + durationMs);
               await rental.save();
             }
-          } else if (shipment.shipmentType === 'return') {
-            await RentalOrder.updateOne(
-              { _id: shipment.orderId },
-              { $set: { lastReturnDeliveredAt: actionTime } }
-            );
           }
         }
       } else if (mapped.internalStatus === 'shipped' && !shipment.shippedAt) {

@@ -252,6 +252,7 @@ export const normalizeShipmentDisplayItems = (items = [], orderItems = []) => {
     const matched = orderList.find(
       (oi) =>
         (it.salesOrderDetailId && String(oi._id) === String(it.salesOrderDetailId)) ||
+        (it.rentalOrderDetailId && String(oi._id) === String(it.rentalOrderDetailId)) ||
         (it.sku && (oi.variantId?.sku === it.sku || oi.sku === it.sku))
     );
     const v = it.variantId || matched?.variantId;

@@ -1525,14 +1525,25 @@ export default function OrderTrackingDetailModal({
               : order.returnStatus === 'completed';
             const returnStatus = latestReturn?.shipmentStatus;
             const hasActiveReturn = latestReturn && ['preparing', 'shipped'].includes(returnStatus);
-            const isReturnDelivered = returnStatus === 'delivered';
+            const isReturnDelivered = Boolean(latestReturn && returnStatus === 'delivered' && !latestReturn.settled);
+            const isPartiallyReturnedRental = isRental && order.rentalStatus === 'partially_returned';
+            const remainingRentalCount = isRental
+              ? orderItems.reduce(
+                  (sum, it) =>
+                    sum +
+                    (it.remainingQuantity != null
+                      ? Number(it.remainingQuantity)
+                      : Number(it.quantity || 1)),
+                  0
+                )
+              : 0;
 
             const saleDeliveredAt = latestOutbound?.deliveredAt || order.completedAt;
             const withinSale24h = Boolean(
               saleDeliveredAt && (Date.now() - new Date(saleDeliveredAt).getTime() <= 24 * 60 * 60 * 1000)
             );
             const canCustomerReturn = isRental
-              ? (['renting', 'overdue'].includes(order.rentalStatus) && !hasActiveReturn && !isReturnDelivered && !isOrderReturned)
+              ? (['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus) && !hasActiveReturn && !isReturnDelivered && !isOrderReturned)
               : (order.orderStatus === 'completed' && order.paymentStatus === 'paid' && withinSale24h && !hasActiveReturn && !isReturnDelivered && !isOrderReturned);
             const isSaleExpired24h = !isRental && order.orderStatus === 'completed' && order.paymentStatus === 'paid' && !withinSale24h && !hasActiveReturn && !isReturnDelivered && !isOrderReturned;
 
@@ -1695,7 +1706,7 @@ export default function OrderTrackingDetailModal({
                       <span className="tracking-badge-delivered" style={{ background: '#DCFCE7', color: '#15803D' }}>
                         <CheckCircle size={13} /> {isRental ? 'Đã trả đồ & hoàn cọc' : 'Đã trả hàng & hoàn tiền'}
                       </span>
-                    ) : latestReturn?.shipmentStatus ? (
+                    ) : latestReturn?.shipmentStatus && (!isPartiallyReturnedRental || hasActiveReturn || isReturnDelivered) ? (
                       <span className={`tracking-status-badge status-${latestReturn.shipmentStatus}`}>
                         {latestReturn.shipmentStatus === 'delivered'
                           ? 'Đã về shop, chờ nghiệm thu'
@@ -1790,6 +1801,13 @@ export default function OrderTrackingDetailModal({
                         textAlign: 'center',
                       }}
                     >
+                      {isPartiallyReturnedRental && (
+                        <div className="alert alert-success py-2 px-3 small mb-2 text-start">
+                          Đơn thuê đã hoàn trả một phần (đã hoàn cọc{' '}
+                          <strong>{formatCurrencyVND(order.refundedDepositAmount || 0)}</strong>). Còn{' '}
+                          <strong>{remainingRentalCount}</strong> trang phục cần gửi trả tiếp.
+                        </div>
+                      )}
                       {latestReturn?.shipmentStatus === 'cancelled' && (
                         <div className="alert alert-warning py-1 px-2 small mb-2 text-start">
                           Vận đơn thu hồi trước đó đã bị hủy. Quý khách có thể gửi lại yêu cầu trả mới bất kỳ lúc nào.

@@ -1,15 +1,31 @@
 import { memo } from 'react';
-import { Search, ShieldCheck, Edit3, Sparkles } from 'lucide-react';
-import { fmtCurrency, formatDate, isRentalConfigured } from '../utils/pricingHelpers';
+import {
+  Search,
+  Edit3,
+  Sparkles,
+  Calendar,
+  ShoppingBag,
+  Layers,
+  Tag,
+} from 'lucide-react';
+import {
+  fmtCurrency,
+  formatDate,
+  truncateText,
+  getProductTagMeta,
+  PRODUCT_NAME_MAX_LENGTH,
+  PRODUCT_CODE_MAX_LENGTH,
+} from '../utils/pricingHelpers';
+
+const TYPE_ICONS = {
+  rental: Calendar,
+  sale: ShoppingBag,
+  both: Layers,
+  unknown: Tag,
+};
 
 /**
- * Bảng hiển thị danh sách trang phục kèm bảng giá và tiền cọc
- * Tối ưu hóa UI/UX:
- * - Skeleton loading chống CLS (Cumulative Layout Shift)
- * - Vector icon thay thế hoàn toàn emoji
- * - Tabular numbers căn chỉnh số tiền không bị nhảy layout
- * - Trạng thái rỗng (Empty state) trực quan có nút xóa bộ lọc
- * - Memoized component chống lãng phí re-render
+ * Bảng hiển thị danh sách trang phục kèm loại hình, bảng giá và tiền cọc
  */
 function PricingTable({
   items,
@@ -26,6 +42,9 @@ function PricingTable({
             <tr>
               <th scope="col" className="pricing-th th-product">
                 MẪU TRANG PHỤC
+              </th>
+              <th scope="col" className="pricing-th th-type">
+                LOẠI HÌNH
               </th>
               <th scope="col" className="pricing-th th-category">
                 DANH MỤC
@@ -63,12 +82,13 @@ function PricingTable({
                     <div className="pricing-skeleton-pill shimmer" />
                   </td>
                   <td className="pricing-td">
-                    <div className="pricing-skeleton-line medium shimmer" />
-                    <div className="pricing-skeleton-line tiny shimmer" />
+                    <div className="pricing-skeleton-pill shimmer" />
                   </td>
                   <td className="pricing-td">
                     <div className="pricing-skeleton-line medium shimmer" />
-                    <div className="pricing-skeleton-line tiny shimmer" />
+                  </td>
+                  <td className="pricing-td">
+                    <div className="pricing-skeleton-line medium shimmer" />
                   </td>
                   <td className="pricing-td">
                     <div className="pricing-skeleton-line medium shimmer" />
@@ -79,130 +99,151 @@ function PricingTable({
                 </tr>
               ))
             ) : (
-              items.map((it) => (
-                <tr key={it.id} className="pricing-tr">
-                  {/* Product Name & Code */}
-                  <td className="pricing-td td-product">
-                    <div className="pricing-product-info">
-                      {it.image ? (
-                        <img
-                          src={it.image}
-                          alt={it.name}
-                          loading="lazy"
-                          className="pricing-product-thumb"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            const fallback = e.currentTarget.nextElementSibling;
-                            if (fallback) {
-                              fallback.style.display = 'flex';
-                            }
-                          }}
-                        />
-                      ) : null}
-                      <div
-                        className="pricing-product-avatar-fallback"
-                        style={{ display: it.image ? 'none' : 'flex' }}
-                        aria-hidden="true"
-                      >
-                        <Sparkles size={16} />
-                      </div>
-                      <div>
-                        <div className="pricing-product-code-row">
-                          <span className="pricing-product-code">{it.code}</span>
-                          {it.variantsCount > 0 ? (
-                            <span className="pricing-variants-badge">
-                              {it.variantsCount} kích cỡ/màu
-                            </span>
-                          ) : null}
+              items.map((it) => {
+                const tagMeta = getProductTagMeta(it.tag);
+                const TypeIcon = TYPE_ICONS[tagMeta.key] || Tag;
+                const isSaleOnly = tagMeta.key === 'sale';
+
+                return (
+                  <tr key={it.id} className="pricing-tr">
+                    {/* Product Name, Code & Single Pricing Status */}
+                    <td className="pricing-td td-product">
+                      <div className="pricing-product-info">
+                        {it.image ? (
+                          <img
+                            src={it.image}
+                            alt={it.name}
+                            loading="lazy"
+                            className="pricing-product-thumb"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.nextElementSibling;
+                              if (fallback) {
+                                fallback.style.display = 'flex';
+                              }
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className="pricing-product-avatar-fallback"
+                          style={{ display: it.image ? 'none' : 'flex' }}
+                          aria-hidden="true"
+                        >
+                          <Sparkles size={16} />
                         </div>
-                        <div className="pricing-product-name">{it.name}</div>
-                        {/* TASK-008: trạng thái định giá & cấu hình giá */}
-                        <div className="d-flex align-items-center gap-1 flex-wrap mt-1">
-                          {it.isSetPrice ? (
-                            <span className="badge bg-success-subtle text-success border border-success-subtle">
-                              Đã định giá
+                        <div className="pricing-product-meta">
+                          <div className="pricing-product-code-row">
+                            <span className="pricing-product-code" title={it.code}>
+                              {truncateText(it.code, PRODUCT_CODE_MAX_LENGTH)}
                             </span>
-                          ) : (
-                            <span className="badge bg-warning text-dark" title={it.missingPrices?.length ? `Còn thiếu: ${it.missingPrices.join(', ')}` : undefined}>
-                              Chưa định giá
+                            {it.variantsCount > 0 ? (
+                              <span className="pricing-variants-text">
+                                • {it.variantsCount} phân loại
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="pricing-product-name" title={it.name}>
+                            {truncateText(it.name, PRODUCT_NAME_MAX_LENGTH)}
+                          </div>
+                          <div className="pricing-product-subrow">
+                            <span
+                              className={`pricing-status-inline ${it.isSetPrice ? 'is-set' : 'is-unset'}`}
+                              title={it.missingPrices?.length ? `Còn thiếu: ${it.missingPrices.join(', ')}` : undefined}
+                            >
+                              <span className="pricing-status-dot" aria-hidden="true" />
+                              {it.isSetPrice ? 'Đã định giá' : 'Chưa định giá'}
                             </span>
-                          )}
-                          {isRentalConfigured(it) ? (
-                            <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle">
-                              Đã cấu hình giá
+                            <span className="pricing-product-updated">
+                              • {formatDate(it.updatedAt)}
                             </span>
-                          ) : (
-                            <span className="badge bg-light text-muted border" title="Chưa có giá thuê hoặc tiền cọc">
-                              Chưa cấu hình giá
-                            </span>
-                          )}
-                        </div>
-                        <div className="pricing-product-updated">
-                          Cập nhật: {formatDate(it.updatedAt)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  {/* Category Badge */}
-                  <td className="pricing-td">
-                    <span className="pricing-category-tag">{it.category}</span>
-                  </td>
-
-                  {/* Rental Price Per Day */}
-                  <td className="pricing-td">
-                    <div className="pricing-cell-rental">
-                      {fmtCurrency(it.rentalPricePerDay)}
-                    </div>
-                    {it.salePrice > 0 && it.rentalPricePerDay > 0 ? (
-                      <div className="pricing-rental-ratio">
-                        ≈ {Math.round((it.rentalPricePerDay / it.salePrice) * 100)}% giá trị
-                      </div>
-                    ) : null}
-                  </td>
-
-                  {/* Deposit Amount */}
-                  <td className="pricing-td">
-                    <div className="pricing-deposit-amount-row">
-                      <ShieldCheck size={15} color="#059669" aria-hidden="true" />
-                      <span className="pricing-cell-deposit">
-                        {fmtCurrency(it.deposit)}
+                    {/* Dedicated Type Column (Đồ thuê / Đồ mua / Thuê & Mua) */}
+                    <td className="pricing-td">
+                      <span className={`pricing-type-cell ${tagMeta.toneClass}`}>
+                        <TypeIcon size={14} aria-hidden="true" />
+                        <span>{tagMeta.label}</span>
                       </span>
-                    </div>
-                    {it.salePrice > 0 && it.deposit > 0 ? (
-                      <div className="pricing-deposit-ratio">
-                        ≈ {Math.round((it.deposit / it.salePrice) * 100)}% giá trị
-                      </div>
-                    ) : null}
-                  </td>
+                    </td>
 
-                  {/* Sale / Appraisal Price */}
-                  <td className="pricing-td">
-                    <span className="pricing-cell-sale">
-                      {fmtCurrency(it.salePrice)}
-                    </span>
-                  </td>
+                    {/* Category */}
+                    <td className="pricing-td">
+                      <span className="pricing-category-text" title={it.category}>
+                        {truncateText(it.category, 24)}
+                      </span>
+                    </td>
 
-                  {/* Action Button */}
-                  <td className="pricing-td td-action">
-                    <button
-                      type="button"
-                      className="pricing-edit-btn"
-                      onClick={() => onOpenEdit(it)}
-                      aria-label={`Sửa bảng giá và tiền cọc cho ${it.name}`}
-                    >
-                      <Edit3 size={13.5} className="pricing-edit-icon" aria-hidden="true" />
-                      <span>Sửa giá & cọc</span>
-                    </button>
-                  </td>
-                </tr>
-              ))
+                    {/* Rental Price Per Day */}
+                    <td className="pricing-td">
+                      {isSaleOnly ? (
+                        <span className="pricing-cell-muted" title="Sản phẩm chỉ bán">—</span>
+                      ) : (
+                        <>
+                          <div className="pricing-cell-rental">
+                            {fmtCurrency(it.rentalPricePerDay)}
+                          </div>
+                          {it.salePrice > 0 && it.rentalPricePerDay > 0 ? (
+                            <div className="pricing-rental-ratio">
+                              ≈ {Math.round((it.rentalPricePerDay / it.salePrice) * 100)}% giá trị
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </td>
+
+                    {/* Deposit Amount */}
+                    <td className="pricing-td">
+                      {isSaleOnly ? (
+                        <span className="pricing-cell-muted" title="Sản phẩm chỉ bán">—</span>
+                      ) : (
+                        <>
+                          <div className="pricing-cell-deposit">
+                            {fmtCurrency(it.deposit)}
+                          </div>
+                          {it.salePrice > 0 && it.deposit > 0 ? (
+                            <div className="pricing-deposit-ratio">
+                              ≈ {Math.round((it.deposit / it.salePrice) * 100)}% giá trị
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </td>
+
+                    {/* Sale / Appraisal Price */}
+                    <td className="pricing-td">
+                      {it.salePrice > 0 ? (
+                        <span className="pricing-cell-sale">
+                          {fmtCurrency(it.salePrice)}
+                        </span>
+                      ) : (
+                        <span className="pricing-cell-muted">—</span>
+                      )}
+                    </td>
+
+                    {/* Action Button */}
+                    <td className="pricing-td td-action">
+                      <button
+                        type="button"
+                        className="pricing-edit-btn"
+                        onClick={() => onOpenEdit(it)}
+                        aria-label={`Sửa bảng giá và tiền cọc cho ${it.name}`}
+                      >
+                        <Edit3 size={14} className="pricing-edit-icon" aria-hidden="true" />
+                        <span>Sửa giá & cọc</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
 
             {/* Empty State */}
             {items.length === 0 && !loading ? (
               <tr>
-                <td colSpan="6" className="pricing-empty-cell">
+                <td colSpan="7" className="pricing-empty-cell">
                   <div className="pricing-empty-container">
                     <div className="pricing-empty-icon-wrap" aria-hidden="true">
                       <Search size={24} />
@@ -211,7 +252,7 @@ function PricingTable({
                       Không tìm thấy trang phục phù hợp
                     </h4>
                     <p className="pricing-empty-desc">
-                      Vui lòng thử lại với từ khóa khác hoặc chọn danh mục "Tất cả danh mục".
+                      Vui lòng thử lại với từ khóa khác hoặc đặt lại bộ lọc về mặc định.
                     </p>
                     {hasActiveFilters ? (
                       <button

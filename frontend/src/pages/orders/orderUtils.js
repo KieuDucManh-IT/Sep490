@@ -255,3 +255,23 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     chipClass: 'confirmed',
   };
 };
+
+/** Trích xuất lý do hủy đơn từ field riêng, ghi chú đơn hoặc vận đơn đã hủy. */
+export const extractOrderCancelReason = (order, shipments = []) => {
+  if (order?.cancelReason && String(order.cancelReason).trim()) {
+    return String(order.cancelReason).trim();
+  }
+  const note = String(order?.note || '');
+  const rentalMatch = note.match(/Hủy đơn:\s*([^;]+)/);
+  if (rentalMatch?.[1]?.trim()) {
+    return rentalMatch[1].trim();
+  }
+  const ghnMatch = note.match(/\[Hủy vận đơn GHN:\s*([^\]]+)\]/);
+  if (ghnMatch?.[1]?.trim()) {
+    return ghnMatch[1].trim();
+  }
+  const cancelledShip = (Array.isArray(shipments) ? shipments : []).find(
+    (s) => s?.shipmentStatus === 'cancelled' && s?.cancellationReason
+  );
+  return cancelledShip?.cancellationReason ? String(cancelledShip.cancellationReason).trim() : '';
+};

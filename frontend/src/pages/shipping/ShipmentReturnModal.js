@@ -61,7 +61,16 @@ export default function ShipmentReturnModal({
   initialShipment = null,
   onSuccess,
   isCustomer = false,
+  orderType = 'rental',
+  orderItemsProp = null,
 }) {
+  const isSale = orderType === 'sale';
+  const saleItems = React.useMemo(() => {
+    if (!isSale || !order) return [];
+    const list = orderItemsProp || order.items || order.details || [];
+    return Array.isArray(list) ? list : [];
+  }, [isSale, order, orderItemsProp]);
+
   const {
     provinces,
     wards,
@@ -81,10 +90,14 @@ export default function ShipmentReturnModal({
   const [length, setLength] = useState(20);
   const [width, setWidth] = useState(20);
   const [height, setHeight] = useState(10);
+  const [reason, setReason] = useState('');
+  const [selectedMap, setSelectedMap] = useState({});
   const [note, setNote] = useState(
-    isCustomer
-      ? 'Khách hàng gửi trả lại trang phục thuê về cửa hàng'
-      : 'Thu hồi trang phục cho thuê hoàn trả về shop'
+    isSale
+      ? 'Khách hàng gửi trả lại sản phẩm mua về cửa hàng'
+      : isCustomer
+        ? 'Khách hàng gửi trả lại trang phục thuê về cửa hàng'
+        : 'Thu hồi trang phục cho thuê hoàn trả về shop'
   );
 
   const [submitting, setSubmitting] = useState(false);
@@ -100,7 +113,7 @@ export default function ShipmentReturnModal({
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment (Hỗ trợ GHN v3)
+  // Khởi tạo dữ liệu form khi mở modal hoặc đổi đơn
   useEffect(() => {
     if (!show || !order) return;
 
@@ -108,6 +121,49 @@ export default function ShipmentReturnModal({
       receiverName,
       receiverPhone,
       detailedAddress,
+    } = extractOrderAddressInfo(order);
+
+    const prevSender = initialShipment?.senderInfo || initialShipment?.receiverInfo || {};
+    setFromName(prevSender.name || receiverName);
+    setFromPhone(prevSender.phone || receiverPhone);
+    setFromAddress(prevSender.address || detailedAddress);
+
+    // Tự động kế thừa kích thước & cân nặng từ đơn gửi đi (Outbound) nếu có
+    const outbound = (order?.shipments && Array.isArray(order.shipments))
+      ? order.shipments.find((s) => s.shipmentType === 'outbound')
+      : null;
+    const sourceShipment = initialShipment || outbound;
+
+    setWeight(sourceShipment?.weight ? Number(sourceShipment.weight) : 500);
+    setLength(sourceShipment?.length ? Number(sourceShipment.length) : 20);
+    setWidth(sourceShipment?.width ? Number(sourceShipment.width) : 20);
+    setHeight(sourceShipment?.height ? Number(sourceShipment.height) : 10);
+    setNote(
+      sourceShipment?.note ||
+        (isSale
+          ? 'Khách hàng gửi trả lại sản phẩm mua về cửa hàng'
+          : isCustomer
+            ? 'Khách hàng gửi trả lại trang phục thuê về cửa hàng'
+            : 'Thu hồi trang phục cho thuê hoàn trả về shop')
+    );
+    setReason('');
+    if (isSale) {
+      const initMap = {};
+      saleItems.forEach((it) => {
+        const dId = String(it._id || it.id || it.detailId || '');
+        if (dId) initMap[dId] = { checked: true, quantity: Number(it.quantity || 1) };
+      });
+      setSelectedMap(initMap);
+    }
+    setErrorMsg('');
+    setCooldown(0);
+  }, [show, order, initialShipment, isSale, isCustomer, saleItems]);
+
+  // Tự động khớp Tỉnh / Xã từ thông tin đơn hàng / initialShipment (không ghi đè input người dùng)
+  useEffect(() => {
+    if (!show || !order || provinces.length === 0) return;
+
+    const {
       provHint,
       wardHint,
       wardCodeHint,
@@ -116,44 +172,20 @@ export default function ShipmentReturnModal({
     } = extractOrderAddressInfo(order);
 
     const prevSender = initialShipment?.senderInfo || initialShipment?.receiverInfo || {};
-    const finalName = prevSender.name || receiverName;
-    const finalPhone = prevSender.phone || receiverPhone;
-    const finalAddress = prevSender.address || detailedAddress;
     const finalProvId = prevSender.provinceId || provinceIdHint;
     const finalWardCode = prevSender.wardCode || wardCodeHint;
 
-    setFromName(finalName);
-    setFromPhone(finalPhone);
-    setFromAddress(finalAddress);
-
-    // Tự động kế thừa kích thước & cân nặng từ đơn gửi đi (Outbound) nếu có
-    const outbound = (order?.shipments && Array.isArray(order.shipments))
-      ? order.shipments.find((s) => s.shipmentType === 'outbound')
-      : null;
-    const sourceShipment = initialShipment || outbound;
-
-    if (sourceShipment?.weight) setWeight(Number(sourceShipment.weight));
-    if (sourceShipment?.length) setLength(Number(sourceShipment.length));
-    if (sourceShipment?.width) setWidth(Number(sourceShipment.width));
-    if (sourceShipment?.height) setHeight(Number(sourceShipment.height));
-    if (sourceShipment?.note) setNote(sourceShipment.note);
-    setErrorMsg('');
-    setCooldown(0);
-
-    // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã cho điểm lấy đồ
-    if (provinces.length > 0) {
-      let targetProvId = finalProvId ? String(finalProvId) : '';
-      const exists = targetProvId && provinces.some((p) => String(p._id || p.ProvinceID) === targetProvId);
-      if (!exists) {
-        const matchedProv = autoMatchProvince(targetProvId || provHint, fullAddr, provinces);
-        if (matchedProv) {
-          targetProvId = String(matchedProv._id || matchedProv.ProvinceID);
-        }
+    let targetProvId = finalProvId ? String(finalProvId) : '';
+    const exists = targetProvId && provinces.some((p) => String(p._id || p.ProvinceID) === targetProvId);
+    if (!exists) {
+      const matchedProv = autoMatchProvince(targetProvId || provHint, fullAddr, provinces);
+      if (matchedProv) {
+        targetProvId = String(matchedProv._id || matchedProv.ProvinceID);
       }
+    }
 
-      if (targetProvId) {
-        handleProvinceChange(targetProvId, wardHint, finalWardCode, fullAddr);
-      }
+    if (targetProvId) {
+      handleProvinceChange(targetProvId, wardHint, finalWardCode, fullAddr);
     }
   }, [show, order, initialShipment, provinces, handleProvinceChange]);
 
@@ -197,6 +229,23 @@ export default function ShipmentReturnModal({
       return;
     }
 
+    const selectedSaleItems = isSale
+      ? saleItems
+          .map((it) => {
+            const dId = String(it._id || it.id || it.detailId || '');
+            const sel = selectedMap[dId];
+            if (!sel?.checked) return null;
+            const qty = Math.max(1, Math.min(Number(it.quantity || 1), Number(sel.quantity || 1)));
+            return { salesOrderDetailId: dId, quantityReturned: qty };
+          })
+          .filter(Boolean)
+      : [];
+
+    if (isSale && !selectedSaleItems.length) {
+      setErrorMsg('Vui lòng chọn ít nhất 1 sản phẩm cần hoàn trả.');
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg('');
     try {
@@ -208,6 +257,7 @@ export default function ShipmentReturnModal({
 
       const payload = {
         orderId: order._id,
+        orderType,
         fromName: fromName.trim(),
         fromPhone: cleanPhone,
         fromAddress: fromAddress.trim(),
@@ -222,6 +272,7 @@ export default function ShipmentReturnModal({
         width: Number(width) || 20,
         height: Number(height) || 10,
         note: note.trim(),
+        ...(isSale ? { reason: reason.trim(), items: selectedSaleItems } : {}),
       };
 
       const res = await createReturnShipmentApi(payload);
@@ -241,6 +292,28 @@ export default function ShipmentReturnModal({
   };
 
   if (!show || !order) return null;
+
+  const isFullSaleSelected = isSale && saleItems.length > 0 && saleItems.every((it) => {
+    const dId = String(it._id || it.id || it.detailId || '');
+    const sel = selectedMap[dId];
+    return sel?.checked && Number(sel.quantity || 1) === Number(it.quantity || 1);
+  });
+  const netMerchandise = Math.max(0, Number(order.subtotal || 0) - Number(order.discountAmount || 0))
+    || Math.max(0, Number(order.totalAmount || 0) - Number(order.shippingFee || 0));
+  const rawSubtotal = saleItems.reduce((sum, d) => sum + Number(d.lineTotal || 0), 0);
+  const partialRefundSum = saleItems.reduce((sum, it) => {
+    const dId = String(it._id || it.id || it.detailId || '');
+    const sel = selectedMap[dId];
+    if (!sel?.checked) return sum;
+    const qty = Math.max(1, Math.min(Number(it.quantity || 1), Number(sel.quantity || 1)));
+    const proportion = rawSubtotal > 0 ? Number(it.lineTotal || 0) / rawSubtotal : 0;
+    return sum + Math.round(netMerchandise * proportion * (qty / Number(it.quantity || 1)));
+  }, 0);
+  const estimatedRefundAmount = isSale
+    ? (isFullSaleSelected
+      ? Number(order.totalAmount || 0)
+      : Math.min(Number(order.paidAmount || order.totalAmount || 0), Math.max(0, partialRefundSum)))
+    : 0;
 
   const shop = order.locationId?.shopId || {};
   const storeName = shop.name || order.locationId?.name || 'Cửa hàng Vestora';
@@ -264,7 +337,9 @@ export default function ShipmentReturnModal({
               </div>
               <div>
                 <h6 className="modal-title fw-bold text-dark mb-0">
-                  {isCustomer ? 'Yêu Cầu Trả Đồ Thuê Qua GHN' : 'Tạo Vận Đơn Thu Hồi Đồ Thuê (GHN)'}
+                  {isSale
+                    ? (isCustomer ? 'Yêu Cầu Trả Hàng Mua Qua GHN' : 'Tạo Vận Đơn Thu Hồi Hàng Mua (GHN)')
+                    : (isCustomer ? 'Yêu Cầu Trả Đồ Thuê Qua GHN' : 'Tạo Vận Đơn Thu Hồi Đồ Thuê (GHN)')}
                 </h6>
                 <small className="text-muted">
                   Đơn hàng: <strong>{order.orderCode}</strong>
@@ -399,10 +474,107 @@ export default function ShipmentReturnModal({
                 </div>
               </div>
 
+              {/* Chọn sản phẩm hoàn trả & Lý do (chỉ hiển thị cho đơn mua) */}
+              {isSale && (
+                <div className="mb-3 p-3 bg-light rounded-3 border">
+                  <div className="small fw-bold text-uppercase text-muted mb-2">
+                    3. Chọn sản phẩm cần trả & Lý do
+                  </div>
+                  <div className="table-responsive mb-2">
+                    <table className="table table-sm align-middle mb-0 bg-white rounded">
+                      <thead className="table-light">
+                        <tr className="small text-muted">
+                          <th style={{ width: 34 }}>Chọn</th>
+                          <th>Sản phẩm</th>
+                          <th style={{ width: 110 }}>Số lượng trả</th>
+                          <th className="text-end" style={{ width: 120 }}>Giá dòng</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {saleItems.map((it) => {
+                          const dId = String(it._id || it.id || it.detailId || '');
+                          const maxQty = Number(it.quantity || 1);
+                          const sel = selectedMap[dId] || { checked: true, quantity: maxQty };
+                          const pName = it.variantId?.productId?.name || it.productName || it.name || 'Sản phẩm';
+                          const sizeColor = [it.variantId?.size || it.size, it.variantId?.color || it.color].filter(Boolean).join(' · ');
+                          return (
+                            <tr key={dId} className="small">
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  className="form-check-input"
+                                  checked={Boolean(sel.checked)}
+                                  onChange={(e) =>
+                                    setSelectedMap((prev) => ({
+                                      ...prev,
+                                      [dId]: { checked: e.target.checked, quantity: sel.quantity || maxQty },
+                                    }))
+                                  }
+                                />
+                              </td>
+                              <td>
+                                <div className="fw-semibold text-dark">{pName}</div>
+                                {sizeColor && <div className="text-muted" style={{ fontSize: '11px' }}>{sizeColor}</div>}
+                              </td>
+                              <td>
+                                {maxQty > 1 ? (
+                                  <div className="d-flex align-items-center gap-1">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={maxQty}
+                                      disabled={!sel.checked}
+                                      className="form-control form-control-sm"
+                                      style={{ width: 62 }}
+                                      value={sel.quantity || 1}
+                                      onChange={(e) => {
+                                        const val = Math.max(1, Math.min(maxQty, Number(e.target.value) || 1));
+                                        setSelectedMap((prev) => ({
+                                          ...prev,
+                                          [dId]: { checked: true, quantity: val },
+                                        }));
+                                      }}
+                                    />
+                                    <span className="text-muted">/ {maxQty}</span>
+                                  </div>
+                                ) : (
+                                  <span>1 / 1</span>
+                                )}
+                              </td>
+                              <td className="text-end fw-semibold">
+                                {Number(it.lineTotal || 0).toLocaleString('vi-VN')}đ
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="d-flex justify-content-between align-items-center small py-2 px-2 bg-white rounded border mb-2">
+                    <span className="text-muted">Dự kiến hoàn vào Ví Vestora sau KCS:</span>
+                    <strong className="text-success">
+                      {estimatedRefundAmount.toLocaleString('vi-VN')}đ
+                      {!isFullSaleSelected && <span className="text-muted fw-normal"> (Trả một phần)</span>}
+                    </strong>
+                  </div>
+                  <div>
+                    <label className="form-label small text-muted mb-1">Lý do trả hàng (không bắt buộc)</label>
+                    <input
+                      type="text"
+                      maxLength={1000}
+                      className="form-control form-control-sm"
+                      placeholder="VD: Mặc không vừa, muốn đổi trả..."
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Thông số kiện hàng & Ghi chú */}
               <div className="mb-3">
                 <div className="small fw-bold text-uppercase text-muted mb-2">
-                  <Package size={14} className="me-1 inline" /> 3. Thông số kiện hàng & Ghi chú
+                  <Package size={14} className="me-1 inline" /> {isSale ? '4.' : '3.'} Thông số kiện hàng & Ghi chú
                 </div>
                 <div className="row g-2 mb-2">
                   <div className="col-6 col-md-3">
@@ -804,8 +976,6 @@ function RentalReturnWorkflowBody({
     useRentalEvidence(orderId, orderType);
 
   const isSale = orderType === 'sale';
-  const [reason, setReason] = useState('');
-
   const [confirmed, setConfirmed] = useState(false);
   const errorRef = useRef(null);
 
@@ -1008,26 +1178,7 @@ function RentalReturnWorkflowBody({
               <p className="text-muted">{data.requestBlockedReason}</p>
             )}
 
-            {isSale && data.canRequest && !readOnly && (
-              <div className="mb-3">
-                <p>Yêu cầu trả lại toàn bộ sản phẩm trong đơn mua.</p>
-
-                <label htmlFor="sales-return-reason" className="form-label">
-                  Lý do trả hàng (không bắt buộc)
-                </label>
-
-                <textarea
-                  id="sales-return-reason"
-                  className="form-control"
-                  maxLength={1000}
-                  value={reason}
-                  disabled={busy}
-                  onChange={event => setReason(event.target.value)}
-                />
-              </div>
-            )}
-
-            {!data.completed && (!shipment || ['cancelled', 'failed'].includes(status)) && data.canRequest && !readOnly && (
+            {!data.completed && (!shipment || ['cancelled', 'failed'].includes(status)) && data.canRequest && !readOnly && !isSale && (
               <div className="mt-3">
                 {['cancelled', 'failed'].includes(status) && (
                   <div className="alert alert-warning py-2 mb-2 small">
@@ -1037,25 +1188,63 @@ function RentalReturnWorkflowBody({
                 <button
                   className="btn btn-primary"
                   disabled={busy}
-                  onClick={() =>
-                    run(() =>
-                      isSale
-                        ? api.request(orderId, reason)
-                        : api.request(orderId)
-                    )
-                  }
+                  onClick={() => run(() => api.request(orderId))}
                 >
-                  {isSale ? 'Tạo đơn trả hàng mua (GHN)' : 'Tạo đơn thu hồi đồ (GHN)'}
+                  Tạo đơn thu hồi đồ (GHN)
                 </button>
+              </div>
+            )}
+            {!data.completed && (!shipment || ['cancelled', 'failed'].includes(status)) && data.canRequest && !readOnly && isSale && (
+              <div className="alert alert-info py-2 mb-0 small">
+                Vui lòng dùng nút tạo yêu cầu trả hàng qua GHN ở màn hình chi tiết đơn hàng để chọn món cần trả và địa chỉ lấy hàng.
               </div>
             )}
 
             {!data.completed &&
               data.canManage &&
               !readOnly && (
-                <>
-                  {data.simulatorEnabled ? (
-                    <div className="mt-3">
+                <div className="mt-3">
+                  {status === 'delivered' ? (
+                    <>
+                      <label className="d-block mb-2">
+                        <input
+                          type="checkbox"
+                          checked={confirmed}
+                          disabled={busy}
+                          onChange={event => setConfirmed(event.target.checked)}
+                        />{' '}
+                        Đã kiểm tra và nhận đủ đồ nguyên vẹn
+                      </label>
+
+                      {!data.returnReceivedVideo && (
+                        <div
+                          role="alert"
+                          className="alert alert-warning py-2"
+                        >
+                          {isSale
+                            ? 'Shop cần tải video nhận hàng trả ở mục phía trên trước khi hoàn tất và hoàn tiền.'
+                            : 'Shop cần tải video nhận đồ trả ở mục phía trên trước khi hoàn tất và hoàn cọc.'}
+                        </div>
+                      )}
+
+                      <button
+                        className="btn btn-success"
+                        disabled={
+                          busy ||
+                          !confirmed ||
+                          !data.returnReceivedVideo
+                        }
+                        onClick={() =>
+                          run(() => api.complete(orderId))
+                        }
+                      >
+                        {isSale
+                          ? 'Hoàn tất trả hàng & hoàn tiền'
+                          : 'Hoàn tất trả đồ & hoàn cọc'}
+                      </button>
+                    </>
+                  ) : data.simulatorEnabled && shipment?.isSimulated ? (
+                    <>
                       {status === 'preparing' && (
                         <button
                           className="btn btn-outline-primary"
@@ -1079,54 +1268,13 @@ function RentalReturnWorkflowBody({
                           Mô phỏng: đã giao về shop
                         </button>
                       )}
-
-                      {status === 'delivered' && (
-                        <>
-                          <label className="d-block mb-2">
-                            <input
-                              type="checkbox"
-                              checked={confirmed}
-                              disabled={busy}
-                              onChange={event => setConfirmed(event.target.checked)}
-                            />{' '}
-                            Đã kiểm tra và nhận đủ đồ nguyên vẹn
-                          </label>
-
-                          {!data.returnReceivedVideo && (
-                            <div
-                              role="alert"
-                              className="alert alert-warning py-2"
-                            >
-                              {isSale
-                                ? 'Shop cần tải video nhận hàng trả ở mục phía trên trước khi hoàn tất và hoàn tiền.'
-                                : 'Shop cần tải video nhận đồ trả ở mục phía trên trước khi hoàn tất và hoàn cọc.'}
-                            </div>
-                          )}
-
-                          <button
-                            className="btn btn-success"
-                            disabled={
-                              busy ||
-                              !confirmed ||
-                              !data.returnReceivedVideo
-                            }
-                            onClick={() =>
-                              run(() => api.complete(orderId))
-                            }
-                          >
-                            {isSale
-                              ? 'Hoàn tất trả hàng & hoàn tiền'
-                              : 'Hoàn tất trả đồ & hoàn cọc'}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-muted mt-3">
+                    </>
+                  ) : shipment && ['preparing', 'shipped'].includes(status) && !data.simulatorEnabled ? (
+                    <p className="text-muted mb-0">
                       Mô phỏng trả đồ chưa được bật trên máy chủ.
                     </p>
-                  )}
-                </>
+                  ) : null}
+                </div>
               )}
 
             {busy && <p role="status">Đang xử lý…</p>}

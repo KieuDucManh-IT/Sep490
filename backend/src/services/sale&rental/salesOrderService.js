@@ -11,7 +11,6 @@ import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
-import { Product } from '../../models/masterdata/Product.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
@@ -35,7 +34,7 @@ import {
   createSalesOrderSchema,
   updateSalesOrderStatusSchema,
 } from '../../validations/sale&rental/salesOrderValidation.js';
-import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import { resolvePrimaryShipment, mapSalesReturnItems } from '../order/orderMonitoringService.js';
 import { splitItemsByLines } from './salesReturnRules.js';
 import cloudinary from '../../config/cloudinary.js';
 import { encryptValue } from '../../utils/walletSecurity.js';
@@ -396,13 +395,21 @@ export const getMySalesOrders = async ({
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
-      .populate('locationId', 'name address city')
+      .populate({
+        path: 'locationId',
+        select: 'name address city phone shopId',
+        populate: {
+          path: 'shopId',
+          select: 'name address phone latitude longitude isHQ',
+        },
+      })
       .lean(),
     SalesOrder.countDocuments(query),
   ]);
 
   const orderIds = orders.map((o) => o._id);
-  const [details, shipments] = await Promise.all([
+  const returnIds = orders.map((o) => o.returnId).filter(Boolean);
+  const [details, shipments, returnDetails] = await Promise.all([
     orderIds.length
       ? SalesOrderDetail.find({ salesOrderId: { $in: orderIds } })
         .populate({
@@ -420,6 +427,9 @@ export const getMySalesOrders = async ({
         .sort({ createdAt: -1 })
         .lean()
       : [],
+    returnIds.length
+      ? SalesReturnDetail.find({ salesReturnId: { $in: returnIds } }).lean()
+      : [],
   ]);
 
   const detailsByOrder = new Map();
@@ -427,6 +437,13 @@ export const getMySalesOrders = async ({
     const oid = String(d.salesOrderId);
     if (!detailsByOrder.has(oid)) detailsByOrder.set(oid, []);
     detailsByOrder.get(oid).push(d);
+  }
+
+  const returnDetailsByReturn = new Map();
+  for (const rd of returnDetails) {
+    const rid = String(rd.salesReturnId);
+    if (!returnDetailsByReturn.has(rid)) returnDetailsByReturn.set(rid, []);
+    returnDetailsByReturn.get(rid).push(rd);
   }
 
   const shipmentsByOrder = new Map();
@@ -437,10 +454,19 @@ export const getMySalesOrders = async ({
   }
 
   const enrichedOrders = orders.map((o) => {
-    const ordShipments = shipmentsByOrder.get(String(o._id)) || [];
+    const orderItemsList = detailsByOrder.get(String(o._id)) || [];
+    const rDetails = o.returnId ? (returnDetailsByReturn.get(String(o.returnId)) || []) : [];
+    const returnItems = mapSalesReturnItems(rDetails, orderItemsList);
+    const ordShipments = (shipmentsByOrder.get(String(o._id)) || []).map((s) => {
+      if (s.shipmentType === 'return' && (!Array.isArray(s.items) || !s.items.length) && returnItems.length) {
+        return { ...s, items: returnItems };
+      }
+      return s;
+    });
     return {
       ...o,
-      items: detailsByOrder.get(String(o._id)) || [],
+      items: orderItemsList,
+      returnItems,
       shipments: ordShipments,
       shipment: resolvePrimaryShipment(ordShipments),
     };
@@ -778,18 +804,153 @@ export const salesReturnSimulatorEnabled = () =>
   process.env.NODE_ENV !== 'production' &&
   process.env.ENABLE_GHN_SIMULATOR === 'true';
 
-const salesManager = user =>
-  ['admin', 'owner', 'shopowner', 'branchmanager'].includes(
-    String(user?.Role || user?.role || '')
-      .toLowerCase()
-      .replace(/[\s_-]/g, '')
-      .replace('brandmanager', 'branchmanager')
-  );
+const normalizeSaleRole = user =>
+  String(user?.Role || user?.role || '')
+    .toLowerCase()
+    .replace(/[\s_-]/g, '')
+    .replace('brandmanager', 'branchmanager');
 
-const saleReturnable = order =>
+export const isSalesBranchManager = user => normalizeSaleRole(user) === 'branchmanager';
+
+const salesManager = user =>
+  ['admin', 'owner', 'shopowner', 'branchmanager'].includes(normalizeSaleRole(user));
+
+export const saleReturnable = order =>
   order.orderStatus === 'completed' &&
   order.paymentStatus === 'paid' &&
   order.returnStatus !== 'completed';
+
+export const getSalesReturnWindow = (order, outboundShipment = null) => {
+  const deliveredAt = outboundShipment?.deliveredAt || order?.completedAt || null;
+  if (!deliveredAt) {
+    return { deliveredAt: null, deadlineAt: null, within24h: false };
+  }
+  const deadlineAt = new Date(new Date(deliveredAt).getTime() + 24 * 60 * 60 * 1000);
+  return {
+    deliveredAt: new Date(deliveredAt),
+    deadlineAt,
+    within24h: Date.now() <= deadlineAt.getTime(),
+  };
+};
+
+/**
+ * Kiểm tra điều kiện & phân bổ danh sách món trả hàng mua + tiền hoàn dự kiến
+ */
+export async function prepareSalesReturnRequest(order, { reason = '', requestedItems = null, outboundShipment = null } = {}) {
+  if (typeof reason !== 'string' || reason.length > 1000) {
+    throw new ServiceError(400, 'Lý do trả hàng tối đa 1.000 ký tự.');
+  }
+  if (!saleReturnable(order)) {
+    throw new ServiceError(409, 'Chỉ hỗ trợ trả đơn mua đã giao thành công và đã thanh toán đủ.');
+  }
+  const { within24h } = getSalesReturnWindow(order, outboundShipment);
+  if (!within24h) {
+    throw new ServiceError(400, 'Đã quá thời hạn 24 giờ kể từ lúc nhận hàng thành công, không thể tạo yêu cầu trả hàng.');
+  }
+
+  const anotherReturn = await SalesReturn.exists({
+    salesOrderId: order._id,
+    returnStatus: { $nin: ['rejected', 'cancelled'] },
+  });
+  if (anotherReturn) {
+    throw new ServiceError(409, 'Đơn mua đã có yêu cầu trả hàng đang xử lý.');
+  }
+
+  const details = await SalesOrderDetail.find({ salesOrderId: order._id })
+    .populate({
+      path: 'variantId',
+      select: 'variantName sku size color productId',
+      populate: { path: 'productId', select: 'name productCode' },
+    })
+    .lean();
+
+  if (!details.length) {
+    throw new ServiceError(409, 'Đơn mua chưa có chi tiết sản phẩm.');
+  }
+
+  const detailMap = new Map(details.map(d => [String(d._id), d]));
+  const rawSelection = Array.isArray(requestedItems) && requestedItems.length > 0
+    ? requestedItems
+    : details.map(d => ({ salesOrderDetailId: String(d._id), quantityReturned: d.quantity }));
+
+  const mergedQtyByDetail = new Map();
+  for (const row of rawSelection) {
+    const dId = String(row?.salesOrderDetailId || row?.detailId || '').trim();
+    const detail = detailMap.get(dId);
+    if (!detail) {
+      throw new ServiceError(400, 'Sản phẩm chọn trả không thuộc đơn mua này.');
+    }
+    const qty = Number(row?.quantityReturned ?? row?.quantity);
+    if (!Number.isSafeInteger(qty) || qty < 1) {
+      throw new ServiceError(400, 'Số lượng hoàn trả phải là số nguyên dương.');
+    }
+    const nextQty = (mergedQtyByDetail.get(dId) || 0) + qty;
+    if (nextQty > detail.quantity) {
+      throw new ServiceError(400, 'Số lượng hoàn trả vượt quá số lượng đã mua.');
+    }
+    mergedQtyByDetail.set(dId, nextQty);
+  }
+
+  if (!mergedQtyByDetail.size) {
+    throw new ServiceError(400, 'Vui lòng chọn ít nhất 1 sản phẩm để hoàn trả.');
+  }
+
+  const isFullReturn = details.every(d => mergedQtyByDetail.get(String(d._id)) === d.quantity);
+  const allItemIds = details.flatMap(d => d.itemIds || []);
+  const soldItems = allItemIds.length
+    ? await InventoryItem.find({ _id: { $in: allItemIds }, status: 'sold' }).select('_id').lean()
+    : [];
+  const soldItemSet = new Set(soldItems.map(i => String(i._id)));
+
+  // Tính tiền hàng sau giảm giá làm căn cứ phân bổ khi trả một phần
+  const netMerchandise = Math.max(0, Number(order.subtotal || 0) - Number(order.discountAmount || 0))
+    || Math.max(0, Number(order.totalAmount || 0) - Number(order.shippingFee || 0));
+  const rawSubtotal = details.reduce((sum, d) => sum + Number(d.lineTotal || 0), 0);
+  const maxPaid = Number(order.paidAmount || order.totalAmount || 0);
+
+  const selectedLines = [];
+  let partialRefundSum = 0;
+
+  for (const [dId, qty] of mergedQtyByDetail.entries()) {
+    const detail = detailMap.get(dId);
+    const detailItemIds = detail.itemIds || [];
+    const availableSoldIds = detailItemIds.filter(id => soldItemSet.has(String(id)));
+    if (detailItemIds.length > 0 && availableSoldIds.length < qty) {
+      throw new ServiceError(409, 'Một số hiện vật trong dòng đơn không còn ở trạng thái đã bán.');
+    }
+    const chosenItemIds = availableSoldIds.slice(0, qty);
+    const lineProportion = rawSubtotal > 0 ? Number(detail.lineTotal || 0) / rawSubtotal : 0;
+    const allocatedLineNet = Math.round(netMerchandise * lineProportion * (qty / detail.quantity));
+    const unitRefundAmount = qty > 0 ? Math.round(allocatedLineNet / qty) : 0;
+    partialRefundSum += allocatedLineNet;
+
+    selectedLines.push({
+      detail,
+      salesOrderDetailId: detail._id,
+      quantityReturned: qty,
+      itemIds: chosenItemIds,
+      unitRefundAmount,
+      ghnItem: {
+        name: detail.variantId?.variantName || detail.variantId?.productId?.name || 'Sản phẩm Vestora',
+        sku: detail.variantId?.sku || detail.variantId?.productId?.productCode || 'SKU-VESTORA',
+        quantity: qty,
+        price: unitRefundAmount,
+      },
+    });
+  }
+
+  const expectedRefundAmount = isFullReturn
+    ? Number(order.totalAmount || 0)
+    : Math.min(maxPaid, Math.max(0, partialRefundSum));
+
+  return {
+    reason: reason.trim() || 'Khách hàng yêu cầu trả hàng qua GHN.',
+    isFullReturn,
+    expectedRefundAmount,
+    selectedLines,
+    ghnItems: selectedLines.map(line => line.ghnItem),
+  };
+}
 
 export async function accessSalesReturnOrder(
   user,
@@ -852,7 +1013,7 @@ async function salesEvidencePermissions(order, user, manager, shipment) {
     return:
       owner &&
       saleReturnable(order) &&
-      (!shipment || shipment.shipmentStatus === 'preparing'),
+      (!shipment || ['preparing', 'cancelled', 'failed'].includes(shipment.shipmentStatus)),
 
     'return-received':
       manager &&
@@ -901,14 +1062,38 @@ export async function getSalesReturnFlow(user, id) {
     })
     .lean();
 
-  const shipment = await OrderShipment.findOne({
-    orderId: id,
-    orderType: 'sale',
-    shipmentType: 'return',
-  })
-    .sort({ createdAt: -1 })
-    .lean();
+  const [shipment, outboundShipment, returnDetails] = await Promise.all([
+    OrderShipment.findOne({
+      orderId: id,
+      orderType: 'sale',
+      shipmentType: 'return',
+    })
+      .sort({ createdAt: -1 })
+      .lean(),
+    OrderShipment.findOne({
+      orderId: id,
+      orderType: 'sale',
+      shipmentType: 'outbound',
+    })
+      .sort({ createdAt: -1 })
+      .lean(),
+    order.returnId
+      ? SalesReturnDetail.find({ salesReturnId: order.returnId }).lean()
+      : Promise.resolve([]),
+  ]);
 
+  const detailById = new Map(details.map((d) => [String(d._id), d]));
+  const flowItems = returnDetails.length
+    ? returnDetails
+        .map((rd) => {
+          const d = detailById.get(String(rd.salesOrderDetailId));
+          return d ? { ...d, quantity: rd.quantityReturned || 1 } : null;
+        })
+        .filter(Boolean)
+    : details;
+
+  const { deadlineAt, within24h } = getSalesReturnWindow(order, outboundShipment);
+  const isBM = isSalesBranchManager(user);
   const shop = order.locationId?.shopId || order.locationId || {};
 
   return {
@@ -916,6 +1101,13 @@ export async function getSalesReturnFlow(user, id) {
     orderStatus: order.orderStatus,
     returnStatus: order.returnStatus,
     createdAt: order.createdAt,
+    completedAt: order.completedAt || outboundShipment?.deliveredAt || null,
+    withinReturnWindow: within24h,
+    returnDeadlineAt: deadlineAt,
+    subtotal: order.subtotal,
+    discountAmount: order.discountAmount || 0,
+    shippingFee: order.shippingFee || 0,
+    totalAmount: order.totalAmount,
 
     customer: {
       name:
@@ -937,13 +1129,15 @@ export async function getSalesReturnFlow(user, id) {
       address: shop.address || '',
     },
 
-    items: details.map(d => ({
+    items: flowItems.map(d => ({
       id: d._id,
+      detailId: d._id,
       name: d.variantId?.productId?.name || 'Trang phục',
       sku: d.variantId?.sku || '',
       size: d.variantId?.size || '',
       color: d.variantId?.color || '',
       quantity: d.quantity,
+      lineTotal: d.lineTotal,
       image:
         d.variantId?.productId?.images?.[0] ||
         d.variantId?.productId?.image ||
@@ -965,9 +1159,12 @@ export async function getSalesReturnFlow(user, id) {
     ),
 
     shipment,
-    canManage: manager,
-    simulatorEnabled: salesReturnSimulatorEnabled(),
-    canRequest: saleReturnable(order) && !shipment && !order.returnId,
+    canManage: isBM,
+    simulatorEnabled: salesReturnSimulatorEnabled() && isBM,
+    canRequest:
+      saleReturnable(order) &&
+      within24h &&
+      (!shipment || ['cancelled', 'failed'].includes(shipment.shipmentStatus)),
 
     requestBlockedReason:
       order.orderStatus !== 'completed'
@@ -975,13 +1172,15 @@ export async function getSalesReturnFlow(user, id) {
         : order.paymentStatus !== 'paid' &&
           order.returnStatus !== 'completed'
           ? 'Đơn chưa được xác nhận thanh toán đủ; cần đối soát trước khi trả và hoàn tiền.'
-          : '',
+          : !within24h && order.returnStatus === 'none'
+            ? 'Đã quá thời hạn 24 giờ kể từ lúc nhận hàng thành công.'
+            : '',
 
     completed: order.returnStatus === 'completed',
 
     refundedAmount:
       order.returnStatus === 'completed' &&
-        order.paymentStatus === 'refunded'
+        ['refunded', 'partially_refunded'].includes(order.paymentStatus)
         ? order.refundedAmount
         : null,
   };
@@ -1167,6 +1366,9 @@ export async function advanceSalesReturn(user, id, newStatus) {
   if (!salesReturnSimulatorEnabled()) {
     throw new ServiceError(403, 'Mô phỏng chỉ được phép trên dev.');
   }
+  if (!isSalesBranchManager(user)) {
+    throw new ServiceError(403, 'Chỉ có Quản lý chi nhánh (Branch Manager) mới có quyền mô phỏng trạng thái vận đơn.');
+  }
 
   await accessSalesReturnOrder(user, id, true);
 
@@ -1250,23 +1452,27 @@ export async function advanceSalesReturn(user, id, newStatus) {
     return updated;
   });
 }
-export async function validateSalesRefundPayment(order, wallet, session) {
-  const amount = order.totalAmount;
+export async function validateSalesRefundPayment(order, wallet, session, refundAmount = null) {
+  const paidTotal = order.totalAmount;
+  const amount = refundAmount != null ? Number(refundAmount) : paidTotal;
 
   if (
     !order.customerId ||
+    !Number.isSafeInteger(paidTotal) ||
+    paidTotal <= 0 ||
     !Number.isSafeInteger(amount) ||
     amount <= 0 ||
+    amount > paidTotal ||
     order.paymentStatus !== 'paid' ||
     (
       order.paidAmount != null &&
       order.paidAmount !== 0 &&
-      order.paidAmount !== amount
+      order.paidAmount !== paidTotal
     )
   ) {
     throw new ServiceError(
       409,
-      'Số tiền đã thanh toán không khớp đơn mua.'
+      'Số tiền hoàn hoặc trạng thái thanh toán không khớp đơn mua.'
     );
   }
 
@@ -1287,7 +1493,7 @@ export async function validateSalesRefundPayment(order, wallet, session) {
       !tx ||
       String(tx.userId) !== String(order.customerId) ||
       String(tx.walletId) !== String(wallet._id) ||
-      tx.amount !== amount ||
+      tx.amount !== paidTotal ||
       tx.referenceType !== 'SalesOrder' ||
       (tx.referenceId && String(tx.referenceId) !== String(order._id)) ||
       tx.status !== 'success' ||
@@ -1328,13 +1534,32 @@ export async function restoreSalesReturnStock(
   details,
   receiptId,
   user,
-  session
+  session,
+  returnLines = null
 ) {
-  const lines = aggregateLines(details);
+  const hasPartialLines = Array.isArray(returnLines) && returnLines.length > 0;
+  const detailById = new Map(details.map(d => [String(d._id), d]));
+
+  const targetLines = hasPartialLines
+    ? returnLines.map(rl => {
+        const od = detailById.get(String(rl.salesOrderDetailId));
+        return {
+          variantId: od?.variantId,
+          quantity: rl.quantityReturned,
+          itemIds: rl.itemIds || [],
+        };
+      })
+    : details.map(d => ({
+        variantId: d.variantId,
+        quantity: d.quantity,
+        itemIds: d.itemIds || [],
+      }));
+
+  const lines = aggregateLines(targetLines);
 
   if (
     !lines.length ||
-    details.some(d => !Number.isSafeInteger(d.quantity) || d.quantity <= 0)
+    targetLines.some(d => !d.variantId || !Number.isSafeInteger(d.quantity) || d.quantity <= 0)
   ) {
     throw new ServiceError(409, 'Chi tiết sản phẩm trả không hợp lệ.');
   }
@@ -1368,15 +1593,14 @@ export async function restoreSalesReturnStock(
     );
   };
 
-  // Mô phỏng chưa xuất kho: chỉ giải phóng phần giữ chỗ của chính đơn này.
+  // Đơn chưa có StockMovement xuất kho (mô phỏng hoặc mới qua giữ chỗ): giải phóng đúng phần giữ chỗ của các món trả.
   if (!movements.length) {
     if (
-      !salesReturnSimulatorEnabled() ||
       reservations.some(r => r.status !== 'active') ||
       reservations.some(
         r => String(r.locationId) !== String(order.locationId)
       ) ||
-      (reservations.length && !matches(reservations))
+      (reservations.length && !hasPartialLines && !matches(reservations))
     ) {
       throw new ServiceError(
         409,
@@ -1384,17 +1608,42 @@ export async function restoreSalesReturnStock(
       );
     }
 
-    const held = await closeReservations(
-      { orderId: order._id, orderType: 'sale' },
-      'released',
-      session
-    );
+    if (!reservations.length) return;
 
-    await releaseReserved({
-      locationId: order.locationId,
-      reservedByVariant: held,
-    }, session);
+    if (!hasPartialLines) {
+      const held = await closeReservations(
+        { orderId: order._id, orderType: 'sale' },
+        'released',
+        session
+      );
+      await releaseReserved({
+        locationId: order.locationId,
+        reservedByVariant: held,
+      }, session);
+      return;
+    }
 
+    // Trả một phần trên đơn đang giữ chỗ: chỉ trừ đúng quantity trả trên reservation theo variant
+    const releaseByVariant = new Map();
+    for (const [vId, reqQty] of expected.entries()) {
+      let rem = reqQty;
+      for (const r of reservations) {
+        if (String(r.variantId) !== vId || rem <= 0) continue;
+        const take = Math.min(rem, Number(r.quantity || 0));
+        if (take <= 0) continue;
+        if (take === r.quantity) {
+          await InventoryReservation.updateOne({ _id: r._id }, { $set: { status: 'released' } }, { session });
+        } else {
+          await InventoryReservation.updateOne({ _id: r._id }, { $inc: { quantity: -take } }, { session });
+        }
+        releaseByVariant.set(vId, (releaseByVariant.get(vId) || 0) + take);
+        rem -= take;
+      }
+      if (rem > 0) {
+        throw new ServiceError(409, 'Giữ chỗ tồn kho không khớp số lượng món cần trả.');
+      }
+    }
+    await releaseReserved({ locationId: order.locationId, reservedByVariant: releaseByVariant }, session);
     return;
   }
 
@@ -1404,23 +1653,54 @@ export async function restoreSalesReturnStock(
       String(m.locationId) !== String(order.locationId) ||
       !Number.isSafeInteger(m.quantityChange) ||
       m.quantityChange >= 0
-    ) ||
-    !matches(movements.map(m => ({
-      variantId: m.variantId,
-      quantity: -m.quantityChange,
-    })))
+    )
   ) {
-    throw new ServiceError(
-      409,
-      'Xuất kho của đơn không khớp số lượng trả.'
-    );
+    throw new ServiceError(409, 'Xuất kho của đơn không khớp chi nhánh hoặc số lượng.');
   }
 
-  // TASK-015: mọi sản phẩm quản lý theo món — dòng sổ bán không có itemId là dữ liệu cũ, cần đối soát.
-  const itemMovements = movements.filter(m => m.itemId);
+  // Lọc đúng các movement tương ứng từng dòng trả (ưu tiên itemIds nếu dòng có itemIds, fallback variantId theo số lượng)
+  let targetMovements = [];
+  if (hasPartialLines) {
+    const usedMovementIds = new Set();
+    for (const t of targetLines) {
+      const lineItemIds = (t.itemIds || []).map(String);
+      if (lineItemIds.length > 0) {
+        const matchedById = movements.filter(
+          m => m.itemId && lineItemIds.includes(String(m.itemId)) && !usedMovementIds.has(String(m._id))
+        );
+        if (matchedById.length !== t.quantity) {
+          throw new ServiceError(409, 'Hiện vật trả không khớp dữ liệu xuất kho của đơn mua.');
+        }
+        matchedById.forEach(m => {
+          usedMovementIds.add(String(m._id));
+          targetMovements.push(m);
+        });
+      } else {
+        let rem = t.quantity;
+        for (const m of movements) {
+          if (usedMovementIds.has(String(m._id))) continue;
+          if (String(m.variantId) === String(t.variantId) && -m.quantityChange === 1 && rem > 0) {
+            usedMovementIds.add(String(m._id));
+            targetMovements.push(m);
+            rem -= 1;
+          }
+        }
+        if (rem > 0) {
+          throw new ServiceError(409, 'Xuất kho của đơn không khớp số lượng trả.');
+        }
+      }
+    }
+  } else {
+    if (!matches(movements.map(m => ({ variantId: m.variantId, quantity: -m.quantityChange })))) {
+      throw new ServiceError(409, 'Xuất kho của đơn không khớp số lượng trả.');
+    }
+    targetMovements = movements;
+  }
+
+  const itemMovements = targetMovements.filter(m => m.itemId);
 
   if (
-    itemMovements.length !== movements.length ||
+    itemMovements.length !== targetMovements.length ||
     itemMovements.some(m => m.quantityChange !== -1) ||
     new Set(itemMovements.map(m => String(m.itemId))).size !==
       itemMovements.length
@@ -1464,7 +1744,7 @@ export async function restoreSalesReturnStock(
   }
 
   await StockMovement.insertMany(
-    movements.map(m => ({
+    targetMovements.map(m => ({
       variantId: m.variantId,
       itemId: m.itemId || null,
       locationId: order.locationId,
@@ -1480,8 +1760,8 @@ export async function restoreSalesReturnStock(
 }
 
 export async function completeSalesReturn(user, id) {
-  if (!salesReturnSimulatorEnabled()) {
-    throw new ServiceError(403, 'Luồng trả hàng mô phỏng chưa được bật.');
+  if (!isSalesBranchManager(user)) {
+    throw new ServiceError(403, 'Chỉ có Quản lý chi nhánh (Branch Manager) mới có quyền hoàn tất trả hàng và hoàn tiền.');
   }
 
   await accessSalesReturnOrder(user, id, true);
@@ -1504,7 +1784,7 @@ export async function completeSalesReturn(user, id) {
       }).session(session);
 
       if (
-        order.paymentStatus !== 'refunded' ||
+        !['refunded', 'partially_refunded'].includes(order.paymentStatus) ||
         !tx ||
         tx.amount !== order.refundedAmount ||
         String(tx.userId) !== String(order.customerId)
@@ -1540,7 +1820,6 @@ export async function completeSalesReturn(user, id) {
       orderId: id,
       orderType: 'sale',
       shipmentType: 'return',
-      isSimulated: true,
       shipmentStatus: 'delivered',
     }).session(session);
 
@@ -1548,13 +1827,35 @@ export async function completeSalesReturn(user, id) {
       throw new ServiceError(409, 'Hàng chưa được giao về shop.');
     }
 
+    const receiptPreCheck = await SalesReturn.findById(order.returnId).session(session);
+    if (!receiptPreCheck || receiptPreCheck.returnStatus !== 'requested') {
+      throw new ServiceError(409, 'Phiếu trả hàng đã thay đổi.');
+    }
+
+    const details = await SalesOrderDetail.find({
+      salesOrderId: id,
+    }).session(session);
+
+    const existingReturnDetails = await SalesReturnDetail.find({
+      salesReturnId: receiptPreCheck._id,
+    }).session(session);
+
+    const totalBoughtQty = details.reduce((s, d) => s + Number(d.quantity || 0), 0);
+    const totalReturnedQty = existingReturnDetails.length
+      ? existingReturnDetails.reduce((s, d) => s + Number(d.quantityReturned || 0), 0)
+      : totalBoughtQty;
+    const isFullReturn = totalReturnedQty >= totalBoughtQty;
+
+    const plannedRefundAmount =
+      receiptPreCheck.refundAmount != null ? Number(receiptPreCheck.refundAmount) : order.totalAmount;
+
     let wallet = await Wallet.findOne({
       userId: order.customerId,
     })
       .select('+balanceEncrypted +lockedBalanceEncrypted')
       .session(session);
 
-    const amount = await validateSalesRefundPayment(order, wallet, session);
+    const amount = await validateSalesRefundPayment(order, wallet, session, plannedRefundAmount);
 
     const claimed = await SalesOrder.updateOne(
       {
@@ -1566,7 +1867,7 @@ export async function completeSalesReturn(user, id) {
       {
         $set: {
           returnStatus: 'completed',
-          paymentStatus: 'refunded',
+          paymentStatus: isFullReturn ? 'refunded' : 'partially_refunded',
           refundedAmount: amount,
           returnCompletedAt: new Date(),
         },
@@ -1603,31 +1904,45 @@ export async function completeSalesReturn(user, id) {
       throw new ServiceError(409, 'Phiếu trả hàng đã thay đổi.');
     }
 
-    const details = await SalesOrderDetail.find({
-      salesOrderId: id,
-    }).session(session);
-
     await restoreSalesReturnStock(
       order,
       details,
       receipt._id,
       user,
-      session
+      session,
+      existingReturnDetails
     );
 
-    // TASK-016: dòng trả ghi món theo `itemIds` của dòng đơn, kết quả kiểm "Đạt" (shop xác nhận nguyên vẹn).
-    await SalesReturnDetail.insertMany(
-      details.map(d => ({
-        salesReturnId: receipt._id,
-        salesOrderDetailId: d._id,
-        quantityReturned: d.quantity,
-        itemIds: d.itemIds || [],
-        inspectionResults: (d.itemIds || []).map(itemId => ({ itemId, result: 'ok' })),
-        unitRefundAmount: d.lineTotal / d.quantity,
-        note: 'Shop xác nhận nhận đủ hàng nguyên vẹn.',
-      })),
-      { session }
-    );
+    if (existingReturnDetails.length > 0) {
+      for (const rd of existingReturnDetails) {
+        const od = details.find(d => String(d._id) === String(rd.salesOrderDetailId));
+        const usedIds = rd.itemIds?.length ? rd.itemIds : (od?.itemIds || []).slice(0, rd.quantityReturned);
+        await SalesReturnDetail.updateOne(
+          { _id: rd._id },
+          {
+            $set: {
+              inspectionResults: usedIds.map(itemId => ({ itemId, result: 'ok' })),
+              note: rd.note || 'Shop xác nhận nhận đủ hàng nguyên vẹn.',
+            },
+          },
+          { session }
+        );
+      }
+    } else {
+      // Fallback dữ liệu cũ chưa tạo SalesReturnDetail từ bước gửi hàng
+      await SalesReturnDetail.insertMany(
+        details.map(d => ({
+          salesReturnId: receipt._id,
+          salesOrderDetailId: d._id,
+          quantityReturned: d.quantity,
+          itemIds: d.itemIds || [],
+          inspectionResults: (d.itemIds || []).map(itemId => ({ itemId, result: 'ok' })),
+          unitRefundAmount: d.lineTotal / d.quantity,
+          note: 'Shop xác nhận nhận đủ hàng nguyên vẹn.',
+        })),
+        { session }
+      );
+    }
 
     // Khách thanh toán COD có thể chưa mở ví.
     if (!wallet) {

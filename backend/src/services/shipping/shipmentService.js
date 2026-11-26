@@ -1,13 +1,17 @@
 import mongoose from 'mongoose';
+import crypto from 'node:crypto';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
+import { SalesReturn } from '../../models/sale&rental/SalesReturn.js';
+import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js';
 import * as ghnService from './ghnService.js';
 import { mapGhnStatus, assertValidSimulatedTransition } from './ghnStatusMapper.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
 import { syncSingleShipmentFromGHN } from './shipmentSyncService.js';
 import { getWebhookSecret } from './ghnConfig.js';
-import { recordSalesDelivery } from '../sale&rental/salesOrderService.js';
+import { inTransaction } from '../walletService.js';
+import { recordSalesDelivery, prepareSalesReturnRequest } from '../sale&rental/salesOrderService.js';
 import {
   fail,
   formatPartyInfo,
@@ -291,6 +295,7 @@ export const createOutboundShipment = async (user, payload = {}) => {
     width,
     height,
     note,
+    items: ghnItems,
     initialDescription: 'Đơn hàng đã được tạo thành công, đang chờ bàn giao cho bưu tá vận chuyển',
   });
 
@@ -325,11 +330,14 @@ export const createOutboundShipment = async (user, payload = {}) => {
 };
 
 /**
- * 3. Tạo vận đơn thu hồi đồ thuê (Return: Khách hàng -> Cửa hàng) (Hỗ trợ GHN v3)
+ * 3. Tạo vận đơn thu hồi (Return: Khách hàng -> Cửa hàng) cho Đơn thuê & Đơn mua (Hỗ trợ GHN v3)
  */
 export const createReturnShipment = async (user, payload = {}) => {
   const {
     orderId,
+    orderType = 'rental',
+    reason = '',
+    items: requestedItems,
     fromAddress,
     fromPhone,
     fromName,
@@ -343,25 +351,48 @@ export const createReturnShipment = async (user, payload = {}) => {
     length,
     width,
     height,
-    note = 'Lấy lại trang phục cho thuê hoàn trả về shop',
+    note,
   } = payload;
 
-  const order = await fetchOrderAndValidateScope(user, 'rental', orderId);
-
-  if (!['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus)) {
-    throw fail(`Không thể tạo đơn thu hồi đồ cho đơn thuê ở trạng thái "${order.rentalStatus}".`, 400);
+  if (!['rental', 'sale'].includes(orderType)) {
+    throw fail('Loại đơn hàng thu hồi không hợp lệ (rental hoặc sale).', 400);
   }
 
-  if (order.rentalStatus === 'returned') {
-    throw fail('Đơn thuê đã hoàn tất trả đồ, không thể tạo thêm yêu cầu thu hồi.', 400);
+  const isSale = orderType === 'sale';
+  const effectiveNote = note || (isSale
+    ? 'Thu hồi sản phẩm mua hoàn trả về shop'
+    : 'Lấy lại trang phục cho thuê hoàn trả về shop');
+
+  const order = await fetchOrderAndValidateScope(user, orderType, orderId);
+
+  if (!isSale) {
+    if (!['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus)) {
+      throw fail(`Không thể tạo đơn thu hồi đồ cho đơn thuê ở trạng thái "${order.rentalStatus}".`, 400);
+    }
+    if (order.rentalStatus === 'returned') {
+      throw fail('Đơn thuê đã hoàn tất trả đồ, không thể tạo thêm yêu cầu thu hồi.', 400);
+    }
   }
 
-  // Tự động kế thừa thông số kiện hàng từ outbound shipment nếu không truyền
-  const outboundShipment = await OrderShipment.findOne({
-    orderType: 'rental',
-    orderId: order._id,
-    shipmentType: 'outbound',
-  }).sort({ createdAt: -1 }).lean();
+  // Tự động kế thừa thông số kiện hàng từ outbound shipment nếu không truyền (truyền sort qua options để tương thích mock .lean())
+  const outboundShipment = await OrderShipment.findOne(
+    {
+      orderType,
+      orderId: order._id,
+      shipmentType: 'outbound',
+    },
+    null,
+    { sort: { createdAt: -1 } }
+  ).lean();
+
+  let salePrep = null;
+  if (isSale) {
+    salePrep = await prepareSalesReturnRequest(order, {
+      reason,
+      requestedItems,
+      outboundShipment,
+    });
+  }
 
   const effectiveWeight = Number(weight) || outboundShipment?.weight || 500;
   const effectiveLength = Number(length) || outboundShipment?.length || 20;
@@ -370,7 +401,7 @@ export const createReturnShipment = async (user, payload = {}) => {
 
   // Kiểm tra đơn thu hồi đang active hoặc đã giao về shop
   const activeReturnShipment = await OrderShipment.findOne({
-    orderType: 'rental',
+    orderType,
     orderId: order._id,
     shipmentType: 'return',
     shipmentStatus: { $in: ['preparing', 'shipped', 'delivered'] },
@@ -378,9 +409,9 @@ export const createReturnShipment = async (user, payload = {}) => {
 
   if (activeReturnShipment) {
     if (activeReturnShipment.shipmentStatus === 'delivered') {
-      throw fail(`Trang phục đã được giao về cửa hàng (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'LY...'}), vui lòng tiến hành nghiệm thu KCS để hoàn tất đơn.`, 400);
+      throw fail(`Hàng đã được giao về cửa hàng (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'LY...'}), vui lòng tiến hành nghiệm thu để hoàn tất đơn.`, 400);
     }
-    throw fail(`Đơn thuê đã có yêu cầu thu hồi đang xử lý (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'Chờ bưu tá'}).`, 400);
+    throw fail(`Đơn hàng đã có yêu cầu thu hồi đang xử lý (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'Chờ bưu tá'}).`, 400);
   }
 
   // Tự động suy luận District nếu chỉ có Tỉnh & Xã
@@ -456,6 +487,7 @@ export const createReturnShipment = async (user, payload = {}) => {
 
   const previousReturnCount = await OrderShipment.countDocuments({
     orderId: order._id,
+    orderType,
     shipmentType: 'return',
   });
   const clientOrderCode = previousReturnCount > 0
@@ -464,7 +496,7 @@ export const createReturnShipment = async (user, payload = {}) => {
 
   const ghnRes = await ghnService.createGHNOrder({
     shopId: storeReceiver.ghnShopId,
-    paymentTypeId: 2, // Chiều thu hồi: Shop (Người nhận) chịu cước và thanh toán cho shipper
+    paymentTypeId: 2, // Chiều thu hồi: Shop / Branch Manager (Người nhận) chịu cước và thanh toán cho shipper
     fromName: senderInfo.name,
     fromPhone: senderInfo.phone,
     fromAddress: senderInfo.address,
@@ -487,26 +519,105 @@ export const createReturnShipment = async (user, payload = {}) => {
     length: effectiveLength,
     width: effectiveWidth,
     height: effectiveHeight,
-    note: `[ĐỒ THUÊ HOÀN TRẢ VỀ CỬA HÀNG] ${note}`,
+    items: isSale ? salePrep.ghnItems : [],
+    note: isSale
+      ? `[HÀNG MUA HOÀN TRẢ VỀ CỬA HÀNG] ${effectiveNote}`
+      : `[ĐỒ THUÊ HOÀN TRẢ VỀ CỬA HÀNG] ${effectiveNote}`,
     clientOrderCode,
   });
 
-  return await saveShipmentRecord({
-    user,
-    order,
-    orderType: 'rental',
-    shipmentType: 'return',
-    ghnRes,
-    senderInfo,
-    receiverInfo,
-    codAmount: 0,
-    weight: effectiveWeight,
-    length: effectiveLength,
-    width: effectiveWidth,
-    height: effectiveHeight,
-    note,
-    initialDescription: 'Đã tạo yêu cầu thu hồi trang phục, đang chờ bưu tá đến lấy đồ từ khách hàng',
-  });
+  const initialDescription = isSale
+    ? 'Đã tạo yêu cầu trả hàng mua qua GHN, đang chờ bưu tá đến lấy hàng'
+    : 'Đã tạo yêu cầu thu hồi trang phục, đang chờ bưu tá đến lấy đồ từ khách hàng';
+
+  if (!isSale) {
+    return await saveShipmentRecord({
+      user,
+      order,
+      orderType: 'rental',
+      shipmentType: 'return',
+      ghnRes,
+      senderInfo,
+      receiverInfo,
+      codAmount: 0,
+      weight: effectiveWeight,
+      length: effectiveLength,
+      width: effectiveWidth,
+      height: effectiveHeight,
+      note: effectiveNote,
+      initialDescription,
+    });
+  }
+
+  try {
+    return await inTransaction(async (session) => {
+      const locId = order.locationId?._id || order.locationId;
+      const [receipt] = await SalesReturn.create([{
+        returnCode: `RET-SO-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+        salesOrderId: order._id,
+        locationId: locId,
+        createdBy: user._id,
+        returnReason: salePrep.reason,
+        returnStatus: 'requested',
+        refundAmount: salePrep.expectedRefundAmount,
+      }], { session });
+
+      await SalesReturnDetail.insertMany(
+        salePrep.selectedLines.map((line) => ({
+          salesReturnId: receipt._id,
+          salesOrderDetailId: line.salesOrderDetailId,
+          quantityReturned: line.quantityReturned,
+          itemIds: line.itemIds,
+          unitRefundAmount: line.unitRefundAmount,
+        })),
+        { session }
+      );
+
+      const claimedOrder = await SalesOrder.updateOne(
+        { _id: order._id, returnStatus: 'none' },
+        {
+          $set: { returnId: receipt._id, returnStatus: 'requested' },
+          $inc: { returnFlowVersion: 1 },
+        },
+        { session }
+      );
+      if (claimedOrder.matchedCount !== 1) {
+        throw fail('Đơn mua vừa được tạo yêu cầu trả hàng trước đó, vui lòng tải lại.', 409);
+      }
+
+      return await saveShipmentRecord({
+        user,
+        order,
+        orderType: 'sale',
+        shipmentType: 'return',
+        ghnRes,
+        senderInfo,
+        receiverInfo,
+        codAmount: 0,
+        weight: effectiveWeight,
+        length: effectiveLength,
+        width: effectiveWidth,
+        height: effectiveHeight,
+        note: effectiveNote,
+        items: salePrep.selectedLines.map((line) => ({
+          name: line.ghnItem.name,
+          sku: line.ghnItem.sku,
+          size: line.detail?.variantId?.size || '',
+          color: line.detail?.variantId?.color || '',
+          quantity: line.quantityReturned,
+          price: line.unitRefundAmount,
+          salesOrderDetailId: line.salesOrderDetailId,
+        })),
+        initialDescription,
+        session,
+      });
+    });
+  } catch (dbErr) {
+    if (ghnRes?.order_code) {
+      await ghnService.cancelGHNOrder(ghnRes.order_code).catch(() => {});
+    }
+    throw dbErr;
+  }
 };
 
 /**
@@ -525,6 +636,10 @@ export const cancelShipment = async (user, shipmentId, reason = '') => {
   // Kiểm tra quyền theo chi nhánh thông qua đơn hàng
   if (shipment.orderType && shipment.orderId) {
     await fetchOrderAndValidateScope(user, shipment.orderType, shipment.orderId);
+  }
+
+  if (shipment.isSimulated) {
+    throw fail('Không thể hủy vận đơn mô phỏng qua cổng GHN.', 409);
   }
 
   if (shipment.shipmentStatus !== 'preparing') {
@@ -554,13 +669,17 @@ export const cancelShipment = async (user, shipmentId, reason = '') => {
 
   await shipment.save();
 
-  // Đồng bộ hủy vận đơn outbound sang đơn hàng của khách.
-  if (shipment.shipmentType === 'outbound') {
+  // Đồng bộ hủy vận đơn outbound hoặc return sang đơn hàng của khách.
+  if (shipment.shipmentType === 'return' && shipment.orderType === 'sale') {
+    await syncSalesReturnShipmentStatus(shipment, 'cancelled');
+  } else if (shipment.shipmentType === 'outbound') {
     const cancelNote = reason ? `[Hủy vận đơn GHN: ${reason}]` : '[Hủy vận đơn GHN]';
     if (shipment.orderType === 'rental') {
       const order = await RentalOrder.findById(shipment.orderId);
       if (order && !['returned', 'renting'].includes(order.rentalStatus)) {
         order.rentalStatus = 'cancelled';
+        order.cancelReason = reason || order.cancelReason || null;
+        order.cancelledAt = new Date();
         order.note = order.note ? `${order.note} ${cancelNote}` : cancelNote;
         await order.save();
       }
@@ -568,6 +687,7 @@ export const cancelShipment = async (user, shipmentId, reason = '') => {
       const order = await SalesOrder.findById(shipment.orderId);
       if (order && !['completed'].includes(order.orderStatus)) {
         order.orderStatus = 'cancelled';
+        order.cancelReason = reason || order.cancelReason || null;
         order.cancelledAt = new Date();
         order.note = order.note ? `${order.note} ${cancelNote}` : cancelNote;
         await order.save();
@@ -605,11 +725,43 @@ export const getShipmentsByOrderId = async (user, orderType, orderId) => {
 // ============================================================================
 
 /**
+ * Đồng bộ trạng thái vận đơn hoàn trả đơn mua sang SalesOrder & SalesReturn
+ */
+const syncSalesReturnShipmentStatus = async (shipment, internalStatus) => {
+  if (shipment?.orderType !== 'sale' || shipment?.shipmentType !== 'return') return;
+
+  if (internalStatus === 'shipped') {
+    await SalesOrder.updateOne(
+      { _id: shipment.orderId, returnStatus: { $in: ['requested', 'returning'] } },
+      { $set: { returnStatus: 'returning' }, $inc: { returnFlowVersion: 1 } }
+    );
+  } else if (internalStatus === 'delivered') {
+    await SalesOrder.updateOne(
+      { _id: shipment.orderId, returnStatus: { $in: ['requested', 'returning', 'received'] } },
+      { $set: { returnStatus: 'received' }, $inc: { returnFlowVersion: 1 } }
+    );
+  } else if (internalStatus === 'cancelled') {
+    await SalesReturn.updateMany(
+      { salesOrderId: shipment.orderId, returnStatus: 'requested' },
+      { $set: { returnStatus: 'cancelled' } }
+    );
+    await SalesOrder.updateOne(
+      { _id: shipment.orderId, returnStatus: { $in: ['requested', 'returning'] } },
+      { $set: { returnStatus: 'none', returnId: null }, $inc: { returnFlowVersion: 1 } }
+    );
+  }
+};
+
+/**
  * Tự động cập nhật trạng thái đơn thuê / đơn bán khi bưu tá giao hàng thành công
  */
 const updateOrderStatusOnDelivered = async (shipment, actionTime) => {
   if (shipment.orderType === 'sale') {
-    await recordSalesDelivery(shipment, actionTime);
+    if (shipment.shipmentType === 'return') {
+      await syncSalesReturnShipmentStatus(shipment, 'delivered');
+    } else {
+      await recordSalesDelivery(shipment, actionTime);
+    }
   } else if (shipment.orderType === 'rental') {
     if (shipment.shipmentType === 'outbound') {
       const rental = await RentalOrder.findOne({ _id: shipment.orderId });
@@ -637,19 +789,23 @@ const updateOrderStatusOnDelivered = async (shipment, actionTime) => {
   }
 };
 
-/** Đồng bộ hủy vận đơn outbound từ GHN sang trạng thái đơn hàng. */
+/** Đồng bộ hủy vận đơn outbound hoặc return từ GHN sang trạng thái đơn hàng. */
 const updateOrderStatusOnCancelled = async (shipment, actionTime) => {
+  if (shipment.shipmentType === 'return' && shipment.orderType === 'sale') {
+    await syncSalesReturnShipmentStatus(shipment, 'cancelled');
+    return;
+  }
   if (shipment.shipmentType !== 'outbound') return;
 
   if (shipment.orderType === 'sale') {
     await SalesOrder.findOneAndUpdate(
       { _id: shipment.orderId, orderStatus: { $in: ['draft', 'confirmed', 'processing', 'shipped'] } },
-      { orderStatus: 'cancelled', cancelledAt: actionTime }
+      { orderStatus: 'cancelled', cancelledAt: actionTime, cancelReason: shipment.cancellationReason || null }
     );
   } else if (shipment.orderType === 'rental') {
     await RentalOrder.findOneAndUpdate(
       { _id: shipment.orderId, rentalStatus: { $in: ['draft', 'confirmed'] } },
-      { rentalStatus: 'cancelled' }
+      { rentalStatus: 'cancelled', cancelledAt: actionTime, cancelReason: shipment.cancellationReason || null }
     );
   }
 };
@@ -812,8 +968,10 @@ export const processGHNWebhook = async (payload = {}, secretKey = '', options = 
     );
   }
 
-  // Kích hoạt cập nhật trạng thái đơn hàng nếu giao thành công
-  if (mapped.internalStatus === 'delivered') {
+  // Kích hoạt cập nhật trạng thái đơn hàng theo bước vận đơn
+  if (mapped.internalStatus === 'shipped') {
+    await syncSalesReturnShipmentStatus(shipment, 'shipped');
+  } else if (mapped.internalStatus === 'delivered') {
     await updateOrderStatusOnDelivered(shipment, actionTime);
   } else if (mapped.internalStatus === 'cancelled') {
     await updateOrderStatusOnCancelled(shipment, actionTime);
@@ -891,7 +1049,9 @@ export const updateManualShipmentStatus = async (user, shipmentId, newStatus, re
 
   // 3. Đồng bộ trạng thái đơn hàng an toàn (Enum Safety Guard)
   if (newStatus === 'shipped') {
-    if (
+    if (shipment.orderType === 'sale' && shipment.shipmentType === 'return') {
+      await syncSalesReturnShipmentStatus(shipment, 'shipped');
+    } else if (
       shipment.orderType === 'sale' &&
       shipment.shipmentType === 'outbound'
     ) {

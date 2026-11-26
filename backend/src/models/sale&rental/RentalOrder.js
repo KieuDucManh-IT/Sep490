@@ -44,6 +44,8 @@ const rentalOrderSchema = new mongoose.Schema({
   paymentMethod: { type: String, default: 'wallet' },
   paidAmount: { type: Number, default: 0 },
   note: { type: String, trim: true },
+  cancelReason: { type: String, trim: true, default: null },
+  cancelledAt: { type: Date, default: null },
   packingVideo: {
     type: evidenceVideoSchema,
     default: null,

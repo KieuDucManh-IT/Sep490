@@ -881,6 +881,8 @@ export const cancelRentalOrder = async ({
     order.rentalStatus = 'cancelled';
     order.paymentStatus = totalRefund === 0 ? 'paid' : cancellationFee > 0 ? 'partially_refunded' : 'refunded';
     order.depositStatus = 'refunded';
+    order.cancelReason = validation.data.cancelReason;
+    order.cancelledAt = new Date();
     order.note = order.note
       ? `${order.note}; Hủy đơn: ${validation.data.cancelReason}`
       : `Hủy đơn: ${validation.data.cancelReason}`;

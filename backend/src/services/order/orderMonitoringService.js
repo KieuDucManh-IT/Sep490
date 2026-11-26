@@ -3,6 +3,7 @@ import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
+import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { Shop } from '../../models/shop/Shop.js';
@@ -25,6 +26,22 @@ import { appError as fail } from '../warehouse/shared/errors.js';
  * Chỉ lấy vận đơn chưa hủy (preparing, shipped, delivered)
  * Nếu tất cả vận đơn đều đã hủy -> trả về null để đơn hàng hiển thị đúng trạng thái vòng đời của đơn
  */
+export const mapSalesReturnItems = (returnDetails = [], orderItems = []) => {
+  const itemMap = new Map((orderItems || []).map((it) => [String(it._id), it]));
+  return (returnDetails || []).map((rd) => {
+    const od = itemMap.get(String(rd.salesOrderDetailId));
+    return {
+      salesOrderDetailId: rd.salesOrderDetailId,
+      name: od?.variantId?.variantName || od?.variantId?.productId?.name || 'Sản phẩm Vestora',
+      sku: od?.variantId?.sku || od?.variantId?.productId?.productCode || '',
+      size: od?.variantId?.size || '',
+      color: od?.variantId?.color || '',
+      quantity: rd.quantityReturned || 1,
+      price: rd.unitRefundAmount || 0,
+    };
+  });
+};
+
 export const resolvePrimaryShipment = (list = []) => {
   if (!Array.isArray(list) || !list.length) return null;
   const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
@@ -692,6 +709,10 @@ export const getSalesOrderById = async (user, id) => {
         select: 'name code address phone managerId',
       },
     })
+    .populate({
+      path: 'returnId',
+      select: 'returnCode returnStatus returnReason refundAmount requestedAt completedAt',
+    })
     .lean();
 
   if (!order) {
@@ -707,7 +728,8 @@ export const getSalesOrderById = async (user, id) => {
     throw fail('Bạn không có quyền truy cập đơn hàng của chi nhánh khác.', 403);
   }
 
-  const [items, shipments] = await Promise.all([
+  const returnIdRef = order.returnId?._id || order.returnId;
+  const [items, shipments, returnDetails] = await Promise.all([
     SalesOrderDetail.find({ salesOrderId: order._id })
       .populate({
         path: 'variantId',
@@ -721,6 +743,9 @@ export const getSalesOrderById = async (user, id) => {
     OrderShipment.find({ orderType: 'sale', orderId: order._id })
       .sort({ createdAt: -1 })
       .populate({ path: 'createdBy', select: 'FullName Email' }),
+    returnIdRef
+      ? SalesReturnDetail.find({ salesReturnId: returnIdRef }).lean()
+      : Promise.resolve([]),
   ]);
 
   const activeShipments = shipments.filter((s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus));
@@ -742,12 +767,24 @@ export const getSalesOrderById = async (user, id) => {
         select: 'name code address type shopId',
         populate: { path: 'shopId', select: 'name code address phone managerId' },
       })
+      .populate({
+        path: 'returnId',
+        select: 'returnCode returnStatus returnReason refundAmount requestedAt completedAt',
+      })
       .lean();
     if (freshOrder) order = freshOrder;
   }
 
-  const resolvedShipments = shipments.map((s) => (s.toObject ? s.toObject() : s));
+  const returnItems = mapSalesReturnItems(returnDetails, items);
+  const resolvedShipments = shipments.map((s) => {
+    const plain = s.toObject ? s.toObject() : s;
+    if (plain.shipmentType === 'return' && (!Array.isArray(plain.items) || !plain.items.length) && returnItems.length) {
+      return { ...plain, items: returnItems };
+    }
+    return plain;
+  });
   const primaryShipment = resolvePrimaryShipment(resolvedShipments);
+  order.returnItems = returnItems;
   order.shipments = resolvedShipments;
   order.shipment = primaryShipment;
 

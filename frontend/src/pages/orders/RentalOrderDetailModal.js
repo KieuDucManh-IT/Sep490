@@ -23,6 +23,7 @@ import {
   DEPOSIT_STATUS_MAP,
   PAYMENT_STATUS_MAP,
   resolveOrderDisplayStatus,
+  extractOrderCancelReason,
 } from './orderUtils';
 import {
   ShipmentTrackingTimeline,
@@ -243,6 +244,22 @@ export default function RentalOrderDetailModal({
           </div>
         ) : (
           <>
+            {(order.rentalStatus === 'cancelled' || order.status === 'cancelled') && (
+              <div role="alert" className="alert alert-danger d-flex align-items-start gap-2 mb-3">
+                <AlertCircle size={18} className="flex-shrink-0 mt-1" />
+                <div>
+                  <div className="fw-bold">
+                    Đơn thuê đã bị hủy
+                    {order.cancelledAt ? ` (${formatDate(order.cancelledAt)})` : ''}
+                  </div>
+                  <div className="small mt-1">
+                    <strong>Lý do hủy:</strong>{' '}
+                    {extractOrderCancelReason(order, shipments) || 'Chưa ghi nhận lý do cụ thể.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Section 1: Khách hàng & Lịch trình thuê */}
             <div className="modal-section-card">
               <div className="modal-section-header">
@@ -534,6 +551,7 @@ export default function RentalOrderDetailModal({
                             onCancel={handleCancelShipment}
                             onStatusUpdated={refetchOrder}
                             rentalStatus={order.rentalStatus}
+                            orderItems={items}
                             onRetry={
                               canRetryThis
                                 ? (targetShipment) => {

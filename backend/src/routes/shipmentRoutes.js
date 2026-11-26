@@ -43,20 +43,37 @@ router.get('/master-data/wards-by-province/:provinceId', getWardsByProvinceHandl
 // 3. Tra cứu tiến trình vận chuyển cho người dùng đã xác thực (Customer chính chủ hoặc Quản lý)
 router.get('/track/:trackingCode', authMiddleware, trackShipmentHandler);
 
-// 4. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role nhân viên / quản lý
-router.use(authMiddleware);
-router.use(requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'));
+// 4. API tạo vận đơn thu hồi đồ thuê qua GHN (Khách hàng tự trả đồ hoặc Branch Manager thu hồi hộ)
+router.post(
+  '/create-return',
+  authMiddleware,
+  requireRoles('customer', 'branch_manager'),
+  createReturnHandler
+);
 
-// Nghiệp vụ vận đơn
+// 5. Các API nghiệp vụ nội bộ bảo vệ bởi auth & role nhân viên / quản lý
+router.use(authMiddleware);
+
+// Xem danh sách vận đơn theo đơn hàng & lấy token in (chỉ đọc)
+router.get(
+  '/order/:orderType/:orderId',
+  requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'),
+  getShipmentsByOrderHandler
+);
+router.get(
+  '/print-token/:trackingCode',
+  requireRoles('branch_manager', 'shop_owner', 'owner', 'admin'),
+  getPrintTokenHandler
+);
+
+// Giả lập GHN sandbox & toàn bộ nghiệp vụ thao tác vận đơn: CHỈ CHO PHÉP Branch Manager
+router.use(requireRoles('branch_manager'));
+
+router.post('/dev/simulate-ghn', simulateGhnHandler);
 router.post('/calculate-fee', calculateFeeHandler);
 router.post('/create-outbound', createOutboundHandler);
-router.post('/create-return', createReturnHandler);
 router.put('/:id/cancel', cancelShipmentHandler);
 router.put('/:id/manual-status', updateManualStatusHandler);
-router.post('/dev/simulate-ghn', simulateGhnHandler);
-router.get('/order/:orderType/:orderId', getShipmentsByOrderHandler);
-router.get('/print-token/:trackingCode', getPrintTokenHandler);
-
 router.post('/upload-proof', proofUpload.single('image'), uploadProofHandler);
 
 export default router;

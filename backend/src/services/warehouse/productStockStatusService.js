@@ -1,15 +1,3 @@
-/**
- * TASK-012 — Quản lý trạng thái hết hàng toàn hệ thống (isOutOfStock).
- *
- * Logic:
- *  - Khi tồn kho thay đổi (putaway, bán, trả, điều chỉnh…):
- *      Nếu tổng quantityAvailable của tất cả chi nhánh (store + active) = 0 → đánh dấu hết hàng (isOutOfStock = true)
- *      Nếu > 0 → bỏ đánh dấu (isOutOfStock = false)
- *
- *  - Khi branch_manager/warehouse_manager tạo phiếu nhập (InboundReceipt):
- *      Reset isOutOfStock = false ngay lập tức để sản phẩm hiện lại với khách
- *      (hàng sắp về, không nên để khách thấy "hết hàng" khi sắp có hàng)
- */
 
 import mongoose from 'mongoose';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';

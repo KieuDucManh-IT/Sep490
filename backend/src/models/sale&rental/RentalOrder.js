@@ -1,4 +1,17 @@
 import mongoose from 'mongoose';
+const evidenceVideoSchema = new mongoose.Schema(
+  {
+    publicId: { type: String, required: true },
+    format: { type: String, required: true },
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
 const rentalOrderSchema = new mongoose.Schema({
   orderCode: { type: String, required: true, unique: true, trim: true },
@@ -15,6 +28,8 @@ const rentalOrderSchema = new mongoose.Schema({
   rentalFee: { type: Number, min: 0, required: true, default: 0 },
   depositAmount: { type: Number, min: 0, required: true, default: 0 },
   depositStatus: { type: String, default: 'pending', enum: ['pending', 'held', 'partially_refunded', 'refunded', 'forfeited', 'partially_deducted'] },
+  refundedDepositAmount: { type: Number, min: 0, default: 0 },
+  deductedDepositAmount: { type: Number, min: 0, default: 0 },
   deliveryMethod: { type: String, enum: ['delivery', 'pickup', 'carrier'], default: 'delivery' },
   shippingAddress: {
     receiverName: { type: String, trim: true },
@@ -31,6 +46,39 @@ const rentalOrderSchema = new mongoose.Schema({
   paymentMethod: { type: String, default: 'wallet' },
   paidAmount: { type: Number, default: 0 },
   note: { type: String, trim: true },
+  cancelReason: { type: String, trim: true, default: null },
+  cancelledAt: { type: Date, default: null },
+  packingVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+  returnVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+  receivingVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+
+  returnReceivedVideo: {
+    type: evidenceVideoSchema,
+    default: null,
+    select: false,
+  },
+
+  depositHoldTransactionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WalletTransaction',
+    default: null,
+  },
+  returnFlowVersion: {
+    type: Number,
+    default: 0,
+  },
 }, { timestamps: true });
 
 export const RentalOrder = mongoose.models.RentalOrder || mongoose.model('RentalOrder', rentalOrderSchema);

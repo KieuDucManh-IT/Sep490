@@ -85,7 +85,7 @@ export default function BranchDashboardPage() {
   const [activeOrderModal, setActiveOrderModal] = useState(null);
 
   const userRole = String(user?.Role || user?.role || '').trim().toUpperCase();
-  const isBranchManagerRole = ['BRANCH_MANAGER', 'BRAND_MANAGER'].includes(userRole);
+  const isBranchManagerRole = userRole === 'BRANCH_MANAGER';
 
   const loadDashboard = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
@@ -244,7 +244,6 @@ export default function BranchDashboardPage() {
                       <span className={`store-pill-active ${branch.status === 'ACTIVE' ? '' : 'inactive'}`}>
                         {branch.status === 'ACTIVE' ? 'Đang hoạt động' : branch.status || 'Tạm ngưng'}
                       </span>
-                      {branch.isHQ && <span className="branch-badge-hq">HQ</span>}
                     </div>
                     <div className="bd-meta-line">
                       {shortLocation && <span className="bd-meta-item"><MapPin size={13} />{shortLocation}</span>}

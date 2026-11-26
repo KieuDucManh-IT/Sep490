@@ -1,4 +1,6 @@
-// TASK-009 — Đối soát InventoryBalance của hàng `individual` với các InventoryItem (nguồn gốc).
+// TASK-009 — Đối soát InventoryBalance với các InventoryItem (nguồn gốc).
+// TASK-015: mọi sản phẩm quản lý theo món nên đối soát mọi biến thể. `--fix` (bulkWrite) là chỗ ghi balance
+// hợp lệ duy nhất ngoài itemStateService (công cụ đối soát).
 // Quy tắc tính nằm ở itemBalanceRules.js (computeExpectedBalances, diffBalances — có unit test).
 import mongoose from 'mongoose';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
@@ -6,7 +8,6 @@ import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBala
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
-import { Product } from '../../models/masterdata/Product.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { StockRelocation } from '../../models/warehouse/transfer/StockRelocation.js';
 import { StockRelocationDetail } from '../../models/warehouse/transfer/StockRelocationDetail.js';
@@ -22,9 +23,9 @@ const withSession = (query, session) => (session ? query.session(session) : quer
 
 export const balanceFieldsInUse = () => (InventoryBalance.schema.path('quantityRenting') ? [...BASE_FIELDS, 'quantityRenting'] : BASE_FIELDS);
 
-const individualVariantIds = async ({ variantIds } = {}, session) => {
-  const productIds = await withSession(Product.find({ trackingType: 'individual' }).distinct('_id'), session);
-  const filter = { productId: { $in: productIds } };
+/** Biến thể cần đối soát: danh sách truyền vào, hoặc mọi biến thể. */
+const variantIdsToReconcile = async ({ variantIds } = {}, session) => {
+  const filter = {};
   if (variantIds?.length) filter._id = { $in: toObjectIds(variantIds) };
   return withSession(ProductVariant.find(filter).distinct('_id'), session);
 };
@@ -47,9 +48,9 @@ export const warehouseHeldItemIds = async (session) => {
   return new Set([...relocationLines, ...returnLines].flatMap((line) => (line.itemIds || []).map(String)));
 };
 
-/** Tính balance mong đợi cho hàng individual theo bảng quy đổi (TASK-009 mục 3). */
+/** Tính balance mong đợi theo trạng thái các món (bảng quy đổi TASK-009 mục 3). Giữ tên cũ cho script/chỗ gọi. */
 export const computeExpectedIndividualBalances = async ({ variantIds, locationIds } = {}, session = null) => {
-  const ids = await individualVariantIds({ variantIds }, session);
+  const ids = await variantIdsToReconcile({ variantIds }, session);
   if (!ids.length) return { variantIds: [], expected: new Map(), orphanReservedItemIds: [] };
   const match = { variantId: { $in: ids } };
   if (locationIds?.length) match.locationId = { $in: toObjectIds(locationIds) };
@@ -105,7 +106,7 @@ const describeRows = async (rows, session) => {
 };
 
 /**
- * So balance đang lưu với balance mong đợi của hàng individual.
+ * So balance đang lưu với balance mong đợi tính từ các món.
  * - fix: false (mặc định) chỉ đọc. fix: true ghi lại đúng giá trị và xóa dòng mọi cột mong đợi bằng 0 — chạy trong một transaction.
  * Trả về { mismatches: [{ locationCode, storageCode, sku, field, actual, expected }], fixed, upserted, deleted, invariantViolations, orphanReservedItemIds }.
  */

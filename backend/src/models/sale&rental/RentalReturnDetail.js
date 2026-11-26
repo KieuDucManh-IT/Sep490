@@ -2,9 +2,12 @@ import mongoose from 'mongoose';
 
 const rentalReturnDetailSchema = new mongoose.Schema({
   rentalReturnId: { type: mongoose.Schema.Types.ObjectId, ref: 'RentalReturn', required: true, index: true },
-  itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', required: true },
-  conditionOnReturn: { type: String, required: true, enum: ['new', 'good', 'worn', 'damaged', 'unrepairable'] },
-  itemReturnStatus: { type: String, default: 'accepted', enum: ['accepted', 'damaged', 'missing_parts', 'rejected'] },
+  rentalOrderDetailId: { type: mongoose.Schema.Types.ObjectId, ref: 'RentalOrderDetail', default: null },
+  quantityReturned: { type: Number, min: 1, default: 1 },
+  itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
+  // TASK-016: kết quả kiểm thay cho conditionOnReturn/itemReturnStatus (phiếu cũ vẫn còn field cũ trong DB, code mới không đọc).
+  // ok → available; needs_service → unavailable; missing → lost (RentalOrderItem.status = missing).
+  inspectionResult: { type: String, required: true, enum: ['ok', 'needs_service', 'missing'] },
   damageFee: { type: Number, min: 0, default: 0 },
   note: { type: String, trim: true },
 }, { timestamps: true });

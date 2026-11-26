@@ -109,6 +109,5 @@ export const INITIAL_BRANCH_FORM_DATA = {
   latitude: '21.028511',
   longitude: '105.854167',
   managerId: '',
-  isHQ: false,
   status: 'ACTIVE',
 };

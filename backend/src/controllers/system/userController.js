@@ -44,7 +44,6 @@ function buildNewStaffEmailText(user, rawPassword) {
   const roleDisplayNames = {
     shopOwner: 'Chủ cửa hàng (Shop Owner)',
     branch_manager: 'Quản lý chi nhánh (Branch Manager)',
-    brandmanager: 'Quản lý chi nhánh (Branch Manager)',
     warehouse_manager: 'Quản lý kho (Warehouse Manager)',
     warehouse_staff: 'Nhân viên kho (Warehouse Staff)'
   };
@@ -130,8 +129,8 @@ export const getUsers = async (req, res) => {
         filter.Role = { $regex: /^(warehouse_staff|warehousestaff)$/i };
       } else if (clean === 'shopowner') {
         filter.Role = { $regex: /^(shop_owner|shopOwner)$/i };
-      } else if (clean === 'brandmanager' || clean === 'branchmanager') {
-        filter.Role = { $regex: /^(branch_manager|brandmanager)$/i };
+      } else if (clean === 'branchmanager') {
+        filter.Role = { $regex: /^branch_manager$/i };
       } else {
         filter.Role = { $regex: new RegExp(`^${role}$`, 'i') };
       }
@@ -150,7 +149,7 @@ export const getUsers = async (req, res) => {
 
     const users = await User.find(filter)
       .select('-PasswordHash') // Không trả về mật khẩu
-      .populate('ShopId', 'name address city isHQ')
+      .populate('ShopId', 'name address city')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -161,7 +160,7 @@ export const getUsers = async (req, res) => {
         { managerId: { $in: userIds } }
       ],
       isDeleted: { $ne: true }
-    }).select('_id name address city isHQ ownerId managerId').lean();
+    }).select('_id name address city ownerId managerId').lean();
 
     const shopByUserId = new Map();
     managedShops.forEach(s => {
@@ -184,7 +183,7 @@ export const getUsers = async (req, res) => {
         };
       }
 
-      const isBranchManager = cleanRole === 'branchmanager' || cleanRole === 'brandmanager';
+      const isBranchManager = cleanRole === 'branchmanager';
       if (!isBranchManager) {
         return {
           ...u,
@@ -221,7 +220,7 @@ export const getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .select('-PasswordHash')
-      .populate('ShopId', 'name address city isHQ')
+      .populate('ShopId', 'name address city')
       .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
@@ -233,11 +232,11 @@ export const getUserById = async (req, res) => {
         { managerId: user._id }
       ],
       isDeleted: { $ne: true }
-    }).select('_id name address city isHQ').lean();
+    }).select('_id name address city').lean();
 
     const cleanRole = (user.Role || '').toLowerCase().replace(/[_\s-]/g, '');
     const isOwner = cleanRole === 'shopowner' || cleanRole === 'owner';
-    const isBranchManager = cleanRole === 'branchmanager' || cleanRole === 'brandmanager';
+    const isBranchManager = cleanRole === 'branchmanager';
     const shop = isBranchManager ? (user.ShopId || managedShop || null) : null;
 
     res.json({
@@ -397,7 +396,7 @@ export const createUser = async (req, res) => {
     const normalizeRole = (r) => {
       const clean = (r || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
       if (clean === 'shopowner' || clean === 'owner') return 'shopOwner';
-      if (clean === 'branchmanager' || clean === 'brandmanager') return 'branch_manager';
+      if (clean === 'branchmanager') return 'branch_manager';
       if (clean === 'warehousemanager') return 'warehouse_manager';
       if (clean === 'warehousestaff') return 'warehouse_staff';
       return clean || 'warehouse_staff';
@@ -405,7 +404,7 @@ export const createUser = async (req, res) => {
 
     const normalizedRole = normalizeRole(Role);
     const isOwner = normalizedRole === 'shopOwner';
-    const isBranchManager = normalizedRole === 'branch_manager' || normalizedRole === 'brandmanager';
+    const isBranchManager = normalizedRole === 'branch_manager';
 
     // Chỉ branch_manager mới phân công chi nhánh, các vai trò khác không gán
     const assignedShopId = (isBranchManager && shopId && mongoose.Types.ObjectId.isValid(shopId)) ? shopId : null;
@@ -541,7 +540,7 @@ export const updateUser = async (req, res) => {
     if (Role !== undefined) {
       const clean = Role.toString().trim().toLowerCase().replace(/[_\s-]/g, '');
       if (clean === 'shopowner' || clean === 'owner') updateData.Role = 'shopOwner';
-      else if (clean === 'branchmanager' || clean === 'brandmanager') updateData.Role = 'branch_manager';
+      else if (clean === 'branchmanager') updateData.Role = 'branch_manager';
       else if (clean === 'warehousemanager') updateData.Role = 'warehouse_manager';
       else if (clean === 'warehousestaff') updateData.Role = 'warehouse_staff';
     }
@@ -575,7 +574,7 @@ export const updateUser = async (req, res) => {
     const targetRole = updateData.Role || existingUser.Role;
     const cleanTargetRole = (targetRole || '').toString().trim().toLowerCase().replace(/[_\s-]/g, '');
     const isTargetOwner = cleanTargetRole === 'shopowner' || cleanTargetRole === 'owner';
-    const isTargetBranchMgr = cleanTargetRole === 'branchmanager' || cleanTargetRole === 'brandmanager';
+    const isTargetBranchMgr = cleanTargetRole === 'branchmanager';
 
     if (isTargetOwner) {
       // Shop Owner làm chủ tất cả chi nhánh, không gắn riêng cho 1 cơ sở
@@ -602,12 +601,12 @@ export const updateUser = async (req, res) => {
       { new: true, runValidators: true }
     )
       .select('-PasswordHash')
-      .populate('ShopId', 'name address city isHQ');
+      .populate('ShopId', 'name address city');
 
     const managedShop = isTargetBranchMgr ? await Shop.findOne({
       managerId: user._id,
       isDeleted: { $ne: true }
-    }).select('_id name address city isHQ').lean() : null;
+    }).select('_id name address city').lean() : null;
 
     const currentShop = isTargetBranchMgr ? (user.ShopId || managedShop || null) : null;
 

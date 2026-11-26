@@ -300,42 +300,12 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
       });
     }
 
-    // 3.2. Món phụ kiện phối kèm (Túi xách, Trang sức, Kính mắt, Khăn...)
-    // CHÚ Ý KỸ THUẬT QUAN TRỌNG:
-    // Mô hình AI IDM-VTON chỉ học cấu trúc giải phẫu của QUẦN ÁO (upper_body, lower_body, dresses).
-    // Tuyệt đối KHÔNG đưa túi xách vào IDM-VTON vì AI sẽ coi túi xách là ÁO THÂN TRÊN và mặc lên ngực người mẫu!
-    // Phụ kiện được quản lý như một món Styling Accessories đi kèm trong Set Lookbook.
-    let accessoryGarmentImageUrl = req.body.accessoryGarmentImageUrl;
-    let accessoryGarmentDescription = req.body.accessoryGarmentDescription || "";
-
-    const accId = req.body.accessoryGarmentId;
-    if (accId && !accessoryGarmentImageUrl) {
-      try {
-        let accProd = null;
-        if (mongoose.Types.ObjectId.isValid(accId)) {
-          accProd = await Product.findById(accId).lean();
-        }
-        if (!accProd) {
-          accProd = await Product.findOne({ productCode: accId }).lean();
-        }
-        if (accProd) {
-          accessoryGarmentDescription = accessoryGarmentDescription || accProd.name;
-          accessoryGarmentImageUrl =
-            accProd.primaryImageUrl ||
-            (Array.isArray(accProd.images) && accProd.images[0]) ||
-            accProd.image;
-        }
-      } catch (err) {
-        console.warn("[TryOnRoutes] Lỗi tra cứu accessoryGarment:", err.message);
-      }
-    }
-
-    // Nếu sản phẩm chính lại là Phụ kiện (túi xách/kính):
+    // 3.2. Kiểm tra nếu sản phẩm chính là Phụ kiện (túi xách/kính/giày...)
     if (category === "accessories") {
       return res.status(400).json({
         success: false,
         message:
-          "Túi xách và phụ kiện là món phối kèm theo set đồ (Complete The Look). Vui lòng chọn trang phục chính (Đầm, Áo, hoặc Chân váy/Quần) để AI ướm thử phom dáng lên người mẫu!",
+          "Túi xách và phụ kiện là món phối kèm tham khảo trong Lookbook. Vui lòng chọn trang phục chính (Đầm, Áo, hoặc Chân váy/Quần) để AI ướm thử phom dáng lên người mẫu!",
       });
     }
 
@@ -385,16 +355,8 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
           resultImageUrl: currentModelImage,
           intermediateImages,
           category: "combo_set",
-          totalItems: 1 + additionalClothing.length + (accessoryGarmentImageUrl ? 1 : 0),
-          accessory: accessoryGarmentImageUrl
-            ? {
-              imageUrl: accessoryGarmentImageUrl,
-              name: accessoryGarmentDescription,
-            }
-            : null,
-          message: accessoryGarmentImageUrl
-            ? "Ghép thành công set trang phục hoàn chỉnh kèm phụ kiện túi xách trong Lookbook!"
-            : `Ghép thành công cả set bộ ${1 + additionalClothing.length} món!`,
+          totalItems: 1 + additionalClothing.length,
+          message: `Ghép thành công cả set bộ ${1 + additionalClothing.length} món!`,
         },
       });
     }
@@ -413,12 +375,6 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
       success: true,
       data: {
         ...tryOnResult,
-        accessory: accessoryGarmentImageUrl
-          ? {
-            imageUrl: accessoryGarmentImageUrl,
-            name: accessoryGarmentDescription,
-          }
-          : null,
       },
     });
   } catch (err) {

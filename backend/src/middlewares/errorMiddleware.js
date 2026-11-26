@@ -77,7 +77,7 @@ export async function authMiddleware(req, res, next) {
   }
 }
 
-const normalizeRole = (r) => String(r || '').trim().toLowerCase().replace(/[\s_-]/g, '').replace('brandmanager', 'branchmanager');
+const normalizeRole = (r) => String(r || '').trim().toLowerCase().replace(/[\s_-]/g, '');
 
 export function requireRole(...allowedRoles) {
   return (req, res, next) => {

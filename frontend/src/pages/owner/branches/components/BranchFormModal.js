@@ -73,21 +73,25 @@ export default function BranchFormModal({
     }
   };
 
-  // Chuẩn bị danh sách Quản lý: Hiển thị số chi nhánh đang phụ trách (hỗ trợ mô hình 1 quản lý : N chi nhánh)
+  // Chuẩn bị danh sách Quản lý: Chỉ hiển thị tài khoản chưa quản lý chi nhánh nào (+ quản lý hiện tại nếu đang sửa)
+  const currentManager = isEditMode && activeBranch?.managerId?._id ? activeBranch.managerId : null;
+  const eligibleManagers = managers.filter((m) => {
+    const isCurrent = currentManager && String(currentManager._id) === String(m._id);
+    return (m.assignedBranchesCount || 0) === 0 || isCurrent;
+  });
+  if (currentManager && !eligibleManagers.some((m) => String(m._id) === String(currentManager._id))) {
+    eligibleManagers.unshift(currentManager);
+  }
+
   const managerOptions = [
     {
       value: '',
       label: '— Không chỉ định (Chưa có Quản lý) —',
       subtext: 'Chi nhánh sẽ hoạt động độc lập hoặc do Chủ chuỗi quản lý trực tiếp',
     },
-    ...managers.map((m) => {
-      const branchCount = m.assignedBranchesCount || 0;
-      let branchLabel = 'Chưa phụ trách chi nhánh nào';
-      if (branchCount === 1) {
-        branchLabel = 'Đang quản lý 1 chi nhánh';
-      } else if (branchCount > 1) {
-        branchLabel = `Đang quản lý ${branchCount} chi nhánh`;
-      }
+    ...eligibleManagers.map((m) => {
+      const isCurrentBranchManager = currentManager && String(currentManager._id) === String(m._id);
+      const branchLabel = isCurrentBranchManager ? 'Đang quản lý chi nhánh này' : 'Sẵn sàng bổ nhiệm';
 
       return {
         value: String(m._id),
@@ -506,34 +510,19 @@ export default function BranchFormModal({
                     onChange={(val) => onFieldChange('managerId', val)}
                     placeholder="Tìm theo tên, email, số điện thoại của Quản lý chi nhánh..."
                   />
+                  {formErrors.managerId && (
+                    <div className="vestora-invalid-feedback">
+                      <AlertCircle size={12} />
+                      <span>{formErrors.managerId}</span>
+                    </div>
+                  )}
                   <Form.Text className="text-muted small">
-                    Hệ thống chỉ cho phép bổ nhiệm các tài khoản đã được cấp quyền Quản lý chi nhánh. Một quản lý có thể phụ trách nhiều chi nhánh.
+                    Hệ thống áp dụng ràng buộc 1:1: Mỗi chi nhánh chỉ được quản lý bởi 1 quản lý và mỗi quản lý chỉ phụ trách duy nhất 1 chi nhánh.
                   </Form.Text>
                 </Form.Group>
               </Col>
 
-              {/* Ràng buộc toàn hệ thống: Chỉ duy nhất 1 chi nhánh được gán isHQ = true */}
-              <Col md={6}>
-                <div className="d-flex align-items-center justify-content-between p-3 border rounded-3 bg-light">
-                  <div>
-                    <div className="small fw-bold text-dark">Đặt Làm Trụ Sở Chính (HQ)</div>
-                    <div className="text-muted form-switch-description">
-                      {isEditMode && Boolean(activeBranch?.isHQ)
-                        ? 'Chi nhánh này đang là Trụ sở chính duy nhất của chuỗi. Để chuyển giao, hãy chỉnh sửa chi nhánh khác và đặt làm Trụ sở chính.'
-                        : 'Toàn hệ thống chỉ có duy nhất 1 Trụ sở chính. Khi kích hoạt, chi nhánh này sẽ thành Trụ sở chính và chi nhánh cũ tự động chuyển thành chi nhánh thường.'}
-                    </div>
-                  </div>
-                  <Form.Check
-                    type="switch"
-                    id="isHQ-switch"
-                    checked={formData.isHQ}
-                    disabled={isEditMode && Boolean(activeBranch?.isHQ)}
-                    onChange={(e) => onFieldChange('isHQ', e.target.checked)}
-                  />
-                </div>
-              </Col>
-
-              <Col md={6}>
+              <Col md={12}>
                 <div className="d-flex align-items-center justify-content-between p-3 border rounded-3 bg-light">
                   <div>
                     <div className="small fw-bold text-dark">Trạng Thái Hoạt Động</div>

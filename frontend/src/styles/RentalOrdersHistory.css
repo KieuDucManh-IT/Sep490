@@ -349,3 +349,32 @@
 .rental-order-card__price-deposit--free {
   color: #16A34A !important;
 }
+
+/* --- Return button for Customer --- */
+.rental-order-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rental-order-card__return-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #B45309;
+  background-color: #FFFBEB;
+  border: 1px solid #FDE68A;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 6px 12px;
+  transition: all 0.2s ease;
+}
+
+.rental-order-card__return-btn:hover {
+  background-color: #FEF3C7;
+  color: #78350F;
+  border-color: #F59E0B;
+  transform: translateY(-1px);
+}

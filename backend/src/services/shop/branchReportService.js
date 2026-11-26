@@ -22,8 +22,7 @@ const normalizeRole = (role) =>
   String(role || '')
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, '')
-    .replace('brandmanager', 'branchmanager');
+    .replace(/[\s_-]/g, '');
 
 const extractCustomerName = (customer, shippingAddress) =>
   customer?.FullName || customer?.fullName || shippingAddress?.receiverName || 'Khách hàng';
@@ -309,7 +308,6 @@ const buildEmptyReport = ({
         city: shop.city || '',
         phone: shop.phone || '',
         status: shop.status || 'ACTIVE',
-        isHQ: Boolean(shop.isHQ),
       }
     : null,
   storeLocation: locations[0]
@@ -404,7 +402,7 @@ async function resolveAuthorizedBranch({ user, branchId }) {
       }
     } else {
       shop = await Shop.findOne({ isDeleted: { $ne: true } })
-        .sort({ isHQ: -1, createdAt: 1, _id: 1 })
+        .sort({ createdAt: 1, _id: 1 })
         .lean();
     }
   }
@@ -577,7 +575,7 @@ export async function getBranchPerformanceReportData({
     }),
     StockTransfer.countDocuments({
       toLocationId: { $in: locationIds },
-      status: { $in: ['shipped', 'partially_received'] },
+      status: 'shipped',
     }),
     // TASK-011: số đang cho thuê đọc balance.quantityRenting (mọi loại hàng), không đếm món.
     InventoryBalance.aggregate([
@@ -950,7 +948,6 @@ export async function getBranchPerformanceReportData({
       city: shop.city || '',
       phone: shop.phone || '',
       status: shop.status || 'ACTIVE',
-      isHQ: Boolean(shop.isHQ),
     },
     storeLocation: {
       _id: locations[0]._id,

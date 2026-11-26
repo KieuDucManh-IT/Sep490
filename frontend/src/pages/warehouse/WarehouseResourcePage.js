@@ -34,8 +34,8 @@ const configs = {
     ]
   },
   products: {
-    service: 'products', title: 'Sản phẩm', multipleFields: ['categoryId'], listFields: [['productCode', 'Mã sản phẩm'], ['name', 'Tên sản phẩm'], ['categoryId', 'Loại sản phẩm'], ['tag', 'Hình thức'], ['quantity', 'Số lượng tồn'], ['trackingType', 'Kiểu quản lý'], ['status', 'Trạng thái'], ['isSetPrice', 'Định giá']], fields: [
-      ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['tag', 'Hình thức', 'select', false, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['trackingType', 'Kiểu quản lý', 'select', true, ['quantity:Theo số lượng', 'individual:Theo từng cá thể']], ['brand', 'Thương hiệu', 'text'], ['material', 'Chất liệu', 'text'], ['gender', 'Giới tính', 'text'], ['aiTryOn', 'Thử đồ AI', 'select', false, ['true:Có', 'false:Không']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
+    service: 'products', title: 'Sản phẩm', multipleFields: ['categoryId'], listFields: [['productCode', 'Mã sản phẩm'], ['name', 'Tên sản phẩm'], ['categoryId', 'Loại sản phẩm'], ['tag', 'Hình thức'], ['quantity', 'Số lượng tồn'], ['status', 'Trạng thái'], ['isSetPrice', 'Định giá']], fields: [
+      ['categoryId', 'Loại sản phẩm', 'relation', true, 'categories', 'name'], ['productCode', 'Mã sản phẩm', 'text', true], ['name', 'Tên sản phẩm', 'text', true], ['description', 'Mô tả', 'text'], ['tag', 'Hình thức', 'select', false, ['sale:Bán', 'rental:Cho thuê', 'both:Bán và cho thuê']], ['brand', 'Thương hiệu', 'text'], ['material', 'Chất liệu', 'text'], ['gender', 'Giới tính', 'text'], ['aiTryOn', 'Thử đồ AI', 'select', false, ['true:Có', 'false:Không']], ['status', 'Trạng thái', 'select', true, ['active:Hoạt động', 'inactive:Ngừng hoạt động', 'discontinued:Ngừng kinh doanh']],
     ]
   },
   suppliers: {

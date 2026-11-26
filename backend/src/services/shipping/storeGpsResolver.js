@@ -66,11 +66,13 @@ const cleanString = (str) =>
 
 /**
  * Tự động chuyển đổi Tọa độ GPS (Vĩ độ, Kinh độ) của Cửa hàng sang mã Tỉnh/Huyện/Xã GHN
+ * Hỗ trợ chuyển đổi mã v3 (1000000 Hà Nội) sang v2 phục vụ truy vấn quận huyện
  */
 export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) => {
   let matchedProvinceId = fallbackInfo.provinceId ? Number(fallbackInfo.provinceId) : null;
   let matchedDistrictId = fallbackInfo.districtId ? Number(fallbackInfo.districtId) : null;
   let matchedWardCode = fallbackInfo.wardCode ? String(fallbackInfo.wardCode) : '';
+  let matchedDistrictName = fallbackInfo.districtName || '';
 
   // Nếu cửa hàng đã có sẵn đầy đủ mã GHN, trả về ngay
   if (matchedProvinceId && matchedDistrictId && matchedWardCode) {
@@ -78,6 +80,7 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
       provinceId: matchedProvinceId,
       districtId: matchedDistrictId,
       wardCode: matchedWardCode,
+      districtName: matchedDistrictName,
     };
   }
 
@@ -122,45 +125,88 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
       }
     }
 
-    // 2. So khớp Quận / Huyện theo Tỉnh
-    if (!matchedDistrictId && matchedProvinceId) {
-      const districts = await ghnService.getDistricts(matchedProvinceId);
-      if (Array.isArray(districts) && districts.length > 0) {
-        // Tìm theo tên quận
-        const foundDist = districts.find((d) => {
-          const dClean = cleanString(d.DistrictName);
-          const extMatch = d.NameExtension && d.NameExtension.some((ext) => combinedAddress.includes(cleanString(ext)));
-          return (
-            (geoDistrict && (dClean === cleanString(geoDistrict) || cleanString(geoDistrict).includes(dClean))) ||
-            combinedAddress.includes(dClean) ||
-            extMatch
-          );
-        });
+    // Ánh xạ provinceId v3 sang v2 để tra cứu District GHN (Hà Nội v3 là 1000000 -> v2 là 201)
+    const v2ProvinceId = matchedProvinceId === 1000000 ? 201 : matchedProvinceId;
 
-        if (foundDist) {
-          matchedDistrictId = foundDist.DistrictID;
+    // 2. So khớp Quận / Huyện theo Tỉnh
+    if (!matchedDistrictId && v2ProvinceId) {
+      try {
+        const districts = await ghnService.getDistricts(v2ProvinceId);
+        if (Array.isArray(districts) && districts.length > 0) {
+          const foundDist = districts.find((d) => {
+            const dClean = cleanString(d.DistrictName);
+            const extMatch = d.NameExtension && d.NameExtension.some((ext) => combinedAddress.includes(cleanString(ext)));
+            return (
+              (geoDistrict && (dClean === cleanString(geoDistrict) || cleanString(geoDistrict).includes(dClean))) ||
+              combinedAddress.includes(dClean) ||
+              extMatch
+            );
+          });
+
+          if (foundDist) {
+            matchedDistrictId = foundDist.DistrictID;
+            matchedDistrictName = foundDist.DistrictName;
+          }
         }
-      }
+      } catch {}
     }
 
-    // 3. So khớp Phường / Xã theo Quận
-    if (!matchedWardCode && matchedDistrictId) {
-      const wards = await ghnService.getWards(matchedDistrictId);
-      if (Array.isArray(wards) && wards.length > 0) {
-        const foundWard = wards.find((w) => {
-          const wClean = cleanString(w.WardName);
-          const extMatch = w.NameExtension && w.NameExtension.some((ext) => combinedAddress.includes(cleanString(ext)));
-          return (
-            (geoWard && (wClean === cleanString(geoWard) || cleanString(geoWard).includes(wClean))) ||
-            combinedAddress.includes(wClean) ||
-            extMatch
-          );
-        });
-
-        if (foundWard) {
-          matchedWardCode = String(foundWard.WardCode);
+    // 2.1 Tra cứu Quận/Huyện từ Phường/Xã (nếu có xã mà chưa xác định được quận)
+    if (!matchedDistrictId && v2ProvinceId && (geoWard || fallbackInfo.ward || fallbackInfo.wardCode)) {
+      try {
+        const provWards = await ghnService.getWardsByProvince(v2ProvinceId);
+        if (Array.isArray(provWards) && provWards.length > 0) {
+          const targetWard = cleanString(geoWard || fallbackInfo.ward);
+          const targetCode = String(fallbackInfo.wardCode || '').trim().toLowerCase();
+          const foundWard = provWards.find((w) => {
+            const wName = cleanString(w.WardName);
+            const wCode = String(w.WardCode || '').toLowerCase();
+            return (
+              (targetCode && wCode === targetCode) ||
+              (targetWard && (wName === targetWard || targetWard.includes(wName) || wName.includes(targetWard)))
+            );
+          });
+          if (foundWard) {
+            matchedDistrictId = foundWard.DistrictID;
+            matchedDistrictName = foundWard.DistrictName;
+            if (!matchedWardCode) matchedWardCode = String(foundWard.WardCode);
+          }
         }
-      }
+      } catch {}
+    }
+
+    // Fallback cho Hà Nội nếu chưa xác định được District
+    if (
+      !matchedDistrictId &&
+      (v2ProvinceId === 201 ||
+        matchedProvinceId === 1000000 ||
+        combinedAddress.includes('hà nội') ||
+        combinedAddress.includes('ha noi'))
+    ) {
+      matchedDistrictId = 1488; // Ba Đình, Hà Nội
+      matchedDistrictName = 'Quận Ba Đình';
+    }
+
+    // 3. So khớp Phường / Xã theo Quận (v2)
+    if (!matchedWardCode && matchedDistrictId) {
+      try {
+        const wards = await ghnService.getWards(matchedDistrictId);
+        if (Array.isArray(wards) && wards.length > 0) {
+          const foundWard = wards.find((w) => {
+            const wClean = cleanString(w.WardName);
+            const extMatch = w.NameExtension && w.NameExtension.some((ext) => combinedAddress.includes(cleanString(ext)));
+            return (
+              (geoWard && (wClean === cleanString(geoWard) || cleanString(geoWard).includes(wClean))) ||
+              combinedAddress.includes(wClean) ||
+              extMatch
+            );
+          });
+
+          if (foundWard) {
+            matchedWardCode = String(foundWard.WardCode);
+          }
+        }
+      } catch {}
     }
   } catch {
     // Không log lỗi ra console
@@ -170,6 +216,6 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
     provinceId: matchedProvinceId || null,
     districtId: matchedDistrictId || null,
     wardCode: matchedWardCode || null,
+    districtName: matchedDistrictName || '',
   };
 };
-

@@ -425,10 +425,10 @@ export default function AdminAccountsPage() {
       dob: user.dob && user.dob !== '—' ? user.dob : '15/08/2000',
       gender: user.gender || 'Nữ',
       avatar: user.avatar || '',
-      role: ['shopOwner', 'branch_manager', 'brandmanager', 'warehouse_manager', 'warehouseManager', 'warehouse_staff', 'warehousestaff'].includes(user.role)
-        ? (user.role === 'brandmanager' ? 'branch_manager' : (user.role === 'warehouseManager' ? 'warehouse_manager' : (user.role === 'warehousestaff' ? 'warehouse_staff' : user.role)))
+      role: ['shopOwner', 'branch_manager', 'warehouse_manager', 'warehouseManager', 'warehouse_staff', 'warehousestaff'].includes(user.role)
+        ? (user.role === 'warehouseManager' ? 'warehouse_manager' : (user.role === 'warehousestaff' ? 'warehouse_staff' : user.role))
         : 'warehouse_staff',
-      shopId: (user.role === 'branch_manager' || user.role === 'brandmanager') ? (user.shopId || '') : '',
+      shopId: (user.role === 'branch_manager') ? (user.shopId || '') : '',
       status: user.status || 'ACTIVE'
     });
     setEditFormErrors({});

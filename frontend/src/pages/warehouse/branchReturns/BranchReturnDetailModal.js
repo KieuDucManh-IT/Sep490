@@ -2,7 +2,8 @@ import React from 'react';
 import { Button, Modal } from 'react-bootstrap';
 import { PackageCheck } from 'lucide-react';
 import WarehouseWorkflowProgress from '../../../components/WarehouseWorkflowProgress';
-import { StatusBadge } from '../../../components/warehouse';
+import { WarehouseCancelledNote } from '../../../components/WarehouseCancelSlipModal';
+import { ItemCodeGroup, StatusBadge } from '../../../components/warehouse';
 import { BRANCH_RETURN_STATUS_LABELS, formatVariantName } from '../../../constants/warehouseLabels';
 import { idOf } from '../shared/slipHelpers';
 import { PutawayCell, ReceiptCell } from './ReturnLineCells';
@@ -23,11 +24,7 @@ function LineName({ line }) {
   return (
     <td>
       {formatVariantName(line.variantId)}
-      {line.itemIds?.length > 0 && (
-        <small className="wm-stock-subline">
-          {line.itemIds.map((item) => item.itemCode || idOf(item).slice(-6)).join(', ')}
-        </small>
-      )}
+      {line.itemIds?.length > 0 && <ItemCodeGroup label="Mã hàng" items={line.itemIds} />}
     </td>
   );
 }
@@ -47,7 +44,7 @@ function ReturnLinesTable({ transfer, role, form }) {
             <th>Yêu cầu</th>
             <th>Duyệt</th>
             <th>Đã gửi</th>
-            <th>Thực nhận / hỏng / thiếu</th>
+            <th>Thực nhận / cần xử lý / mất</th>
             {puttingAway && <th>Kệ nhập</th>}
           </tr>
         </thead>
@@ -101,10 +98,11 @@ function DetailActions({ transfer, role, busy, actions }) {
         </>
       )}
       {role.isBranch && status === 'approved' && (
-        <>
-          <Button variant="dark" disabled={busy} onClick={actions.dispatch}>Xác nhận gửi hàng</Button>
-          <Button variant="outline-danger" disabled={busy} onClick={actions.cancel}>Hủy phiếu</Button>
-        </>
+        <Button variant="dark" disabled={busy} onClick={actions.dispatch}>Xác nhận gửi hàng</Button>
+      )}
+      {/* TASK-016 D2: hủy chỉ trước khi gửi (chờ duyệt / đã duyệt); quản lý chi nhánh hoặc quản lý kho. */}
+      {(role.isBranch || role.isManager) && ['requested', 'approved'].includes(status) && (
+        <Button variant="outline-danger" disabled={busy} onClick={actions.cancel}>Hủy phiếu</Button>
       )}
       {role.isStaff && status === 'shipped' && (
         <Button variant="dark" disabled={busy} onClick={actions.submitReceipt}>
@@ -143,6 +141,7 @@ export default function BranchReturnDetailModal({ transfer, role, form, staff, b
           {' · '}Nhân viên nhận: {transfer.assignedStaffId?.FullName || 'Chưa giao'}
         </p>
         <WarehouseWorkflowProgress flow="branchReturn" status={transfer.status} />
+        <WarehouseCancelledNote slip={transfer} />
         {error && <div className="wm-error">{error}</div>}
         {role.isManager && transfer.status === 'requested' && (
           <StaffAssign staff={staff} value={form.assignedStaffId} onChange={form.setAssignedStaffId} />

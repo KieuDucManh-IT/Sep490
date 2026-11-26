@@ -10,7 +10,11 @@ const stockTransferSchema = new mongoose.Schema({
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   shippedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-  status: { type: String, default: 'requested', enum: ['requested', 'approved', 'rejected', 'preparing', 'shipped', 'partially_received', 'received', 'receipt_submitted', 'receipt_approved', 'completed', 'cancelled'] },
+  // TASK-016 D: hai chiều cùng kết thúc ở `completed`; bỏ `received` / `partially_received` (dữ liệu cũ chuyển bằng script).
+  // Kho tổng → chi nhánh: requested → approved / rejected → preparing → shipped → completed; cancelled trước khi xuất.
+  // Chi nhánh → kho tổng: requested → approved / rejected → shipped → receipt_submitted → receipt_approved → completed;
+  //                       cancelled chỉ khi requested / approved.
+  status: { type: String, default: 'requested', enum: ['requested', 'approved', 'rejected', 'preparing', 'shipped', 'receipt_submitted', 'receipt_approved', 'completed', 'cancelled'] },
   approvedAt: { type: Date, default: null },
   shippedAt: { type: Date, default: null },
   receivedAt: { type: Date, default: null },

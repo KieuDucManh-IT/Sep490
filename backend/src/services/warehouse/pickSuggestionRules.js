@@ -13,35 +13,7 @@ export const compareStorageCode = (a, b) => String(a || '').localeCompare(String
 const byCode = (a, b) => compareStorageCode(a.storageCode, b.storageCode) || idOf(a.storageId).localeCompare(idOf(b.storageId));
 
 /**
- * Hàng quản lý theo số lượng.
- * 1. Có kệ đủ `needed` → chọn 1 kệ đủ hàng có mã nhỏ nhất.
- * 2. Không có → tham lam theo khả dụng giảm dần (cùng khả dụng: mã nhỏ trước) đến khi đủ → ít kệ nhất.
- * @param {{ storageId: string, storageCode: string, available: number }[]} shelves
- * @param {number} needed
- * @returns {{ picks: { storageId, storageCode, quantity }[], shortage: number }} picks sắp theo mã vị trí
- */
-export const suggestQuantityPicks = (shelves, needed) => {
-  const want = positive(needed);
-  const usable = (shelves || [])
-    .map((shelf) => ({ ...shelf, available: positive(shelf.available) }))
-    .filter((shelf) => shelf.available > 0)
-    .sort(byCode);
-  if (!want) return { picks: [], shortage: 0 };
-  const single = usable.find((shelf) => shelf.available >= want);
-  if (single) return { picks: [{ storageId: single.storageId, storageCode: single.storageCode, quantity: want }], shortage: 0 };
-  const picks = [];
-  let remaining = want;
-  for (const shelf of [...usable].sort((a, b) => b.available - a.available || byCode(a, b))) {
-    if (!remaining) break;
-    const quantity = Math.min(shelf.available, remaining);
-    picks.push({ storageId: shelf.storageId, storageCode: shelf.storageCode, quantity });
-    remaining -= quantity;
-  }
-  return { picks: picks.sort(byCode), shortage: remaining };
-};
-
-/**
- * Hàng quản lý từng món: gom các món available theo kệ, lấy kệ nhiều món nhất trước (cùng số món: mã kệ nhỏ trước)
+ * Gom các món available theo kệ, lấy kệ nhiều món nhất trước (cùng số món: mã kệ nhỏ trước)
  * đến khi đủ `needed`; trong một kệ lấy món theo mã hàng tăng dần.
  * @param {{ _id: string, itemCode: string, storageId: string, storageCode: string }[]} items
  * @param {number} needed
@@ -78,32 +50,18 @@ export const suggestIndividualPicks = (items, needed) => {
 };
 
 /**
- * Gợi ý cho cả phiếu. Nếu nhiều dòng cùng một biến thể, dòng sau chỉ dùng phần còn lại sau dòng trước
- * (không gợi ý một món / một phần tồn cho hai dòng).
- * @param {{ detailId, variantId, individual: boolean, needed: number }[]} lines
- * @param {{ shelvesByVariant: Map<string, object[]>, itemsByVariant: Map<string, object[]> }} pools
+ * Gợi ý cho cả phiếu (TASK-015: mọi dòng là hàng theo món). Nếu nhiều dòng cùng một biến thể, dòng sau chỉ
+ * dùng các món còn lại sau dòng trước (không gợi ý một món cho hai dòng).
+ * @param {{ detailId, variantId, needed: number }[]} lines
+ * @param {{ itemsByVariant: Map<string, object[]> }} pools
  */
-export const buildPickSuggestion = (lines, { shelvesByVariant = new Map(), itemsByVariant = new Map() } = {}) => {
-  const usedQuantity = new Map(); // `${variantId}:${storageId}` → đã gợi ý
+export const buildPickSuggestion = (lines, { itemsByVariant = new Map() } = {}) => {
   const usedItems = new Set();
   return (lines || []).map((line) => {
     const variantKey = idOf(line.variantId);
-    let result;
-    if (line.individual) {
-      const items = (itemsByVariant.get(variantKey) || []).filter((item) => !usedItems.has(idOf(item._id)));
-      result = suggestIndividualPicks(items, line.needed);
-      result.picks.forEach((pick) => pick.itemIds.forEach((id) => usedItems.add(id)));
-    } else {
-      const shelves = (shelvesByVariant.get(variantKey) || []).map((shelf) => ({
-        ...shelf,
-        available: positive(shelf.available) - (usedQuantity.get(`${variantKey}:${idOf(shelf.storageId)}`) || 0),
-      }));
-      result = suggestQuantityPicks(shelves, line.needed);
-      for (const pick of result.picks) {
-        const key = `${variantKey}:${idOf(pick.storageId)}`;
-        usedQuantity.set(key, (usedQuantity.get(key) || 0) + pick.quantity);
-      }
-    }
+    const items = (itemsByVariant.get(variantKey) || []).filter((item) => !usedItems.has(idOf(item._id)));
+    const result = suggestIndividualPicks(items, line.needed);
+    result.picks.forEach((pick) => pick.itemIds.forEach((id) => usedItems.add(id)));
     return { detailId: line.detailId, variantId: line.variantId, needed: positive(line.needed), ...result };
   });
 };

@@ -8,8 +8,7 @@ const itemMaintenanceRecordSchema = new mongoose.Schema({
   maintenanceType: { type: String, required: true, enum: ['cleaning', 'repair', 'inspection', 'replacement_part', 'other'] },
   issueDescription: { type: String, required: true, trim: true },
   repairDescription: { type: String, trim: true },
-  beforeCondition: { type: String, enum: ['new', 'good', 'worn', 'damaged', 'unrepairable'] },
-  afterCondition: { type: String, enum: ['new', 'good', 'worn', 'damaged', 'unrepairable'] },
+  // TASK-016: bỏ beforeCondition/afterCondition (phiếu cũ còn giữ trong DB làm lịch sử); kết quả nằm ở repairResult.
   previousItemStatus: { type: String, default: null },
   targetStorageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
   repairResult: { type: String, enum: ['success', 'failed', 'unrepairable', null], default: null },

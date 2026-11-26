@@ -47,16 +47,15 @@ export function buildCreatePayload({ centralLocation, supplierId, assignedStaffI
   };
 }
 
-/** Dòng ghi nhận thực nhận ban đầu cho từng dòng phiếu. */
 /**
  * Dòng ghi nhận ban đầu. Phiếu bị yêu cầu kiểm nhận lại (recountCount > 0) điền sẵn số đã nhận / hỏng lần trước
- * để nhân viên sửa; phiếu mới để trống ô thực nhận.
+ * để nhân viên sửa; phiếu mới mặc định nhận đủ số dự kiến, không hỏng (TASK-015: chỉ sửa chỗ khác thường).
  */
 export const initialReceiveLines = (receipt) => {
   const prefill = receipt.recountCount > 0;
   return receipt.items.map((item) => ({
     detailId: item._id,
-    quantityReceived: prefill ? item.quantityReceived ?? '' : '',
+    quantityReceived: prefill ? item.quantityReceived ?? '' : item.quantityExpected ?? '',
     quantityDamaged: prefill ? item.quantityDamaged ?? 0 : 0,
     note: item.note || '',
   }));
@@ -81,49 +80,66 @@ export const buildReceivePayload = (lines) => ({
   })),
 });
 
-/** Phân bổ kệ đã lưu trước đó (nếu có), nếu không thì một dòng trống chứa toàn bộ hàng tốt. */
-function savedAllocations(item, accepted) {
-  if (item.storageAllocations?.length) {
-    return item.storageAllocations.map((allocation) => ({
-      storageId: idOf(allocation.storageId),
-      quantity: allocation.quantity,
-    }));
+/** Phân bổ kệ đã lưu trước đó (nếu có), nếu không thì một dòng trống chứa toàn bộ số cần xếp. */
+function savedAllocations(saved = [], total, fallbackStorageId) {
+  if (saved.length) {
+    return saved.map((allocation) => ({ storageId: idOf(allocation.storageId), quantity: allocation.quantity }));
   }
-  if (item.storageId) return [{ storageId: idOf(item.storageId), quantity: accepted }];
+  if (fallbackStorageId) return [{ storageId: idOf(fallbackStorageId), quantity: total }];
+  if (total > 0) return [{ storageId: '', quantity: total }];
   return [];
 }
 
+/**
+ * Mỗi đơn vị thực nhận thành một món trên kệ (TASK-015): phần tốt xếp theo `allocations`,
+ * phần hỏng xếp theo `damagedAllocations` (món hỏng vẫn chiếm chỗ trên kệ).
+ */
 export const initialPutawayLines = (receipt) => receipt.items.map((item) => {
   const accepted = acceptedQuantity(item);
-  const saved = savedAllocations(item, accepted);
-  let allocations = saved;
-  if (!saved.length && accepted > 0) allocations = [{ storageId: '', quantity: accepted }];
-  return { detailId: item._id, allocations, accepted };
+  const damaged = Math.max(0, Number(item.quantityDamaged || 0));
+  return {
+    detailId: item._id,
+    accepted,
+    damaged,
+    allocations: savedAllocations(item.storageAllocations, accepted, item.storageId),
+    damagedAllocations: savedAllocations(item.damagedStorageAllocations, damaged),
+  };
 });
 
-/** Tổng phân bổ phải khớp số hàng tốt và mọi dòng phân bổ phải có kệ, số lượng > 0. */
+const allocationsInvalid = (allocations, total) => sumAllocated(allocations) !== total
+  || allocations.some((allocation) => !allocation.storageId || !(Number(allocation.quantity) > 0));
+
+/** Tổng phân bổ phần tốt / phần hỏng phải khớp số tương ứng; mọi dòng phân bổ phải có kệ, số lượng > 0. */
 export function validatePutaway(lines) {
-  const invalid = lines.find((line) => sumAllocated(line.allocations) !== line.accepted
-    || line.allocations.some((allocation) => !allocation.storageId || !(Number(allocation.quantity) > 0)));
-  if (invalid) return 'Tổng số lượng phân bổ và kệ phải khớp với số lượng hàng đạt chất lượng.';
+  if (lines.some((line) => allocationsInvalid(line.allocations, line.accepted))) {
+    return 'Tổng số món phân bổ và kệ phải khớp với số hàng đạt chất lượng.';
+  }
+  if (lines.some((line) => allocationsInvalid(line.damagedAllocations || [], line.damaged || 0))) {
+    return 'Hàng hỏng cũng được xếp lên kệ: tổng số món hỏng phân bổ phải khớp số hỏng.';
+  }
   return '';
 }
 
+const toPayloadAllocations = (allocations = []) => allocations
+  .map(({ storageId, quantity }) => ({ storageId, quantity: Number(quantity) }));
+
 export const buildPutawayPayload = (lines) => ({
-  items: lines.map(({ detailId, allocations }) => ({
-    detailId,
-    allocations: allocations.map(({ storageId, quantity }) => ({ storageId, quantity: Number(quantity) })),
-  })),
+  items: lines.map(({ detailId, allocations, damagedAllocations, damaged }) => {
+    const item = { detailId, allocations: toPayloadAllocations(allocations) };
+    if (damaged > 0) item.damagedAllocations = toPayloadAllocations(damagedAllocations);
+    return item;
+  }),
 });
 
-/** Vị trí đã xếp của một dòng, ví dụ "K-01 (5), K-02 (3)". */
-export function storedPositions(item) {
-  if (item.storageAllocations?.length) {
-    return item.storageAllocations
-      .map((allocation) => `${allocation.storageId?.code || 'Kệ'} (${allocation.quantity})`)
-      .join(', ');
-  }
-  return item.storageId?.code || 'Chưa xếp';
-}
+const positionsText = (allocations) => allocations
+  .map((allocation) => `${allocation.storageId?.code || 'Kệ'} (${allocation.quantity})`)
+  .join(', ');
 
+/** Vị trí đã xếp của một dòng, ví dụ "K-01 (5), K-02 (3) · hỏng: K-03 (1)". */
+export function storedPositions(item) {
+  let text = item.storageId?.code || 'Chưa xếp';
+  if (item.storageAllocations?.length) text = positionsText(item.storageAllocations);
+  if (item.damagedStorageAllocations?.length) text += ` · hỏng: ${positionsText(item.damagedStorageAllocations)}`;
+  return text;
+}
 export const money = (value) => `${Number(value || 0).toLocaleString('vi-VN')} ₫`;

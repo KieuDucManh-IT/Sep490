@@ -482,8 +482,8 @@ export default function ProductDetailPage() {
         currentSelectedBranch?.locationId && isValidObjectId(currentSelectedBranch.locationId)
           ? String(currentSelectedBranch.locationId)
           : currentSelectedBranch?._id && isValidObjectId(currentSelectedBranch._id)
-          ? String(currentSelectedBranch._id)
-          : null;
+            ? String(currentSelectedBranch._id)
+            : null;
 
       const cartItem = {
         productId: String(product._id || product.productCode || 'prod-default'),
@@ -1444,9 +1444,11 @@ export default function ProductDetailPage() {
               className="pdetail-btn-tryon-video"
               onClick={() =>
                 navigate(
-                  `/try-on/webcam?product=${encodeURIComponent(
-                    product._id || product.productCode
-                  )}`
+                  `/try-on/webcam?${new URLSearchParams({
+                    product: product._id || product.productCode,
+                    image: images[selectedImgIndex] || images[0] || '',
+                    color: selectedColor,
+                  }).toString()}`
                 )
               }
               title="Thử đồ thời gian thực trực tiếp qua Webcam"
@@ -1470,8 +1472,8 @@ export default function ProductDetailPage() {
                 isOutOfStock
                   ? 'Sản phẩm hiện đang tạm hết hàng tại chi nhánh này'
                   : !matchedVariant
-                  ? 'Vui lòng chọn kích thước và màu sắc khả dụng'
-                  : ''
+                    ? 'Vui lòng chọn kích thước và màu sắc khả dụng'
+                    : ''
               }
             >
               {isRental ? <Sparkles size={16} /> : <ShoppingBag size={16} />}
@@ -1491,8 +1493,8 @@ export default function ProductDetailPage() {
                 isOutOfStock
                   ? 'Sản phẩm hiện đang tạm hết hàng tại chi nhánh này'
                   : !matchedVariant
-                  ? 'Vui lòng chọn kích thước và màu sắc khả dụng'
-                  : ''
+                    ? 'Vui lòng chọn kích thước và màu sắc khả dụng'
+                    : ''
               }
             >
               <ShoppingCart size={16} />
@@ -1835,10 +1837,10 @@ export default function ProductDetailPage() {
                   <div className="card-media-box">
                     <span
                       className={`product-type-badge ${item.tag === 'sale'
-                          ? 'badge-sale'
-                          : item.tag === 'both'
-                            ? 'badge-both'
-                            : 'badge-rental'
+                        ? 'badge-sale'
+                        : item.tag === 'both'
+                          ? 'badge-both'
+                          : 'badge-rental'
                         }`}
                       style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
                     >

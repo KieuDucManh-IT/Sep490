@@ -27,8 +27,8 @@ import { Product } from '../../models/masterdata/Product.js';
 import { InventoryReservation } from '../../models/warehouse/inventory/InventoryReservation.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import {
-  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes,
-  reserveItemsForOrder, releaseItemsFromOrder, handoverItems, UNUSABLE_CONDITIONS, withStatus,
+  reserveStock, closeReservations, releaseReserved,
+  reserveItemsForOrder, releaseItemsFromOrder, handoverItems, withStatus,
 } from '../warehouse/orderStockService.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
@@ -45,7 +45,297 @@ import {
   cancelRentalOrderSchema,
   computeCalendarRentalDays,
 } from '../../validations/sale&rental/rentalOrderValidation.js';
-import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import { enrichRentalOrdersPartialProgress, resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import { createNotification, notifyRoles } from '../system/notificationService.js';
+import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
+import { Shop } from '../../models/shop/Shop.js';
+import User from '../../models/system/User.js';
+
+/**
+ * Phát thông báo bất đồng bộ khi đơn thuê mới được tạo thành công
+ */
+async function notifyNewRentalOrder(order, customerId) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+
+    // 1. Thông báo cho Khách hàng
+    createNotification({
+      userId: customerId,
+      type: 'order_created',
+      title: 'Đặt đơn thuê thành công',
+      message: `Đơn thuê #${order.orderCode} đã được khởi tạo thành công tại ${branchName}. VESTORA sẽ sớm chuẩn bị và liên hệ giao trang phục cho bạn!`,
+      link: '/rental-orders',
+      referenceType: 'RentalOrder',
+      referenceId: order._id,
+      metadata: { orderCode: order.orderCode },
+    }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho khách hàng:', err.message));
+
+    // 2. Thông báo cho Branch Manager của chi nhánh
+    const branchManagerId = shop?.managerId || location?.managerId;
+    if (branchManagerId) {
+      createNotification({
+        userId: branchManagerId,
+        type: 'order_created',
+        title: 'Đơn thuê mới từ khách hàng',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}. Vui lòng kiểm tra và chuẩn bị trang phục!`,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Branch Manager:', err.message));
+    } else {
+      // Nếu chi nhánh chưa có quản lý chỉ định, phát cho tất cả tài khoản Quản lý chi nhánh
+      notifyRoles(['branch_manager'], {
+        type: 'order_created',
+        title: 'Đơn thuê mới từ khách hàng',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}. Vui lòng kiểm tra và chuẩn bị trang phục!`,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Branch Managers:', err.message));
+    }
+
+    // 3. Thông báo cho Shop Owner / Owner
+    if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+      createNotification({
+        userId: shop.ownerId,
+        type: 'order_created',
+        title: 'Đơn thuê mới tại hệ thống',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}.`,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Shop Owner:', err.message));
+    } else if (!shop?.ownerId) {
+      notifyRoles(['shopOwner', 'owner'], {
+        type: 'order_created',
+        title: 'Đơn thuê mới tại hệ thống',
+        message: `Khách hàng ${customerName} vừa đặt đơn thuê #${order.orderCode} tại ${branchName}.`,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo cho Shop Owner:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo đơn thuê mới:', err.message);
+  }
+}
+
+/**
+ * Phát thông báo khi đơn thuê bị hủy
+ */
+async function notifyCancelledRentalOrder(order, cancelReason) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(order.customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+    const msg = `Khách hàng ${customerName} đã hủy đơn thuê #${order.orderCode} tại ${branchName}. Lý do: ${cancelReason || 'Không có lý do'}.`;
+
+    // 1. Khách hàng
+    createNotification({
+      userId: order.customerId,
+      type: 'order_status',
+      title: 'Hủy đơn thuê thành công',
+      message: `Đơn thuê #${order.orderCode} đã được hủy thành công. Tiền hoàn đã được chuyển về ví của bạn.`,
+      link: '/rental-orders',
+      referenceType: 'RentalOrder',
+      referenceId: order._id,
+      metadata: { orderCode: order.orderCode },
+    }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho khách:', err.message));
+
+    // 2. Branch Manager
+    const branchManagerId = shop?.managerId || location?.managerId;
+    if (branchManagerId) {
+      createNotification({
+        userId: branchManagerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã bị hủy`,
+        message: msg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho Branch Manager:', err.message));
+    } else {
+      notifyRoles(['branch_manager'], {
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã bị hủy`,
+        message: msg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho Branch Managers:', err.message));
+    }
+
+    // 3. Shop Owner
+    if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+      createNotification({
+        userId: shop.ownerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã bị hủy`,
+        message: msg,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo hủy cho Shop Owner:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo hủy đơn thuê:', err.message);
+  }
+}
+
+/**
+ * Phát thông báo khi đơn thuê được bàn giao trang phục (renting)
+ */
+async function notifyHandoverRentalOrder(order) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(order.customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+    const customerName = customer?.FullName || customer?.Email || 'Khách hàng';
+    const dueDateStr = order.dueDate ? new Date(order.dueDate).toLocaleDateString('vi-VN') : '';
+
+    // 1. Khách hàng
+    createNotification({
+      userId: order.customerId,
+      type: 'order_status',
+      title: 'Trang phục đã được bàn giao',
+      message: `Đơn thuê #${order.orderCode} đã được bàn giao thành công. Vui lòng kiểm tra và hoàn trả trang phục đúng hạn trước ngày ${dueDateStr}. Chúc bạn có trải nghiệm tuyệt vời cùng VESTORA!`,
+      link: '/rental-orders',
+      referenceType: 'RentalOrder',
+      referenceId: order._id,
+      metadata: { orderCode: order.orderCode },
+    }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho khách:', err.message));
+
+    // 2. Branch Manager
+    const branchManagerId = shop?.managerId || location?.managerId;
+    const mgrMsg = `Đơn thuê #${order.orderCode} của khách ${customerName} tại ${branchName} đã được bàn giao thành công (Trạng thái: Đang thuê). Hạn trả đồ: ${dueDateStr}.`;
+    if (branchManagerId) {
+      createNotification({
+        userId: branchManagerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Branch Manager:', err.message));
+    } else {
+      notifyRoles(['branch_manager'], {
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/branch/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Branch Managers:', err.message));
+    }
+
+    // 3. Shop Owner
+    if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+      createNotification({
+        userId: shop.ownerId,
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Shop Owner:', err.message));
+    } else if (!shop?.ownerId) {
+      notifyRoles(['shopOwner', 'owner'], {
+        type: 'order_status',
+        title: `Đơn thuê #${order.orderCode} đã được bàn giao`,
+        message: mgrMsg,
+        link: '/owner/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode, locationId: order.locationId },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo bàn giao cho Shop Owner:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo bàn giao:', err.message);
+  }
+}
+
+/**
+ * Phát thông báo khi đơn thuê được chuẩn bị & gán hiện vật trang phục
+ */
+async function notifyAssignedRentalOrder(order) {
+  try {
+    const [location, customer] = await Promise.all([
+      InventoryLocation.findById(order.locationId).select('managerId shopId name code').lean().catch(() => null),
+      User.findById(order.customerId).select('FullName Email phone').lean().catch(() => null),
+    ]);
+
+    let shop = null;
+    if (location?.shopId) {
+      shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+    } else if (order.locationId) {
+      shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+    }
+
+    const branchName = shop?.name || location?.name || 'Chi nhánh';
+
+    // Thông báo cho khách hàng
+    if (order.customerId) {
+      createNotification({
+        userId: order.customerId,
+        type: 'order_status',
+        title: 'Trang phục đã sẵn sàng bàn giao',
+        message: `Đơn thuê #${order.orderCode} đã được nhân viên chuẩn bị trang phục hoàn tất tại ${branchName}. Bạn có thể đến chi nhánh để nhận đồ!`,
+        link: '/rental-orders',
+        referenceType: 'RentalOrder',
+        referenceId: order._id,
+        metadata: { orderCode: order.orderCode },
+      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo chuẩn bị cho khách:', err.message));
+    }
+  } catch (err) {
+    console.error('[Notification] Lỗi xử lý thông báo chuẩn bị trang phục:', err.message);
+  }
+}
 
 export class ServiceError extends Error {
   constructor(status, message, code = null, details = null) {
@@ -283,13 +573,16 @@ export const createRentalOrder = async ({
     let orderStatus = 'draft';
     let paymentStatus = 'unpaid';
     let depositStatus = 'pending';
+    const rentalOrderId = new mongoose.Types.ObjectId();
+    let depositHoldTransactionId = null;
 
     // 5. Nếu thanh toán qua Ví nội bộ Vestora
     if (paymentMethod === 'wallet') {
       const wallet = await getWallet(customerId);
       const balances = getBalances(wallet);
-      const requiredAmount = priceCalc.totalPayable; // rentalFee + depositAmount
-      const availableBalance = balances.availableBalance ?? balances.available ?? 0;
+      const requiredAmount = priceCalc.totalPayable;
+      const availableBalance =
+        balances.availableBalance ?? balances.available ?? 0;
 
       if (availableBalance < requiredAmount) {
         throw new ServiceError(
@@ -301,48 +594,96 @@ export const createRentalOrder = async ({
 
       orderStatus = 'confirmed';
       paymentStatus = 'paid';
-      depositStatus = 'held';
+      depositStatus =
+        priceCalc.totalDeposit > 0 ? 'held' : 'pending';
 
-      // Trừ tiền thuê (balanceDelta = -totalRentalFee) và Khóa tiền cọc (lockedDelta = +totalDeposit)
-      const [walletTx] = await WalletTransaction.create(
-        [
-          {
-            walletId: wallet._id,
-            userId: customerId,
-            code: generateWalletTxCode('PAY-RNT'),
-            transactionType: 'rental_payment',
-            direction: 'debit',
-            amount: priceCalc.totalRentalFee,
-            currency: 'VND',
-            status: 'success',
-            referenceType: 'RentalOrder',
-          },
-        ],
-        { session }
-      );
+      // Tách giao dịch tiền thuê và tiền cọc.
+      // Cả hai cùng liên kết tới đúng đơn thuê.
+      const paymentEntries = [
+        {
+          type: 'rental_payment',
+          amount: priceCalc.totalRentalFee,
+          balanceDelta: -priceCalc.totalRentalFee,
+          lockedDelta: 0,
+          phase: 'rental_payment',
+        },
+        {
+          type: 'rental_deposit',
+          amount: priceCalc.totalDeposit,
+          balanceDelta: 0,
+          lockedDelta: priceCalc.totalDeposit,
+          phase: 'rental_deposit_hold',
+        },
+      ];
 
-      await modifyFunds(
-        wallet,
-        walletTx,
-        -priceCalc.totalRentalFee,
-        priceCalc.totalDeposit,
-        'rental_pay_hold',
-        session
-      );
+      for (const entry of paymentEntries) {
+        if (entry.amount <= 0) continue;
+
+        const [tx] = await WalletTransaction.create(
+          [
+            {
+              walletId: wallet._id,
+              userId: customerId,
+              code: generateWalletTxCode('RNT'),
+              transactionType: entry.type,
+              direction: 'debit',
+              amount: entry.amount,
+              status: 'success',
+
+              referenceType: 'RentalOrder',
+              referenceId: rentalOrderId,
+
+              businessKey: `${entry.type}:${rentalOrderId}`,
+              completedAt: new Date(),
+            },
+          ],
+          { session }
+        );
+
+        // Tiền thuê: trừ số dư.
+        // Tiền cọc: tăng số tiền bị khóa.
+        await modifyFunds(
+          wallet,
+          tx,
+          entry.balanceDelta,
+          entry.lockedDelta,
+          entry.phase,
+          session
+        );
+
+        // Lưu thông tin số dư trước/sau do modifyFunds cập nhật.
+        await tx.save({ session });
+
+        if (entry.type === 'rental_deposit') {
+          depositHoldTransactionId = tx._id;
+        }
+      }
     }
 
     // 6. Tạo RentalOrder
     const orderCode = generateOrderCode();
+
     const [order] = await RentalOrder.create(
       [
         {
+          _id: rentalOrderId,
           orderCode,
           locationId,
           customerId,
           createdBy: createdBy || customerId,
+
           rentalStatus: orderStatus,
           paymentStatus,
           depositStatus,
+
+          // Liên kết giao dịch giữ cọc để đối soát khi hoàn tiền.
+          depositHoldTransactionId,
+          paymentMethod,
+          paidAmount:
+            paymentMethod === 'wallet'
+              ? priceCalc.totalPayable
+              : 0,
+
           startDate: new Date(startDate),
           dueDate: new Date(dueDate),
           rentalFee: priceCalc.totalRentalFee,
@@ -390,6 +731,9 @@ export const createRentalOrder = async ({
     if (isInternalSession) {
       await session.commitTransaction();
     }
+
+    // Phát thông báo real-time tới Khách hàng, Quản lý chi nhánh (Branch Manager) và Chủ shop
+    notifyNewRentalOrder(order, customerId);
 
     return {
       order,
@@ -507,12 +851,6 @@ export const assignPhysicalItems = async ({
             `Hiện vật [${item.itemCode || item._id}] không ở trạng thái sẵn sàng (hiện tại: ${item.status})`
           );
         }
-        if (!alreadyMine && UNUSABLE_CONDITIONS.includes(item.condition)) {
-          throw new ServiceError(
-            422,
-            `Hiện vật [${item.itemCode || item._id}] đang hỏng/thiếu (${item.condition}), không thể cho thuê`
-          );
-        }
         if (!alreadyMine) toReserve.push(item);
       }
 
@@ -544,7 +882,10 @@ export const assignPhysicalItems = async ({
       });
     }
 
-    if (isInternal) await session.commitTransaction();
+    if (isInternal) {
+      await session.commitTransaction();
+      notifyAssignedRentalOrder(order);
+    }
     return { success: true, assignedResults };
   } catch (err) {
     if (isInternal) await session.abortTransaction();
@@ -620,7 +961,6 @@ export const handoverRentalOrder = async ({
 
     // 3. TASK-010: nhả giữ chỗ của đơn (InventoryReservation active → consumed) và lấy số đã giữ theo biến thể.
     const reservedByVariant = await closeReservations({ orderId: order._id, orderType: 'rental' }, 'consumed', session);
-    const tracking = await trackingTypes(details.map((d) => d.variantId), session);
 
     // 4. Món reserved → renting qua itemStateService, GỘP với reserved −qty trong cùng bước (onHand −1, renting +1 mỗi món).
     const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session);
@@ -632,22 +972,9 @@ export const handoverRentalOrder = async ({
         throw new ServiceError(409, `Hiện vật [${item.itemCode || item._id}] không còn ở trạng thái đã gán cho đơn (hiện tại: ${item.status}).`);
       }
     }
-    const individualReserved = new Map([...reservedByVariant].filter(([variantId]) => tracking.get(variantId) === 'individual'));
-    await handoverItems({ locationId: order.locationId, items, reservedByVariant: individualReserved }, session);
+    await handoverItems({ locationId: order.locationId, items, reservedByVariant }, session);
 
-    // Hàng `quantity` (không có món): giữ hành vi cũ — onHand −qty, reserved −(số đang giữ).
-    for (const d of details) {
-      const variantId = String(d.variantId);
-      if (tracking.get(variantId) === 'individual') continue;
-      await incBranchBalance({
-        locationId: order.locationId,
-        variantId: d.variantId,
-        inc: { quantityOnHand: -d.quantity, quantityReserved: -(reservedByVariant.get(variantId) || 0) },
-      }, session);
-      reservedByVariant.delete(variantId);
-    }
-
-    // 5. Ghi StockMovement xuất kho thuê (individual: mỗi món một dòng có itemId)
+    // 5. Ghi StockMovement xuất kho thuê (mỗi món một dòng có itemId)
     const itemById = new Map(items.map((item) => [String(item._id), item]));
     const movementDocs = [];
     for (const a of assignedItems) {
@@ -664,22 +991,12 @@ export const handoverRentalOrder = async ({
         createdBy: operatorId || order.createdBy,
       });
     }
-    for (const d of details) {
-      if (tracking.get(String(d.variantId)) === 'individual') continue;
-      movementDocs.push({
-        variantId: d.variantId,
-        locationId: order.locationId,
-        storageId: null,
-        movementType: 'rental_out',
-        quantityChange: -d.quantity,
-        referenceType: 'rental_order',
-        referenceId: order._id,
-        createdBy: operatorId || order.createdBy,
-      });
-    }
     if (movementDocs.length) await StockMovement.insertMany(movementDocs, { session });
 
     if (isInternal) await session.commitTransaction();
+
+    // Phát thông báo bàn giao trang phục cho khách hàng
+    notifyHandoverRentalOrder(order);
 
     // TASK-012: Bàn giao → tồn kho renting tăng → kiểm tra hết hàng tại store
     if (isInternal) {
@@ -863,12 +1180,17 @@ export const cancelRentalOrder = async ({
     order.rentalStatus = 'cancelled';
     order.paymentStatus = totalRefund === 0 ? 'paid' : cancellationFee > 0 ? 'partially_refunded' : 'refunded';
     order.depositStatus = 'refunded';
+    order.cancelReason = validation.data.cancelReason;
+    order.cancelledAt = new Date();
     order.note = order.note
       ? `${order.note}; Hủy đơn: ${validation.data.cancelReason}`
       : `Hủy đơn: ${validation.data.cancelReason}`;
     await order.save({ session });
 
     if (isInternal) await session.commitTransaction();
+
+    // Phát thông báo hủy đơn cho khách hàng và quản lý chi nhánh
+    notifyCancelledRentalOrder(order, validation.data.cancelReason);
 
     return {
       success: true,
@@ -930,18 +1252,26 @@ export const getRentalOrderById = async (orderId) => {
     itemsByDetail.get(k).push(it);
   }
 
-  const enrichedDetails = details.map((d) => ({
+  const preEnrichedDetails = details.map((d) => ({
     ...d,
     productName: d.variantId?.productId?.name || d.productName,
     assignedItems: itemsByDetail.get(String(d._id)) || [],
   }));
 
+  const { detailsByOrderId, shipmentsByOrderId } = await enrichRentalOrdersPartialProgress(
+    [order],
+    preEnrichedDetails,
+    shipments
+  );
+  const enrichedDetails = detailsByOrderId.get(String(order._id)) || preEnrichedDetails;
+  const resolvedShipments = shipmentsByOrderId.get(String(order._id)) || shipments;
+
   return {
     ...order,
     details: enrichedDetails,
     items: enrichedDetails,
-    shipments,
-    shipment: resolvePrimaryShipment(shipments),
+    shipments: resolvedShipments,
+    shipment: resolvePrimaryShipment(resolvedShipments),
   };
 };
 
@@ -977,39 +1307,29 @@ export const listRentalOrders = async ({
   const [details, shipments] = await Promise.all([
     orderIds.length
       ? RentalOrderDetail.find({ rentalOrderId: { $in: orderIds } })
-          .populate({
-            path: 'variantId',
-            select: 'sku size color productId',
-            populate: {
-              path: 'productId',
-              select: 'name productCode images thumbnail thumbnailImage brand',
-            },
-          })
-          .lean()
+        .populate({
+          path: 'variantId',
+          select: 'sku size color productId',
+          populate: {
+            path: 'productId',
+            select: 'name productCode images thumbnail thumbnailImage brand',
+          },
+        })
+        .lean()
       : [],
     orderIds.length
       ? OrderShipment.find({ orderId: { $in: orderIds }, orderType: 'rental' })
-          .sort({ createdAt: -1 })
-          .lean()
+        .sort({ createdAt: -1 })
+        .lean()
       : [],
   ]);
 
-  const detailsByOrder = new Map();
-  for (const d of details) {
-    const k = String(d.rentalOrderId);
-    if (!detailsByOrder.has(k)) detailsByOrder.set(k, []);
-    detailsByOrder.get(k).push({
-      ...d,
-      productName: d.variantId?.productId?.name || d.productName,
-    });
-  }
-
-  const shipmentsByOrder = new Map();
-  for (const s of shipments) {
-    const k = String(s.orderId);
-    if (!shipmentsByOrder.has(k)) shipmentsByOrder.set(k, []);
-    shipmentsByOrder.get(k).push(s);
-  }
+  const { detailsByOrderId: detailsByOrder, shipmentsByOrderId: shipmentsByOrder } =
+    await enrichRentalOrdersPartialProgress(
+      orders,
+      details.map((d) => ({ ...d, productName: d.variantId?.productId?.name || d.productName })),
+      shipments
+    );
 
   const enrichedOrders = orders.map((o) => {
     const ordShipments = shipmentsByOrder.get(String(o._id)) || [];

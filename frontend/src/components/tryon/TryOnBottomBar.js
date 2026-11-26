@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 export default function TryOnBottomBar({
   product,
   pairedGarment,
-  pairedAccessory,
   resultImage,
   lastSavedImageUrl,
   isSavingWardrobe,
@@ -14,9 +13,8 @@ export default function TryOnBottomBar({
 
   const mainPrice = Number(product?.rentalPricePer3Days) || ((Number(product?.rentalPricePerDay) || 350000) * 3);
   const pairedPrice = pairedGarment ? ((Number(pairedGarment?.rentalPricePerDay) || 200000) * 3) : 0;
-  const accessoryPrice = pairedAccessory ? ((Number(pairedAccessory?.rentalPricePerDay) || 150000) * 3) : 0;
-  const totalEstimatedRental = mainPrice + pairedPrice + accessoryPrice;
-  const totalItems = 1 + (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0);
+  const totalEstimatedRental = mainPrice + pairedPrice;
+  const totalItems = 1 + (pairedGarment ? 1 : 0);
 
   const isSaved = Boolean(resultImage) && lastSavedImageUrl === resultImage;
 

@@ -240,7 +240,7 @@ export const updateShopAddress = async (req, res) => {
 };
 
 /**
- * Cập nhật toàn bộ thông tin chi nhánh, quản lý bổ nhiệm và cờ Trụ sở chính
+ * Cập nhật toàn bộ thông tin chi nhánh và quản lý bổ nhiệm
  * PUT /api/shops/:id/info hoặc PUT /api/shops/:id
  */
 export const updateShopInfo = async (req, res) => {
@@ -293,7 +293,7 @@ export const createBranch = async (req, res) => {
 };
 
 /**
- * Xóa mềm chi nhánh khỏi hệ thống (bảo vệ Trụ sở chính và tối thiểu 1 cơ sở)
+ * Xóa mềm chi nhánh khỏi hệ thống (bảo vệ tối thiểu 1 cơ sở)
  * DELETE /api/shops/:id
  */
 export const deleteBranch = async (req, res) => {
@@ -400,8 +400,7 @@ export const getBranchPerformanceReport = async (req, res) => {
     const normalizedRole = String(req.user?.Role || req.user?.role || '')
       .trim()
       .toLowerCase()
-      .replace(/[\s_-]/g, '')
-      .replace('brandmanager', 'branchmanager');
+      .replace(/[\s_-]/g, '');
 
     if (!['branchmanager', 'admin'].includes(normalizedRole)) {
       return res.status(403).json({

@@ -15,15 +15,14 @@ export const WAREHOUSE_STAFF_ROLE_PATTERN = /^warehouse[\s_-]?staff$/i;
 
 /**
  * Đưa role về dạng so sánh được: bỏ khoảng trắng, `_`, `-`, chữ thường.
- * Nhận user (đọc `Role` hoặc `role`) hoặc chuỗi role. "brandmanager" là lỗi gõ cũ trong dữ liệu → "branchmanager".
+ * Nhận user (đọc `Role` hoặc `role`) hoặc chuỗi role.
  */
 export const normalizeRole = (userOrRole) => {
   const raw = typeof userOrRole === 'string' ? userOrRole : (userOrRole?.Role || userOrRole?.role);
   return String(raw || '')
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, '')
-    .replace('brandmanager', 'branchmanager');
+    .replace(/[\s_-]/g, '');
 };
 
 /** true nếu role của user nằm trong danh sách (danh sách cũng được chuẩn hóa). */

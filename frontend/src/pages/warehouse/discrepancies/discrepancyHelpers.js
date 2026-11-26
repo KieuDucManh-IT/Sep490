@@ -32,8 +32,6 @@ export const remainingQuantity = (discrepancy) => {
   return discrepancy.quantityMissing - (discrepancy.quantityResolved || 0);
 };
 
-export const isIndividualDiscrepancy = (discrepancy) => discrepancy?.trackingType === 'individual';
-
 /** Nơi nhập lại hàng tìm thấy: nơi nhận ban đầu (nếu không phải kho tổng) hoặc kho tổng. */
 export function targetOptions(discrepancy, centralId) {
   if (!discrepancy) return [];
@@ -46,18 +44,11 @@ export function targetOptions(discrepancy, centralId) {
   ];
 }
 
-/** Số lượng đang kết luận: hàng theo mã = số món đã chọn, hàng số lượng = số đã nhập. */
-export function resolveQuantity(discrepancy, form) {
-  if (isIndividualDiscrepancy(discrepancy)) return form.itemIds.length;
-  return Number(form.quantity);
-}
+/** Số lượng đang kết luận = số món đã chọn (mọi sản phẩm quản lý theo món). */
+export const resolveQuantity = (discrepancy, form) => form.itemIds.length;
 
 function quantityError(discrepancy, quantity) {
-  if (isIndividualDiscrepancy(discrepancy)) {
-    if (quantity < 1) return 'Chọn ít nhất một món hàng.';
-  } else if (!Number.isInteger(quantity) || quantity < 1) {
-    return 'Nhập số lượng nguyên lớn hơn 0.';
-  }
+  if (quantity < 1) return 'Chọn ít nhất một món hàng.';
   const remaining = remainingQuantity(discrepancy);
   if (quantity > remaining) return `Số lượng không được vượt số còn đang điều tra (${remaining}).`;
   return '';
@@ -87,9 +78,7 @@ export function validateResolveForm(discrepancy, form, centralId) {
 
 /** Dữ liệu gửi API kết luận (giữ đúng định dạng backend đang nhận). */
 export function buildResolvePayload(discrepancy, form, centralId) {
-  const amount = isIndividualDiscrepancy(discrepancy)
-    ? { itemIds: form.itemIds }
-    : { quantity: resolveQuantity(discrepancy, form) };
+  const amount = { itemIds: form.itemIds };
   const note = form.note.trim();
   if (form.outcome === 'lost') {
     return { outcome: 'lost', ...amount, responsibleParty: form.responsibleParty, note };

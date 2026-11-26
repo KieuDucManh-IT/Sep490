@@ -6,7 +6,6 @@ const fields = [
   'name',
   'description',
   'tag',
-  'trackingType',
   'brand',
   'material',
   'rating',
@@ -23,7 +22,6 @@ const rules = {
   name: { label: 'Tên sản phẩm', type: 'string', required: true, maxLength: 200 },
   description: { label: 'Mô tả', type: 'string', maxLength: 2000 },
   tag: { label: 'Hình thức sản phẩm', type: 'string', enum: ['sale', 'rental', 'both'] },
-  trackingType: { label: 'Kiểu theo dõi', type: 'string', required: true, enum: ['quantity', 'individual'] },
   brand: { label: 'Thương hiệu', type: 'string', maxLength: 120 },
   material: { label: 'Chất liệu', type: 'string', maxLength: 200 },
   rating: { label: 'Đánh giá', type: 'number', min: 0 },
@@ -39,9 +37,13 @@ const rules = {
 // API masterdata (Quản lý kho) bỏ qua các field này: không ghi, không báo lỗi.
 export const OWNER_ONLY_PRODUCT_FIELDS = ['rentalPricePerDay', 'salePrice', 'deposit', 'discount', 'isSetPrice', 'priceSetBy', 'priceSetAt'];
 
+// TASK-015: `trackingType` đã bỏ (mọi sản phẩm quản lý theo món); client cũ gửi lên thì bỏ qua, không báo lỗi.
+export const REMOVED_PRODUCT_FIELDS = ['trackingType'];
+const IGNORED_PRODUCT_FIELDS = [...OWNER_ONLY_PRODUCT_FIELDS, ...REMOVED_PRODUCT_FIELDS];
+
 export const validateProduct = (payload, current) => {
   const { categoryId, ...rawPayload } = payload || {};
-  const productPayload = Object.fromEntries(Object.entries(rawPayload).filter(([key]) => !OWNER_ONLY_PRODUCT_FIELDS.includes(key)));
+  const productPayload = Object.fromEntries(Object.entries(rawPayload).filter(([key]) => !IGNORED_PRODUCT_FIELDS.includes(key)));
   const { categoryId: currentCategoryIds, ...currentProduct } = current || {};
   const normalized = validateInput(productPayload, currentProduct, fields, rules);
   const categories = categoryId === undefined ? currentCategoryIds : categoryId;

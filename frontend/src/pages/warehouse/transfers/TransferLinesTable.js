@@ -1,5 +1,6 @@
 import React from 'react';
 import { StockDiscrepancyBadge } from '../../../components/StockDiscrepancyDetail';
+import { ItemCodeGroup } from '../../../components/warehouse';
 import { itemCodeOf, lineName } from './transferHelpers';
 
 /**
@@ -16,7 +17,7 @@ import { itemCodeOf, lineName } from './transferHelpers';
 export default function TransferLinesTable({
   transfer, renderApproved, renderReceived, receivedHeader = 'Đã nhận', extraColumn, className = '', rowClassName,
 }) {
-  const damagedHeader = transfer.status === 'received' ? 'Hỏng / thiếu' : 'Hỏng';
+  const damagedHeader = transfer.status === 'completed' ? 'Cần xử lý / mất' : 'Cần xử lý';
   return <div className="wm-table-wrap"><table className={className}>
     <thead><tr>
       <th>Sản phẩm / SKU</th><th>Yêu cầu</th><th>Được duyệt</th><th>Đã xuất</th><th>{receivedHeader}</th><th>{damagedHeader}</th>
@@ -25,7 +26,7 @@ export default function TransferLinesTable({
     <tbody>{(transfer.items || []).map((line) => <tr key={line._id} className={rowClassName?.(line) || undefined}>
       <td>
         {lineName(line)}
-        {line.itemIds?.length > 0 && <small className="wm-stock-subline">Mã hàng: {line.itemIds.map(itemCodeOf).join(', ')}</small>}
+        {line.itemIds?.length > 0 && <ItemCodeGroup label="Mã hàng đã xuất" items={line.itemIds} codeOf={itemCodeOf} />}
       </td>
       <td>{line.quantityRequested}</td>
       <td>{renderApproved ? renderApproved(line) : line.quantityApproved ?? '—'}</td>

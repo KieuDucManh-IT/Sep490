@@ -17,11 +17,9 @@ export default function PhotoTryOnPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const fileInputRef = useRef(null);
   const handledPairedParamRef = useRef('');
-  const handledAccessoryParamRef = useRef('');
 
   const productParam = searchParams.get('product') || searchParams.get('productId');
   const pairedParam = searchParams.get('paired') || searchParams.get('pairedId') || searchParams.get('bottomId');
-  const accessoryParam = searchParams.get('accessory') || searchParams.get('accessoryId');
 
   // Product state - khởi tạo null, tải sản phẩm thật 100% từ cơ sở dữ liệu
   const [product, setProduct] = useState(null);
@@ -29,11 +27,9 @@ export default function PhotoTryOnPage() {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [productCategoryTab, setProductCategoryTab] = useState('all');
 
-  // Paired outfit & accessories for full styling combo
-  const [pairedGarment, setPairedGarment] = useState(null); // Quần/Váy nếu đang chọn Áo; Áo/Vest nếu đang chọn Quần
+  // Paired outfit (quần/váy/áo) ghép cùng trang phục chính bằng AI IDM-VTON
+  const [pairedGarment, setPairedGarment] = useState(null);
   const [pairedGarmentSize, setPairedGarmentSize] = useState('S');
-  const [pairedAccessory, setPairedAccessory] = useState(null); // Túi xách phối kèm (đã loại bỏ trang sức)
-  const [pairingTab, setPairingTab] = useState('outfit'); // 'outfit' | 'accessory'
 
   const FALLBACK_GARMENT_IMAGE =
     'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=600&q=80';
@@ -44,6 +40,17 @@ export default function PhotoTryOnPage() {
       Array.isArray(item.category) ? item.category.join(' ') : item.category || ''
     }`.toLowerCase();
     return /nhẫn|nhan|bông tai|bong tai|khuyên|khuyen|vòng|vong|dây chuyền|day chuyen|lắc|lac|trang sức|trang suc|jewelry|earring|necklace|ring|bracelet/.test(
+      text
+    );
+  };
+
+  const isAccessory = (item) => {
+    if (!item) return false;
+    if (isJewelry(item)) return true;
+    const text = `${item.name || ''} ${
+      Array.isArray(item.category) ? item.category.join(' ') : item.category || ''
+    }`.toLowerCase();
+    return /túi|tui|bag|kính|kinh|glasses|khăn|khan|scarf|giày|giay|shoes|cao gót|sneaker|boot|sandal|phụ kiện|accessory|nón|mũ|hat|clutch|thắt lưng|that lung|belt|cà vạt|ca vat|tie/.test(
       text
     );
   };
@@ -225,41 +232,7 @@ export default function PhotoTryOnPage() {
       });
   }, [pairedParam, setSearchParams]);
 
-  // 2.2. Fetch chi tiết phụ kiện nếu có accessoryParam trên URL (từ AI Stylist chuyển sang)
-  useEffect(() => {
-    if (!accessoryParam) {
-      handledAccessoryParamRef.current = '';
-      return;
-    }
-    // Chỉ nạp 1 lần cho mỗi URL param, không tự nạp lại khi người dùng đã chủ động bỏ chọn
-    if (handledAccessoryParamRef.current === accessoryParam) return;
-    handledAccessoryParamRef.current = accessoryParam;
-
-    productService
-      .getProductById(accessoryParam)
-      .then((res) => {
-        const prodData = res?.data || res;
-        if (prodData && prodData.name) {
-          // Bỏ qua trang sức
-          if (isJewelry(prodData)) {
-            console.warn('Bỏ qua phụ kiện không hợp lệ (trang sức):', prodData.name);
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.delete('accessory');
-              next.delete('accessoryId');
-              return next;
-            }, { replace: true });
-            return;
-          }
-          setPairedAccessory(prodData);
-        }
-      })
-      .catch((err) => {
-        console.warn('Không thể tải phụ kiện phối kèm từ URL:', err.message);
-      });
-  }, [accessoryParam, setSearchParams]);
-
-  // Các hàm gỡ bỏ món phối - xóa sạch cả state lẫn URL param để không bị load lại
+  // Hàm gỡ bỏ món phối trang phục
   const handleRemovePairedGarment = () => {
     setPairedGarment(null);
     setSearchParams((prev) => {
@@ -271,26 +244,13 @@ export default function PhotoTryOnPage() {
     }, { replace: true });
   };
 
-  const handleRemovePairedAccessory = () => {
-    setPairedAccessory(null);
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('accessory');
-      next.delete('accessoryId');
-      return next;
-    }, { replace: true });
-  };
-
   const handleClearAllPaired = () => {
     setPairedGarment(null);
-    setPairedAccessory(null);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('paired');
       next.delete('pairedId');
       next.delete('bottomId');
-      next.delete('accessory');
-      next.delete('accessoryId');
       return next;
     }, { replace: true });
   };
@@ -413,20 +373,22 @@ export default function PhotoTryOnPage() {
     });
   }, [catalogProducts, productCategoryTab]);
 
-  // Phân loại danh mục sản phẩm gợi ý thông minh từ cơ sở dữ liệu thật
+  // Phân loại danh mục sản phẩm gợi ý thông minh từ cơ sở dữ liệu thật (chỉ lấy quần áo, loại bỏ phụ kiện)
   const topCatalogProducts = useMemo(() => {
     return catalogProducts.filter((item) => {
       if (item._id === product?._id) return false;
+      if (isAccessory(item)) return false;
       const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
-      return /áo|ao|vest|blazer|shirt|jacket|coat|hoodie|sweater/.test(catStr) && !/áo dài|ao dai/.test(catStr);
+      return /(^|[\s_-])(áo|ao|sơ mi|so mi|vest|blazer|shirt|jacket|coat|hoodie|sweater)([\s_-]|$)/i.test(catStr) && !/áo dài|ao dai/.test(catStr);
     });
   }, [catalogProducts, product?._id]);
 
   const bottomCatalogProducts = useMemo(() => {
     return catalogProducts.filter((item) => {
       if (item._id === product?._id) return false;
+      if (isAccessory(item)) return false;
       const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
-      return /quần|quan|chân váy|skirt|pants|trouser|short/.test(catStr);
+      return /quần|quan|chân váy|chan vay|skirt|pants|trouser|short/.test(catStr);
     });
   }, [catalogProducts, product?._id]);
 
@@ -434,14 +396,14 @@ export default function PhotoTryOnPage() {
     return catalogProducts.filter((item) => {
       if (item._id === product?._id) return false;
       if (isJewelry(item)) return false;
-      const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
-      return /túi|tui|bag|kính|kinh|glasses|khăn|khan|giày|giay|shoes|phụ kiện|nón|mũ|hat|clutch|thắt lưng|that lung|belt/.test(catStr);
+      return isAccessory(item);
     });
   }, [catalogProducts, product?._id]);
 
   const dressCatalogProducts = useMemo(() => {
     return catalogProducts.filter((item) => {
       if (item._id === product?._id) return false;
+      if (isAccessory(item)) return false;
       const catStr = (`${item.name || ''} ${(Array.isArray(item.category) ? item.category.join(' ') : (item.category || ''))}`).toLowerCase();
       return /đầm|dam|váy|vay|áo dài|ao dai|dress|gown|jumpsuit|set|bộ|bo|suit|outfit/.test(catStr);
     });
@@ -459,8 +421,8 @@ export default function PhotoTryOnPage() {
     } else {
       list = dressCatalogProducts.length > 0 ? dressCatalogProducts : topCatalogProducts;
     }
-    return list.length > 0 ? list : catalogProducts.filter((p) => p._id !== product?._id);
-  }, [category, bottomCatalogProducts, topCatalogProducts, dressCatalogProducts, catalogProducts, product?._id]);
+    return list.filter((p) => p && p._id !== product?._id && !isAccessory(p));
+  }, [category, bottomCatalogProducts, topCatalogProducts, dressCatalogProducts, product?._id]);
 
   // Gợi ý phụ kiện thật từ cơ sở dữ liệu
   const currentAccessorySuggestions = useMemo(() => {
@@ -492,15 +454,12 @@ export default function PhotoTryOnPage() {
     setSuccessMessage('');
     setIsGenerating(true);
 
-    const pairedCount = (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0);
-    const totalSetItems = 1 + pairedCount;
+    const totalSetItems = 1 + (pairedGarment ? 1 : 0);
 
     setGenerationStep(
-      totalSetItems === 3
-        ? 'Đang chuẩn bị ghép set 3 món hoàn chỉnh: Món chính + Trang phục phối + Phụ kiện thời trang...'
-        : totalSetItems === 2
-          ? 'Đang chuẩn bị ghép set 2 món phối hoàn chỉnh...'
-          : 'Đang chuẩn hoá tỷ lệ người mẫu và nhận diện trang phục...'
+      totalSetItems === 2
+        ? 'Đang chuẩn bị ghép set 2 món phối hoàn chỉnh...'
+        : 'Đang chuẩn hoá tỷ lệ người mẫu và nhận diện trang phục...'
     );
 
     const stepTimer1 = setTimeout(() => {
@@ -513,11 +472,9 @@ export default function PhotoTryOnPage() {
 
     const stepTimer2 = setTimeout(() => {
       setGenerationStep(
-        totalSetItems === 3
-          ? 'Bước 2 & 3: Đang ghép tiếp trang phục phối và hoàn thiện Lookbook...'
-          : totalSetItems === 2
-            ? 'Bước 2: Đang ghép tiếp món phối vào tổng thể người mẫu...'
-            : 'Đang kết xuất ánh sáng và hoàn thiện phom dáng...'
+        totalSetItems === 2
+          ? 'Bước 2: Đang ghép tiếp món phối vào tổng thể người mẫu...'
+          : 'Đang kết xuất ánh sáng và hoàn thiện phom dáng...'
       );
     }, 12000);
 
@@ -563,24 +520,6 @@ export default function PhotoTryOnPage() {
         }
       }
 
-      // 2. Phụ kiện phối kèm (Túi xách, Giày, Kính mắt...)
-      if (pairedAccessory) {
-        const accImg =
-          pairedAccessory.primaryImageUrl ||
-          pairedAccessory.imageUrl ||
-          pairedAccessory.image ||
-          (Array.isArray(pairedAccessory.images) && pairedAccessory.images[0]) ||
-          FALLBACK_GARMENT_IMAGE;
-        if (accImg) {
-          formData.append('accessoryGarmentImageUrl', accImg);
-          formData.append('accessoryGarmentDescription', pairedAccessory.name || 'phụ kiện thời trang');
-          formData.append('accessoryCategory', 'accessories');
-        }
-        if (pairedAccessory._id) {
-          formData.append('accessoryGarmentId', pairedAccessory._id);
-        }
-      }
-
       const response = await tryOnApi.generate(formData);
 
       if (response?.data?.resultImageUrl || response?.resultImageUrl) {
@@ -589,11 +528,9 @@ export default function PhotoTryOnPage() {
         setLastSavedImageUrl(''); // Reset trạng thái lưu khi có ảnh ghép mới
         setShowOriginal(false);
         setSuccessMessage(
-          totalSetItems === 3
-            ? 'Ghép thành công trọn bộ set 3 món (Trang phục + Túi xách thời trang)!'
-            : totalSetItems === 2
-              ? 'Ghép thành công set 2 món phối!'
-              : 'Ghép trang phục AI thành công!'
+          totalSetItems === 2
+            ? 'Ghép thành công set 2 món phối!'
+            : 'Ghép trang phục AI thành công!'
         );
       } else {
         throw new Error(response?.message || 'Mô hình không trả về ảnh kết quả');
@@ -625,12 +562,11 @@ export default function PhotoTryOnPage() {
 
     setIsSavingWardrobe(true);
     try {
-      const isCombo = Boolean(pairedGarment || pairedAccessory);
-      const totalItems = 1 + (pairedGarment ? 1 : 0) + (pairedAccessory ? 1 : 0);
+      const isCombo = Boolean(pairedGarment);
+      const totalItems = 1 + (pairedGarment ? 1 : 0);
 
       const titleParts = [product?.name];
       if (pairedGarment?.name) titleParts.push(pairedGarment.name);
-      if (pairedAccessory?.name) titleParts.push(pairedAccessory.name);
 
       const payload = {
         productId: product?._id || null,
@@ -641,7 +577,7 @@ export default function PhotoTryOnPage() {
         category: isCombo
           ? `Set phối ${totalItems} món`
           : (Array.isArray(product?.category) ? product.category[0] : product?.category) || 'Thời trang cao cấp',
-        price: (product?.rentalPricePerDay || 0) + (pairedGarment?.rentalPricePerDay || 0) + (pairedAccessory?.rentalPricePerDay || 0),
+        price: (product?.rentalPricePerDay || 0) + (pairedGarment?.rentalPricePerDay || 0),
         priceUnit: '/ ngày',
         selectedSize: pairedGarment ? `Món chính: ${selectedSize} • Món phối: ${pairedGarmentSize}` : selectedSize,
         aiNote: isCombo
@@ -827,7 +763,6 @@ export default function PhotoTryOnPage() {
           resultImage={resultImage}
           isGenerating={isGenerating}
           generationStep={generationStep}
-          pairedAccessory={pairedAccessory}
           pairedGarment={pairedGarment}
           pairedGarmentSize={pairedGarmentSize}
           selectedSize={selectedSize}
@@ -859,13 +794,8 @@ export default function PhotoTryOnPage() {
             pairedGarmentSize={pairedGarmentSize}
             setPairedGarmentSize={setPairedGarmentSize}
             handleRemovePairedGarment={handleRemovePairedGarment}
-            pairedAccessory={pairedAccessory}
-            setPairedAccessory={setPairedAccessory}
-            handleRemovePairedAccessory={handleRemovePairedAccessory}
             handleClearAllPaired={handleClearAllPaired}
             category={category}
-            pairingTab={pairingTab}
-            setPairingTab={setPairingTab}
             currentOutfitSuggestions={currentOutfitSuggestions}
             currentAccessorySuggestions={currentAccessorySuggestions}
             fallbackGarmentImage={FALLBACK_GARMENT_IMAGE}
@@ -884,7 +814,6 @@ export default function PhotoTryOnPage() {
       <TryOnBottomBar
         product={product}
         pairedGarment={pairedGarment}
-        pairedAccessory={pairedAccessory}
         resultImage={resultImage}
         lastSavedImageUrl={lastSavedImageUrl}
         isSavingWardrobe={isSavingWardrobe}

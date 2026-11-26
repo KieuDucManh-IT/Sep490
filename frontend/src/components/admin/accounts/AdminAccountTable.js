@@ -115,7 +115,7 @@ export default function AdminAccountTable({
                           </span>
                         );
                       }
-                      if (cleanRole === 'branch_manager' || cleanRole === 'brandmanager') {
+                      if (cleanRole === 'branch_manager' || cleanRole === 'branchmanager') {
                         return (u.shopName && u.shopName !== 'Tất cả chi nhánh') ? (
                           <span className="admin-acc-branch-assigned">
                             {u.shopName}

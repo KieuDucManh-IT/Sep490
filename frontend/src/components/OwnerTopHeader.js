@@ -1,12 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Menu,
-  Store,
   Building2,
-  ChevronDown,
-  Check,
-  Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getAssignedBranchApi } from '../services/shopApi';
@@ -20,35 +16,6 @@ export default function OwnerTopHeader({
 }) {
   const location = useLocation();
   const { user } = useAuth();
-
-  const [showBranchSwitcher, setShowBranchSwitcher] = useState(false);
-  const branchSwitcherRef = useRef(null);
-
-  // Auto dismiss popovers on route change
-  useEffect(() => {
-    setShowBranchSwitcher(false);
-  }, [location.pathname]);
-
-  // Click-outside & Keyboard Escape dismissal
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setShowBranchSwitcher(false);
-      }
-    };
-    const handleClickOutside = (e) => {
-      if (branchSwitcherRef.current && !branchSwitcherRef.current.contains(e.target)) {
-        setShowBranchSwitcher(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
 
   const isBranchManager = useMemo(() => {
     const raw = user?.roleName || user?.Role || user?.role;
@@ -74,41 +41,6 @@ export default function OwnerTopHeader({
       return [];
     }
   });
-
-  // Sắp xếp danh sách chi nhánh: Cũ nhất đẩy lên trên cùng (createdAt tăng dần hoặc theo ObjectId)
-  const sortedBranches = useMemo(() => {
-    if (!Array.isArray(managedBranches)) return [];
-    return [...managedBranches].sort((a, b) => {
-      // 1. So sánh theo createdAt nếu cả hai đều có
-      if (a.createdAt && b.createdAt) {
-        const timeA = new Date(a.createdAt).getTime();
-        const timeB = new Date(b.createdAt).getTime();
-        if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
-          return timeA - timeB; // Cũ nhất lên đầu (tăng dần)
-        }
-      } else if (a.createdAt) {
-        return -1;
-      } else if (b.createdAt) {
-        return 1;
-      }
-
-      // 2. Dự phòng: Trích xuất timestamp từ MongoDB ObjectId (4 byte đầu tiên là unix timestamp)
-      const getTimestampFromId = (id) => {
-        if (!id) return 0;
-        const idStr = String(id);
-        if (idStr.length >= 8) {
-          const hex = idStr.substring(0, 8);
-          const parsed = parseInt(hex, 16);
-          return isNaN(parsed) ? 0 : parsed;
-        }
-        return 0;
-      };
-
-      const idTimeA = getTimestampFromId(a._id);
-      const idTimeB = getTimestampFromId(b._id);
-      return idTimeA - idTimeB;
-    });
-  }, [managedBranches]);
 
   const loadBranchData = useCallback(async (targetBranchId) => {
     try {
@@ -176,21 +108,6 @@ export default function OwnerTopHeader({
     };
   }, [loadBranchData, managedBranches]);
 
-  const handleSelectBranch = useCallback((branch) => {
-    if (!branch) return;
-    setAssignedBranch(branch);
-    try {
-      localStorage.setItem('vestora_active_branch_id', branch._id);
-      localStorage.setItem('vestora_branch_cache', JSON.stringify(branch));
-    } catch {}
-    setShowBranchSwitcher(false);
-    window.dispatchEvent(
-      new CustomEvent('vestora_branch_changed', {
-        detail: { branch, branchId: branch._id },
-      })
-    );
-  }, []);
-
   // Route-aware auto-inferred breadcrumbs so header is never blank
   const currentBreadcrumb = useMemo(() => {
     if (breadcrumb) return breadcrumb;
@@ -220,7 +137,7 @@ export default function OwnerTopHeader({
       path === '/owner/shops' ||
       path === '/owner/manage-shops'
     ) {
-      return 'Quản Lý Chi Nhánh & Trụ Sở';
+      return 'Quản Lý Chi Nhánh';
     }
     if (path === '/owner/pricing') return 'Bảng Giá & Tiền Đặt Cọc';
     if (path === '/owner/analytics') return 'Báo Cáo Tài Chính Chuỗi';
@@ -253,147 +170,26 @@ export default function OwnerTopHeader({
 
       {/* Right: Operational Status & Notifications */}
       <div className="owner-topbar-right">
-        {/* Branch Switcher (Exclusively for Branch Manager) */}
+        {/* Static Branch Badge (Exclusively for Branch Manager) */}
         {isBranchManager && (
-          <div style={{ position: 'relative' }} ref={branchSwitcherRef}>
-            <button
-              type="button"
-              className="owner-branch-switcher-pill"
-              onClick={() => {
-                setShowBranchSwitcher((prev) => !prev);
-              }}
-              aria-expanded={showBranchSwitcher}
-              aria-haspopup="listbox"
-              title={
-                assignedBranch
-                  ? `Đang quản lý: ${assignedBranch.name}`
-                  : 'Chọn chi nhánh quản lý'
-              }
-            >
-              <Building2 size={15} color="#D4AF37" />
-              <div className="owner-branch-switcher-text">
-                <span className="owner-branch-switcher-label">Chi nhánh:</span>
-                <span className="owner-branch-switcher-name">
-                  {assignedBranch?.name ||
-                    (sortedBranches.length > 0
-                      ? sortedBranches[0].name
-                      : 'Chưa phân công')}
-                </span>
-                {assignedBranch?.isHQ && (
-                  <span
-                    className="owner-branch-hq-tag"
-                    title="Trụ sở chính (HQ)"
-                    style={{ marginLeft: 4, padding: '1px 4px', fontSize: 9 }}
-                  >
-                    <Star size={9} fill="#D4AF37" color="#D4AF37" />
-                  </span>
-                )}
-              </div>
-              {sortedBranches.length > 1 && (
-                <span
-                  className="owner-branch-count-badge"
-                  title={`Bạn đang quản lý ${sortedBranches.length} chi nhánh`}
-                >
-                  {sortedBranches.length}
-                </span>
-              )}
-              <ChevronDown
-                size={13}
-                className={`owner-topbar-chevron ${showBranchSwitcher ? 'open' : ''}`}
-              />
-            </button>
-
-            {showBranchSwitcher && (
-              <div
-                className="owner-branch-switcher-dropdown"
-                role="listbox"
-                aria-label="Danh sách chi nhánh phụ trách"
-              >
-                <div className="owner-branch-dropdown-header">
-                  <div className="owner-branch-dropdown-title">
-                    CHI NHÁNH PHỤ TRÁCH
-                  </div>
-                  <div className="owner-branch-dropdown-subtitle">
-                    {sortedBranches.length > 0
-                      ? `${sortedBranches.length} chi nhánh trực thuộc`
-                      : 'Chưa có chi nhánh nào được gán'}
-                  </div>
-                </div>
-
-                <div className="owner-branch-switcher-list">
-                  {sortedBranches.length === 0 ? (
-                    <div className="owner-branch-empty-text">
-                      Bạn chưa được phân công quản lý chi nhánh nào.
-                    </div>
-                  ) : (
-                    sortedBranches.map((branch) => {
-                      const isSelected =
-                        assignedBranch?._id?.toString() === branch._id?.toString();
-                      return (
-                        <button
-                          key={branch._id}
-                          type="button"
-                          className={`owner-branch-switcher-item ${
-                            isSelected ? 'selected' : ''
-                          }`}
-                          onClick={() => handleSelectBranch(branch)}
-                          role="option"
-                          aria-selected={isSelected}
-                        >
-                          <div className="owner-branch-item-left">
-                            <div className="owner-branch-item-icon">
-                              <Store size={14} />
-                            </div>
-                            <div className="owner-branch-item-info">
-                              <div className="owner-branch-item-title-row">
-                                <span className="owner-branch-item-name">
-                                  {branch.name}
-                                </span>
-                                {branch.isHQ && (
-                                  <span
-                                    className="owner-branch-hq-tag"
-                                    title="Trụ sở chính (HQ)"
-                                  >
-                                    <Star size={11} fill="#D4AF37" color="#D4AF37" />
-                                  </span>
-                                )}
-                              </div>
-                              <span className="owner-branch-item-sub">
-                                {[branch.ward, branch.city]
-                                  .filter(Boolean)
-                                  .join(', ') ||
-                                  branch.address ||
-                                  'VESTORA Branch'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="owner-branch-item-right">
-                            <span
-                              className={`owner-branch-status-dot ${
-                                branch.status === 'ACTIVE' ? 'active' : 'inactive'
-                              }`}
-                              title={
-                                branch.status === 'ACTIVE'
-                                  ? 'Đang hoạt động'
-                                  : 'Tạm ngưng'
-                              }
-                            />
-                            {isSelected && (
-                              <Check
-                                size={15}
-                                color="#D4AF37"
-                                strokeWidth={2.5}
-                              />
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
+          <div
+            className="owner-branch-switcher-pill"
+            style={{ cursor: 'default' }}
+            title={
+              assignedBranch
+                ? `Chi nhánh phụ trách: ${assignedBranch.name}`
+                : 'Chưa phân công chi nhánh'
+            }
+          >
+            <Building2 size={15} color="#D4AF37" />
+            <div className="owner-branch-switcher-text">
+              <span className="owner-branch-switcher-label">Chi nhánh:</span>
+              <span className="owner-branch-switcher-name">
+                {assignedBranch?.name ||
+                  managedBranches[0]?.name ||
+                  'Chưa phân công'}
+              </span>
+            </div>
           </div>
         )}
 

@@ -263,13 +263,13 @@ export const calculateShippingFee = async ({
 export const createGHNOrder = async (orderPayload) => {
   const {
     shopId,
+    paymentTypeId,
     fromName,
     fromPhone,
     fromAddress,
     fromWardCode,
     fromDistrictId,
     fromProvinceName,
-    fromDistrictName,
     fromWardName,
     isNewFromAddress = false,
     returnPhone,
@@ -282,7 +282,6 @@ export const createGHNOrder = async (orderPayload) => {
     toWardCode,
     toDistrictId,
     toProvinceName,
-    toDistrictName,
     toWardName,
     isNewToAddress = false,
     codAmount = 0,
@@ -339,19 +338,52 @@ export const createGHNOrder = async (orderPayload) => {
         },
       ];
 
+  let deliveryToAddress = String(toAddress || '').trim();
+  if (useNewToAddress) {
+    // Nếu là địa bàn Xã và địa chỉ chỉ là số trần (vd '34'), GHN router thiếu ngữ cảnh thôn/xóm sẽ conflict.
+    // Chỉ thêm tiền tố 'Thôn 1, ' cho cấp Xã. Tuyệt đối không thêm cho cấp Phường / Thị trấn.
+    if (/^\d+$/.test(deliveryToAddress) && String(toWardName || '').toLowerCase().startsWith('xã')) {
+      deliveryToAddress = `Thôn 1, ${deliveryToAddress}`;
+    }
+    const lower = deliveryToAddress.toLowerCase();
+    const parts = [deliveryToAddress];
+    if (toWardName && !lower.includes(String(toWardName).toLowerCase())) {
+      parts.push(toWardName);
+    }
+    if (toProvinceName && !lower.includes(String(toProvinceName).toLowerCase())) {
+      parts.push(toProvinceName);
+    }
+    deliveryToAddress = parts.filter(Boolean).join(', ');
+  }
+
+  let pickupFromAddress = String(fromAddress || '').trim();
+  if (useNewFromAddress) {
+    if (/^\d+$/.test(pickupFromAddress) && String(fromWardName || '').toLowerCase().startsWith('xã')) {
+      pickupFromAddress = `Thôn 1, ${pickupFromAddress}`;
+    }
+    const lower = pickupFromAddress.toLowerCase();
+    const parts = [pickupFromAddress];
+    if (fromWardName && !lower.includes(String(fromWardName).toLowerCase())) {
+      parts.push(fromWardName);
+    }
+    if (fromProvinceName && !lower.includes(String(fromProvinceName).toLowerCase())) {
+      parts.push(fromProvinceName);
+    }
+    pickupFromAddress = parts.filter(Boolean).join(', ');
+  }
+
   const payload = {
-    payment_type_id: 1, // Người gửi (Cửa hàng) trả cước
+    payment_type_id: Number(paymentTypeId) || 1, // 1: Người gửi trả cước, 2: Người nhận (Shop) trả cước
     note: note || 'Cho xem hàng không cho thử đồ',
     required_note: 'CHOXEMHANGKHONGTHU',
     client_order_code: clientOrderCode || undefined,
     // Thông tin người gửi lấy trực tiếp từ MongoDB Shop
     from_name: fromName,
     from_phone: fromPhone,
-    from_address: fromAddress,
+    from_address: pickupFromAddress,
     ...(useNewFromAddress
       ? {
           from_province_name: String(fromProvinceName),
-          from_district_name: '',
           from_ward_name: String(fromWardName),
           is_new_from_address: true,
         }
@@ -362,11 +394,10 @@ export const createGHNOrder = async (orderPayload) => {
     // Thông tin khách hàng nhận
     to_name: toName,
     to_phone: toPhone,
-    to_address: toAddress,
+    to_address: deliveryToAddress,
     ...(useNewToAddress
       ? {
           to_province_name: String(toProvinceName),
-          to_district_name: '',
           to_ward_name: String(toWardName),
           is_new_to_address: true,
         }
@@ -374,11 +405,11 @@ export const createGHNOrder = async (orderPayload) => {
           to_ward_code: String(toWardCode),
           to_district_id: Number(toDistrictId),
         }),
-    // Địa chỉ trả hàng khi giao không thành công (hoàn về chi nhánh)
-    return_phone: returnPhone || fromPhone,
-    return_address: returnAddress || fromAddress,
-    return_district_id: Number(returnDistrictId || fromDistrictId),
-    return_ward_code: String(returnWardCode || fromWardCode),
+    // Địa chỉ trả hàng khi giao không thành công (chiều đi hoàn về shop, chiều thu hồi hoàn về shop nhận)
+    return_phone: returnPhone || (Number(paymentTypeId) === 2 && toPhone ? toPhone : fromPhone),
+    return_address: returnAddress || (Number(paymentTypeId) === 2 && toAddress ? toAddress : fromAddress),
+    return_district_id: Number(returnDistrictId || (Number(paymentTypeId) === 2 && toDistrictId ? toDistrictId : fromDistrictId)),
+    return_ward_code: String(returnWardCode || (Number(paymentTypeId) === 2 && toWardCode ? toWardCode : fromWardCode)),
     cod_amount: Math.max(0, Number(codAmount) || 0),
     weight: Number(weight) || 500,
     length: Number(length) || 30,
@@ -409,7 +440,12 @@ export const createGHNOrder = async (orderPayload) => {
     };
   }
 
-  throw new Error(res?.message || 'Lỗi khi tạo vận đơn GHN');
+  const rawMsg = String(res?.message || '');
+  if (rawMsg.toLowerCase().includes('too many request') || rawMsg.toLowerCase().includes('is processing')) {
+    throw new Error('GHN đang xử lý yêu cầu cho đơn hàng này, vui lòng đợi 3-5 giây rồi thử lại.');
+  }
+
+  throw new Error(rawMsg || 'Lỗi khi tạo vận đơn GHN');
 };
 
 /**

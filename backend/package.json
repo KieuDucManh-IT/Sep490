@@ -7,7 +7,11 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "nodemon server.js",
-    "test": "node --test \"../tests/backend/**/*.test.js\""
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:admin": "node --test \"tests/admin/**/*.test.js\"",
+    "test:chat": "node --test \"tests/chatmess/**/*.test.js\"",
+    "build:test-excel": "node tests/admin/buildExcelReport.js",
+    "build:test-chat-excel": "node tests/chatmess/buildExcelReport.js"
   },
   "keywords": [],
   "author": "",

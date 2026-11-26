@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Download } from 'lucide-react';
 
 export default function TryOnBottomBar({
   product,
@@ -8,6 +9,7 @@ export default function TryOnBottomBar({
   lastSavedImageUrl,
   isSavingWardrobe,
   onSaveToWardrobe,
+  onDownload,
 }) {
   const navigate = useNavigate();
 
@@ -51,6 +53,27 @@ export default function TryOnBottomBar({
       </div>
 
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {/* UC-64: Nút download ảnh kết quả try-on */}
+        {resultImage && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onDownload}
+            title="Tải ảnh kết quả ghép đồ về máy"
+            style={{
+              height: '34px',
+              padding: '0 10px',
+              fontSize: '11px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              color: '#1f2421',
+            }}
+          >
+            <Download size={13} />
+            Tải về
+          </button>
+        )}
         <button
           type="button"
           className="btn-secondary"

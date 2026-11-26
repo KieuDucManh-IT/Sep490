@@ -10,7 +10,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import OrderTrackingDetailModal from '../../components/customer/OrderTrackingDetailModal';
-import { getRentalOrders } from '../../services/rentalOrderApi';
+import { getRentalOrders, submitRentalDispute } from '../../services/rentalOrderApi';
 import { getMySalesOrders } from '../../services/salesOrderApi';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
 import {
@@ -180,6 +180,13 @@ export default function RentalOrdersHistoryPage() {
   const [rentalError, setRentalError] = useState('');
   const [selectedRentalOrder, setSelectedRentalOrder] = useState(null);
 
+  // UC-41: State modal khiếu nại / báo cáo vấn đề
+  const [disputeOrder, setDisputeOrder] = useState(null);
+  const [disputeReason, setDisputeReason] = useState('wrong_item');
+  const [disputeDescription, setDisputeDescription] = useState('');
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+  const [disputeResult, setDisputeResult] = useState(null);
+
   // Dữ liệu đơn mua
   const [saleOrders, setSaleOrders] = useState([]);
   const [isSaleLoading, setIsSaleLoading] = useState(false);
@@ -295,6 +302,36 @@ export default function RentalOrdersHistoryPage() {
   const displayedSaleOrders = saleOrders.filter(
     (o) => o.orderStatus !== 'draft'
   );
+
+  // UC-41: Submit khiếu nại (trong vòng 24h kể từ bàn giao)
+  const handleSubmitDispute = async () => {
+    if (!disputeOrder) return;
+    if (!disputeDescription.trim()) {
+      alert('Vui lòng mô tả chi tiết vấn đề bạn gặp phải.');
+      return;
+    }
+    setIsSubmittingDispute(true);
+    try {
+      const res = await submitRentalDispute(disputeOrder._id, {
+        reason: disputeReason,
+        description: disputeDescription.trim(),
+      });
+      setDisputeResult({ success: true, message: res?.data?.disputeCode
+        ? `Khiếu nại ${res.data.disputeCode} đã được ghi nhận. Chúng tôi sẽ phản hồi trong 72 giờ.`
+        : 'Khiếu nại đã được ghi nhận thành công. Vui lòng chờ CSKH liên hệ.' });
+    } catch (err) {
+      setDisputeResult({ success: false, message: err.message || 'Không gửi được khiếu nại, vui lòng thử lại.' });
+    } finally {
+      setIsSubmittingDispute(false);
+    }
+  };
+
+  const closeDisputeModal = () => {
+    setDisputeOrder(null);
+    setDisputeReason('wrong_item');
+    setDisputeDescription('');
+    setDisputeResult(null);
+  };
 
   return (
     <div className="rental-history-page">
@@ -519,6 +556,27 @@ export default function RentalOrdersHistoryPage() {
                           <span>Xem Chi Tiết</span>
                           <ChevronRight size={15} />
                         </button>
+
+                        {/* UC-41: Nút khiếu nại — chỉ hiển thị khi đơn đang ở trạng thái renting */}
+                        {o.rentalStatus === 'renting' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDisputeOrder(o);
+                            }}
+                            style={{
+                              padding: '7px 12px', borderRadius: '7px',
+                              border: '1px solid #dc2626', background: '#fff',
+                              color: '#dc2626', fontSize: '11.5px', fontWeight: 600,
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                            }}
+                            title="Báo cáo vấn đề với đơn thuê này (trong 24h kể từ nhận hàng)"
+                          >
+                            <AlertCircle size={12} />
+                            Khiếu nại
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -742,6 +800,115 @@ export default function RentalOrdersHistoryPage() {
         orderType="sale"
         onOrderUpdated={fetchSaleOrders}
       />
+
+      {/* UC-41: Modal gửi khiếu nại / báo cáo vấn đề đơn thuê (trong 24h) */}
+      {disputeOrder && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={closeDisputeModal}
+        >
+          <div
+            style={{
+              background: '#fff', borderRadius: '14px',
+              padding: '28px 32px', maxWidth: '480px', width: '100%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontSize: '17px', fontWeight: 700, margin: '0 0 4px 0', color: '#1f2421' }}>
+              Báo cáo vấn đề — Đơn thuê #{disputeOrder.orderCode}
+            </h3>
+            <p style={{ fontSize: '12px', color: '#6e7569', margin: '0 0 20px 0' }}>
+              Chỉ áp dụng trong vòng 24 giờ kể từ khi nhận trang phục. Vui lòng mô tả rõ vấn đề để CSKH xử lý nhanh nhất.
+            </p>
+
+            {disputeResult ? (
+              <div style={{
+                padding: '14px 18px', borderRadius: '8px',
+                background: disputeResult.success ? '#f0fdf4' : '#fef2f2',
+                border: `1px solid ${disputeResult.success ? '#16a34a' : '#dc2626'}`,
+                color: disputeResult.success ? '#15803d' : '#dc2626',
+                fontSize: '13px', marginBottom: '20px',
+              }}>
+                {disputeResult.message}
+              </div>
+            ) : (
+              <>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>
+                  Loại vấn đề *
+                </label>
+                <select
+                  value={disputeReason}
+                  onChange={(e) => setDisputeReason(e.target.value)}
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: '7px',
+                    border: '1px solid #d1d5db', fontSize: '13px',
+                    marginBottom: '14px', background: '#fff',
+                  }}
+                >
+                  <option value="wrong_item">Nhận sai sản phẩm / size / màu</option>
+                  <option value="damaged_item">Sản phẩm bị hư hỏng khi nhận</option>
+                  <option value="missing_item">Thiếu món đồ trong đơn</option>
+                  <option value="quality_issue">Chất lượng không như mô tả</option>
+                  <option value="late_delivery">Giao hàng trễ hơn cam kết</option>
+                  <option value="other">Vấn đề khác</option>
+                </select>
+
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>
+                  Mô tả chi tiết *
+                </label>
+                <textarea
+                  value={disputeDescription}
+                  onChange={(e) => setDisputeDescription(e.target.value)}
+                  placeholder="Mô tả rõ vấn đề bạn gặp phải để CSKH có thể hỗ trợ nhanh nhất..."
+                  rows={4}
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: '7px',
+                    border: '1px solid #d1d5db', fontSize: '13px',
+                    resize: 'vertical', boxSizing: 'border-box',
+                    marginBottom: '20px', fontFamily: 'inherit',
+                  }}
+                />
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={closeDisputeModal}
+                style={{
+                  padding: '9px 18px', borderRadius: '7px',
+                  border: '1px solid #d1d5db', background: '#fff',
+                  fontSize: '13px', cursor: 'pointer', color: '#374151',
+                }}
+              >
+                {disputeResult ? 'Đóng' : 'Hủy bỏ'}
+              </button>
+              {!disputeResult && (
+                <button
+                  type="button"
+                  onClick={handleSubmitDispute}
+                  disabled={isSubmittingDispute}
+                  style={{
+                    padding: '9px 20px', borderRadius: '7px',
+                    border: 'none', background: '#dc2626',
+                    color: '#fff', fontSize: '13px', fontWeight: 600,
+                    cursor: isSubmittingDispute ? 'not-allowed' : 'pointer',
+                    opacity: isSubmittingDispute ? 0.7 : 1,
+                  }}
+                >
+                  {isSubmittingDispute ? 'Đang gửi...' : 'Gửi khiếu nại'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

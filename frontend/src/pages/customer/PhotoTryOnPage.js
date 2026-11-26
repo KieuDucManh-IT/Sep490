@@ -63,6 +63,8 @@ export default function PhotoTryOnPage() {
 
   // Options & Try-On State
   const [selectedSize, setSelectedSize] = useState('S');
+  const [selectedColor, setSelectedColor] = useState('');
+  const [pairedGarmentColor, setPairedGarmentColor] = useState('');
   const [category, setCategory] = useState('dresses');
   const [autoCrop, setAutoCrop] = useState(true);
 
@@ -146,6 +148,7 @@ export default function PhotoTryOnPage() {
               ? firstProd.availableSizes
               : ['S', 'M', 'L'];
           setSelectedSize(pSizes[0] || 'S');
+          setSelectedColor(Array.isArray(firstProd.colors) && firstProd.colors.length > 0 ? firstProd.colors[0] : '');
         }
       })
       .catch((err) => {
@@ -188,6 +191,7 @@ export default function PhotoTryOnPage() {
           } else {
             setSelectedSize('Freesize');
           }
+          setSelectedColor(Array.isArray(prodData.colors) && prodData.colors.length > 0 ? prodData.colors[0] : '');
         }
       })
       .catch((err) => {
@@ -225,6 +229,7 @@ export default function PhotoTryOnPage() {
           setPairedGarment(prodData);
           const pSizes = Array.isArray(prodData.sizes) && prodData.sizes.length > 0 ? prodData.sizes : ['S', 'M', 'L'];
           setPairedGarmentSize(pSizes[0] || 'S');
+          setPairedGarmentColor(Array.isArray(prodData.colors) && prodData.colors.length > 0 ? prodData.colors[0] : '');
         }
       })
       .catch((err) => {
@@ -319,6 +324,7 @@ export default function PhotoTryOnPage() {
         ? selectedProd.availableSizes
         : (/túi|kính|nón|mũ|khăn|phụ kiện/.test(catStr) ? ['Freesize', 'Tiêu chuẩn'] : ['S', 'M', 'L']);
     setSelectedSize(pSizes[0] || 'S');
+    setSelectedColor(Array.isArray(selectedProd.colors) && selectedProd.colors.length > 0 ? selectedProd.colors[0] : '');
 
     // Update query params in-place on current route (does not navigate away)
     if (selectedProd._id) {
@@ -444,6 +450,7 @@ export default function PhotoTryOnPage() {
     }
 
     const garmentImg =
+      (selectedColor && product?.colorImages?.[selectedColor]) ||
       product?.primaryImageUrl ||
       product?.imageUrl ||
       product?.image ||
@@ -496,9 +503,15 @@ export default function PhotoTryOnPage() {
       formData.append('category', category);
       formData.append('crop', String(autoCrop));
 
+      if (selectedColor) {
+        formData.append('color', selectedColor);
+        formData.append('selectedColor', selectedColor);
+      }
+
       // 1. Trang phục phối kèm (Quần / Chân váy hoặc Áo / Blazer)
       if (pairedGarment) {
         const pairedImg =
+          (pairedGarmentColor && pairedGarment?.colorImages?.[pairedGarmentColor]) ||
           pairedGarment.primaryImageUrl ||
           pairedGarment.imageUrl ||
           pairedGarment.image ||
@@ -510,6 +523,10 @@ export default function PhotoTryOnPage() {
           formData.append('pairedGarmentImageUrl', pairedImg);
           formData.append('pairedGarmentDescription', pairedGarment.name || 'trang phục phối');
           formData.append('pairedGarmentCategory', pairedCat);
+          if (pairedGarmentColor) {
+            formData.append('pairedGarmentColor', pairedGarmentColor);
+            formData.append('bottomGarmentColor', pairedGarmentColor);
+          }
           // Tương thích ngược
           formData.append('bottomGarmentImageUrl', pairedImg);
           formData.append('bottomGarmentDescription', pairedGarment.name || 'trang phục phối');
@@ -546,6 +563,19 @@ export default function PhotoTryOnPage() {
       setIsGenerating(false);
       setGenerationStep('');
     }
+  };
+
+  // UC-64: Download ảnh kết quả try-on về máy (WBS yêu cầu "download the resulting images")
+  const handleDownload = () => {
+    if (!resultImage) return;
+    const a = document.createElement('a');
+    a.href = resultImage;
+    a.download = `vestora-tryon-${Date.now()}.jpg`;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   // Lưu ảnh vừa thử kèm thông tin & link sản phẩm vào Tủ Đồ cá nhân
@@ -598,6 +628,7 @@ export default function PhotoTryOnPage() {
   };
 
   const garmentImageUrl =
+    (selectedColor && product?.colorImages?.[selectedColor]) ||
     product?.primaryImageUrl ||
     product?.imageUrl ||
     product?.image ||
@@ -635,74 +666,53 @@ export default function PhotoTryOnPage() {
         </div>
       )}
 
-      {/* Top Header Bar */}
+      {/* Top Header Bar - Duy nhất 1 thanh điều hướng tinh gọn */}
       <header className="tryon-header-bar">
-        <Link
-          to="/"
-          style={{
-            color: '#6e7569',
-            textDecoration: 'none',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px',
-            fontWeight: 500,
-          }}
-        >
-          &larr; Rời phòng thử AI
-        </Link>
-        <Link
-          to="/"
-          style={{
-            fontFamily: 'var(--font-title, sans-serif)',
-            fontSize: '18px',
-            letterSpacing: '2.5px',
-            color: 'var(--color-text-primary, #1f2421)',
-            textDecoration: 'none',
-            fontWeight: 800,
-          }}
-        >
-          VESTORA
-        </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
-          <span>BẢO MẬT SINH TRẮC HỌC</span>
-          <button
-            onClick={() => navigate('/')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#4a5246',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            title="Đóng phòng thử"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      </header>
-
-      {/* Top Status Bar */}
-      <div className="tryon-top-status">
         <button
           onClick={() => {
             if (product?._id && product._id !== 'sample-001') {
               navigate(`/product/${product._id}`);
             } else {
-              navigate('/catalog');
+              navigate('/');
             }
           }}
-          className="tryon-back-btn"
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#6e7569',
+            cursor: 'pointer',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            fontWeight: 500,
+            padding: 0,
+          }}
         >
           &larr; Quay lại sản phẩm
         </button>
 
-        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-gold, #5b6e4e)', letterSpacing: '0.6px' }}>
-          PHÒNG THỬ ĐỒ ẢO AI — CÔNG NGHỆ IDM-VTON
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Link
+            to="/"
+            style={{
+              fontFamily: 'var(--font-title, sans-serif)',
+              fontSize: '17px',
+              letterSpacing: '2px',
+              color: 'var(--color-text-primary, #1f2421)',
+              textDecoration: 'none',
+              fontWeight: 800,
+            }}
+          >
+            VESTORA
+          </Link>
+          <span style={{ color: '#d2d8ce' }}>|</span>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-gold, #5b6e4e)', letterSpacing: '0.6px' }}>
+            PHÒNG THỬ ĐỒ ẢO AI — CÔNG NGHỆ IDM-VTON
+          </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span
             style={{
               background: 'rgba(91, 110, 78, 0.12)',
@@ -715,8 +725,23 @@ export default function PhotoTryOnPage() {
           >
             VIRTUAL TRY-ON
           </span>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#4a5246',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              padding: 0,
+            }}
+            title="Đóng phòng thử"
+          >
+            <X size={16} />
+          </button>
         </div>
-      </div>
+      </header>
 
       {/* Alerts */}
       {errorMessage && (
@@ -780,6 +805,8 @@ export default function PhotoTryOnPage() {
             catalogLoading={catalogLoading}
             category={category}
             selectedSize={selectedSize}
+            selectedColor={selectedColor}
+            onSelectColor={setSelectedColor}
             garmentImageUrl={garmentImageUrl}
             fallbackImage={FALLBACK_GARMENT_IMAGE}
             onSelectProduct={handleSelectProduct}
@@ -793,6 +820,8 @@ export default function PhotoTryOnPage() {
             setPairedGarment={setPairedGarment}
             pairedGarmentSize={pairedGarmentSize}
             setPairedGarmentSize={setPairedGarmentSize}
+            pairedGarmentColor={pairedGarmentColor}
+            setPairedGarmentColor={setPairedGarmentColor}
             handleRemovePairedGarment={handleRemovePairedGarment}
             handleClearAllPaired={handleClearAllPaired}
             category={category}
@@ -818,6 +847,7 @@ export default function PhotoTryOnPage() {
         lastSavedImageUrl={lastSavedImageUrl}
         isSavingWardrobe={isSavingWardrobe}
         onSaveToWardrobe={handleSaveToWardrobe}
+        onDownload={handleDownload}
       />
 
       {/* POPUP MODAL: Mẹo chọn ảnh chuẩn để AI ghép đẹp nhất */}

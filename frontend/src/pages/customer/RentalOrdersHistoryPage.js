@@ -11,7 +11,7 @@ import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import OrderTrackingDetailModal from '../../components/customer/OrderTrackingDetailModal';
 import { resolveOrderDisplayStatus } from '../orders/orderUtils';
-import { getRentalOrders } from '../../services/rentalOrderApi';
+import { getRentalOrders, submitRentalDispute } from '../../services/rentalOrderApi';
 import { getMySalesOrders } from '../../services/salesOrderApi';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
 import {
@@ -24,7 +24,6 @@ import {
   Truck,
   Wallet,
   Banknote,
-  RotateCcw,
 } from 'lucide-react';
 import '../../styles/RentalOrdersHistory.css';
 

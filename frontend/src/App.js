@@ -77,11 +77,22 @@ import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
 import { NotificationProvider } from './context/NotificationContext';
+import { useAuth } from './context/AuthContext';
 
 function TrackingRedirect() {
   const { trackingCode } = useParams();
   const target = trackingCode ? `/rental-orders?code=${encodeURIComponent(trackingCode)}` : '/rental-orders';
   return <Navigate to={target} replace />;
+}
+
+function CustomerHomeRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  const rawRole = String(user?.Role || user?.role || "").trim().toUpperCase();
+  if (rawRole === "ADMIN") {
+    return <Navigate to="/admin/accounts" replace />;
+  }
+  return <HomePage />;
 }
 
 function App() {
@@ -94,7 +105,7 @@ function App() {
         {/* ========================================================
             CUSTOMER PORTAL (Khách Hàng)
             ======================================================== */}
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<CustomerHomeRoute />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/product" element={<ProductDetailPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />

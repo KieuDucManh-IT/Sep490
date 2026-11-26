@@ -83,14 +83,17 @@ export default function LoginPage() {
       );
 
       const from = location.state?.from;
+      const rawRole = (loggedInUser?.role || loggedInUser?.Role || "").toLowerCase().replace(/[\s_-]/g, "");
 
-      const destination =
-        typeof from === "string" &&
-          from.startsWith("/") &&
-          !from.startsWith("//") &&
-          from !== "/login"
+      const destination = (rawRole === "admin")
+        ? "/admin/accounts"
+        : (typeof from === "string" &&
+            from.startsWith("/") &&
+            !from.startsWith("//") &&
+            from !== "/login" &&
+            from !== "/"
           ? from
-          : getHome(loggedInUser.role);
+          : getHome(loggedInUser.role));
 
       navigate(destination, { replace: true });
     } catch (error) {
@@ -117,9 +120,10 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      await loginGoogle(response.credential);
+      const loggedUser = await loginGoogle(response.credential);
+      const rawRole = (loggedUser?.role || loggedUser?.Role || "").toLowerCase().replace(/[\s_-]/g, "");
 
-      navigate("/", { replace: true });
+      navigate(rawRole === "admin" ? "/admin/accounts" : "/", { replace: true });
     } catch (error) {
       setErrors({
         server:

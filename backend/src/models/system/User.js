@@ -74,6 +74,40 @@ const informationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const lockRecordSchema = new mongoose.Schema(
+  {
+    action: {
+      type: String,
+      enum: ["LOCK", "UNLOCK"],
+      required: true,
+      default: "LOCK",
+    },
+    reason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    performedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    performedByName: {
+      type: String,
+      default: "Quản trị viên",
+    },
+    performedByEmail: {
+      type: String,
+      default: "",
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: true }
+);
+
 function hidePassword(doc, result) {
   delete result.PasswordHash;
   return result;
@@ -209,6 +243,11 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Shop",
       default: null,
+    },
+
+    LockHistory: {
+      type: [lockRecordSchema],
+      default: [],
     },
   },
   {

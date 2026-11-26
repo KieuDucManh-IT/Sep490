@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import AdminSidebar from '../../components/AdminSidebar';
 import AdminTopHeader from '../../components/AdminTopHeader';
 import '../../styles/AdminDashboard.css';
 import '../../styles/AdminAccounts.css';
@@ -29,7 +28,6 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api
 
 export default function AdminAccountsPage() {
   const { user: currentUser } = useAuth();
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // --- Toast Notifications ---
   const [toasts, setToasts] = useState([]);
@@ -161,8 +159,13 @@ export default function AdminAccountsPage() {
             address: address || 'Chưa cập nhật',
             dob: '15/08/2000',
             gender: 'Nữ',
-            rating: u.WarningsCount > 0 ? `C (${u.WarningsCount} vi phạm)` : 'A+ (100 pts)',
-            violations: u.WarningsCount || 0,
+            rating: ((Array.isArray(u.LockHistory) && u.LockHistory.filter(h => h.action === 'LOCK').length > 0) || u.WarningsCount > 0)
+              ? `C (${(Array.isArray(u.LockHistory) ? u.LockHistory.filter(h => h.action === 'LOCK').length : 0) || u.WarningsCount} vi phạm)`
+              : 'A+ (100 pts)',
+            violations: (Array.isArray(u.LockHistory) && u.LockHistory.length > 0)
+              ? u.LockHistory.filter(h => h.action === 'LOCK').length
+              : (u.WarningsCount || 0),
+            lockHistory: Array.isArray(u.LockHistory) ? u.LockHistory : (Array.isArray(u.lockHistory) ? u.lockHistory : []),
             authProvider: (u.AuthProvider || (u.GoogleId ? 'google' : 'local')).toLowerCase(),
             googleId: u.GoogleId || '',
             shopId: u.shopId || (typeof u.ShopId === 'object' ? u.ShopId?._id : u.ShopId) || '',
@@ -288,13 +291,53 @@ export default function AdminAccountsPage() {
 
     if (isCurrentlyLocked) {
       try {
-        const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, { method: 'PATCH' });
+        const res = await fetch(`${API_BASE_URL}/users/${userId}/toggle-lock`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reason: 'Quản trị viên mở khóa tài khoản',
+            adminId: currentUser?.id || currentUser?._id,
+            adminName: currentUser?.FullName || currentUser?.name || 'Quản trị viên',
+            adminEmail: currentUser?.Email || currentUser?.email || ''
+          })
+        });
         const json = await res.json();
         if (json.success) {
-          setUsers(prev => prev.map(u =>
-            u.id === userId ? { ...u, status: 'ACTIVE' } : u
-          ));
-          if (selectedUser?.id === userId) setSelectedUser(prev => ({ ...prev, status: 'ACTIVE' }));
+          const serverHistory = json.data?.LockHistory;
+          setUsers(prev => prev.map(u => {
+            if (u.id === userId) {
+              const updatedHistory = Array.isArray(serverHistory)
+                ? serverHistory
+                : [
+                    ...(u.lockHistory || []),
+                    {
+                      action: 'UNLOCK',
+                      reason: 'Quản trị viên mở khóa tài khoản',
+                      performedByName: currentUser?.FullName || currentUser?.name || 'Quản trị viên',
+                      createdAt: new Date().toISOString()
+                    }
+                  ];
+              return { ...u, status: 'ACTIVE', lockHistory: updatedHistory };
+            }
+            return u;
+          }));
+          if (selectedUser?.id === userId) {
+            setSelectedUser(prev => ({
+              ...prev,
+              status: 'ACTIVE',
+              lockHistory: Array.isArray(serverHistory)
+                ? serverHistory
+                : [
+                    ...(prev.lockHistory || []),
+                    {
+                      action: 'UNLOCK',
+                      reason: 'Quản trị viên mở khóa tài khoản',
+                      performedByName: currentUser?.FullName || currentUser?.name || 'Quản trị viên',
+                      createdAt: new Date().toISOString()
+                    }
+                  ]
+            }));
+          }
           showToast('Đã mở khóa tài khoản thành công', 'success');
         } else {
           showToast(json.message || 'Không thể mở khóa tài khoản', 'error');
@@ -322,14 +365,63 @@ export default function AdminAccountsPage() {
       const res = await fetch(`${API_BASE_URL}/users/${lockReasonTarget}/toggle-lock`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason })
+        body: JSON.stringify({
+          reason,
+          adminId: currentUser?.id || currentUser?._id,
+          adminName: currentUser?.FullName || currentUser?.name || 'Quản trị viên',
+          adminEmail: currentUser?.Email || currentUser?.email || ''
+        })
       });
       const json = await res.json();
       if (json.success) {
-        setUsers(prev => prev.map(u =>
-          u.id === lockReasonTarget ? { ...u, status: 'LOCKED' } : u
-        ));
-        if (selectedUser?.id === lockReasonTarget) setSelectedUser(prev => ({ ...prev, status: 'LOCKED' }));
+        const serverHistory = json.data?.LockHistory;
+        setUsers(prev => prev.map(u => {
+          if (u.id === lockReasonTarget) {
+            const updatedHistory = Array.isArray(serverHistory)
+              ? serverHistory
+              : [
+                  ...(u.lockHistory || []),
+                  {
+                    action: 'LOCK',
+                    reason,
+                    performedByName: currentUser?.FullName || currentUser?.name || 'Quản trị viên',
+                    createdAt: new Date().toISOString()
+                  }
+                ];
+            const lockCount = updatedHistory.filter(h => h.action === 'LOCK').length;
+            return {
+              ...u,
+              status: 'LOCKED',
+              lockHistory: updatedHistory,
+              violations: lockCount,
+              rating: `C (${lockCount} vi phạm)`
+            };
+          }
+          return u;
+        }));
+        if (selectedUser?.id === lockReasonTarget) {
+          setSelectedUser(prev => {
+            const updatedHistory = Array.isArray(serverHistory)
+              ? serverHistory
+              : [
+                  ...(prev.lockHistory || []),
+                  {
+                    action: 'LOCK',
+                    reason,
+                    performedByName: currentUser?.FullName || currentUser?.name || 'Quản trị viên',
+                    createdAt: new Date().toISOString()
+                  }
+                ];
+            const lockCount = updatedHistory.filter(h => h.action === 'LOCK').length;
+            return {
+              ...prev,
+              status: 'LOCKED',
+              lockHistory: updatedHistory,
+              violations: lockCount,
+              rating: `C (${lockCount} vi phạm)`
+            };
+          });
+        }
         setShowLockReasonModal(false);
         setLockReasonTarget(null);
         setLockReasonText('');
@@ -725,14 +817,8 @@ export default function AdminAccountsPage() {
 
   return (
     <div className="admin-layout" style={{ backgroundColor: '#FBF9F5' }}>
-      <AdminSidebar
-        isCollapsed={isSidebarCollapsed}
-        onToggle={() => setIsSidebarCollapsed(prev => !prev)}
-      />
-
       <div className="admin-main-viewport" style={{ backgroundColor: '#FBF9F5' }}>
         <AdminTopHeader
-          onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
           breadcrumb="Quản lý người dùng"
         />
 

@@ -11,7 +11,7 @@ import {
   Tag,
   Sparkles,
 } from 'lucide-react';
-import { fmtCurrency, requiredPriceText } from '../utils/pricingHelpers';
+import { fmtCurrency, requiredPriceText, getProductTagMeta } from '../utils/pricingHelpers';
 
 const RENTAL_PRESETS = [5, 8, 10, 15];
 const DEPOSIT_PRESETS = [30, 50, 70, 100];
@@ -75,7 +75,8 @@ function PricingEditModal({
               Cấu Hình Biểu Phí & Tiền Cọc Chuỗi
             </h5>
             <p className="modal-subtitle-text">
-              Mẫu: <strong className="text-dark">{editingItem.name}</strong> • Mã SP: <span className="pricing-modal-code">{editingItem.code}</span> • {editingItem.category}
+              Mẫu: <strong className="text-dark">{editingItem.name}</strong> • Mã SP: <span className="pricing-modal-code">{editingItem.code}</span> • {editingItem.category} •{' '}
+              <strong className="text-dark">{getProductTagMeta(editingItem.tag).label}</strong>
             </p>
           </div>
         </div>

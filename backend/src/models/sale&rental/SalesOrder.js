@@ -74,6 +74,7 @@ const salesOrderSchema = new mongoose.Schema({
   shippedAt: { type: Date, default: null },
   completedAt: { type: Date, default: null },
   cancelledAt: { type: Date, default: null },
+  cancelReason: { type: String, trim: true, default: null },
   note: { type: String, trim: true },
 }, { timestamps: true });
 

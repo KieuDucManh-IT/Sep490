@@ -366,13 +366,14 @@ const buildEmptyReport = ({
 
 /**
  * Xác định chi nhánh được phép xem cho Quản lý chi nhánh (hoặc Admin)
+ * @ears .sdd/features/branch-performance-reports/SPEC-B4-AUTHORIZATION.md#REQ-B4-AUTH-002
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-001
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-002
  */
 async function resolveAuthorizedBranch({ user, branchId }) {
   const role = user ? normalizeRole(user.Role || user.role) : 'admin';
 
-  if (user && !['branchmanager', 'admin', 'shopowner', 'owner'].includes(role)) {
+  if (user && !['branchmanager', 'admin'].includes(role)) {
     throw validationError('Chức năng báo cáo hiệu suất chi nhánh chỉ dành cho Quản lý chi nhánh hoặc Ban quản trị.', 403);
   }
 

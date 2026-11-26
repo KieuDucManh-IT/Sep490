@@ -391,6 +391,7 @@ export const uploadShopImage = async (req, res, next) => {
 /**
  * Lấy báo cáo hiệu suất và vận hành dành riêng cho Quản lý chi nhánh
  * GET /api/shops/reports/branch-performance
+ * @ears .sdd/features/branch-performance-reports/SPEC-B4-AUTHORIZATION.md#REQ-B4-AUTH-001
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-001
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-002
  */
@@ -402,7 +403,7 @@ export const getBranchPerformanceReport = async (req, res) => {
       .replace(/[\s_-]/g, '')
       .replace('brandmanager', 'branchmanager');
 
-    if (!['branchmanager', 'admin', 'shopowner', 'owner'].includes(normalizedRole)) {
+    if (!['branchmanager', 'admin'].includes(normalizedRole)) {
       return res.status(403).json({
         success: false,
         message: 'Chức năng báo cáo hiệu suất chi nhánh chỉ dành cho Quản lý chi nhánh hoặc Ban quản trị.',

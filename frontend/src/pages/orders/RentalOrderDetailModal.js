@@ -23,6 +23,7 @@ import {
   DEPOSIT_STATUS_MAP,
   PAYMENT_STATUS_MAP,
   resolveOrderDisplayStatus,
+  extractOrderCancelReason,
 } from './orderUtils';
 import {
   ShipmentTrackingTimeline,
@@ -243,6 +244,22 @@ export default function RentalOrderDetailModal({
           </div>
         ) : (
           <>
+            {(order.rentalStatus === 'cancelled' || order.status === 'cancelled') && (
+              <div role="alert" className="alert alert-danger d-flex align-items-start gap-2 mb-3">
+                <AlertCircle size={18} className="flex-shrink-0 mt-1" />
+                <div>
+                  <div className="fw-bold">
+                    Đơn thuê đã bị hủy
+                    {order.cancelledAt ? ` (${formatDate(order.cancelledAt)})` : ''}
+                  </div>
+                  <div className="small mt-1">
+                    <strong>Lý do hủy:</strong>{' '}
+                    {extractOrderCancelReason(order, shipments) || 'Chưa ghi nhận lý do cụ thể.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Section 1: Khách hàng & Lịch trình thuê */}
             <div className="modal-section-card">
               <div className="modal-section-header">
@@ -345,6 +362,13 @@ export default function RentalOrderDetailModal({
                             </div>
                             <div className="order-product-variant">
                               SKU: {it.variantId?.sku || it.sku || it.productSku || '—'}
+                              {Number(it.returnedQuantity || 0) > 0 && (
+                                <span className="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-2">
+                                  {Number(it.remainingQuantity || 0) === 0
+                                    ? 'Đã trả đủ'
+                                    : `Đã trả: ${it.returnedQuantity}/${it.quantity || 1}`}
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td>
@@ -430,6 +454,13 @@ export default function RentalOrderDetailModal({
                     <strong style={{ color: '#D97706', fontFeatureSettings: 'tnum' }}>
                       {formatCurrency(order.depositAmount)}
                     </strong>
+                    {(Number(order.refundedDepositAmount || 0) > 0 || Number(order.deductedDepositAmount || 0) > 0) && (
+                      <div className="text-muted" style={{ fontSize: '12px' }}>
+                        Đã hoàn: {formatCurrency(order.refundedDepositAmount || 0)}
+                        {' · '}
+                        Còn giữ: {formatCurrency(Math.max(0, Number(order.depositAmount || 0) - Number(order.refundedDepositAmount || 0) - Number(order.deductedDepositAmount || 0)))}
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2 pt-2 border-top">
                     <span className="small text-muted me-2">Tổng thanh toán ban đầu:</span>
@@ -448,7 +479,10 @@ export default function RentalOrderDetailModal({
                 (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)
               );
               const hasActiveReturn = shipments.some(
-                (s) => s.shipmentType === 'return' && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)
+                (s) =>
+                  s.shipmentType === 'return' &&
+                  (['preparing', 'shipped'].includes(s.shipmentStatus) ||
+                    (s.shipmentStatus === 'delivered' && !s.settled))
               );
               const isFinished = ['returned', 'cancelled'].includes(order.rentalStatus || order.status);
               const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && !isFinished && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
@@ -507,11 +541,16 @@ export default function RentalOrderDetailModal({
 
                       {isDepositRefunded ? (
                         <div>
-                          Đã hoàn {formatCurrency(order.depositAmount)} tiền cọc
+                          Đã hoàn {formatCurrency(order.refundedDepositAmount || order.depositAmount)} tiền cọc
                           vào Ví Vestora của khách hàng.
                         </div>
                       ) : (
-                        <div>Trạng thái tiền cọc: {depositDef.text}.</div>
+                        <div>
+                          Trạng thái tiền cọc: {depositDef.text}.
+                          {Number(order.refundedDepositAmount || 0) > 0 && (
+                            <span> Đã hoàn: {formatCurrency(order.refundedDepositAmount)}.</span>
+                          )}
+                        </div>
                       )}
 
                       {actualReturned && (
@@ -534,6 +573,7 @@ export default function RentalOrderDetailModal({
                             onCancel={handleCancelShipment}
                             onStatusUpdated={refetchOrder}
                             rentalStatus={order.rentalStatus}
+                            orderItems={items}
                             onRetry={
                               canRetryThis
                                 ? (targetShipment) => {
@@ -655,6 +695,8 @@ export default function RentalOrderDetailModal({
           setRetryShipment(null);
         }}
         order={order}
+        orderType="rental"
+        orderItemsProp={items}
         initialShipment={retryShipment}
         onSuccess={() => refetchOrder()}
       />

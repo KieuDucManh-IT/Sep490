@@ -26,7 +26,10 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import { sanitizeTimelineText } from '../../pages/shipping/shippingUtils';
+import {
+  sanitizeTimelineText,
+  normalizeShipmentDisplayItems,
+} from '../../pages/shipping/shippingUtils';
 import '../../styles/CustomerOrderTracking.css';
 
 const getStepIndex = (status, displayStatusText = '') => {
@@ -73,99 +76,7 @@ const formatDate = (dateStr) => {
    SUB-COMPONENTS
    ========================================================================== */
 
-/** 1. Header thẻ vận đơn GHN */
-function TrackingHeader({ trackingData }) {
-  return (
-    <div
-      className="tracking-card-header"
-      style={{ paddingBottom: '16px', marginBottom: '16px' }}
-    >
-      <div>
-        <div className="tracking-header-tags">
-          <span className="tracking-carrier-tag">
-            {trackingData.carrierName || 'Giao Hàng Nhanh'}
-          </span>
-
-          {trackingData.hasGhnShipment ? (
-            <span className="tracking-badge-delivered">
-              <CheckCircle size={13} /> Đã bàn giao GHN
-            </span>
-          ) : (
-            <span className="tracking-badge-preparing">
-              <Clock size={13} /> Đang chuẩn bị tại Shop
-            </span>
-          )}
-        </div>
-
-        <div
-          className="tracking-meta-section"
-          style={{ marginTop: '8px' }}
-        >
-          <div className="tracking-type-label tracking-meta-code">
-            <span>
-              Mã vận đơn GHN:{' '}
-              <strong
-                className={
-                  trackingData.hasGhnShipment
-                    ? 'tracking-order-code-highlight'
-                    : 'tracking-code-empty'
-                }
-              >
-                {trackingData.hasGhnShipment
-                  ? trackingData.trackingCode
-                  : 'Chưa có mã vận đơn'}
-              </strong>
-            </span>
-          </div>
-
-          <div className="tracking-type-label">
-            <span className="me-2">
-              Mã đơn hàng:{' '}
-              <strong className="tracking-order-code-highlight">
-                {trackingData.orderCode || trackingData.trackingCode}
-              </strong>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-end">
-        <span className="tracking-status-sub">
-          Trạng thái hiện tại:
-        </span>
-
-        <div className="tracking-status-actions">
-          <span
-            className={`tracking-status-badge status-${trackingData.shipmentStatus}`}
-          >
-            {trackingData.displayStatusText ||
-              trackingData.shipmentStatus}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 2. Thông báo chuẩn bị tại cửa hàng */
-function TrackingShopNotice({ shipmentStatus }) {
-  return (
-    <div
-      className="tracking-shop-notice"
-      style={{ marginBottom: '16px' }}
-    >
-      <Clock size={16} className="tracking-notice-icon" />
-
-      <span>
-        {shipmentStatus === 'pending_confirmation'
-          ? 'Đơn hàng đang chờ cửa hàng liên hệ xác nhận (Đơn ship COD). Sau khi xác nhận, đơn sẽ được đóng gói giao cho shipper GHN.'
-          : 'Cửa hàng đang đóng gói sản phẩm và chờ shipper GHN đến lấy hàng. Mã vận đơn GHN chính thức sẽ được kích hoạt ngay khi bưu tá nhận kiện.'}
-      </span>
-    </div>
-  );
-}
-
-/** 3. Tiến trình vận chuyển 4 bước */
+/** Tiến trình vận chuyển 4 bước */
 function TrackingStepper({ currentStep, shipmentStatus }) {
   const steps = [
     {
@@ -611,14 +522,14 @@ function OrderProductsList({ orderItems }) {
           const prodSize =
             item.size || item.variantId?.size || 'M';
 
-          const prodPrice =
-            item.rentalPrice ||
-            item.unitPrice ||
-            item.unitRentalFee ||
-            item.lineTotal ||
+          const unitPrice =
+            item.rentalPrice ??
+            item.unitPrice ??
+            item.unitRentalFee ??
             0;
 
           const prodQty = item.quantity || 1;
+          const totalLinePrice = item.lineTotal != null ? item.lineTotal : unitPrice * prodQty;
 
           return (
             <div
@@ -661,11 +572,63 @@ function OrderProductsList({ orderItems }) {
                   color: '#96723D',
                 }}
               >
-                {formatCurrencyVND(prodPrice * prodQty)}
+                {formatCurrencyVND(totalLinePrice)}
               </strong>
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** Danh sách sản phẩm đính kèm trực tiếp trong thẻ vận đơn (chiều đi / chiều về) */
+function ShipmentItemsSummary({ items = [], orderItems = [], isReturn = false }) {
+  const normalized = normalizeShipmentDisplayItems(items, orderItems);
+  if (normalized.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: '10px',
+        marginBottom: '12px',
+        padding: '10px 12px',
+        borderRadius: '8px',
+        border: '1px solid #E5E0D8',
+        backgroundColor: '#FAF9F6',
+      }}
+    >
+      <div
+        className="d-flex align-items-center gap-1 fw-semibold text-dark mb-2"
+        style={{ fontSize: '12px' }}
+      >
+        <Package size={14} className={isReturn ? 'text-warning' : 'text-primary'} />
+        <span>
+          {isReturn
+            ? `Sản phẩm trong vận đơn hoàn trả (${normalized.length})`
+            : `Sản phẩm trong vận đơn giao đi (${normalized.length})`}
+        </span>
+      </div>
+      <div className="d-flex flex-column gap-1">
+        {normalized.map((item, i) => (
+          <div
+            key={`${item.sku || item.name}-${i}`}
+            className="d-flex justify-content-between align-items-center py-1"
+            style={{ fontSize: '12px', borderTop: i > 0 ? '1px solid #EFECE6' : 'none' }}
+          >
+            <div>
+              <span className="fw-medium text-dark">{item.name}</span>
+              {(item.size || item.color) && (
+                <span className="text-muted ms-2">
+                  {[item.size && `Size ${item.size}`, item.color].filter(Boolean).join(' • ')}
+                </span>
+              )}
+            </div>
+            <span className="badge bg-white text-dark border">
+              {isReturn ? `Hoàn: x${item.quantity}` : `SL: x${item.quantity}`}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1176,7 +1139,6 @@ export default function OrderTrackingDetailModal({
 }) {
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Các chế độ: tracking | cancel | dispute | return.
@@ -1203,9 +1165,7 @@ export default function OrderTrackingDetailModal({
   const fetchTracking = useCallback(async (code, force = false) => {
     if (!code) return;
 
-    if (force) {
-      setSyncing(true);
-    } else {
+    if (!force) {
       setLoading(true);
     }
 
@@ -1229,7 +1189,6 @@ export default function OrderTrackingDetailModal({
       );
     } finally {
       setLoading(false);
-      setSyncing(false);
     }
   }, []);
 
@@ -1270,13 +1229,6 @@ export default function OrderTrackingDetailModal({
 
   const orderItems =
     order.items || order.orderDetails || order.details || [];
-
-  const currentStep = trackingData
-    ? getStepIndex(
-        trackingData.shipmentStatus,
-        trackingData.displayStatusText
-      )
-    : 1;
 
   // Kiểm tra điều kiện nộp khiếu nại đổi trả 24h của đơn thuê.
   const isWithin24hWindow = () => {
@@ -1547,7 +1499,7 @@ export default function OrderTrackingDetailModal({
             </div>
           ) : null}
 
-          {/* KHỐI 1: TIẾN TRÌNH VẬN CHUYỂN & TRẠNG THÁI GHN (HIỂN THỊ 2 CHIỀU: ĐƠN THUÊ & ĐƠN TRẢ) */}
+          {/* KHỐI 1: TIẾN TRÌNH VẬN CHUYỂN & TRẠNG THÁI GHN (HIỂN THỊ 2 CHIỀU: GIAO ĐI & HOÀN TRẢ) */}
           {(() => {
             const allShipments = Array.isArray(order.shipments)
               ? order.shipments
@@ -1567,274 +1519,37 @@ export default function OrderTrackingDetailModal({
             );
             const latestReturn = sortedReturn[0] || (trackingData && trackingData.shipmentType === 'return' ? trackingData : null);
 
-            const isOrderReturned = order.rentalStatus === 'returned';
+            const noun = isRental ? 'trang phục' : 'sản phẩm';
+            const isOrderReturned = isRental
+              ? order.rentalStatus === 'returned'
+              : order.returnStatus === 'completed';
             const returnStatus = latestReturn?.shipmentStatus;
             const hasActiveReturn = latestReturn && ['preparing', 'shipped'].includes(returnStatus);
-            const isReturnDelivered = returnStatus === 'delivered';
-            const canCustomerReturn = ['renting', 'overdue'].includes(order.rentalStatus) && !hasActiveReturn && !isReturnDelivered && !isOrderReturned;
+            const isReturnDelivered = Boolean(latestReturn && returnStatus === 'delivered' && !latestReturn.settled);
+            const isPartiallyReturnedRental = isRental && order.rentalStatus === 'partially_returned';
+            const remainingRentalCount = isRental
+              ? orderItems.reduce(
+                  (sum, it) =>
+                    sum +
+                    (it.remainingQuantity != null
+                      ? Number(it.remainingQuantity)
+                      : Number(it.quantity || 1)),
+                  0
+                )
+              : 0;
 
-            if (isRental) {
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {/* 1. CHIỀU ĐI: GIAO TRANG PHỤC (Showroom ➔ Quý khách) */}
-                  <div
-                    className="tracking-result-card"
-                    style={{
-                      margin: 0,
-                      padding: '20px',
-                      borderRadius: '12px',
-                      border: '1px solid #E5E0D8',
-                      backgroundColor: '#FFFFFF',
-                    }}
-                  >
-                    <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <div
-                          style={{
-                            padding: '6px',
-                            borderRadius: '6px',
-                            backgroundColor: '#EFF6FF',
-                            color: '#2563EB',
-                          }}
-                        >
-                          <Truck size={18} />
-                        </div>
-                        <div>
-                          <h6 className="fw-bold mb-0 text-dark" style={{ fontSize: '14px' }}>
-                            1. Chiều giao trang phục (Showroom ➔ Quý khách)
-                          </h6>
-                          <small className="text-muted">
-                            {latestOutbound?.trackingCode
-                              ? `Mã vận đơn GHN: ${latestOutbound.trackingCode}`
-                              : 'Chưa có mã vận đơn chuyển phát'}
-                            {sortedOutbound.length > 1 && (
-                              <span className="badge bg-light text-secondary border ms-2">
-                                Vận đơn mới nhất
-                              </span>
-                            )}
-                          </small>
-                        </div>
-                      </div>
+            const saleDeliveredAt = latestOutbound?.deliveredAt || order.completedAt;
+            const withinSale24h = Boolean(
+              saleDeliveredAt && (Date.now() - new Date(saleDeliveredAt).getTime() <= 24 * 60 * 60 * 1000)
+            );
+            const canCustomerReturn = isRental
+              ? (['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus) && !hasActiveReturn && !isReturnDelivered && !isOrderReturned)
+              : (order.orderStatus === 'completed' && order.paymentStatus === 'paid' && withinSale24h && !hasActiveReturn && !isReturnDelivered && !isOrderReturned);
+            const isSaleExpired24h = !isRental && order.orderStatus === 'completed' && order.paymentStatus === 'paid' && !withinSale24h && !hasActiveReturn && !isReturnDelivered && !isOrderReturned;
 
-                      {latestOutbound?.shipmentStatus && (
-                        <span className={`tracking-status-badge status-${latestOutbound.shipmentStatus}`}>
-                          {latestOutbound.shipmentStatus === 'delivered'
-                            ? 'Giao hàng thành công'
-                            : latestOutbound.shipmentStatus === 'shipped'
-                            ? 'Đang giao hàng'
-                            : latestOutbound.shipmentStatus === 'preparing'
-                            ? 'Đang chuẩn bị'
-                            : latestOutbound.shipmentStatus === 'cancelled'
-                            ? 'Vận đơn đã hủy'
-                            : latestOutbound.shipmentStatus}
-                        </span>
-                      )}
-                    </div>
-
-                    {latestOutbound ? (
-                      <>
-                        <TrackingStepper
-                          currentStep={getStepIndex(latestOutbound.shipmentStatus)}
-                          shipmentStatus={latestOutbound.shipmentStatus}
-                        />
-
-                        <TrackingInfoGrid
-                          receiverInfo={latestOutbound.receiverInfo || trackingData?.receiverInfo}
-                          storeInfo={latestOutbound.senderInfo || trackingData?.storeInfo}
-                          expectedDeliveryTime={latestOutbound.expectedDeliveryTime || trackingData?.expectedDeliveryTime}
-                          deliveredAt={latestOutbound.deliveredAt || trackingData?.deliveredAt}
-                        />
-
-                        <TrackingProofAndFailureAlerts
-                          deliveryProofImage={latestOutbound.deliveryProofImage}
-                          failureReason={latestOutbound.failureReason}
-                          cancellationReason={latestOutbound.cancellationReason}
-                          onImageClick={(img) => setSelectedEvidenceImage(img)}
-                        />
-
-                        <TrackingTimeline
-                          statusHistory={latestOutbound.statusHistory}
-                          onImageClick={(img) => setSelectedEvidenceImage(img)}
-                        />
-                      </>
-                    ) : (
-                      <div className="small text-muted py-2 fst-italic">
-                        Showroom đang chuẩn bị đồ và sẽ tạo vận đơn chuyển phát GHN sớm nhất.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 2. CHIỀU VỀ: HOÀN TRẢ TRANG PHỤC (Quý khách ➔ Showroom) */}
-                  <div
-                    className="tracking-result-card"
-                    style={{
-                      margin: 0,
-                      padding: '20px',
-                      borderRadius: '12px',
-                      border: isOrderReturned
-                        ? '1px solid #BBF7D0'
-                        : hasActiveReturn || isReturnDelivered
-                        ? '1px solid #FDE68A'
-                        : '1px solid #E5E0D8',
-                      backgroundColor: isOrderReturned
-                        ? '#F0FDF4'
-                        : hasActiveReturn || isReturnDelivered
-                        ? '#FFFDF7'
-                        : '#FAFAF9',
-                    }}
-                  >
-                    <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <div
-                          style={{
-                            padding: '6px',
-                            borderRadius: '6px',
-                            backgroundColor: isOrderReturned
-                              ? '#DCFCE7'
-                              : hasActiveReturn || isReturnDelivered
-                              ? '#FEF3C7'
-                              : '#F3F4F6',
-                            color: isOrderReturned
-                              ? '#16A34A'
-                              : hasActiveReturn || isReturnDelivered
-                              ? '#B45309'
-                              : '#4B5563',
-                          }}
-                        >
-                          <RotateCcw size={18} />
-                        </div>
-                        <div>
-                          <h6 className="fw-bold mb-0 text-dark" style={{ fontSize: '14px' }}>
-                            2. Chiều hoàn trả trang phục (Quý khách ➔ Showroom)
-                          </h6>
-                          <small className="text-muted">
-                            {latestReturn?.trackingCode
-                              ? `Mã vận đơn GHN: ${latestReturn.trackingCode}`
-                              : isOrderReturned
-                              ? 'Đã hoàn tất trả đồ tại Showroom'
-                              : 'Chưa có mã vận đơn trả'}
-                            {sortedReturn.length > 1 && (
-                              <span className="badge bg-light text-secondary border ms-2">
-                                Vận đơn mới nhất
-                              </span>
-                            )}
-                          </small>
-                        </div>
-                      </div>
-
-                      {/* Badge trạng thái chiều về */}
-                      {isOrderReturned ? (
-                        <span className="tracking-badge-delivered" style={{ background: '#DCFCE7', color: '#15803D' }}>
-                          <CheckCircle size={13} /> Đã trả đồ & hoàn cọc
-                        </span>
-                      ) : latestReturn?.shipmentStatus ? (
-                        <span className={`tracking-status-badge status-${latestReturn.shipmentStatus}`}>
-                          {latestReturn.shipmentStatus === 'delivered'
-                            ? 'Đã về shop, chờ nghiệm thu'
-                            : latestReturn.shipmentStatus === 'shipped'
-                            ? 'Đang chuyển về shop'
-                            : latestReturn.shipmentStatus === 'preparing'
-                            ? 'Chờ shipper lấy đồ trả'
-                            : latestReturn.shipmentStatus === 'cancelled'
-                            ? 'Vận đơn trả đã hủy'
-                            : latestReturn.shipmentStatus}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {/* NỘI DUNG CHI TIẾT CHIỀU VỀ */}
-                    {isOrderReturned ? (
-                      <div>
-                        <div className="alert alert-success py-2 px-3 small d-flex align-items-center gap-2 mb-2">
-                          <CheckCircle size={16} className="text-success flex-shrink-0" />
-                          <span>
-                            Đơn thuê đã hoàn tất trả đồ thành công. Tiền cọc đã được quyết toán vào Ví Vestora của quý khách.
-                          </span>
-                        </div>
-                        {latestReturn?.statusHistory && (
-                          <TrackingTimeline
-                            statusHistory={latestReturn.statusHistory}
-                            onImageClick={(img) => setSelectedEvidenceImage(img)}
-                          />
-                        )}
-                      </div>
-                    ) : hasActiveReturn || isReturnDelivered ? (
-                      <div>
-                        {returnStatus === 'preparing' && (
-                          <div className="alert alert-warning py-2 px-3 small d-flex align-items-center gap-2 mb-2">
-                            <Clock size={16} className="text-warning flex-shrink-0" />
-                            <span>
-                              Yêu cầu thu hồi qua GHN đã tạo thành công! Shipper GHN sẽ liên hệ quý khách theo số điện thoại nhận hàng để lấy đồ.
-                            </span>
-                          </div>
-                        )}
-                        {returnStatus === 'delivered' && (
-                          <div className="alert alert-info py-2 px-3 small d-flex align-items-center gap-2 mb-2">
-                            <Package size={16} className="text-info flex-shrink-0" />
-                            <span>
-                              Trang phục đã giao về Showroom an toàn. Chi nhánh đang kiểm định nghiệm thu KCS để hoàn cọc vào ví cho bạn.
-                            </span>
-                          </div>
-                        )}
-
-                        {latestReturn?.statusHistory && (
-                          <TrackingTimeline
-                            statusHistory={latestReturn.statusHistory}
-                            onImageClick={(img) => setSelectedEvidenceImage(img)}
-                          />
-                        )}
-                      </div>
-                    ) : canCustomerReturn ? (
-                      /* NƠI HIỂN THỊ NÚT TRẢ ĐỒ KHI CẦN TẠO ĐƠN */
-                      <div
-                        style={{
-                          padding: '16px',
-                          backgroundColor: '#FFFBEB',
-                          borderRadius: '8px',
-                          border: '1px dashed #FDE68A',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {latestReturn?.shipmentStatus === 'cancelled' && (
-                          <div className="alert alert-warning py-1 px-2 small mb-2 text-start">
-                            Vận đơn thu hồi trước đó đã bị hủy. Quý khách có thể gửi lại yêu cầu trả đồ mới bất cứ lúc nào.
-                          </div>
-                        )}
-                        <p className="mb-2 text-dark" style={{ fontSize: '13px' }}>
-                          Quý khách đã sẵn sàng trả đồ? Nhấn nút bên dưới để shipper GHN tới tận nơi nhận đồ hoàn trả về Showroom.
-                        </p>
-                        <button
-                          type="button"
-                          className="btn btn-warning d-inline-flex align-items-center gap-2 fw-semibold px-4 py-2"
-                          style={{
-                            backgroundColor: '#D97706',
-                            borderColor: '#D97706',
-                            color: '#FFFFFF',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => setIsReturnModalOpen(true)}
-                        >
-                          <RotateCcw size={16} />
-                          <span>Yêu Cầu Trả Đồ Qua GHN</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="small text-muted py-2 fst-italic">
-                        {['draft', 'confirmed'].includes(order.rentalStatus)
-                          ? 'Mục hoàn trả sẽ tự động kích hoạt sau khi quý khách nhận được trang phục.'
-                          : 'Đơn hàng đang trong trạng thái xử lý.'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            }
-
-            // Đơn mua (Sale)
             return (
-              trackingData && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* 1. CHIỀU ĐI: GIAO HÀNG (Showroom ➔ Quý khách) */}
                 <div
                   className="tracking-result-card"
                   style={{
@@ -1842,41 +1557,299 @@ export default function OrderTrackingDetailModal({
                     padding: '20px',
                     borderRadius: '12px',
                     border: '1px solid #E5E0D8',
+                    backgroundColor: '#FFFFFF',
                   }}
                 >
-                  <TrackingHeader trackingData={trackingData} />
+                  <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                    <div className="d-flex align-items-center gap-2">
+                      <div
+                        style={{
+                          padding: '6px',
+                          borderRadius: '6px',
+                          backgroundColor: '#EFF6FF',
+                          color: '#2563EB',
+                        }}
+                      >
+                        <Truck size={18} />
+                      </div>
+                      <div>
+                        <h6 className="fw-bold mb-0 text-dark" style={{ fontSize: '14px' }}>
+                          1. Chiều giao {noun} (Showroom ➔ Quý khách)
+                        </h6>
+                        <small className="text-muted">
+                          {latestOutbound?.trackingCode
+                            ? `Mã vận đơn GHN: ${latestOutbound.trackingCode}`
+                            : 'Chưa có mã vận đơn chuyển phát'}
+                          {sortedOutbound.length > 1 && (
+                            <span className="badge bg-light text-secondary border ms-2">
+                              Vận đơn mới nhất
+                            </span>
+                          )}
+                        </small>
+                      </div>
+                    </div>
 
-                  {!trackingData.hasGhnShipment && (
-                    <TrackingShopNotice
-                      shipmentStatus={trackingData.shipmentStatus}
-                    />
+                    {latestOutbound?.shipmentStatus && (
+                      <span className={`tracking-status-badge status-${latestOutbound.shipmentStatus}`}>
+                        {latestOutbound.shipmentStatus === 'delivered'
+                          ? 'Giao hàng thành công'
+                          : latestOutbound.shipmentStatus === 'shipped'
+                          ? 'Đang giao hàng'
+                          : latestOutbound.shipmentStatus === 'preparing'
+                          ? 'Đang chuẩn bị'
+                          : latestOutbound.shipmentStatus === 'cancelled'
+                          ? 'Vận đơn đã hủy'
+                          : latestOutbound.shipmentStatus}
+                      </span>
+                    )}
+                  </div>
+
+                  {latestOutbound ? (
+                    <>
+                      <TrackingStepper
+                        currentStep={getStepIndex(latestOutbound.shipmentStatus)}
+                        shipmentStatus={latestOutbound.shipmentStatus}
+                      />
+
+                      <TrackingInfoGrid
+                        receiverInfo={latestOutbound.receiverInfo || (trackingData?.shipmentType !== 'return' ? trackingData?.receiverInfo : null)}
+                        storeInfo={latestOutbound.senderInfo || (trackingData?.shipmentType !== 'return' ? trackingData?.storeInfo : null)}
+                        expectedDeliveryTime={latestOutbound.expectedDeliveryTime || (trackingData?.shipmentType !== 'return' ? trackingData?.expectedDeliveryTime : null)}
+                        deliveredAt={latestOutbound.deliveredAt || (trackingData?.shipmentType !== 'return' ? trackingData?.deliveredAt : null)}
+                      />
+
+                      <TrackingProofAndFailureAlerts
+                        deliveryProofImage={latestOutbound.deliveryProofImage}
+                        failureReason={latestOutbound.failureReason}
+                        cancellationReason={latestOutbound.cancellationReason}
+                        onImageClick={(img) => setSelectedEvidenceImage(img)}
+                      />
+
+                      <ShipmentItemsSummary
+                        items={latestOutbound.items?.length ? latestOutbound.items : orderItems}
+                        orderItems={orderItems}
+                        isReturn={false}
+                      />
+
+                      <TrackingTimeline
+                        statusHistory={latestOutbound.statusHistory}
+                        onImageClick={(img) => setSelectedEvidenceImage(img)}
+                      />
+                    </>
+                  ) : (
+                    <div className="small text-muted py-2 fst-italic">
+                      Showroom đang chuẩn bị {noun} và sẽ tạo vận đơn chuyển phát GHN sớm nhất.
+                    </div>
                   )}
-
-                  <TrackingStepper
-                    currentStep={currentStep}
-                    shipmentStatus={trackingData.shipmentStatus}
-                  />
-
-                  <TrackingInfoGrid
-                    receiverInfo={trackingData.receiverInfo}
-                    storeInfo={trackingData.storeInfo}
-                    expectedDeliveryTime={trackingData.expectedDeliveryTime}
-                    deliveredAt={trackingData.deliveredAt}
-                  />
-
-                  <TrackingProofAndFailureAlerts
-                    deliveryProofImage={trackingData.deliveryProofImage}
-                    failureReason={trackingData.failureReason}
-                    cancellationReason={trackingData.cancellationReason}
-                    onImageClick={(img) => setSelectedEvidenceImage(img)}
-                  />
-
-                  <TrackingTimeline
-                    statusHistory={trackingData.statusHistory}
-                    onImageClick={(img) => setSelectedEvidenceImage(img)}
-                  />
                 </div>
-              )
+
+                {/* 2. CHIỀU VỀ: HOÀN TRẢ HÀNG (Quý khách ➔ Showroom) */}
+                <div
+                  className="tracking-result-card"
+                  style={{
+                    margin: 0,
+                    padding: '20px',
+                    borderRadius: '12px',
+                    border: isOrderReturned
+                      ? '1px solid #BBF7D0'
+                      : hasActiveReturn || isReturnDelivered
+                      ? '1px solid #FDE68A'
+                      : '1px solid #E5E0D8',
+                    backgroundColor: isOrderReturned
+                      ? '#F0FDF4'
+                      : hasActiveReturn || isReturnDelivered
+                      ? '#FFFDF7'
+                      : '#FAFAF9',
+                  }}
+                >
+                  <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                    <div className="d-flex align-items-center gap-2">
+                      <div
+                        style={{
+                          padding: '6px',
+                          borderRadius: '6px',
+                          backgroundColor: isOrderReturned
+                            ? '#DCFCE7'
+                            : hasActiveReturn || isReturnDelivered
+                            ? '#FEF3C7'
+                            : '#F3F4F6',
+                          color: isOrderReturned
+                            ? '#16A34A'
+                            : hasActiveReturn || isReturnDelivered
+                            ? '#B45309'
+                            : '#4B5563',
+                        }}
+                      >
+                        <RotateCcw size={18} />
+                      </div>
+                      <div>
+                        <h6 className="fw-bold mb-0 text-dark" style={{ fontSize: '14px' }}>
+                          2. Chiều hoàn trả {noun} (Quý khách ➔ Showroom)
+                        </h6>
+                        <small className="text-muted">
+                          {latestReturn?.trackingCode
+                            ? `Mã vận đơn GHN: ${latestReturn.trackingCode}`
+                            : isOrderReturned
+                            ? `Đã hoàn tất trả ${noun} tại Showroom`
+                            : 'Chưa có mã vận đơn trả'}
+                          {sortedReturn.length > 1 && (
+                            <span className="badge bg-light text-secondary border ms-2">
+                              Vận đơn mới nhất
+                            </span>
+                          )}
+                        </small>
+                      </div>
+                    </div>
+
+                    {/* Badge trạng thái chiều về */}
+                    {isOrderReturned ? (
+                      <span className="tracking-badge-delivered" style={{ background: '#DCFCE7', color: '#15803D' }}>
+                        <CheckCircle size={13} /> {isRental ? 'Đã trả đồ & hoàn cọc' : 'Đã trả hàng & hoàn tiền'}
+                      </span>
+                    ) : latestReturn?.shipmentStatus && (!isPartiallyReturnedRental || hasActiveReturn || isReturnDelivered) ? (
+                      <span className={`tracking-status-badge status-${latestReturn.shipmentStatus}`}>
+                        {latestReturn.shipmentStatus === 'delivered'
+                          ? 'Đã về shop, chờ nghiệm thu'
+                          : latestReturn.shipmentStatus === 'shipped'
+                          ? 'Đang chuyển về shop'
+                          : latestReturn.shipmentStatus === 'preparing'
+                          ? 'Chờ shipper lấy hàng trả'
+                          : latestReturn.shipmentStatus === 'cancelled'
+                          ? 'Vận đơn trả đã hủy'
+                          : latestReturn.shipmentStatus}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* NỘI DUNG CHI TIẾT CHIỀU VỀ */}
+                  {isOrderReturned ? (
+                    <div>
+                      <div className="alert alert-success py-2 px-3 small d-flex align-items-center gap-2 mb-2">
+                        <CheckCircle size={16} className="text-success flex-shrink-0" />
+                        <span>
+                          {isRental
+                            ? 'Đơn thuê đã hoàn tất trả đồ thành công. Tiền cọc đã được quyết toán vào Ví Vestora của quý khách.'
+                            : 'Đơn mua đã hoàn tất trả hàng. Tiền hoàn đã được quyết toán vào Ví Vestora của quý khách.'}
+                        </span>
+                      </div>
+                      <ShipmentItemsSummary
+                        items={latestReturn?.items?.length ? latestReturn.items : (order.returnItems?.length ? order.returnItems : orderItems)}
+                        orderItems={orderItems}
+                        isReturn={true}
+                      />
+                      {latestReturn?.statusHistory && (
+                        <TrackingTimeline
+                          statusHistory={latestReturn.statusHistory}
+                          onImageClick={(img) => setSelectedEvidenceImage(img)}
+                        />
+                      )}
+                    </div>
+                  ) : hasActiveReturn || isReturnDelivered ? (
+                    <div>
+                      {returnStatus === 'preparing' && (
+                        <div className="alert alert-warning py-2 px-3 small d-flex align-items-center gap-2 mb-2">
+                          <Clock size={16} className="text-warning flex-shrink-0" />
+                          <span>
+                            Yêu cầu thu hồi qua GHN đã tạo thành công! Shipper GHN sẽ liên hệ quý khách để lấy hàng.
+                          </span>
+                        </div>
+                      )}
+                      {returnStatus === 'delivered' && (
+                        <div className="alert alert-info py-2 px-3 small d-flex align-items-center gap-2 mb-2">
+                          <Package size={16} className="text-info flex-shrink-0" />
+                          <span>
+                            {isRental
+                              ? 'Trang phục đã giao về Showroom an toàn. Chi nhánh đang kiểm định nghiệm thu KCS để hoàn cọc vào ví cho bạn.'
+                              : 'Sản phẩm đã giao về Showroom an toàn. Chi nhánh đang kiểm định KCS để hoàn tiền vào Ví Vestora cho bạn.'}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="d-flex justify-content-end mb-2">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-dark"
+                          onClick={() => setViewMode('return')}
+                        >
+                          {returnStatus === 'preparing'
+                            ? `Tải / Xem video trả ${noun}`
+                            : `Xem video trả ${noun}`}
+                        </button>
+                      </div>
+
+                      <ShipmentItemsSummary
+                        items={latestReturn?.items?.length ? latestReturn.items : (order.returnItems?.length ? order.returnItems : orderItems)}
+                        orderItems={orderItems}
+                        isReturn={true}
+                      />
+
+                      {latestReturn?.statusHistory && (
+                        <TrackingTimeline
+                          statusHistory={latestReturn.statusHistory}
+                          onImageClick={(img) => setSelectedEvidenceImage(img)}
+                        />
+                      )}
+                    </div>
+                  ) : canCustomerReturn ? (
+                    /* NƠI HIỂN THỊ NÚT TRẢ HÀNG / TRẢ ĐỒ KHI CẦN TẠO ĐƠN */
+                    <div
+                      style={{
+                        padding: '16px',
+                        backgroundColor: '#FFFBEB',
+                        borderRadius: '8px',
+                        border: '1px dashed #FDE68A',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {isPartiallyReturnedRental && (
+                        <div className="alert alert-success py-2 px-3 small mb-2 text-start">
+                          Đơn thuê đã hoàn trả một phần (đã hoàn cọc{' '}
+                          <strong>{formatCurrencyVND(order.refundedDepositAmount || 0)}</strong>). Còn{' '}
+                          <strong>{remainingRentalCount}</strong> trang phục cần gửi trả tiếp.
+                        </div>
+                      )}
+                      {latestReturn?.shipmentStatus === 'cancelled' && (
+                        <div className="alert alert-warning py-1 px-2 small mb-2 text-start">
+                          Vận đơn thu hồi trước đó đã bị hủy. Quý khách có thể gửi lại yêu cầu trả mới bất kỳ lúc nào.
+                        </div>
+                      )}
+                      <p className="mb-2 text-dark" style={{ fontSize: '13px' }}>
+                        {isRental
+                          ? 'Quý khách đã sẵn sàng trả đồ? Nhấn nút bên dưới để shipper GHN tới tận nơi nhận đồ hoàn trả về Showroom.'
+                          : 'Sản phẩm mặc không vừa hoặc cần hoàn trả? Nhấn nút bên dưới (trong vòng 24h từ lúc nhận) để shipper GHN tới lấy hàng miễn phí ship chiều về.'}
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-warning d-inline-flex align-items-center gap-2 fw-semibold px-4 py-2"
+                        style={{
+                          backgroundColor: '#D97706',
+                          borderColor: '#D97706',
+                          color: '#FFFFFF',
+                          borderRadius: '8px',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => setIsReturnModalOpen(true)}
+                      >
+                        <RotateCcw size={16} />
+                        <span>{isRental ? 'Yêu Cầu Trả Đồ Qua GHN' : 'Yêu Cầu Trả Hàng Qua GHN'}</span>
+                      </button>
+                    </div>
+                  ) : isSaleExpired24h ? (
+                    <div className="small text-muted py-2 fst-italic">
+                      Đã quá thời hạn 24 giờ kể từ lúc nhận hàng thành công để gửi yêu cầu trả hàng.
+                    </div>
+                  ) : (
+                    <div className="small text-muted py-2 fst-italic">
+                      {isRental
+                        ? (['draft', 'confirmed'].includes(order.rentalStatus)
+                          ? 'Mục hoàn trả sẽ tự động kích hoạt sau khi quý khách nhận được trang phục.'
+                          : 'Đơn hàng đang trong trạng thái xử lý.')
+                        : 'Mục hoàn trả sẽ kích hoạt trong vòng 24 giờ sau khi giao hàng thành công và đã thanh toán đủ.'}
+                    </div>
+                  )}
+                </div>
+              </div>
             );
           })()}
 
@@ -1901,7 +1874,7 @@ export default function OrderTrackingDetailModal({
             <div role="status" className="alert alert-success">
               Đã trả hàng hoàn tất.
 
-              {order.paymentStatus === 'refunded' && (
+              {['refunded', 'partially_refunded'].includes(order.paymentStatus) && (
                 <>
                   {' '}Đã hoàn{' '}
                   {formatCurrencyVND(order.refundedAmount)}
@@ -1970,19 +1943,6 @@ export default function OrderTrackingDetailModal({
                   <span>Khiếu Nại Đổi Trả (24h)</span>
                 </button>
               )}
-
-              {/* TRẢ HÀNG ĐÃ MUA (chỉ hiển thị khi đơn hoàn thành và chưa hoàn tất trả hàng) */}
-              {!isRental && order.orderStatus === 'completed' && order.returnStatus !== 'completed' && (
-                <button
-                  type="button"
-                  className="btn btn-primary me-2 mb-2"
-                  onClick={() => setViewMode('return')}
-                >
-                  {order.returnStatus && order.returnStatus !== 'none'
-                    ? 'Theo dõi trả hàng mua'
-                    : 'Trả hàng đã mua'}
-                </button>
-              )}
             </div>
 
             <button
@@ -2005,14 +1965,21 @@ export default function OrderTrackingDetailModal({
         </div>
       )}
 
-      {/* Modal gửi yêu cầu trả đồ thuê qua GHN của Khách hàng */}
+      {/* Modal gửi yêu cầu trả hàng/đồ qua GHN của Khách hàng */}
       <ShipmentReturnModal
         show={isReturnModalOpen}
         onClose={() => setIsReturnModalOpen(false)}
         order={order}
+        orderType={isRental ? 'rental' : 'sale'}
+        orderItemsProp={orderItems}
         isCustomer={true}
         onSuccess={() => {
           setIsReturnModalOpen(false);
+          const targetCode =
+            order.orderCode ||
+            order.shipment?.trackingCode ||
+            order._id;
+          if (targetCode) fetchTracking(targetCode);
           if (onOrderUpdated) onOrderUpdated();
         }}
       />

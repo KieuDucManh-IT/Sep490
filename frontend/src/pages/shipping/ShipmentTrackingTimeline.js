@@ -16,6 +16,7 @@ import {
   UploadCloud,
   AlertTriangle,
   CheckCircle2,
+  Package,
 } from 'lucide-react';
 
 import {
@@ -23,6 +24,7 @@ import {
   formatCurrency,
   formatDate,
   sanitizeTimelineText,
+  normalizeShipmentDisplayItems,
 } from './shippingUtils';
 
 import {
@@ -45,6 +47,8 @@ export default function ShipmentTrackingTimeline({
   shipment,
   rentalStatus = null,
   salesReturnStatus = null,
+  orderItems = [],
+  returnItems = [],
   onCancel,
   onRetry,
   onStatusUpdated,
@@ -67,10 +71,12 @@ export default function ShipmentTrackingTimeline({
 
   const completedRentalReturn =
     shipment.shipmentType === 'return' &&
-    rentalStatus === 'returned';
+    shipment.shipmentStatus === 'delivered' &&
+    (rentalStatus === 'returned' || Boolean(shipment.settled));
 
   const completedSalesReturn =
     shipment.shipmentType === 'return' &&
+    shipment.shipmentStatus === 'delivered' &&
     salesReturnStatus === 'completed';
 
   const waitingForInspection =
@@ -494,6 +500,57 @@ export default function ShipmentTrackingTimeline({
         </div>
       </div>
 
+      {/* Danh sách sản phẩm trong vận đơn này (hiển thị rõ món đi / món hoàn về) */}
+      {(() => {
+        const orderItemList = Array.isArray(orderItems) ? orderItems : [];
+        const returnItemList = Array.isArray(returnItems) ? returnItems : [];
+        const rawCardItems =
+          Array.isArray(shipment.items) && shipment.items.length > 0
+            ? shipment.items
+            : isReturn && returnItemList.length > 0
+              ? returnItemList
+              : !isReturn && orderItemList.length > 0
+                ? orderItemList
+                : [];
+
+        if (rawCardItems.length === 0) return null;
+
+        const normalizedCardItems = normalizeShipmentDisplayItems(rawCardItems, orderItemList);
+
+        return (
+          <div className="mb-3 p-2 px-3 bg-white border rounded-2">
+            <div className="d-flex align-items-center gap-1 small fw-semibold text-dark mb-2">
+              <Package size={14} className={isReturn ? 'text-info' : 'text-primary'} />
+              <span>
+                {isReturn
+                  ? `Sản phẩm hoàn trả (${normalizedCardItems.length})`
+                  : `Sản phẩm trong vận đơn (${normalizedCardItems.length})`}
+              </span>
+            </div>
+            <div className="d-flex flex-column gap-1">
+              {normalizedCardItems.map((item, i) => (
+                <div
+                  key={`${item.sku || item.name}-${i}`}
+                  className="d-flex justify-content-between align-items-center small py-1 border-top"
+                >
+                  <div>
+                    <span className="fw-medium text-dark">{item.name}</span>
+                    <span className="text-muted ms-2">
+                      {[item.size && `Size ${item.size}`, item.color, item.sku]
+                        .filter(Boolean)
+                        .join(' • ')}
+                    </span>
+                  </div>
+                  <span className={`badge ${isReturn ? 'bg-info-subtle text-info-emphasis border border-info-subtle' : 'bg-light text-dark border'}`}>
+                    {isReturn ? `Hoàn: x${item.quantity}` : `SL: x${item.quantity}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Bằng chứng giao hàng thành công */}
       {shipment.deliveryProofImage && (
         <div
@@ -567,6 +624,25 @@ export default function ShipmentTrackingTimeline({
           <div>
             <strong>Lý do chưa giao được hàng:</strong>{' '}
             {shipment.failureReason}
+          </div>
+        </div>
+      )}
+
+      {/* Lý do hủy vận đơn */}
+      {shipment.cancellationReason && (
+        <div
+          className="d-flex align-items-center gap-2 p-2 px-3 rounded-2 mb-3 text-danger"
+          style={{
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            fontSize: '12.5px',
+          }}
+        >
+          <XCircle size={16} />
+
+          <div>
+            <strong>Lý do hủy vận đơn:</strong>{' '}
+            {shipment.cancellationReason}
           </div>
         </div>
       )}

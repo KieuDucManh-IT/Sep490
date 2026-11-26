@@ -252,7 +252,9 @@ export const saveShipmentRecord = async ({
   width = 20,
   height = 10,
   note = '',
+  items = [],
   initialDescription = 'Đơn hàng đã được tạo thành công, đang chờ bàn giao cho bưu tá vận chuyển',
+  session = null,
 }) => {
   const canonicalTrackingCode = ghnRes.order_code;
   const initialHistory = [
@@ -273,7 +275,7 @@ export const saveShipmentRecord = async ({
   const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
   const shipmentCode = `SHP-${shipmentDateStr}-${randomHex}`;
 
-  return await OrderShipment.create({
+  const doc = {
     trackingCode: canonicalTrackingCode,
     shipmentCode,
     orderCode: order.orderCode,
@@ -296,9 +298,16 @@ export const saveShipmentRecord = async ({
     senderInfo,
     receiverInfo,
     statusHistory: initialHistory,
+    items: Array.isArray(items) ? items : [],
     note,
     createdBy: user._id,
     lastSyncedAt: new Date(),
-  });
+  };
+
+  if (session) {
+    const [created] = await OrderShipment.create([doc], { session });
+    return created;
+  }
+  return await OrderShipment.create(doc);
 };
 

@@ -242,3 +242,26 @@ export const extractOrderAddressInfo = (order) => {
     fullAddr,
   };
 };
+
+/** Chuẩn hóa danh sách món hiển thị trong card vận đơn (kết hợp snapshot & chi tiết đơn) */
+export const normalizeShipmentDisplayItems = (items = [], orderItems = []) => {
+  const list = Array.isArray(items) ? items : [];
+  const orderList = Array.isArray(orderItems) ? orderItems : [];
+
+  return list.map((it, i) => {
+    const matched = orderList.find(
+      (oi) =>
+        (it.salesOrderDetailId && String(oi._id) === String(it.salesOrderDetailId)) ||
+        (it.rentalOrderDetailId && String(oi._id) === String(it.rentalOrderDetailId)) ||
+        (it.sku && (oi.variantId?.sku === it.sku || oi.sku === it.sku))
+    );
+    const v = it.variantId || matched?.variantId;
+    return {
+      name: it.name || it.productName || v?.productId?.name || v?.variantName || `Sản phẩm #${i + 1}`,
+      size: it.size || v?.size || '',
+      color: it.color || v?.color || '',
+      sku: it.sku || v?.sku || '',
+      quantity: it.quantity || it.quantityReturned || 1,
+    };
+  });
+};

@@ -45,7 +45,7 @@ import {
   cancelRentalOrderSchema,
   computeCalendarRentalDays,
 } from '../../validations/sale&rental/rentalOrderValidation.js';
-import { resolvePrimaryShipment } from '../order/orderMonitoringService.js';
+import { enrichRentalOrdersPartialProgress, resolvePrimaryShipment } from '../order/orderMonitoringService.js';
 import { createNotification, notifyRoles } from '../system/notificationService.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { Shop } from '../../models/shop/Shop.js';
@@ -1180,6 +1180,8 @@ export const cancelRentalOrder = async ({
     order.rentalStatus = 'cancelled';
     order.paymentStatus = totalRefund === 0 ? 'paid' : cancellationFee > 0 ? 'partially_refunded' : 'refunded';
     order.depositStatus = 'refunded';
+    order.cancelReason = validation.data.cancelReason;
+    order.cancelledAt = new Date();
     order.note = order.note
       ? `${order.note}; Hủy đơn: ${validation.data.cancelReason}`
       : `Hủy đơn: ${validation.data.cancelReason}`;
@@ -1250,18 +1252,26 @@ export const getRentalOrderById = async (orderId) => {
     itemsByDetail.get(k).push(it);
   }
 
-  const enrichedDetails = details.map((d) => ({
+  const preEnrichedDetails = details.map((d) => ({
     ...d,
     productName: d.variantId?.productId?.name || d.productName,
     assignedItems: itemsByDetail.get(String(d._id)) || [],
   }));
 
+  const { detailsByOrderId, shipmentsByOrderId } = await enrichRentalOrdersPartialProgress(
+    [order],
+    preEnrichedDetails,
+    shipments
+  );
+  const enrichedDetails = detailsByOrderId.get(String(order._id)) || preEnrichedDetails;
+  const resolvedShipments = shipmentsByOrderId.get(String(order._id)) || shipments;
+
   return {
     ...order,
     details: enrichedDetails,
     items: enrichedDetails,
-    shipments,
-    shipment: resolvePrimaryShipment(shipments),
+    shipments: resolvedShipments,
+    shipment: resolvePrimaryShipment(resolvedShipments),
   };
 };
 
@@ -1314,22 +1324,12 @@ export const listRentalOrders = async ({
       : [],
   ]);
 
-  const detailsByOrder = new Map();
-  for (const d of details) {
-    const k = String(d.rentalOrderId);
-    if (!detailsByOrder.has(k)) detailsByOrder.set(k, []);
-    detailsByOrder.get(k).push({
-      ...d,
-      productName: d.variantId?.productId?.name || d.productName,
-    });
-  }
-
-  const shipmentsByOrder = new Map();
-  for (const s of shipments) {
-    const k = String(s.orderId);
-    if (!shipmentsByOrder.has(k)) shipmentsByOrder.set(k, []);
-    shipmentsByOrder.get(k).push(s);
-  }
+  const { detailsByOrderId: detailsByOrder, shipmentsByOrderId: shipmentsByOrder } =
+    await enrichRentalOrdersPartialProgress(
+      orders,
+      details.map((d) => ({ ...d, productName: d.variantId?.productId?.name || d.productName })),
+      shipments
+    );
 
   const enrichedOrders = orders.map((o) => {
     const ordShipments = shipmentsByOrder.get(String(o._id)) || [];

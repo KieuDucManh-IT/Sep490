@@ -25,6 +25,24 @@ const addressInfoSchema = new mongoose.Schema({
   isNewAddress: { type: Boolean, default: false },
 }, { _id: false });
 
+const shipmentItemSnapshotSchema = new mongoose.Schema({
+  name: { type: String, trim: true },
+  sku: { type: String, trim: true, default: '' },
+  size: { type: String, trim: true, default: '' },
+  color: { type: String, trim: true, default: '' },
+  quantity: { type: Number, min: 1, default: 1 },
+  price: { type: Number, min: 0, default: 0 },
+  salesOrderDetailId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  rentalOrderDetailId: { type: mongoose.Schema.Types.ObjectId, default: null },
+}, { _id: false });
+
+const shipmentEvidenceVideoSchema = new mongoose.Schema({
+  publicId: { type: String, required: true },
+  format: { type: String, required: true },
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  uploadedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
 const orderShipmentSchema = new mongoose.Schema({
   trackingCode: { type: String, trim: true, unique: true, sparse: true },
   shipmentCode: { type: String, trim: true, index: true },
@@ -48,6 +66,9 @@ const orderShipmentSchema = new mongoose.Schema({
   senderInfo: { type: addressInfoSchema, default: null },
   receiverInfo: { type: addressInfoSchema, default: null },
   statusHistory: [statusHistorySchema],
+  items: { type: [shipmentItemSnapshotSchema], default: [] },
+  returnVideo: { type: shipmentEvidenceVideoSchema, default: null },
+  returnReceivedVideo: { type: shipmentEvidenceVideoSchema, default: null },
   lastSyncedAt: { type: Date, default: null },
   cancellationReason: { type: String, trim: true },
   deliveryProofImage: { type: String, trim: true, default: null }, // Ảnh chụp xác nhận giao hàng thành công

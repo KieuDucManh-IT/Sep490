@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import OwnerSidebar from '../../components/OwnerSidebar';
 import OwnerTopHeader from '../../components/OwnerTopHeader';
+import ShopPagination from '../../components/ShopPagination';
 import PricingTable from './pricing/components/PricingTable';
 import PricingEditModal from './pricing/components/PricingEditModal';
 import PricingFilterBar from './pricing/components/PricingFilterBar';
@@ -49,10 +50,20 @@ export default function OwnerPricingPage() {
     setSelectedCategory,
     categoryOptions,
     filteredItems,
+    paginatedItems,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalPages,
     kpiStats,
     pricingFilter,
     setPricingFilter,
     pricingCounts,
+    tagFilter,
+    setTagFilter,
+    tagCounts,
+    resetFilters,
     fetchProducts,
     editingItem,
     editForm,
@@ -99,10 +110,6 @@ export default function OwnerPricingPage() {
               </div>
 
               <div className="d-flex align-items-center gap-2">
-                <span className="badge bg-light text-dark border px-3 py-2">
-                  Hiển thị <strong>{filteredItems.length}</strong> / {items.length} mẫu trang phục
-                </span>
-
                 <button
                   type="button"
                   className="btn-tail-outline owner-pricing-refresh-btn"
@@ -144,7 +151,11 @@ export default function OwnerPricingPage() {
                     {fmtCurrency(kpiStats.avgRental)}{' '}
                     <span className="clean-kpi-unit">/ ngày</span>
                   </span>
-                  <span className="clean-kpi-desc">Tính theo ngày thuê thực tế</span>
+                  <span className="clean-kpi-desc">
+                    {kpiStats.rentalCount > 0
+                      ? `Tính trên ${kpiStats.rentalCount} mẫu có giá thuê`
+                      : 'Chưa có mẫu thiết lập giá thuê'}
+                  </span>
                 </div>
               </div>
 
@@ -158,7 +169,11 @@ export default function OwnerPricingPage() {
                   <span className="clean-kpi-value text-emerald">
                     {fmtCurrency(kpiStats.avgDeposit)}
                   </span>
-                  <span className="clean-kpi-desc">Bảo đảm an toàn tài sản</span>
+                  <span className="clean-kpi-desc">
+                    {kpiStats.depositCount > 0
+                      ? `Tính trên ${kpiStats.depositCount} mẫu có tiền cọc`
+                      : 'Chưa có mẫu thiết lập tiền cọc'}
+                  </span>
                 </div>
               </div>
             </section>
@@ -182,7 +197,7 @@ export default function OwnerPricingPage() {
               </div>
             ) : null}
 
-            {/* Thanh Công Cụ Tìm Kiếm, Lọc Trạng Thái & Danh Mục Chuẩn Hệ Thống Vestora */}
+            {/* Thanh Công Cụ Tìm Kiếm & Bộ Lọc Dropdown Chuẩn Hệ Thống Vestora */}
             <PricingFilterBar
               search={search}
               onSearchChange={setSearch}
@@ -190,25 +205,45 @@ export default function OwnerPricingPage() {
               pricingFilter={pricingFilter}
               onSelectPricingFilter={setPricingFilter}
               pricingCounts={pricingCounts}
+              tagFilter={tagFilter}
+              onSelectTagFilter={setTagFilter}
+              tagCounts={tagCounts}
               selectedCategory={selectedCategory}
               onSelectCategory={setSelectedCategory}
               categoryOptions={categoryOptions}
               totalCount={items.length}
               filteredCount={filteredItems.length}
+              hasActiveFilters={Boolean(search || selectedCategory !== 'ALL' || pricingFilter !== 'all' || tagFilter !== 'ALL')}
+              onResetFilters={resetFilters}
             />
 
             {/* Bảng Danh Sách Trang Phục & Bảng Giá */}
             <PricingTable
-              items={filteredItems}
+              items={paginatedItems}
               loading={loading}
               onOpenEdit={handleOpenEdit}
-              onResetFilters={() => {
-                setSearch('');
-                setSelectedCategory('ALL');
-                setPricingFilter('all');
-              }}
-              hasActiveFilters={Boolean(search || selectedCategory !== 'ALL' || pricingFilter !== 'all')}
+              onResetFilters={resetFilters}
+              hasActiveFilters={Boolean(search || selectedCategory !== 'ALL' || pricingFilter !== 'all' || tagFilter !== 'ALL')}
             />
+
+            {/* Phân trang danh sách sản phẩm */}
+            {!loading && filteredItems.length > 0 ? (
+              <div className="pricing-pagination-bar">
+                <div className="pricing-pagination-summary">
+                  Hiển thị{' '}
+                  <strong>{(page - 1) * pageSize + 1}</strong> -{' '}
+                  <strong>{Math.min(page * pageSize, filteredItems.length)}</strong>{' '}
+                  trong tổng số <strong>{filteredItems.length}</strong> mẫu trang phục
+                </div>
+                <ShopPagination
+                  page={page}
+                  pages={totalPages}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                />
+              </div>
+            ) : null}
           </div>
         </main>
       </div>

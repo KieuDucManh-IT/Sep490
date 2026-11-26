@@ -15,7 +15,6 @@ import {
   Phone,
   Mail,
   Store,
-  Undo2,
 } from 'lucide-react';
 import { getSaleOrderDetailApi } from '../../services/orderApi';
 import {
@@ -23,16 +22,16 @@ import {
   formatDate,
   PAYMENT_STATUS_MAP,
   resolveOrderDisplayStatus,
+  extractOrderCancelReason,
 } from './orderUtils';
 import {
   ShipmentTrackingTimeline,
   ShipmentCreateModal,
 } from '../shipping';
 import { cancelShipmentApi } from '../../services/shippingApi';
-import SalesReturnModal from './SalesReturnModal';
 import '../../styles/ShopBranches.css';
 import '../../styles/OrderMonitoring.css';
-import {
+import ShipmentReturnModal, {
   SalesDeliveryVideos,
   SalesReturnWorkflow,
 } from '../shipping/ShipmentReturnModal';
@@ -49,8 +48,8 @@ export default function SaleOrderDetailModal({
   const [detailData, setDetailData] = useState(null);
   const [error, setError] = useState('');
   const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
+  const [isReturnShipmentOpen, setIsReturnShipmentOpen] = useState(false);
   const [retryShipment, setRetryShipment] = useState(null);
-  const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [returnFlowOpen, setReturnFlowOpen] = useState(false);
   const [deliveryEvidence, setDeliveryEvidence] = useState(null);
 
@@ -322,6 +321,31 @@ export default function SaleOrderDetailModal({
           </div>
         ) : (
           <>
+            {(order.orderStatus === 'cancelled' || order.status === 'cancelled') && (
+              <div role="alert" className="alert alert-danger d-flex align-items-start gap-2 mb-3">
+                <AlertCircle size={18} className="flex-shrink-0 mt-1" />
+                <div>
+                  <div className="fw-bold">
+                    Đơn bán đã bị hủy
+                    {order.cancelledAt ? ` (${formatDate(order.cancelledAt)})` : ''}
+                  </div>
+                  <div className="small mt-1">
+                    <strong>Lý do hủy:</strong>{' '}
+                    {extractOrderCancelReason(order, shipments) || 'Chưa ghi nhận lý do cụ thể.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {order.returnId?.returnReason && (
+              <div className="alert alert-warning d-flex align-items-start gap-2 mb-3">
+                <AlertCircle size={18} className="flex-shrink-0 mt-1" />
+                <div className="small">
+                  <strong>Lý do trả hàng từ khách:</strong> {order.returnId.returnReason}
+                </div>
+              </div>
+            )}
+
             {/* Section 1: Khách hàng & Giao nhận */}
             <div className="modal-section-card">
               <div className="modal-section-header">
@@ -446,7 +470,13 @@ export default function SaleOrderDetailModal({
                         </td>
                       </tr>
                     ) : (
-                      items.map((it, idx) => (
+                      items.map((it, idx) => {
+                        const returnedEntry = Array.isArray(order.returnItems)
+                          ? order.returnItems.find(
+                              (ri) => String(ri.salesOrderDetailId) === String(it._id)
+                            )
+                          : null;
+                        return (
                         <tr key={it._id || idx}>
                           <td>
                             <div className="order-product-name">
@@ -462,6 +492,13 @@ export default function SaleOrderDetailModal({
                                 it.sku ||
                                 it.productSku ||
                                 '—'}
+                              {returnedEntry && (
+                                <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-2">
+                                  {order.returnStatus === 'completed'
+                                    ? `Đã hoàn trả: x${returnedEntry.quantity}`
+                                    : `Đang hoàn trả: x${returnedEntry.quantity}`}
+                                </span>
+                              )}
                             </div>
                           </td>
 
@@ -512,7 +549,8 @@ export default function SaleOrderDetailModal({
                             )}
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -553,6 +591,12 @@ export default function SaleOrderDetailModal({
                       {paymentDef.text}
                     </strong>
                   </div>
+
+                  {order.note && (
+                    <div className="small text-muted mt-1">
+                      <strong>Ghi chú:</strong> {order.note}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
@@ -604,7 +648,7 @@ export default function SaleOrderDetailModal({
               <div role="status" className="alert alert-success">
                 Đã trả hàng hoàn tất.
 
-                {order.paymentStatus === 'refunded' && (
+                {['refunded', 'partially_refunded'].includes(order.paymentStatus) && (
                   <>
                     {' '}Đã hoàn{' '}
                     {formatCurrency(order.refundedAmount)} vào
@@ -623,12 +667,17 @@ export default function SaleOrderDetailModal({
               const hasActiveOutbound = shipments.some(
                 (s) =>
                   s.shipmentType === 'outbound' &&
-                  ['preparing', 'shipped'].includes(
-                    s.shipmentStatus
-                  ) &&
-                  s.trackingCode &&
-                  !s.trackingCode.startsWith('SHP-') &&
-                  !s.trackingCode.startsWith('TRK-')
+                  ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)
+              );
+              const hasActiveReturn = shipments.some(
+                (s) =>
+                  s.shipmentType === 'return' &&
+                  ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)
+              );
+              const latestOutbound = shipments.find((s) => s.shipmentType !== 'return');
+              const baseDeliveredAt = latestOutbound?.deliveredAt || order.completedAt;
+              const within24h = Boolean(
+                baseDeliveredAt && (Date.now() - new Date(baseDeliveredAt).getTime() <= 24 * 60 * 60 * 1000)
               );
 
               const canCreateOutbound =
@@ -638,6 +687,13 @@ export default function SaleOrderDetailModal({
                 ['draft', 'confirmed', 'processing'].includes(
                   order.orderStatus || order.status
                 );
+              const canCreateReturn =
+                !isReadOnly &&
+                !hasActiveReturn &&
+                within24h &&
+                order.orderStatus === 'completed' &&
+                order.paymentStatus === 'paid' &&
+                order.returnStatus !== 'completed';
 
               return (
                 <div className="modal-section-card">
@@ -673,32 +729,56 @@ export default function SaleOrderDetailModal({
                           <span>+ Tạo vận đơn GHN</span>
                         </button>
                       )}
+
+                      {canCreateReturn && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsReturnShipmentOpen(true);
+                          }}
+                        >
+                          <Truck size={14} />
+                          <span>+ Thu hồi hàng mua</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
                   {shipments.length > 0 ? (
                     <div className="mt-3">
-                      {shipments.map((s, idx) => (
-                        <ShipmentTrackingTimeline
-                          key={s._id}
-                          shipment={s}
-                          isLatest={idx === 0}
-                          onCancel={handleCancelShipment}
-                          onStatusUpdated={refetchOrder}
-                          salesReturnStatus={order.returnStatus}
-                          onRetry={
-                            !hasActiveOutbound
-                              ? (targetShipment) => {
-                                  setRetryShipment(
-                                    targetShipment || s
-                                  );
-                                  setIsCreateShipmentOpen(true);
-                                }
-                              : null
-                          }
-                          isBranchManager={!isReadOnly}
-                        />
-                      ))}
+                      {shipments.map((s, idx) => {
+                        const canRetryThis = s.shipmentType === 'return'
+                          ? (!hasActiveReturn && within24h && order.returnStatus !== 'completed')
+                          : (!hasActiveOutbound && ['draft', 'confirmed', 'processing'].includes(order.orderStatus || order.status));
+                        return (
+                          <ShipmentTrackingTimeline
+                            key={s._id}
+                            shipment={s}
+                            isLatest={idx === 0}
+                            onCancel={handleCancelShipment}
+                            onStatusUpdated={refetchOrder}
+                            salesReturnStatus={order.returnStatus}
+                            orderItems={items}
+                            returnItems={order.returnItems || []}
+                            onRetry={
+                              canRetryThis
+                                ? (targetShipment) => {
+                                    const target = targetShipment || s;
+                                    setRetryShipment(target);
+                                    if (target?.shipmentType === 'return') {
+                                      setIsReturnShipmentOpen(true);
+                                    } else {
+                                      setIsCreateShipmentOpen(true);
+                                    }
+                                  }
+                                : null
+                            }
+                            isBranchManager={!isReadOnly}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="small text-muted py-2 fst-italic">
@@ -766,17 +846,6 @@ export default function SaleOrderDetailModal({
                 </button>
               )}
 
-              {order.orderStatus === 'completed' && order.returnStatus !== 'completed' && (
-                <button
-                  type="button"
-                  className="btn-modal-secondary d-flex align-items-center gap-1"
-                  onClick={() => setIsReturnOpen(true)}
-                >
-                  <Undo2 size={15} />
-                  <span>Trả hàng</span>
-                </button>
-              )}
-
               {order.orderStatus === 'processing' && (
                 <button
                   type="button"
@@ -815,15 +884,19 @@ export default function SaleOrderDetailModal({
         onSuccess={() => refetchOrder()}
       />
 
-      {/* TASK-015: trả hàng bán theo món (chỉ đơn đã hoàn tất, Branch Manager) */}
-      {!isReadOnly && (
-        <SalesReturnModal
-          show={isReturnOpen}
-          order={order}
-          onHide={() => setIsReturnOpen(false)}
-          onCreated={refetchOrder}
-        />
-      )}
+      {/* Shipment Return Modal (GHN v3 cho đơn mua) */}
+      <ShipmentReturnModal
+        show={isReturnShipmentOpen}
+        onClose={() => {
+          setIsReturnShipmentOpen(false);
+          setRetryShipment(null);
+        }}
+        order={order}
+        orderType="sale"
+        orderItemsProp={items}
+        initialShipment={retryShipment}
+        onSuccess={() => refetchOrder()}
+      />
     </Modal>
   );
 }

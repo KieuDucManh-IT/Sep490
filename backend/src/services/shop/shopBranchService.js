@@ -512,7 +512,7 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
       }
 
       const roleStr = String(mgrUser.Role || '').trim().toLowerCase().replace(/[\s_-]/g, '');
-      if (roleStr !== 'branchmanager' && roleStr !== 'brandmanager') {
+      if (roleStr !== 'branchmanager') {
         throw validationError('Chỉ có thể bổ nhiệm tài khoản có vai trò Quản lý chi nhánh (Branch Manager).', 400);
       }
 
@@ -566,7 +566,7 @@ export const createNewBranch = async (validated, currentUser) => {
     }
 
     const roleStr = String(managerUser.Role || '').trim().toLowerCase().replace(/[\s_-]/g, '');
-    if (roleStr !== 'branchmanager' && roleStr !== 'brandmanager') {
+    if (roleStr !== 'branchmanager') {
       throw validationError('Chỉ có thể bổ nhiệm tài khoản có vai trò Quản lý chi nhánh (Branch Manager).', 400);
     }
 
@@ -649,7 +649,7 @@ export const listEligibleBranchManagers = async () => {
   const users = await User.find(
     {
       Role: {
-        $regex: /^(branch_?manager|brandmanager)$/i,
+        $regex: /^branch_?manager$/i,
       },
       Status: { $in: ['active', 'ACTIVE'] },
     },
@@ -659,7 +659,7 @@ export const listEligibleBranchManagers = async () => {
   // Bộ lọc nghiêm ngặt: Đảm bảo không tài khoản khách hàng hay vai trò nào khác lọt vào
   const validBranchManagers = (users || []).filter((u) => {
     const r = cleanUserRole(u);
-    return (r === 'branchmanager' || r === 'brandmanager') && r !== 'customer';
+    return r === 'branchmanager' && r !== 'customer';
   });
 
   const managerIds = validBranchManagers.map((u) => u._id);

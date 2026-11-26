@@ -70,14 +70,15 @@ export const getProductGarmentRole = (item) => {
  * - KHÔNG PHẢI set phối nếu có >= 2 đầm (ví dụ: 3 mẫu đầm dạ hội khác nhau là các lựa chọn thay thế)
  * - KHÔNG PHẢI set phối nếu có >= 2 quần/chân váy hoặc >= 2 áo sơ mi/thun
  * - LÀ SET PHỐI nếu:
- *   + 1 Đầm + 1 Áo khoác ngoài (blazer) và/hoặc 1 Phụ kiện (túi xách/clutch)
- *   + 1 Áo (hoặc Áo khoác) + 1 Quần/Chân váy (+ tùy chọn 1 Phụ kiện)
+ *   + 1 Đầm + 1 Áo khoác ngoài (blazer)
+ *   + 1 Áo (hoặc Áo khoác) + 1 Quần/Chân váy
+ * (Phụ kiện túi xách/kính không tham gia ghép đồ AI, chỉ hiển thị dạng ảnh nhỏ Lookbook)
  */
 export const isWearableComboSet = (products) => {
   if (!Array.isArray(products) || products.length < 2) return false;
 
-  // Lọc bỏ trang sức
-  const valid = products.filter((p) => p && !isJewelry(p));
+  // Lọc bỏ phụ kiện và trang sức (chỉ xét trang phục mặc trên người)
+  const valid = products.filter((p) => p && !isJewelry(p) && getProductGarmentRole(p) !== 'accessory');
   if (valid.length < 2) return false;
 
   const roleCounts = {
@@ -106,22 +107,11 @@ export const isWearableComboSet = (products) => {
   // Nếu có từ 2 áo khoác trở lên -> Các lựa chọn áo khoác thay thế nhau
   if (roleCounts.outerwear >= 2) return false;
 
-  // Nếu chỉ toàn phụ kiện (ví dụ: 2 cái túi xách)
-  if (
-    roleCounts.dress === 0 &&
-    roleCounts.top === 0 &&
-    roleCounts.bottom === 0 &&
-    roleCounts.outerwear === 0
-  ) {
-    return false;
-  }
-
   // Trường hợp 1: Có 1 Đầm / Váy liền / Áo dài
   if (roleCounts.dress === 1) {
-    // Đầm dạ hội / váy liền không mặc cùng áo sơ mi/áo thun bên trong
     if (roleCounts.top > 0) return false;
-    // Đầm được coi là set phối khi đi cùng áo khoác ngoài (blazer) hoặc phụ kiện (túi, khăn) hoặc quần (áo dài)
-    return roleCounts.outerwear > 0 || roleCounts.accessory > 0 || roleCounts.bottom > 0;
+    // Đầm phối cùng áo khoác ngoài (blazer) hoặc quần (áo dài)
+    return roleCounts.outerwear > 0 || roleCounts.bottom > 0;
   }
 
   // Trường hợp 2: Không có Đầm -> Bắt buộc phải có cả phần trên (Áo hoặc Áo khoác) VÀ phần dưới (Quần hoặc Chân váy)
@@ -131,16 +121,15 @@ export const isWearableComboSet = (products) => {
   return hasUpper && hasLower;
 };
 
-// Helper phân loại và tạo link chuyển cả set đồ sang phòng thử đồ ảo AI IDM-VTON (đã lọc sạch trang sức)
+// Helper phân loại và tạo link chuyển set trang phục sang phòng thử đồ ảo AI IDM-VTON
 export const buildTryOnUrl = (products) => {
   if (!Array.isArray(products) || products.length === 0) return '/try-on/photo';
 
-  // Lọc bỏ trang sức
-  const validProducts = products.filter((p) => p && !isJewelry(p));
+  // Lọc bỏ trang sức và phụ kiện (chỉ thử đồ quần áo)
+  const validProducts = products.filter((p) => p && !isJewelry(p) && getProductGarmentRole(p) !== 'accessory');
   if (validProducts.length === 0) return '/try-on/photo';
 
-  // Nếu chỉ có 1 món hoặc KHÔNG PHẢI là 1 set phối hợp lệ (ví dụ: gợi ý 3 đầm dạ hội khác nhau để khách chọn),
-  // thì chỉ chuyển sản phẩm đầu tiên vào phòng thử đồ, không gộp bừa thành set
+  // Nếu chỉ có 1 món hoặc KHÔNG PHẢI là 1 set phối hợp lệ
   if (validProducts.length === 1 || !isWearableComboSet(validProducts)) {
     const singleId = validProducts[0].id || validProducts[0]._id;
     return singleId ? `/try-on/photo?productId=${singleId}` : '/try-on/photo';
@@ -149,23 +138,19 @@ export const buildTryOnUrl = (products) => {
   // Phân bổ đúng vai trò trang phục vào các slot thử đồ
   let mainItem = null;
   let pairedItem = null;
-  let accessoryItem = null;
 
   const dressItem = validProducts.find((p) => getProductGarmentRole(p) === 'dress');
   const topItem = validProducts.find((p) => getProductGarmentRole(p) === 'top');
   const bottomItem = validProducts.find((p) => getProductGarmentRole(p) === 'bottom');
   const outerwearItem = validProducts.find((p) => getProductGarmentRole(p) === 'outerwear');
-  const accItem = validProducts.find((p) => getProductGarmentRole(p) === 'accessory');
 
   if (dressItem) {
     mainItem = dressItem;
     pairedItem = outerwearItem || bottomItem || null;
-    accessoryItem = accItem || null;
   } else {
-    // Set 2 mảnh: Áo/Khoác + Quần/Chân váy (+ Phụ kiện nếu có)
+    // Set 2 mảnh: Áo/Khoác + Quần/Chân váy
     mainItem = topItem || outerwearItem || null;
     pairedItem = bottomItem || null;
-    accessoryItem = accItem || (topItem && outerwearItem ? outerwearItem : null);
   }
 
   if (!mainItem) mainItem = validProducts[0];
@@ -177,11 +162,6 @@ export const buildTryOnUrl = (products) => {
   const pairedId = pairedItem?.id || pairedItem?._id;
   if (pairedId && pairedId !== mainId) {
     params.set('pairedId', pairedId);
-  }
-
-  const accId = accessoryItem?.id || accessoryItem?._id;
-  if (accId && accId !== mainId && accId !== pairedId) {
-    params.set('accessoryId', accId);
   }
 
   return `/try-on/photo?${params.toString()}`;

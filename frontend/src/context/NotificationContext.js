@@ -45,8 +45,9 @@ export function NotificationProvider({ children }) {
     try {
       const res = await fetchNotificationsApi({ page: pageNum, limit });
       if (res?.success) {
-        setNotifications(prev => append ? [...prev, ...(res.notifications || [])] : (res.notifications || []));
-        setHasMore((res.notifications?.length || 0) >= limit);
+        const list = res.notifications || res.data || [];
+        setNotifications(prev => append ? [...prev, ...list] : list);
+        setHasMore(list.length >= limit);
         setPage(pageNum);
         if (typeof res.unreadCount === 'number') {
           setUnreadCount(res.unreadCount);

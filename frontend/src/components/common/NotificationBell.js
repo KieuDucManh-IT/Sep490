@@ -84,12 +84,26 @@ export default function NotificationBell({
     newToast,
     dismissToast,
     fetchNotifications,
+    refreshUnreadCount,
     markAsRead,
     markAllAsRead,
   } = useNotification();
 
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  const toggleDropdown = () => {
+    setIsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        fetchNotifications({ pageNum: 1, limit: 15 });
+        if (typeof refreshUnreadCount === 'function') {
+          refreshUnreadCount();
+        }
+      }
+      return next;
+    });
+  };
 
   // Click outside listener
   useEffect(() => {
@@ -137,7 +151,7 @@ export default function NotificationBell({
       <button
         type="button"
         className={`vestora-notif-btn ${buttonClassName} ${isOpen ? 'active' : ''}`}
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={toggleDropdown}
         aria-label="Thông báo hệ thống"
         aria-expanded={isOpen}
       >

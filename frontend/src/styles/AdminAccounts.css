@@ -574,9 +574,7 @@
 }
 
 .role-pill.branch_manager,
-.role-pill.branch-manager,
-.role-pill.brandmanager,
-.role-pill.brand-manager {
+.role-pill.branch-manager {
   background: #FAF5FF;
   color: #7E22CE;
   border: 1px solid #E9D5FF;

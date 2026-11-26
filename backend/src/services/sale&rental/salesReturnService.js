@@ -20,6 +20,8 @@ import { isAdmin, isBranchManager } from '../warehouse/shared/roles.js';
 import {
   checkReturnLines, parseSalesReturnPayload, returnableItemsOf, returnedItemStatus, totalRefundAmount,
 } from './salesReturnRules.js';
+import { BusinessPolicy } from '../../models/shop/BusinessPolicy.js'; // Nhớ thêm dòng import này ở đầu file nếu chưa có
+
 
 /** Phiếu trả ở các trạng thái này không còn giữ món (món có thể được trả lại ở phiếu khác). */
 const INACTIVE_RETURN_STATUSES = ['rejected', 'cancelled'];
@@ -142,6 +144,15 @@ export const createSalesReturn = async (orderId, payload, user) => {
       const order = await loadOrder(orderId, session);
       await assertCanManageReturns(order, user, session);
       if (order.orderStatus !== 'completed') throw serviceError(409, 'Chỉ trả hàng cho đơn bán đã hoàn tất.');
+      const policy = await BusinessPolicy.findOne({}).session(session).lean(); // Lấy chính sách hiện tại
+      const returnWindowDays = policy?.returnPolicy?.returnWindowDays || 7;
+
+      const completedDate = new Date(order.completedAt || order.updatedAt);
+      const deadlineDate = new Date(completedDate.getTime() + (returnWindowDays * 24 * 60 * 60 * 1000));
+
+      if (new Date() > deadlineDate && !isAdmin(user)) {
+        throw serviceError(400, `Đơn hàng đã quá hạn hoàn trả ${returnWindowDays} ngày (Hạn chót: ${deadlineDate.toLocaleDateString('vi-VN')}).`);
+      }
 
       const details = await SalesOrderDetail.find({ salesOrderId: order._id }).session(session).lean();
       const itemIds = data.items.flatMap((line) => line.itemIds);

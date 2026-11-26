@@ -10,7 +10,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 import OrderTrackingDetailModal from '../../components/customer/OrderTrackingDetailModal';
-import { getRentalOrders, submitRentalDispute } from '../../services/rentalOrderApi';
+import { resolveOrderDisplayStatus } from '../orders/orderUtils';
+import { getRentalOrders } from '../../services/rentalOrderApi';
 import { getMySalesOrders } from '../../services/salesOrderApi';
 import { formatCurrencyVND } from '../../services/cart/cartCalculations';
 import {
@@ -23,6 +24,7 @@ import {
   Truck,
   Wallet,
   Banknote,
+  RotateCcw,
 } from 'lucide-react';
 import '../../styles/RentalOrdersHistory.css';
 
@@ -150,6 +152,28 @@ function getSaleStatusInfo(status) {
   );
 }
 
+function getOrderSmartStatus(order, type = 'rental') {
+  const resolved = resolveOrderDisplayStatus(order, type, false);
+  const colorMap = {
+    renting: { color: '#0284C7', bg: '#F0F9FF' },
+    confirmed: { color: '#2563EB', bg: '#EFF6FF' },
+    processing: { color: '#7C3AED', bg: '#F5F3FF' },
+    warning: { color: '#D97706', bg: '#FFFBEB' },
+    returned: { color: '#16A34A', bg: '#F0FDF4' },
+    completed: { color: '#16A34A', bg: '#F0FDF4' },
+    overdue: { color: '#DC2626', bg: '#FEF2F2' },
+    cancelled: { color: '#6B7280', bg: '#F3F4F6' },
+    partially_returned: { color: '#B45309', bg: '#FFF7ED' },
+  };
+  const theme = colorMap[resolved.chipClass] || { color: '#4B5563', bg: '#F3F4F6' };
+  return {
+    label: resolved.text,
+    color: theme.color,
+    bg: theme.bg,
+    chipClass: resolved.chipClass,
+  };
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '—';
 
@@ -245,7 +269,7 @@ export default function RentalOrdersHistoryPage() {
       setSelectedSaleOrder((previous) =>
         previous
           ? orders.find((item) => item._id === previous._id) ||
-            previous
+          previous
           : null
       );
     } catch (err) {
@@ -316,9 +340,11 @@ export default function RentalOrdersHistoryPage() {
         reason: disputeReason,
         description: disputeDescription.trim(),
       });
-      setDisputeResult({ success: true, message: res?.data?.disputeCode
-        ? `Khiếu nại ${res.data.disputeCode} đã được ghi nhận. Chúng tôi sẽ phản hồi trong 72 giờ.`
-        : 'Khiếu nại đã được ghi nhận thành công. Vui lòng chờ CSKH liên hệ.' });
+      setDisputeResult({
+        success: true, message: res?.data?.disputeCode
+          ? `Khiếu nại ${res.data.disputeCode} đã được ghi nhận. Chúng tôi sẽ phản hồi trong 72 giờ.`
+          : 'Khiếu nại đã được ghi nhận thành công. Vui lòng chờ CSKH liên hệ.'
+      });
     } catch (err) {
       setDisputeResult({ success: false, message: err.message || 'Không gửi được khiếu nại, vui lòng thử lại.' });
     } finally {
@@ -357,11 +383,10 @@ export default function RentalOrdersHistoryPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('rentals')}
-              className={`rental-category-tab ${
-                category === 'rentals'
+              className={`rental-category-tab ${category === 'rentals'
                   ? 'rental-category-tab--active'
                   : ''
-              }`}
+                }`}
             >
               <Calendar size={16} />
               <span>Đơn Thuê Trang Phục</span>
@@ -370,11 +395,10 @@ export default function RentalOrdersHistoryPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('sales')}
-              className={`rental-category-tab ${
-                category === 'sales'
+              className={`rental-category-tab ${category === 'sales'
                   ? 'rental-category-tab--active'
                   : ''
-              }`}
+                }`}
             >
               <ShoppingBag size={16} />
               <span>Đơn Mua Sắm</span>
@@ -392,11 +416,10 @@ export default function RentalOrdersHistoryPage() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveRentalTab(tab.id)}
-                  className={`rental-history-tab${
-                    activeRentalTab === tab.id
+                  className={`rental-history-tab${activeRentalTab === tab.id
                       ? ' rental-history-tab--active'
                       : ''
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -443,14 +466,18 @@ export default function RentalOrdersHistoryPage() {
             ) : (
               <div className="rental-history-list">
                 {displayedRentalOrders.map((o) => {
-                  const statusInfo = getRentalStatusInfo(
-                    o.rentalStatus
-                  );
+                  const statusInfo = getOrderSmartStatus(o, 'rental');
 
                   const items = o.items || o.orderDetails || [];
 
                   const orderLabel =
                     o.orderCode || o._id?.slice(-6).toUpperCase();
+
+                  const allShipments = Array.isArray(o.shipments) ? o.shipments : (o.shipment ? [o.shipment] : []);
+                  const hasActiveReturn = allShipments.some(
+                    (s) => s.shipmentType === 'return' && ['preparing', 'shipped'].includes(s.shipmentStatus)
+                  );
+                  const canReturn = ['renting', 'overdue'].includes(o.rentalStatus) && !hasActiveReturn;
 
                   return (
                     <div
@@ -596,11 +623,10 @@ export default function RentalOrdersHistoryPage() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveSaleTab(tab.id)}
-                  className={`rental-history-tab${
-                    activeSaleTab === tab.id
+                  className={`rental-history-tab${activeSaleTab === tab.id
                       ? ' rental-history-tab--active'
                       : ''
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -647,9 +673,7 @@ export default function RentalOrdersHistoryPage() {
             ) : (
               <div className="rental-history-list">
                 {displayedSaleOrders.map((o) => {
-                  const statusInfo = getSaleStatusInfo(
-                    o.orderStatus
-                  );
+                  const statusInfo = getOrderSmartStatus(o, 'sale');
 
                   const items = o.items || [];
                   const firstItem = items[0];

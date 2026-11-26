@@ -1242,6 +1242,18 @@ export async function requestSalesReturn(user, id, reason = '') {
     throw new ServiceError(400, 'Lý do trả hàng tối đa 1.000 ký tự.');
   }
 
+  if (!saleReturnable(order)) {
+    throw new ServiceError(409, 'Chỉ trả đơn đã giao và đã thanh toán đủ.');
+  }
+
+  const RETURN_LIMIT_DAYS = 7;
+  const completedDate = new Date(order.completedAt || order.updatedAt);
+  const deadline = new Date(completedDate.getTime() + (RETURN_LIMIT_DAYS * 24 * 60 * 60 * 1000));
+
+  if (new Date() > deadline) {
+    throw new ServiceError(400, `Yêu cầu bị từ chối: Đơn hàng đã quá hạn đổi/trả 7 ngày. Hạn chót của bạn là ${deadline.toLocaleDateString('vi-VN')}.`);
+  }
+
   await accessSalesReturnOrder(user, id);
 
   return inTransaction(async session => {
@@ -1482,11 +1494,11 @@ export async function validateSalesRefundPayment(order, wallet, session) {
     const query = order.paymentRefId
       ? { _id: order.paymentRefId }
       : {
-          referenceType: 'SalesOrder',
-          referenceId: order._id,
-          transactionType: 'payment',
-          status: 'success',
-        };
+        referenceType: 'SalesOrder',
+        referenceId: order._id,
+        transactionType: 'payment',
+        status: 'success',
+      };
 
     const tx = await WalletTransaction.findOne(query).session(session);
 
@@ -1631,7 +1643,7 @@ export async function restoreSalesReturnStock(
     itemMovements.length !== movements.length ||
     itemMovements.some(m => m.quantityChange !== -1) ||
     new Set(itemMovements.map(m => String(m.itemId))).size !==
-      itemMovements.length
+    itemMovements.length
   ) {
     throw new ServiceError(
       409,

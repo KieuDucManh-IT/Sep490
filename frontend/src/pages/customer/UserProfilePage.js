@@ -31,7 +31,6 @@ const ROLE_LABELS = {
   customer: "Khách hàng",
   shop_owner: "Chủ cửa hàng",
   admin: "Quản trị viên",
-  operation_staff: "Nhân viên vận hành",
 };
 
 const PASSWORD_FIELDS = [

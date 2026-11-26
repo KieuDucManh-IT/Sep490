@@ -29,6 +29,12 @@ export const resolvePrimaryShipment = (list = []) => {
   if (!Array.isArray(list) || !list.length) return null;
   const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
   if (active.length > 0) {
+    // Ưu tiên vận đơn thu hồi (return) đang active
+    const activeReturn = active.find((s) => s.shipmentType === 'return');
+    if (activeReturn) {
+      return activeReturn;
+    }
+
     // Sắp xếp theo ngày tạo mới nhất lên đầu
     const sorted = [...active].sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
     const withCode = sorted.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
@@ -107,7 +113,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
         managerId: user._id,
         isDeleted: { $ne: true },
       })
-        .select('_id name code managerId address phone status isHQ')
+        .select('_id name code managerId address phone status')
         .lean();
 
       if (!shop) {
@@ -124,7 +130,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
         isDeleted: { $ne: true },
       });
       if (typeof q1.sort === 'function') q1.sort({ createdAt: 1, _id: 1 });
-      shop = await q1.select('_id name code managerId address phone status isHQ').lean();
+      shop = await q1.select('_id name code managerId address phone status').lean();
 
       if (!shop) {
         const q2 = Shop.findOne({
@@ -132,7 +138,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
           isDeleted: { $ne: true },
         });
         if (typeof q2.sort === 'function') q2.sort({ createdAt: 1, _id: 1 });
-        shop = await q2.select('_id name code managerId address phone status isHQ').lean();
+        shop = await q2.select('_id name code managerId address phone status').lean();
       }
 
       if (!shop) {
@@ -186,7 +192,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
       }
 
       const shop = await Shop.findById(requestedBranchId)
-        .select('_id name code address phone isHQ')
+        .select('_id name code address phone')
         .lean();
 
       let storeLocations = [];
@@ -317,7 +323,7 @@ export const getRentalOrders = async (user, query = {}) => {
         select: 'name code address type shopId',
         populate: {
           path: 'shopId',
-          select: 'name code address phone isHQ',
+          select: 'name code address phone',
         },
       })
       .lean(),
@@ -430,7 +436,7 @@ export const getRentalOrderById = async (user, id) => {
       select: 'name code address type shopId',
       populate: {
         path: 'shopId',
-        select: 'name code address phone managerId isHQ',
+        select: 'name code address phone managerId',
       },
     })
     .lean();
@@ -481,7 +487,7 @@ export const getRentalOrderById = async (user, id) => {
       .populate({
         path: 'locationId',
         select: 'name code address type shopId',
-        populate: { path: 'shopId', select: 'name code address phone isHQ' },
+        populate: { path: 'shopId', select: 'name code address phone' },
       })
       .lean();
     if (freshOrder) order = freshOrder;
@@ -569,7 +575,7 @@ export const getSalesOrders = async (user, query = {}) => {
         select: 'name code address type shopId',
         populate: {
           path: 'shopId',
-          select: 'name code address phone isHQ',
+          select: 'name code address phone',
         },
       })
       .lean(),
@@ -682,7 +688,7 @@ export const getSalesOrderById = async (user, id) => {
       select: 'name code address type shopId',
       populate: {
         path: 'shopId',
-        select: 'name code address phone managerId isHQ',
+        select: 'name code address phone managerId',
       },
     })
     .lean();
@@ -733,7 +739,7 @@ export const getSalesOrderById = async (user, id) => {
       .populate({
         path: 'locationId',
         select: 'name code address type shopId',
-        populate: { path: 'shopId', select: 'name code address phone managerId isHQ' },
+        populate: { path: 'shopId', select: 'name code address phone managerId' },
       })
       .lean();
     if (freshOrder) order = freshOrder;

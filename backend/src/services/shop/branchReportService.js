@@ -308,7 +308,6 @@ const buildEmptyReport = ({
         city: shop.city || '',
         phone: shop.phone || '',
         status: shop.status || 'ACTIVE',
-        isHQ: Boolean(shop.isHQ),
       }
     : null,
   storeLocation: locations[0]
@@ -402,7 +401,7 @@ async function resolveAuthorizedBranch({ user, branchId }) {
       }
     } else {
       shop = await Shop.findOne({ isDeleted: { $ne: true } })
-        .sort({ isHQ: -1, createdAt: 1, _id: 1 })
+        .sort({ createdAt: 1, _id: 1 })
         .lean();
     }
   }
@@ -948,7 +947,6 @@ export async function getBranchPerformanceReportData({
       city: shop.city || '',
       phone: shop.phone || '',
       status: shop.status || 'ACTIVE',
-      isHQ: Boolean(shop.isHQ),
     },
     storeLocation: {
       _id: locations[0]._id,

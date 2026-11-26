@@ -8,6 +8,11 @@ const businessPolicySchema = new mongoose.Schema(
       trim: true,
       maxlength: [200, 'Tên chính sách không được vượt quá 200 ký tự.'],
     },
+    key: {
+      type: String,
+      trim: true,
+      index: true,
+    },
     summary: {
       type: String,
       default: '',
@@ -18,6 +23,20 @@ const businessPolicySchema = new mongoose.Schema(
       type: String,
       default: '',
       trim: true,
+    },
+    content: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    returnPolicy: {
+      returnWindowDays: { type: Number, default: 7 }, // Mặc định cho phép trả trong 7 ngày
+      allowReturn: { type: Boolean, default: true }
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
     },
     isActive: {
       type: Boolean,

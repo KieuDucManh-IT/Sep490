@@ -263,6 +263,7 @@ export const calculateShippingFee = async ({
 export const createGHNOrder = async (orderPayload) => {
   const {
     shopId,
+    paymentTypeId,
     fromName,
     fromPhone,
     fromAddress,
@@ -372,7 +373,7 @@ export const createGHNOrder = async (orderPayload) => {
   }
 
   const payload = {
-    payment_type_id: 1, // Người gửi (Cửa hàng) trả cước
+    payment_type_id: Number(paymentTypeId) || 1, // 1: Người gửi trả cước, 2: Người nhận (Shop) trả cước
     note: note || 'Cho xem hàng không cho thử đồ',
     required_note: 'CHOXEMHANGKHONGTHU',
     client_order_code: clientOrderCode || undefined,
@@ -404,11 +405,11 @@ export const createGHNOrder = async (orderPayload) => {
           to_ward_code: String(toWardCode),
           to_district_id: Number(toDistrictId),
         }),
-    // Địa chỉ trả hàng khi giao không thành công (hoàn về chi nhánh)
-    return_phone: returnPhone || fromPhone,
-    return_address: returnAddress || fromAddress,
-    return_district_id: Number(returnDistrictId || fromDistrictId),
-    return_ward_code: String(returnWardCode || fromWardCode),
+    // Địa chỉ trả hàng khi giao không thành công (chiều đi hoàn về shop, chiều thu hồi hoàn về shop nhận)
+    return_phone: returnPhone || (Number(paymentTypeId) === 2 && toPhone ? toPhone : fromPhone),
+    return_address: returnAddress || (Number(paymentTypeId) === 2 && toAddress ? toAddress : fromAddress),
+    return_district_id: Number(returnDistrictId || (Number(paymentTypeId) === 2 && toDistrictId ? toDistrictId : fromDistrictId)),
+    return_ward_code: String(returnWardCode || (Number(paymentTypeId) === 2 && toWardCode ? toWardCode : fromWardCode)),
     cod_amount: Math.max(0, Number(codAmount) || 0),
     weight: Number(weight) || 500,
     length: Number(length) || 30,

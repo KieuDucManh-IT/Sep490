@@ -5,7 +5,6 @@ import {
   XCircle,
   Copy,
   Check,
-  Printer,
   RotateCcw,
   Store,
   ExternalLink,
@@ -27,13 +26,20 @@ import {
 } from './shippingUtils';
 
 import {
-  getPrintTokenApi,
   updateManualShipmentStatusApi,
   simulateGhnApi,
   uploadShipmentProofApi,
 } from '../../services/shippingApi';
 
 import '../../styles/ShippingModal.css';
+
+const VALID_SIMULATED_TRANSITIONS = {
+  preparing: ['shipped', 'failed', 'cancelled'],
+  shipped: ['delivered', 'failed', 'cancelled'],
+  failed: ['shipped', 'cancelled'],
+  delivered: [],
+  cancelled: [],
+};
 
 export default function ShipmentTrackingTimeline({
   shipment,
@@ -46,7 +52,6 @@ export default function ShipmentTrackingTimeline({
   isLatest = true,
 }) {
   const [copied, setCopied] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
@@ -103,27 +108,6 @@ export default function ShipmentTrackingTimeline({
     }
   };
 
-  const handlePrint = async () => {
-    const code = shipment.trackingCode;
-    if (!code) return;
-
-    setIsPrinting(true);
-
-    try {
-      const res = await getPrintTokenApi(code);
-
-      if (res?.success && res.data?.printUrl) {
-        window.open(res.data.printUrl, '_blank');
-      } else {
-        alert('Không lấy được mã in phiếu từ GHN.');
-      }
-    } catch (err) {
-      alert(err.message || 'Lỗi khi mở phiếu in GHN');
-    } finally {
-      setIsPrinting(false);
-    }
-  };
-
   const handleCancelClick = async () => {
     const reason = window.prompt('Nhập lý do hủy vận đơn:');
     if (reason === null) return;
@@ -143,14 +127,18 @@ export default function ShipmentTrackingTimeline({
     let confirmMsg = '';
 
     if (newStatus === 'shipped') {
-      confirmMsg =
-        'Xác nhận kiện hàng đã được bàn giao cho bưu tá GHN bắt đầu đi giao?';
+      confirmMsg = isReturn
+        ? 'Xác nhận bưu tá GHN đã lấy kiện hàng thu hồi từ khách hàng và bắt đầu chuyển về shop?'
+        : 'Xác nhận kiện hàng đã được bàn giao cho bưu tá GHN bắt đầu đi giao?';
     } else if (newStatus === 'delivered') {
-      confirmMsg =
-        'Xác nhận khách hàng đã thực nhận hàng? Hành động này sẽ kích hoạt chu kỳ đơn hàng.';
+      confirmMsg = isReturn
+        ? 'Xác nhận bưu tá GHN đã giao kiện hàng hoàn trả về đến cửa hàng (chuẩn bị kiểm tra KCS và nghiệm thu)?'
+        : 'Xác nhận khách hàng đã thực nhận hàng? Hành động này sẽ kích hoạt chu kỳ đơn hàng.';
     } else if (newStatus === 'failed') {
       const reason = window.prompt(
-        'Nhập lý do giao hàng thất bại (ví dụ: Khách hẹn lại ngày giao):'
+        isReturn
+          ? 'Nhập lý do thu hồi đồ thất bại (ví dụ: Khách không nghe máy, khách đổi lịch):'
+          : 'Nhập lý do giao hàng thất bại (ví dụ: Khách hẹn lại ngày giao):'
       );
 
       if (reason === null) return;
@@ -319,6 +307,12 @@ export default function ShipmentTrackingTimeline({
 
   const isReturn = shipment.shipmentType === 'return';
   const trackingCode = shipment.trackingCode || '—';
+  const allowedSimTargets = VALID_SIMULATED_TRANSITIONS[shipment.shipmentStatus] || [];
+  const canSimulate = (targetStatus) => allowedSimTargets.includes(targetStatus);
+  const simDisabledTip = (targetStatus) =>
+    canSimulate(targetStatus)
+      ? undefined
+      : 'Không thể chuyển về hoặc bỏ qua bước từ trạng thái hiện tại';
 
   return (
     <div className="shipment-tracking-card border rounded-3 p-3 bg-white shadow-sm mb-3">
@@ -377,45 +371,48 @@ export default function ShipmentTrackingTimeline({
 
         {/* Action Buttons */}
         <div className="d-flex flex-wrap gap-2 align-items-center">
-          {/* Vận đơn trả mô phỏng không có phiếu in GHN */}
-          {!shipment.isSimulated && (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-              onClick={handlePrint}
-              disabled={isPrinting}
-              title="In phiếu A5 gửi GHN"
-            >
-              <Printer size={14} />
-              <span>{isPrinting ? 'Đang tạo...' : 'In phiếu A5'}</span>
-            </button>
-          )}
-
-          {isBranchManager && isLatest && !isReturn && isShipped && (
+          {/* Action Buttons cho đơn Return (Thu hồi) */}
+          {isBranchManager && isLatest && isReturn && !shipment.isSimulated && (
             <>
-              <button
-                type="button"
-                className="btn btn-sm btn-success d-flex align-items-center gap-1"
-                onClick={() => handleManualStatusChange('delivered')}
-                disabled={updatingStatus}
-                title="Xác nhận khách hàng đã nhận hàng"
-              >
-                <Check size={14} />
-                <span>
-                  {updatingStatus ? 'Đang lưu...' : 'Khách đã nhận'}
-                </span>
-              </button>
+              {isPreparing && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                  onClick={() => handleManualStatusChange('shipped')}
+                  disabled={updatingStatus}
+                  title="Bưu tá đã lấy đồ từ khách hàng"
+                >
+                  <Truck size={14} />
+                  <span>{updatingStatus ? 'Đang lưu...' : 'Bưu tá đã lấy đồ'}</span>
+                </button>
+              )}
+              {isShipped && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-success d-flex align-items-center gap-1"
+                    onClick={() => handleManualStatusChange('delivered')}
+                    disabled={updatingStatus}
+                    title="Xác nhận shop đã nhận đồ thu hồi"
+                  >
+                    <Check size={14} />
+                    <span>
+                      {updatingStatus ? 'Đang lưu...' : 'Shop đã nhận đồ'}
+                    </span>
+                  </button>
 
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
-                onClick={() => handleManualStatusChange('failed')}
-                disabled={updatingStatus}
-                title="Báo cáo giao hàng thất bại"
-              >
-                <XCircle size={14} />
-                <span>Báo giao thất bại</span>
-              </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
+                    onClick={() => handleManualStatusChange('failed')}
+                    disabled={updatingStatus}
+                    title="Báo cáo thu hồi thất bại"
+                  >
+                    <XCircle size={14} />
+                    <span>Báo thu hồi thất bại</span>
+                  </button>
+                </>
+              )}
             </>
           )}
 
@@ -861,7 +858,8 @@ export default function ShipmentTrackingTimeline({
                         reason: 'Bưu tá tiếp nhận kiện hàng',
                       });
                     }}
-                    disabled={simulating}
+                    disabled={simulating || !canSimulate('preparing')}
+                    title={simDisabledTip('preparing')}
                   >
                     Đang lấy hàng
                   </button>
@@ -879,7 +877,8 @@ export default function ShipmentTrackingTimeline({
                         reason: 'Shipper đang đi giao hàng',
                       });
                     }}
-                    disabled={simulating}
+                    disabled={simulating || !canSimulate('shipped')}
+                    title={simDisabledTip('shipped')}
                   >
                     Đang giao hàng
                   </button>
@@ -901,7 +900,8 @@ export default function ShipmentTrackingTimeline({
                         prev === 'delivered' ? null : 'delivered'
                       )
                     }
-                    disabled={simulating}
+                    disabled={simulating || !canSimulate('delivered')}
+                    title={simDisabledTip('delivered')}
                   >
                     Giao thành công
                   </button>
@@ -923,7 +923,8 @@ export default function ShipmentTrackingTimeline({
                         prev === 'failed' ? null : 'failed'
                       )
                     }
-                    disabled={simulating}
+                    disabled={simulating || !canSimulate('failed')}
+                    title={simDisabledTip('failed')}
                   >
                     Giao thất bại
                   </button>
@@ -943,14 +944,15 @@ export default function ShipmentTrackingTimeline({
                         });
                       }
                     }}
-                    disabled={simulating}
+                    disabled={simulating || !canSimulate('cancelled')}
+                    title={simDisabledTip('cancelled')}
                   >
                     Hủy vận đơn
                   </button>
                 </div>
 
                 {/* Tải ảnh khi giao hàng thành công */}
-                {activeAction === 'delivered' && (
+                {activeAction === 'delivered' && canSimulate('delivered') && (
                   <div
                     className="mt-3 p-3 rounded-2"
                     style={{
@@ -1099,7 +1101,7 @@ export default function ShipmentTrackingTimeline({
                 )}
 
                 {/* Nhập lý do giao hàng thất bại */}
-                {activeAction === 'failed' && (
+                {activeAction === 'failed' && canSimulate('failed') && (
                   <div
                     className="mt-3 p-3 rounded-2"
                     style={{

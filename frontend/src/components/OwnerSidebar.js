@@ -63,7 +63,6 @@ export default function OwnerSidebar({ isCollapsed: externalCollapsed, onToggle:
     const upper = String(raw).trim().toUpperCase();
     if (upper === 'SHOP_OWNER' || upper === 'OWNER') return 'SHOP OWNER';
     if (upper === 'BRANCH_MANAGER') return 'BRANCH MANAGER';
-    if (upper === 'OPERATION_STAFF') return 'OPERATION STAFF';
     if (upper === 'ADMIN') return 'ADMIN';
     if (upper === 'CUSTOMER') return 'CUSTOMER';
     return String(raw).replace(/_/g, ' ').toUpperCase();

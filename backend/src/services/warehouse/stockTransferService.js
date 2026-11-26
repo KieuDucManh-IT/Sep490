@@ -99,7 +99,7 @@ const centralWarehouse = () => getCentralWarehouse(null, {
 const getBranchShops = async (user) => {
   if (!isBranchManagerOrAdmin(user)) throw appError('Chỉ quản lý chi nhánh mới có thể tạo yêu cầu bổ sung hàng.', 403);
   return Shop.find({ managerId: user._id, status: 'ACTIVE', isDeleted: { $ne: true } })
-    .select('_id name isHQ').sort({ isHQ: -1, name: 1 }).lean();
+    .select('_id name').sort({ createdAt: 1, _id: 1 }).lean();
 };
 
 const getShopInventoryLocation = async (shopId) => {

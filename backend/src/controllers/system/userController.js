@@ -149,7 +149,7 @@ export const getUsers = async (req, res) => {
 
     const users = await User.find(filter)
       .select('-PasswordHash') // Không trả về mật khẩu
-      .populate('ShopId', 'name address city isHQ')
+      .populate('ShopId', 'name address city')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -160,7 +160,7 @@ export const getUsers = async (req, res) => {
         { managerId: { $in: userIds } }
       ],
       isDeleted: { $ne: true }
-    }).select('_id name address city isHQ ownerId managerId').lean();
+    }).select('_id name address city ownerId managerId').lean();
 
     const shopByUserId = new Map();
     managedShops.forEach(s => {
@@ -220,7 +220,7 @@ export const getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .select('-PasswordHash')
-      .populate('ShopId', 'name address city isHQ')
+      .populate('ShopId', 'name address city')
       .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
@@ -232,7 +232,7 @@ export const getUserById = async (req, res) => {
         { managerId: user._id }
       ],
       isDeleted: { $ne: true }
-    }).select('_id name address city isHQ').lean();
+    }).select('_id name address city').lean();
 
     const cleanRole = (user.Role || '').toLowerCase().replace(/[_\s-]/g, '');
     const isOwner = cleanRole === 'shopowner' || cleanRole === 'owner';
@@ -601,12 +601,12 @@ export const updateUser = async (req, res) => {
       { new: true, runValidators: true }
     )
       .select('-PasswordHash')
-      .populate('ShopId', 'name address city isHQ');
+      .populate('ShopId', 'name address city');
 
     const managedShop = isTargetBranchMgr ? await Shop.findOne({
       managerId: user._id,
       isDeleted: { $ne: true }
-    }).select('_id name address city isHQ').lean() : null;
+    }).select('_id name address city').lean() : null;
 
     const currentShop = isTargetBranchMgr ? (user.ShopId || managedShop || null) : null;
 

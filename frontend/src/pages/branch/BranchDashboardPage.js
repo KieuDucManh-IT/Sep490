@@ -244,7 +244,6 @@ export default function BranchDashboardPage() {
                       <span className={`store-pill-active ${branch.status === 'ACTIVE' ? '' : 'inactive'}`}>
                         {branch.status === 'ACTIVE' ? 'Đang hoạt động' : branch.status || 'Tạm ngưng'}
                       </span>
-                      {branch.isHQ && <span className="branch-badge-hq">HQ</span>}
                     </div>
                     <div className="bd-meta-line">
                       {shortLocation && <span className="bd-meta-item"><MapPin size={13} />{shortLocation}</span>}

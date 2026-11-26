@@ -192,9 +192,10 @@ export default function OwnerPoliciesPage() {
     setCreating(true);
     try {
       const res = await createPolicy(newPolicyData);
-      const createdItem = res?.data || newPolicyData;
+      const createdItem = (res && (res._id || res.id)) ? res : (res?.data || newPolicyData);
       const normalizedCreated = {
-        _id: createdItem._id || `policy-${Date.now()}`,
+        _id: createdItem._id || createdItem.id || `policy-${Date.now()}`,
+        key: createdItem.key || '',
         title: createdItem.title || '',
         summary: createdItem.summary || '',
         content: createdItem.content || '',
@@ -232,7 +233,7 @@ export default function OwnerPoliciesPage() {
     setDeleting(true);
     try {
       const res = await deletePolicy(idToDelete);
-      const rawList = res?.data;
+      const rawList = Array.isArray(res) ? res : (res?.data || null);
       let remainingList;
       if (Array.isArray(rawList)) {
         remainingList = normalizePoliciesArray(rawList);

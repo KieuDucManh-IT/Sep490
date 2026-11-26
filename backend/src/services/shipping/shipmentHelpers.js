@@ -65,7 +65,7 @@ export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
       select: 'name code address type shopId phone provinceId districtId wardCode ghnShopId',
       populate: {
         path: 'shopId',
-        select: 'name code address phone managerId isHQ provinceId districtId wardCode ghnShopId city ward latitude longitude',
+        select: 'name code address phone managerId provinceId districtId wardCode ghnShopId city ward latitude longitude',
       },
     })
     .lean();
@@ -74,7 +74,17 @@ export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
     throw fail(`Không tìm thấy ${isRental ? 'đơn thuê' : 'đơn bán'} yêu cầu.`, 404);
   }
 
-  // Kiểm tra quyền theo chi nhánh
+  // Khách hàng chính chủ chỉ được thao tác đơn của chính mình
+  const role = String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
+  if (role === 'customer') {
+    const custId = String(order.customerId?._id || order.customerId || '');
+    if (custId !== String(user._id)) {
+      throw fail('Bạn không có quyền thao tác đơn hàng này.', 403);
+    }
+    return order;
+  }
+
+  // Kiểm tra quyền theo chi nhánh đối với quản lý và nhân viên
   const scope = await resolveLocationScope(user);
   const shopManagerId = order.locationId?.shopId?.managerId;
   const isManagerOfThisShop = shopManagerId && String(shopManagerId) === String(user._id);
@@ -106,10 +116,11 @@ export const resolveBranchShippingInfo = async (order) => {
     if (foundShop) shop = foundShop;
   }
 
-  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop chính (isHQ: true) hoặc Shop bất kỳ đang active
+  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop đầu tiên đang active
   if (!shop?.phone || !shop?.address) {
-    const fallbackShop = (await Shop.findOne({ isHQ: true, status: 'ACTIVE' }).lean())
-      || (await Shop.findOne({ status: 'ACTIVE' }).lean());
+    const fallbackShop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
     if (fallbackShop) {
       shop = {
         ...fallbackShop,

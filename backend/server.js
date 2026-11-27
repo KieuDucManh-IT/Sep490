@@ -48,6 +48,10 @@ import {
 import {
   startShipmentSyncJob,
 } from "./src/services/shipping/shipmentSyncService.js";
+import {
+  getNewProvinces,
+  getNewWards,
+} from "./src/services/shipping/ghnService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -165,6 +169,10 @@ async function startServer() {
 
     startWalletReconcileJob();
     startShipmentSyncJob();
+    if (process.env.GHN_API_TOKEN) {
+      getNewProvinces().catch(() => {});
+      getNewWards(1000000).catch(() => {});
+    }
 
     console.log("Đã kết nối database:", mongoose.connection.name);
     console.log("Collection tài khoản:", User.collection.name);

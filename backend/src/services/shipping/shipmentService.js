@@ -26,6 +26,23 @@ import {
 
 export { resolveBranchShippingInfo };
 
+const rollbackGhnOrder = async (orderCode, shopId) => {
+  if (!orderCode) return;
+  await ghnService.cancelGHNOrder(orderCode, shopId).catch((cancelErr) => {
+    console.error(`[GHN Rollback Error] Không thể hủy vận đơn mồ côi ${orderCode}:`, cancelErr?.message || cancelErr);
+  });
+};
+
+/** Lưu vận đơn vào DB; hoàn tác hủy đơn trên GHN nếu ghi DB thất bại để tránh đơn mồ côi. */
+const saveShipmentOrRollbackGhn = async (recordParams, shopId = undefined) => {
+  try {
+    return await saveShipmentRecord(recordParams);
+  } catch (dbErr) {
+    await rollbackGhnOrder(recordParams?.ghnRes?.order_code, shopId);
+    throw dbErr;
+  }
+};
+
 /**
  * 1. Tính cước phí giao hàng ước tính theo vị trí Cửa hàng chi nhánh (Hỗ trợ GHN v3)
  */
@@ -283,7 +300,7 @@ export const createOutboundShipment = async (user, payload = {}) => {
   });
 
   // Lưu vận đơn
-  const savedShipment = await saveShipmentRecord({
+  const savedShipment = await saveShipmentOrRollbackGhn({
     user,
     order,
     orderType,
@@ -299,7 +316,7 @@ export const createOutboundShipment = async (user, payload = {}) => {
     note,
     items: ghnItems,
     initialDescription: 'Đơn hàng đã được tạo thành công, đang chờ bàn giao cho bưu tá vận chuyển',
-  });
+  }, storeSender.ghnShopId);
 
   // Lưu ngược mã hành chính GHN vào đơn hàng để phục vụ tra cứu và retry
   // Đồng thời khôi phục trạng thái đơn hàng sang active nếu trước đó bị hủy do hủy vận đơn
@@ -566,7 +583,7 @@ export const createReturnShipment = async (user, payload = {}) => {
     : 'Đã tạo yêu cầu thu hồi trang phục, đang chờ bưu tá đến lấy đồ từ khách hàng';
 
   if (!isSale) {
-    return await saveShipmentRecord({
+    return await saveShipmentOrRollbackGhn({
       user,
       order,
       orderType: 'rental',
@@ -582,7 +599,7 @@ export const createReturnShipment = async (user, payload = {}) => {
       note: effectiveNote,
       items: rentalPrep?.snapshotItems || [],
       initialDescription,
-    });
+    }, storeReceiver.ghnShopId);
   }
 
   try {
@@ -649,9 +666,7 @@ export const createReturnShipment = async (user, payload = {}) => {
       });
     });
   } catch (dbErr) {
-    if (ghnRes?.order_code) {
-      await ghnService.cancelGHNOrder(ghnRes.order_code).catch(() => {});
-    }
+    await rollbackGhnOrder(ghnRes?.order_code, storeReceiver.ghnShopId);
     throw dbErr;
   }
 };

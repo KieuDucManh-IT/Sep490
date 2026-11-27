@@ -6,6 +6,8 @@ const TryOnOutfitPairing = ({
   setPairedGarment,
   pairedGarmentSize,
   setPairedGarmentSize,
+  pairedGarmentColor,
+  setPairedGarmentColor,
   handleRemovePairedGarment,
   handleClearAllPaired,
   category,
@@ -105,8 +107,10 @@ const TryOnOutfitPairing = ({
             >
               <img
                 src={
+                  (pairedGarmentColor && pairedGarment?.colorImages?.[pairedGarmentColor]) ||
                   pairedGarment.primaryImageUrl ||
                   pairedGarment.image ||
+                  pairedGarment.imageUrl ||
                   (Array.isArray(pairedGarment.images) && pairedGarment.images[0]) ||
                   fallbackGarmentImage
                 }
@@ -139,6 +143,34 @@ const TryOnOutfitPairing = ({
                 <div style={{ fontSize: '9.5px', color: 'var(--color-gold, #5b6e4e)', fontWeight: 600 }}>
                   +{(pairedGarment.rentalPricePerDay || 200000).toLocaleString('vi-VN')} đ/ngày
                 </div>
+                {/* Chọn màu sắc cho món phối kèm */}
+                {Array.isArray(pairedGarment?.colors) && pairedGarment.colors.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '8.5px', color: '#6e7569', fontWeight: 600 }}>Màu:</span>
+                    {pairedGarment.colors.map((pclr) => {
+                      const isSel = pairedGarmentColor === pclr || (!pairedGarmentColor && pclr === pairedGarment.colors[0]);
+                      return (
+                        <button
+                          key={pclr}
+                          type="button"
+                          onClick={() => setPairedGarmentColor && setPairedGarmentColor(pclr)}
+                          style={{
+                            padding: '1px 5px',
+                            fontSize: '8px',
+                            borderRadius: '3px',
+                            border: isSel ? '1px solid var(--color-gold, #5b6e4e)' : '1px solid #dce1d5',
+                            background: isSel ? 'var(--color-gold, #5b6e4e)' : '#f4f6f1',
+                            color: isSel ? '#fff' : '#1f2421',
+                            cursor: 'pointer',
+                            fontWeight: isSel ? 700 : 500,
+                          }}
+                        >
+                          {pclr}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                   <span style={{ fontSize: '8.5px', color: '#6e7569', fontWeight: 600 }}>Size:</span>
                   {['XS', 'S', 'M', 'L'].map((bsz) => (

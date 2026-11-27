@@ -284,8 +284,30 @@ export const toggleLockUser = async (req, res) => {
         });
       }
 
-      // Cập nhật trạng thái
-      await User.findByIdAndUpdate(req.params.id, { $set: { Status: newStatus } }, { new: true });
+      const rawAdminId = req.body?.adminId || req.user?._id || req.user?.id || null;
+      const adminId = (rawAdminId && mongoose.Types.ObjectId.isValid(rawAdminId)) ? rawAdminId : null;
+      const adminName = req.body?.adminName || req.user?.FullName || 'Quản trị viên';
+      const adminEmail = req.body?.adminEmail || req.user?.Email || '';
+
+      const lockRecord = {
+        action: 'LOCK',
+        reason,
+        performedBy: adminId,
+        performedByName: adminName,
+        performedByEmail: adminEmail,
+        createdAt: new Date()
+      };
+
+      // Cập nhật trạng thái và ghi nhận lịch sử khóa
+      const updatedUser = await User.findByIdAndUpdate(
+        req.params.id,
+        {
+          $set: { Status: newStatus, LastWarning: new Date() },
+          $inc: { WarningsCount: 1 },
+          $push: { LockHistory: lockRecord }
+        },
+        { new: true }
+      );
 
       // Gửi email thông báo dạng văn bản thuần (plain text)
       const toEmail = user.Email;
@@ -303,14 +325,39 @@ export const toggleLockUser = async (req, res) => {
       return res.json({
         success: true,
         message: `Đã khóa tài khoản và gửi email thông báo tới ${toEmail}`,
-        data: { id: user._id, Status: newStatus, Email: user.Email, FullName: user.FullName }
+        data: {
+          id: user._id,
+          Status: newStatus,
+          Email: user.Email,
+          FullName: user.FullName,
+          WarningsCount: updatedUser ? updatedUser.WarningsCount : ((user.WarningsCount || 0) + 1),
+          LockHistory: updatedUser?.LockHistory || [lockRecord]
+        }
       });
     }
 
-    // Khi MỞ KHÓA: không cần lý do, không cần email
+    // Khi MỞ KHÓA: ghi nhận lịch sử mở khóa
+    const rawAdminId = req.body?.adminId || req.user?._id || req.user?.id || null;
+    const adminId = (rawAdminId && mongoose.Types.ObjectId.isValid(rawAdminId)) ? rawAdminId : null;
+    const adminName = req.body?.adminName || req.user?.FullName || 'Quản trị viên';
+    const adminEmail = req.body?.adminEmail || req.user?.Email || '';
+    const unlockReason = req.body?.reason?.trim() || 'Quản trị viên mở khóa tài khoản';
+
+    const unlockRecord = {
+      action: 'UNLOCK',
+      reason: unlockReason,
+      performedBy: adminId,
+      performedByName: adminName,
+      performedByEmail: adminEmail,
+      createdAt: new Date()
+    };
+
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      { $set: { Status: newStatus } },
+      {
+        $set: { Status: newStatus },
+        $push: { LockHistory: unlockRecord }
+      },
       { new: true }
     );
 
@@ -318,10 +365,11 @@ export const toggleLockUser = async (req, res) => {
       success: true,
       message: 'Đã mở khóa tài khoản thành công',
       data: {
-        id: updatedUser._id,
-        Status: updatedUser.Status,
-        Email: updatedUser.Email,
-        FullName: updatedUser.FullName
+        id: updatedUser?._id || user._id,
+        Status: updatedUser?.Status || newStatus,
+        Email: updatedUser?.Email || user.Email,
+        FullName: updatedUser?.FullName || user.FullName,
+        LockHistory: updatedUser?.LockHistory || [unlockRecord]
       }
     });
   } catch (error) {

@@ -5,7 +5,7 @@ import multer from "multer";
 import { uploadToCloudinary } from "../config/cloudinary.js";
 import { Product } from "../models/masterdata/Product.js";
 import ProductImage from "../models/masterdata/ProductImages.js";
-import { pickRepresentativeImage } from "../services/masterdata/productImageHelper.js";
+import { pickRepresentativeImage, imageUrlForColor } from "../services/masterdata/productImageHelper.js";
 import { isCustomerVisibleProduct } from "../services/masterdata/productPricing.js";
 import { generateTryOn, detectGarmentCategory } from "../services/tryOnService.js";
 import { authMiddleware } from "../middlewares/errorMiddleware.js";
@@ -199,6 +199,7 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
     let garmentImageUrl = req.body.garmentImageUrl;
     let garmentDescription = req.body.garmentDescription || "";
     let category = req.body.category;
+    const selectedColor = req.body.color || req.body.selectedColor || "";
 
     if (req.body.productId) {
       try {
@@ -223,10 +224,22 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
             category = detectGarmentCategory(product.name, catStr);
           }
 
-          // Lấy ảnh trang phục từ database nếu frontend chưa truyền
+          const records = await ProductImage.find({ productId: product._id }).lean();
+
+          // Thử ghép ảnh theo màu sắc sản phẩm (nếu sản phẩm có nhiều màu)
+          if (selectedColor) {
+            const colorImg = imageUrlForColor(records, selectedColor);
+            if (colorImg) {
+              garmentImageUrl = colorImg;
+            }
+            if (!garmentDescription.toLowerCase().includes(selectedColor.toLowerCase())) {
+              garmentDescription = `${garmentDescription} màu ${selectedColor}`;
+            }
+          }
+
+          // Lấy ảnh trang phục từ database nếu frontend chưa truyền hoặc chưa tìm được theo màu
           if (!garmentImageUrl) {
             // Ảnh chính chung → ảnh chính của màu đầu tiên → ảnh đầu tiên (TASK-007)
-            const records = await ProductImage.find({ productId: product._id }).lean();
             garmentImageUrl =
               product.primaryImageUrl ||
               product.imageUrl ||
@@ -268,9 +281,11 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
     let pairedGarmentCategory =
       req.body.pairedGarmentCategory ||
       (category === "upper_body" ? "lower_body" : category === "lower_body" ? "upper_body" : "upper_body");
+    const pairedGarmentColor =
+      req.body.pairedGarmentColor || req.body.bottomGarmentColor || "";
 
     const pairedId = req.body.pairedGarmentId || req.body.bottomProductId;
-    if (pairedId && !pairedGarmentImageUrl) {
+    if (pairedId) {
       try {
         let pairedProd = null;
         if (mongoose.Types.ObjectId.isValid(pairedId)) {
@@ -281,10 +296,25 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
         }
         if (pairedProd) {
           pairedGarmentDescription = pairedGarmentDescription || pairedProd.name;
-          pairedGarmentImageUrl =
-            pairedProd.primaryImageUrl ||
-            (Array.isArray(pairedProd.images) && pairedProd.images[0]) ||
-            pairedProd.image;
+          const pairedRecords = await ProductImage.find({ productId: pairedProd._id }).lean();
+
+          if (pairedGarmentColor) {
+            const colorImg = imageUrlForColor(pairedRecords, pairedGarmentColor);
+            if (colorImg) {
+              pairedGarmentImageUrl = colorImg;
+            }
+            if (!pairedGarmentDescription.toLowerCase().includes(pairedGarmentColor.toLowerCase())) {
+              pairedGarmentDescription = `${pairedGarmentDescription} màu ${pairedGarmentColor}`;
+            }
+          }
+
+          if (!pairedGarmentImageUrl) {
+            pairedGarmentImageUrl =
+              pairedProd.primaryImageUrl ||
+              pickRepresentativeImage(pairedRecords)?.imageUrl ||
+              (Array.isArray(pairedProd.images) && pairedProd.images[0]) ||
+              pairedProd.image;
+          }
         }
       } catch (err) {
         console.warn("[TryOnRoutes] Lỗi tra cứu pairedGarment:", err.message);
@@ -332,6 +362,8 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
 
       // Bước 2: Ghép tiếp món trang phục phối kèm (quần/chân váy) vào người mẫu đã mặc món 1
       for (let i = 0; i < additionalClothing.length; i++) {
+        // Nghỉ nhẹ 2s để tránh nghẽn Replicate burst limit
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         const item = additionalClothing[i];
         console.log(
           `[TryOnRoutes] Đang ghép trang phục phối thứ ${i + 2}: ${item.garmentDescription} (${item.category})...`
@@ -356,6 +388,8 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
           intermediateImages,
           category: "combo_set",
           totalItems: 1 + additionalClothing.length,
+          selectedColor: selectedColor || null,
+          pairedGarmentColor: pairedGarmentColor || null,
           message: `Ghép thành công cả set bộ ${1 + additionalClothing.length} món!`,
         },
       });
@@ -375,6 +409,8 @@ router.post("/generate", upload.single("photo"), async (req, res, next) => {
       success: true,
       data: {
         ...tryOnResult,
+        selectedColor: selectedColor || null,
+        pairedGarmentColor: pairedGarmentColor || null,
       },
     });
   } catch (err) {

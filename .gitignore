@@ -4,7 +4,7 @@
 # Bỏ qua toàn bộ file/thư mục cấu hình, tài liệu, agent và SDD/ADD
 # ==============================================================================
 
-# AI Agent, SDD Framework & Governance
+
 .claude/
 .agentkit/
 .agentignore
@@ -14,6 +14,7 @@
 slides/
 tests/
 test/
+backend/tests/
 plans/
 *.plan.md
 plan.md
@@ -56,3 +57,10 @@ dist/
 coverage/
 frontend/build/
 frontend/dist/
+
+# Ignored documents, scratch & jobs
+Report-3_Software Requirement Specification (3).docx
+backend/src/jobs/cleanupAuditLogJob.js
+backend/src/jobs/unlockExpiredAccountsJob.js
+scratch/
+

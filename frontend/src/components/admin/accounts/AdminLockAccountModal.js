@@ -140,11 +140,42 @@ export default function AdminLockAccountModal({
           >
             Lý do khóa tài khoản <span style={{ color: '#DC2626' }}>*</span>
           </label>
+
+          {/* Quick preset chips */}
+          <div style={{ marginBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {[
+              'Vi phạm quy trình vận hành',
+              'Vi phạm kỷ luật & nội quy',
+              'Sai lệch kiểm kê hàng hóa',
+              'Vi phạm bảo mật tài khoản',
+              'Tạm khóa phục vụ đối soát nội bộ'
+            ].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setReasonText(preset)}
+                style={{
+                  background: reasonText === preset ? '#EFF6FF' : '#F1F5F9',
+                  border: `1px solid ${reasonText === preset ? '#93C5FD' : '#E2E8F0'}`,
+                  color: reasonText === preset ? '#1D4ED8' : '#475569',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                + {preset}
+              </button>
+            ))}
+          </div>
+
           <textarea
             rows={4}
             value={reasonText}
             onChange={(e) => setReasonText(e.target.value)}
-            placeholder="Vd: Vi phạm điều khoản sử dụng dịch vụ, giao dịch gian lận, phản ánh từ người dùng khác..."
+            placeholder="Vd: Vi phạm quy trình vận hành cửa hàng, sai lệch số liệu kiểm kê kho, vi phạm kỷ luật..."
             style={{
               width: '100%',
               boxSizing: 'border-box',

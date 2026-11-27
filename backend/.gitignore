@@ -33,6 +33,8 @@ tests/
 test/
 *.test.js
 *.spec.js
+coverage/
+.nyc_output/
 
 # Uploads / temp
 uploads/

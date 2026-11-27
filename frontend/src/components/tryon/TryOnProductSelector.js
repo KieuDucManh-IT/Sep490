@@ -9,6 +9,8 @@ export default function TryOnProductSelector({
   catalogLoading,
   category,
   selectedSize,
+  selectedColor,
+  onSelectColor,
   garmentImageUrl,
   fallbackImage,
   onSelectProduct,
@@ -206,12 +208,83 @@ export default function TryOnProductSelector({
           >
             {product?.name || 'Trang phục cao cấp'}
           </div>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-gold, #5b6e4e)' }}>
-            {(product?.rentalPricePerDay || 350000).toLocaleString('vi-VN')} đ{' '}
-            <small style={{ fontWeight: 400, fontSize: '9px', color: '#6e7569' }}>/ ngày</small>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-gold, #5b6e4e)' }}>
+              {(product?.rentalPricePerDay || 350000).toLocaleString('vi-VN')} đ{' '}
+              <small style={{ fontWeight: 400, fontSize: '9px', color: '#6e7569' }}>/ ngày</small>
+            </div>
+            {selectedColor && (
+              <span style={{ fontSize: '9.5px', color: '#4a5246', fontWeight: 600 }}>
+                Màu: <strong style={{ color: 'var(--color-gold, #5b6e4e)' }}>{selectedColor}</strong>
+              </span>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Color Picker (Hiển thị cho sản phẩm có nhiều màu) */}
+      {Array.isArray(product?.colors) && product.colors.length > 0 && (
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '10px',
+              marginBottom: '3px',
+              color: '#4a5246',
+            }}
+          >
+            <span style={{ fontWeight: 700, letterSpacing: '0.5px' }}>
+              CHỌN MÀU SẮC (COLORS)
+            </span>
+            <span style={{ color: 'var(--color-gold, #5b6e4e)', fontSize: '10px', fontWeight: 600 }}>
+              Đang chọn: <strong>{selectedColor || product.colors[0]}</strong>
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+            {product.colors.map((c) => {
+              const isSelected = selectedColor === c || (!selectedColor && c === product.colors[0]);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  className={`color-pill-btn ${isSelected ? 'active' : ''}`}
+                  style={{
+                    height: '26px',
+                    padding: '0 8px',
+                    fontSize: '10.5px',
+                    background: isSelected ? 'var(--color-gold, #5b6e4e)' : '#f4f6f1',
+                    color: isSelected ? '#ffffff' : '#1f2421',
+                    border: isSelected
+                      ? '1px solid var(--color-gold, #5b6e4e)'
+                      : '1px solid var(--color-border, #e2e6dc)',
+                    borderRadius: '5px',
+                    cursor: 'pointer',
+                    fontWeight: isSelected ? 700 : 500,
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  onClick={() => onSelectColor && onSelectColor(c)}
+                >
+                  <span
+                    style={{
+                      width: '7px',
+                      height: '7px',
+                      borderRadius: '50%',
+                      background: isSelected ? '#ffffff' : 'var(--color-gold, #5b6e4e)',
+                      display: 'inline-block',
+                    }}
+                  />
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Category Picker (Đầm, Áo, Quần, Phụ kiện) */}
       <div>

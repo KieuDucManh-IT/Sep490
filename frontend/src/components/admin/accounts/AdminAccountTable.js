@@ -108,28 +108,62 @@ export default function AdminAccountTable({
                   <td style={{ whiteSpace: 'nowrap', fontSize: '13px' }}>
                     {(() => {
                       const cleanRole = (u.role || '').toLowerCase().replace(/[_\s-]/g, '');
+                      if (cleanRole === 'admin') {
+                        return (
+                          <span className="admin-acc-scope-tag system">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="2" y1="12" x2="22" y2="12" />
+                              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                            </svg>
+                            Toàn hệ thống
+                          </span>
+                        );
+                      }
                       if (cleanRole === 'shopowner' || cleanRole === 'owner') {
                         return (
-                          <span className="admin-acc-all-branches-badge">
+                          <span className="admin-acc-scope-tag all-branches">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                              <polyline points="9 22 9 12 15 12 15 22" />
+                            </svg>
                             Tất cả chi nhánh
+                          </span>
+                        );
+                      }
+                      if (cleanRole === 'warehousemanager' || cleanRole === 'warehousestaff' || cleanRole === 'warehouse_manager' || cleanRole === 'warehouse_staff') {
+                        return (
+                          <span className="admin-acc-scope-tag warehouse">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                              <line x1="12" y1="22.08" x2="12" y2="12" />
+                            </svg>
+                            Kho tổng
                           </span>
                         );
                       }
                       if (cleanRole === 'branch_manager' || cleanRole === 'branchmanager') {
                         return (u.shopName && u.shopName !== 'Tất cả chi nhánh') ? (
-                          <span className="admin-acc-branch-assigned">
+                          <span className="admin-acc-scope-tag branch">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                              <circle cx="12" cy="10" r="3" />
+                            </svg>
                             {u.shopName}
                           </span>
                         ) : (
-                          <span className="admin-acc-branch-unassigned">
+                          <span className="admin-acc-scope-tag unassigned">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="12" y1="8" x2="12" y2="12" />
+                              <line x1="12" y1="16" x2="12.01" y2="16" />
+                            </svg>
                             Chưa phân công
                           </span>
                         );
                       }
-                      if (cleanRole === 'admin') {
-                        return <span style={{ color: '#64748B', fontSize: '12.5px' }}>Toàn hệ thống</span>;
-                      }
-                      return <span style={{ color: '#94A3B8', fontSize: '12.5px' }}>—</span>;
+                      return null;
                     })()}
                   </td>
 

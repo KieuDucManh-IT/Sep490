@@ -142,3 +142,32 @@ export async function cancelRentalOrder(orderId, cancelReason) {
     body: { cancelReason },
   });
 }
+
+/**
+ * UC-41: Khách hàng gửi khiếu nại / báo cáo vấn đề đơn thuê (trong vòng 24h kể từ bàn giao)
+ * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-009
+ */
+export async function submitRentalDispute(orderId, { reason, description, evidenceImages = [] }) {
+  const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:5001/api').replace(/\/+$/, '');
+  const url = `${API_BASE}/rental-disputes/orders/${orderId}/claim`;
+
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const token = localStorage.getItem('token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  } catch (_) {}
+
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ reason, description, evidenceImages }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const err = new Error(data?.message || `Lỗi ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+  return data;
+}

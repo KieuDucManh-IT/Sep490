@@ -1,6 +1,7 @@
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { getBalances, sumAvailable } from '../warehouse/balanceQueryService.js';
+import { sumAvailable } from '../warehouse/balanceQueryService.js';
+import { getCustomerStock } from '../warehouse/customer-stock-query.js';
 import { isActiveStoreLocation, formatLocationAddress } from '../warehouse/productInventoryHelper.js';
 import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
 import { validateCalendarRentalRange } from '../../validations/sale&rental/rentalOrderValidation.js';
@@ -8,6 +9,7 @@ const idOf = (v) => String(v?._id || v || '');
 
 /** Read-only quote; no reservations or business data writes.
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-019
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-021
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-028
  */
 export const validateCartState = async ({ locationId = null, rentalItems = [], saleItems = [] }) => {
@@ -21,8 +23,8 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
   const location = locationId ? { locationId: String(locationId), name: selected?.name || '', address: formatLocationAddress(selected), type: selected?.type || '', active: isActiveStoreLocation(selected) } : null;
   const siblings = await ProductVariant.find({ productId: { $in: variants.map(v => v.productId?._id).filter(Boolean) }, status: 'active', isDeleted: { $ne: true } }).lean();
   const ids = [...new Set([...variants, ...siblings].map(v => idOf(v)))];
-  // TASK-010: chỉ đọc balance cho mọi loại hàng (bỏ fallback đếm món).
-  const balances = await getBalances({ variantIds: ids });
+  // Shared customer snapshot, scoped to active stores; Balance existence wins even at zero.
+  const balances = await getCustomerStock({ locationIds: activeLocations.map(loc => loc._id), variantIds: ids });
   const stock = (vid, lid) => sumAvailable(balances.filter(row => idOf(row.variantId) === vid && idOf(row.locationId) === lid));
   const totals = new Map();
   for (const row of input) totals.set(String(row.variantId), (totals.get(String(row.variantId)) || 0) + row.quantity);

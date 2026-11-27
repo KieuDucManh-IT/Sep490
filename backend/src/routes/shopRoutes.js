@@ -26,6 +26,7 @@ import {
   getPublicPolicies,
 } from '../controllers/shop/businessPolicyController.js';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
+import { ownerPerformanceAuthentication, getOwnerPerformanceReportController } from '../controllers/shop/owner-performance-controller.js';
 import { Shop } from '../models/shop/Shop.js';
 
 const router = express.Router();
@@ -86,6 +87,11 @@ router.get(
   authMiddleware,
   requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
   getAssignedBranch
+);
+router.get(
+  '/reports/owner-performance',
+  ownerPerformanceAuthentication,
+  getOwnerPerformanceReportController
 );
 router.get(
   '/reports/branch-performance',

@@ -175,6 +175,27 @@ export const createReturnReceiptAndSettle = async ({
         'Đơn đã được quyết toán hoặc vừa thay đổi.'
       );
     }
+    const orderDetails = await RentalOrderDetail.find({ rentalOrderId: order._id }).select('_id').session(session);
+    const handedOver = await RentalOrderItem.find({
+      rentalOrderDetailId: { $in: orderDetails.map((d) => d._id) },
+      itemId: { $in: items.map((it) => it.itemId) },
+      status: 'handed_over',
+    }).session(session);
+    const handedOverIds = new Set(handedOver.map((row) => String(row.itemId)));
+    const uniqueReturnIds = new Set(items.map((it) => String(it.itemId)));
+    if (uniqueReturnIds.size !== items.length) {
+      throw new ServiceError(422, 'Biên bản trả đồ có hiện vật bị trùng');
+    }
+    const invItems = await InventoryItem.find({ _id: { $in: [...uniqueReturnIds] } }).session(session);
+    const invById = new Map(invItems.map((item) => [String(item._id), item]));
+    const entries = items.map((it) => {
+      const invItem = invById.get(String(it.itemId));
+      if (!invItem || !handedOverIds.has(String(it.itemId))) {
+        throw new ServiceError(422, `Hiện vật ${invItem?.itemCode || it.itemId} không thuộc đơn thuê này hoặc chưa được bàn giao`);
+      }
+      return { item: invItem, inspectionResult: it.inspectionResult };
+    });
+
     // 1. Tạo bản ghi RentalReturn
     const returnCode = generateReturnCode();
     const [rentalReturn] = await RentalReturn.create(
@@ -212,26 +233,6 @@ export const createReturnReceiptAndSettle = async ({
     // 3. TASK-016 A3: cập nhật hiện vật qua itemStateService theo kết quả kiểm:
     //    ok → available; needs_service → unavailable; missing → lost (không tính vào tồn, RentalOrderItem → missing).
     //    Không dùng `maintenance` ở chi nhánh (bảo trì chỉ ở kho tổng).
-    const orderDetails = await RentalOrderDetail.find({ rentalOrderId: order._id }).select('_id').session(session);
-    const handedOver = await RentalOrderItem.find({
-      rentalOrderDetailId: { $in: orderDetails.map((d) => d._id) },
-      itemId: { $in: items.map((it) => it.itemId) },
-      status: 'handed_over',
-    }).session(session);
-    const handedOverIds = new Set(handedOver.map((row) => String(row.itemId)));
-    const uniqueReturnIds = new Set(items.map((it) => String(it.itemId)));
-    if (uniqueReturnIds.size !== items.length) {
-      throw new ServiceError(422, 'Biên bản trả đồ có hiện vật bị trùng');
-    }
-    const invItems = await InventoryItem.find({ _id: { $in: [...uniqueReturnIds] } }).session(session);
-    const invById = new Map(invItems.map((item) => [String(item._id), item]));
-    const entries = items.map((it) => {
-      const invItem = invById.get(String(it.itemId));
-      if (!invItem || !handedOverIds.has(String(it.itemId))) {
-        throw new ServiceError(422, `Hiện vật ${invItem?.itemCode || it.itemId} không thuộc đơn thuê này hoặc chưa được bàn giao`);
-      }
-      return { item: invItem, inspectionResult: it.inspectionResult };
-    });
     await returnItems(entries, session);
 
     // Món mất không quay lại kho → không ghi +1.

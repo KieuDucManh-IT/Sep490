@@ -497,12 +497,15 @@ export const cancelGHNOrder = async (orderCode, shopId = undefined) => {
 /**
  * Tạo token in phiếu giao hàng A5 trực tiếp từ GHN API
  */
-export const generatePrintToken = async (orderCodes) => {
-  const codes = Array.isArray(orderCodes) ? orderCodes : [orderCodes];
+export const generatePrintToken = async (orderCodes, shopId = undefined) => {
+  const codes = (Array.isArray(orderCodes) ? orderCodes : [orderCodes])
+    .map((c) => String(c || '').trim())
+    .filter(Boolean);
   if (!codes.length) throw new Error('Cần cung cấp ít nhất một mã vận đơn GHN để in phiếu.');
 
   const res = await ghnRequest('/shiip/public-api/v2/a5/gen-token', {
     method: 'POST',
+    ...(shopId ? { shopId: Number(shopId) } : {}),
     data: { order_codes: codes },
   });
 

@@ -1,4 +1,3 @@
-import CheckoutBranchPicker from '../../components/customer/cart/CheckoutBranchPicker';
 import { quoteCheckout, groupCheckoutItems, submitCheckoutGroups, checkoutFingerprint } from '../../services/cart/checkoutFlow';
 /**
  * Checkout Page — Rental-only checkout flow
@@ -209,8 +208,8 @@ export default function CheckoutPage() {
       setValidationError('Vui lòng nhập họ và tên người nhận trang phục.');
       return;
     }
-    if (!shippingAddress.phone.trim() || shippingAddress.phone.trim().length < 8) {
-      setValidationError('Vui lòng nhập số điện thoại người nhận hợp lệ.');
+    if (!/^[0-9]{10}$/.test(shippingAddress.phone.trim())) {
+      setValidationError('Số điện thoại người nhận phải gồm đúng 10 chữ số.');
       return;
     }
     if (!shippingAddress.provinceId) {
@@ -796,6 +795,8 @@ export default function CheckoutPage() {
                   <label style={styles.label}>Số điện thoại liên hệ *</label>
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
                     required
                     value={shippingAddress.phone}
                     onChange={(e) => handleAddressChange('phone', e.target.value)}
@@ -954,7 +955,6 @@ export default function CheckoutPage() {
             )}
 
             {/* Submit Error */}
-            <CheckoutBranchPicker items={selectedItems} disabled={submitting} />
             {submitError && (
               <div style={styles.errorBox}>
                 <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1, color: '#DC2626' }} />

@@ -177,8 +177,8 @@ export default function SaleCheckoutPage() {
       setValidationError('Vui lòng nhập họ và tên người nhận hàng');
       return;
     }
-    if (!shippingAddress.phone.trim()) {
-      setValidationError('Vui lòng nhập số điện thoại người nhận');
+    if (!/^[0-9]{10}$/.test(shippingAddress.phone.trim())) {
+      setValidationError('Số điện thoại người nhận phải gồm đúng 10 chữ số.');
       return;
     }
     if (!shippingAddress.provinceId) {
@@ -446,6 +446,8 @@ export default function SaleCheckoutPage() {
                         <label style={styles.label}>Số điện thoại liên hệ *</label>
                         <input
                           type="tel"
+                          inputMode="numeric"
+                          maxLength={10}
                           required
                           value={shippingAddress.phone}
                           onChange={(e) => handleInputChange('phone', e.target.value)}

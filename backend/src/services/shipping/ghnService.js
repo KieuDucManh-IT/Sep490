@@ -420,11 +420,27 @@ export const createGHNOrder = async (orderPayload) => {
     items: ghnItems,
   };
 
-  const res = await ghnRequest('/shiip/public-api/v2/shipping-order/create', {
-    method: 'POST',
-    shopId: shopId ? Number(shopId) : undefined,
-    data: payload,
-  });
+  let res;
+  try {
+    res = await ghnRequest('/shiip/public-api/v2/shipping-order/create', {
+      method: 'POST',
+      shopId: shopId ? Number(shopId) : undefined,
+      data: payload,
+      timeoutMs: 25000,
+    });
+  } catch (err) {
+    const rawMsg = String(err?.message || '');
+    if (
+      err?.code !== 'GHN_TIMEOUT' &&
+      (rawMsg.toLowerCase().includes('too many request') || rawMsg.toLowerCase().includes('is processing'))
+    ) {
+      const rateLimitErr = new Error('GHN đang xử lý yêu cầu cho đơn hàng này, vui lòng đợi 3-5 giây rồi thử lại.');
+      rateLimitErr.status = err?.status >= 400 ? err.status : 429;
+      rateLimitErr.data = err?.data;
+      throw rateLimitErr;
+    }
+    throw err;
+  }
 
   if (res?.code === 200 && res.data) {
     const expectedDate = new Date();
@@ -440,12 +456,7 @@ export const createGHNOrder = async (orderPayload) => {
     };
   }
 
-  const rawMsg = String(res?.message || '');
-  if (rawMsg.toLowerCase().includes('too many request') || rawMsg.toLowerCase().includes('is processing')) {
-    throw new Error('GHN đang xử lý yêu cầu cho đơn hàng này, vui lòng đợi 3-5 giây rồi thử lại.');
-  }
-
-  throw new Error(rawMsg || 'Lỗi khi tạo vận đơn GHN');
+  throw new Error(res?.message || 'Lỗi khi tạo vận đơn GHN');
 };
 
 /**
@@ -468,11 +479,12 @@ export const getGHNOrderDetail = async (orderCode) => {
 /**
  * Hủy đơn hàng trực tiếp trên hệ thống GHN API
  */
-export const cancelGHNOrder = async (orderCode) => {
+export const cancelGHNOrder = async (orderCode, shopId = undefined) => {
   if (!orderCode) throw new Error('Mã vận đơn cần hủy không được để trống.');
 
   const res = await ghnRequest('/shiip/public-api/v2/switch-status/cancel', {
     method: 'POST',
+    ...(shopId ? { shopId: Number(shopId) } : {}),
     data: { order_codes: [orderCode] },
   });
 
@@ -485,12 +497,15 @@ export const cancelGHNOrder = async (orderCode) => {
 /**
  * Tạo token in phiếu giao hàng A5 trực tiếp từ GHN API
  */
-export const generatePrintToken = async (orderCodes) => {
-  const codes = Array.isArray(orderCodes) ? orderCodes : [orderCodes];
+export const generatePrintToken = async (orderCodes, shopId = undefined) => {
+  const codes = (Array.isArray(orderCodes) ? orderCodes : [orderCodes])
+    .map((c) => String(c || '').trim())
+    .filter(Boolean);
   if (!codes.length) throw new Error('Cần cung cấp ít nhất một mã vận đơn GHN để in phiếu.');
 
   const res = await ghnRequest('/shiip/public-api/v2/a5/gen-token', {
     method: 'POST',
+    ...(shopId ? { shopId: Number(shopId) } : {}),
     data: { order_codes: codes },
   });
 

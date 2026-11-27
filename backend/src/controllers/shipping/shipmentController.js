@@ -3,6 +3,7 @@ import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { syncSingleShipmentFromGHN } from '../../services/shipping/shipmentSyncService.js';
+import { fetchOrderAndValidateScope } from '../../services/shipping/shipmentHelpers.js';
 import * as shipmentService from '../../services/shipping/shipmentService.js';
 import * as ghnService from '../../services/shipping/ghnService.js';
 import { uploadToCloudinary } from '../../config/cloudinary.js';
@@ -12,6 +13,7 @@ const handleError = (error, res, next) => {
   return res.status(status).json({
     success: false,
     message: error.message || 'Lỗi xử lý vận đơn',
+    code: error.code || null,
     errorData: error.data || null,
   });
 };
@@ -82,8 +84,45 @@ export const getShipmentsByOrderHandler = async (req, res, next) => {
 
 export const getPrintTokenHandler = async (req, res, next) => {
   try {
-    const { trackingCode } = req.params;
-    const result = await ghnService.generatePrintToken(trackingCode);
+    const userRole = String(req.user?.Role || req.user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
+    if (!['branchmanager', 'shopowner', 'owner', 'admin'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền in phiếu vận đơn GHN.',
+      });
+    }
+
+    const cleanCode = String(req.params?.trackingCode || '').trim();
+    if (!cleanCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã vận đơn không được để trống.',
+      });
+    }
+
+    const shipment = await OrderShipment.findOne({ trackingCode: cleanCode }).lean();
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy bản ghi vận đơn.',
+      });
+    }
+
+    if (
+      shipment.isSimulated ||
+      /^(SHP|TRK)-/i.test(shipment.trackingCode || '') ||
+      shipment.shipmentType === 'return' ||
+      !['preparing', 'shipped'].includes(shipment.shipmentStatus)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chỉ hỗ trợ in phiếu A5 cho vận đơn GHN chiều đi đang chờ lấy hoặc đang giao.',
+      });
+    }
+
+    const order = await fetchOrderAndValidateScope(req.user, shipment.orderType, shipment.orderId);
+    const branchShopId = order?.locationId?.shopId?.ghnShopId || order?.locationId?.ghnShopId || undefined;
+    const result = await ghnService.generatePrintToken(cleanCode, branchShopId);
     return res.json({
       success: true,
       data: result,

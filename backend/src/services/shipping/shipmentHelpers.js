@@ -116,22 +116,33 @@ export const resolveBranchShippingInfo = async (order) => {
     if (foundShop) shop = foundShop;
   }
 
+  const originalShopId = shop?._id || null;
+  const originalHasAddress = Boolean(shop?.address);
+  let persistShopId = originalShopId && originalHasAddress ? originalShopId : null;
+
   // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop đầu tiên đang active
   if (!shop?.phone || !shop?.address) {
     const fallbackShop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
       .sort({ createdAt: 1, _id: 1 })
       .lean();
     if (fallbackShop) {
-      shop = {
-        ...fallbackShop,
-        ...shop,
-        phone: shop?.phone || fallbackShop.phone,
-        address: shop?.address || fallbackShop.address,
-        provinceId: shop?.provinceId || fallbackShop.provinceId,
-        districtId: shop?.districtId || fallbackShop.districtId,
-        wardCode: shop?.wardCode || fallbackShop.wardCode,
-        ghnShopId: shop?.ghnShopId || fallbackShop.ghnShopId,
-      };
+      if (originalHasAddress) {
+        shop = { ...shop, phone: shop?.phone || fallbackShop.phone };
+      } else {
+        if (!originalShopId && fallbackShop._id && fallbackShop.address) {
+          persistShopId = fallbackShop._id;
+        }
+        shop = {
+          ...fallbackShop,
+          ...shop,
+          phone: shop?.phone || fallbackShop.phone,
+          address: shop?.address || fallbackShop.address,
+          provinceId: shop?.provinceId || fallbackShop.provinceId,
+          districtId: shop?.districtId || fallbackShop.districtId,
+          wardCode: shop?.wardCode || fallbackShop.wardCode,
+          ghnShopId: shop?.ghnShopId || fallbackShop.ghnShopId,
+        };
+      }
     }
   }
 
@@ -166,6 +177,23 @@ export const resolveBranchShippingInfo = async (order) => {
     provinceId = resolvedGhn.provinceId;
     districtId = resolvedGhn.districtId;
     wardCode = resolvedGhn.wardCode;
+
+    const numDistrictId = Number(districtId);
+    const numProvinceId = Number(provinceId);
+    if (persistShopId && Number.isFinite(numDistrictId) && numDistrictId > 0 && wardCode) {
+      Shop.updateOne(
+        { _id: persistShopId },
+        {
+          $set: {
+            districtId: numDistrictId,
+            wardCode: String(wardCode),
+            ...(Number.isFinite(numProvinceId) && numProvinceId > 0 && numProvinceId < 1000000
+              ? { provinceId: numProvinceId }
+              : {}),
+          },
+        }
+      ).catch(() => { });
+    }
   }
 
   if (!districtId || !wardCode) {

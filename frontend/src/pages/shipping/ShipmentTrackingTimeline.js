@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Package,
+  Printer,
 } from 'lucide-react';
 
 import {
@@ -31,6 +32,7 @@ import {
   updateManualShipmentStatusApi,
   simulateGhnApi,
   uploadShipmentProofApi,
+  getPrintTokenApi,
 } from '../../services/shippingApi';
 
 import '../../styles/ShippingModal.css';
@@ -52,11 +54,13 @@ export default function ShipmentTrackingTimeline({
   onCancel,
   onRetry,
   onStatusUpdated,
-  isBranchManager = true,
+  isBranchManager = false,
   isLatest = true,
 }) {
   const [copied, setCopied] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [fallbackPrintUrl, setFallbackPrintUrl] = useState('');
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
   const [simulating, setSimulating] = useState(false);
@@ -126,6 +130,38 @@ export default function ShipmentTrackingTimeline({
       } finally {
         setCancelling(false);
       }
+    }
+  };
+
+  const handlePrintA5 = async () => {
+    if (!shipment.trackingCode || printing) return;
+    setPrinting(true);
+    setFallbackPrintUrl('');
+    const printTab = window.open('', '_blank');
+    try {
+      const res = await getPrintTokenApi(shipment.trackingCode);
+      const printUrl = res?.data?.printUrl;
+      if (!printUrl) {
+        if (printTab && !printTab.closed) printTab.close();
+        alert(res?.message || 'Không lấy được link in phiếu GHN A5.');
+        return;
+      }
+      if (printTab && !printTab.closed) {
+        printTab.opener = null;
+        printTab.location.href = printUrl;
+      } else {
+        setFallbackPrintUrl(printUrl);
+      }
+    } catch (err) {
+      if (printTab && !printTab.closed) printTab.close();
+      alert(
+        err?.data?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Không thể tạo mã in phiếu GHN A5.'
+      );
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -313,6 +349,13 @@ export default function ShipmentTrackingTimeline({
 
   const isReturn = shipment.shipmentType === 'return';
   const trackingCode = shipment.trackingCode || '—';
+  const isRealGhnTracking = Boolean(shipment.trackingCode && !/^(SHP|TRK)-/i.test(shipment.trackingCode));
+  const canPrintA5 =
+    isBranchManager &&
+    !isReturn &&
+    !shipment.isSimulated &&
+    isRealGhnTracking &&
+    (isPreparing || isShipped);
   const allowedSimTargets = VALID_SIMULATED_TRANSITIONS[shipment.shipmentStatus] || [];
   const canSimulate = (targetStatus) => allowedSimTargets.includes(targetStatus);
   const simDisabledTip = (targetStatus) =>
@@ -418,6 +461,32 @@ export default function ShipmentTrackingTimeline({
                     <span>Báo thu hồi thất bại</span>
                   </button>
                 </>
+              )}
+            </>
+          )}
+
+          {canPrintA5 && (
+            <>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                onClick={handlePrintA5}
+                disabled={printing}
+                title="In phiếu gửi hàng A5 từ GHN"
+              >
+                <Printer size={14} />
+                <span>{printing ? 'Đang lấy phiếu...' : 'In phiếu A5'}</span>
+              </button>
+              {fallbackPrintUrl && (
+                <a
+                  href={fallbackPrintUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-sm btn-link px-1 text-primary text-decoration-none d-inline-flex align-items-center gap-1"
+                >
+                  <ExternalLink size={13} />
+                  <span>Mở phiếu A5</span>
+                </a>
               )}
             </>
           )}

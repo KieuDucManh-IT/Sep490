@@ -67,6 +67,7 @@ import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerBranchesPage from './pages/owner/OwnerBranchesPage';
 import OwnerPricingPage from './pages/owner/OwnerPricingPage';
 import OwnerAnalyticsPage from './pages/owner/OwnerAnalyticsPage';
+import { OwnerPerformanceRoute } from './pages/owner/owner-performance-page';
 import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
 import OwnerBranchesListPage from './pages/owner/OwnerBranchesListPage';
@@ -375,11 +376,7 @@ function App() {
         />
         <Route
           path="/owner/analytics"
-          element={
-            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
-              <OwnerAnalyticsPage />
-            </ProtectedRoute>
-          }
+          element={<OwnerPerformanceRoute />}
         />
         <Route
           path="/owner/disputes"

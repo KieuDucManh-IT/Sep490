@@ -21,7 +21,7 @@ export const getShipmentsByOrderApi = async (orderType, orderId) => {
 };
 
 export const getPrintTokenApi = async (trackingCode) => {
-  return await api.get(`/shipping/print-token/${trackingCode}`);
+  return await api.get(`/shipping/print-token/${encodeURIComponent(trackingCode)}`);
 };
 
 export const getGHNProvincesApi = async () => {

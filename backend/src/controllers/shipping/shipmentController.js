@@ -12,6 +12,7 @@ const handleError = (error, res, next) => {
   return res.status(status).json({
     success: false,
     message: error.message || 'Lỗi xử lý vận đơn',
+    code: error.code || null,
     errorData: error.data || null,
   });
 };

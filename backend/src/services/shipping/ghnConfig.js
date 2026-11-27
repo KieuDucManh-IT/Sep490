@@ -27,7 +27,7 @@ export const ghnConfig = {
  * Native fetch-based GHN HTTP Client (Zero external dependency)
  * Kết nối trực tiếp 100% với hệ thống GHN API
  */
-export const ghnRequest = async (endpoint, { method = 'GET', data, params, headers: customHeaders, shopId } = {}) => {
+export const ghnRequest = async (endpoint, { method = 'GET', data, params, headers: customHeaders, shopId, timeoutMs = 10000 } = {}) => {
   const apiUrl = getApiUrl();
   const token = getToken();
   const defaultShopId = getShopId();
@@ -39,10 +39,15 @@ export const ghnRequest = async (endpoint, { method = 'GET', data, params, heade
   }
 
   const effectiveShopId = shopId || customHeaders?.ShopId || defaultShopId || '';
+  const parsedTimeout = Number(timeoutMs);
+  const effectiveTimeoutMs =
+    typeof timeoutMs !== 'boolean' && Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : 10000;
 
   const options = {
     method,
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(effectiveTimeoutMs),
     headers: {
       'Content-Type': 'application/json',
       Token: token,
@@ -55,11 +60,33 @@ export const ghnRequest = async (endpoint, { method = 'GET', data, params, heade
     options.body = JSON.stringify(data);
   }
 
-  const res = await fetch(url, options);
-  const responseData = await res.json().catch(() => ({}));
+  let res;
+  let responseData = {};
+  try {
+    res = await fetch(url, options);
+    try {
+      responseData = await res.json();
+    } catch (parseErr) {
+      if (parseErr?.name === 'TimeoutError' || parseErr?.name === 'AbortError') {
+        throw parseErr;
+      }
+      responseData = {};
+    }
+  } catch (err) {
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      const timeoutError = new Error('Cổng GHN phản hồi quá chậm (timeout), vui lòng đợi vài giây rồi kiểm tra/thử lại.');
+      timeoutError.status = 504;
+      timeoutError.statusCode = 504;
+      timeoutError.code = 'GHN_TIMEOUT';
+      throw timeoutError;
+    }
+    throw err;
+  }
+
   if (!res.ok || (responseData && responseData.code && responseData.code !== 200)) {
     const error = new Error(responseData?.message || `GHN API error: ${res.status}`);
-    error.status = res.status;
+    const ghnCode = Number(responseData?.code);
+    error.status = res.ok ? (ghnCode >= 400 && ghnCode <= 599 ? ghnCode : 400) : res.status;
     error.data = responseData;
     throw error;
   }

@@ -5,8 +5,8 @@ const flows = {
   inbound: { labels: ['Tạo phiếu', 'Tiếp nhận', 'Duyệt', 'Xếp kệ'], states: ['created', 'awaiting_receiving', 'received', 'approved'] },
   transfer: { labels: ['Yêu cầu', 'Duyệt', 'Soạn hàng', 'Điều chuyển', 'Nhận hàng'], states: ['requested', 'approved', 'preparing', 'shipped', 'completed'] },
   branchReturn: { labels: ['Yêu cầu', 'Duyệt & khóa hàng', 'Gửi hàng', 'Kiểm nhận', 'Xếp kệ', 'Hoàn tất'], states: ['requested', 'approved', 'shipped', 'receipt_submitted', 'receipt_approved', 'completed'] },
-  // TASK-016 B: duyệt = áp dụng ngay, không còn bước điều chỉnh tồn riêng.
-  stocktake: { labels: ['Tạo phiếu', 'Kiểm đếm', 'Chờ duyệt', 'Đã duyệt & áp dụng'], states: ['draft', 'in_progress', 'counted', 'approved'] },
+  // Duyệt kiểm kê sinh phiếu điều chỉnh; tồn đổi khi áp dụng phiếu điều chỉnh (người dùng chốt 28/11).
+  stocktake: { labels: ['Tạo phiếu', 'Kiểm đếm', 'Chờ duyệt', 'Đã duyệt, tạo điều chỉnh'], states: ['draft', 'in_progress', 'counted', 'approved'] },
   adjustment: { labels: ['Chờ duyệt', 'Đã duyệt', 'Cập nhật tồn'], states: ['requested', 'approved', 'applied'] },
 };
 

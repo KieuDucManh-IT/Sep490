@@ -198,6 +198,15 @@ export const STOCKTAKE_RESULT_LABELS = {
 };
 
 /** Kết quả áp dụng sau khi duyệt. */
+/** Loại dòng phiếu điều chỉnh (sinh từ kiểm kê); dòng cũ không có loại: −1 = mất, +1 = món mới. */
+export const ADJUSTMENT_ACTION_LABELS = {
+  lost: 'Mất',
+  create: 'Món mới',
+  found: 'Tìm thấy món đã mất',
+  needs_service: 'Cần xử lý',
+  relocate: 'Chuyển kệ',
+};
+
 export const STOCKTAKE_OUTCOME_LABELS = {
   unchanged: 'Đúng',
   needs_service: 'Cần xử lý',

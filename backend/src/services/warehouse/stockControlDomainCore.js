@@ -2,13 +2,14 @@
 // Kiểm kê:    draft → in_progress → counted → approved   (draft / in_progress / counted có thể bị cancelled).
 // Điều chỉnh: requested → approved | rejected; approved → applied.
 // Ai làm bước nào:
-// - Quản lý kho: tạo phiếu kiểm kê + giao nhân viên, bắt đầu (chụp trạng thái + kệ từng món), duyệt = áp dụng, hủy kiểm kê.
+// - Quản lý kho: tạo phiếu kiểm kê + giao nhân viên, bắt đầu (chụp trạng thái + kệ từng món), duyệt kết quả,
+//   duyệt / áp dụng phiếu điều chỉnh, hủy kiểm kê.
 // - Nhân viên kho được giao (hoặc quản lý): ghi kết quả theo món (mặc định "Có mặt – dùng được"), gửi kết quả.
-// TASK-016: duyệt áp dụng ngay theo bảng B3 (stocktakeApplyRules.js), dòng có món đã đổi sau lúc bắt đầu bị bỏ qua.
-// Kiểm kê KHÔNG sinh phiếu điều chỉnh nữa; StockAdjustment chỉ còn cho phiếu cũ (xem / duyệt / áp dụng).
+// Người dùng chốt 28/11: kiểm kê chỉ ghi lại thực tế; duyệt kiểm kê sinh phiếu điều chỉnh (mọi dòng lệch, lập theo
+// stocktakeApplyRules.js; dòng có món đổi sau lúc bắt đầu bị bỏ qua). Tồn chỉ đổi khi áp dụng phiếu điều chỉnh.
+// Không còn tạo phiếu điều chỉnh tay.
 import mongoose from 'mongoose';
 import { refreshOutOfStockStatus } from './productStockStatusService.js';
-import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
@@ -29,7 +30,8 @@ import {
 import { assertCentralWarehouse } from './centralWarehouseService.js';
 import { createItems, generateItemCodes, moveItem } from './itemStateService.js';
 import {
-  NOT_IN_STOCK_STATUSES, OUTCOMES, capacityDeltasOf, capacityViolations, planStocktakeLine, snapshotOf, summarizeOutcomes,
+  NOT_IN_STOCK_STATUSES, OUTCOMES, actionOfLine, adjustmentCapacityDeltas, adjustmentLineFor, capacityDeltasOf, capacityViolations,
+  planStocktakeLine, snapshotOf, summarizeOutcomes,
 } from './stocktakeApplyRules.js';
 import { StockRelocation } from '../../models/warehouse/transfer/StockRelocation.js';
 import { StockRelocationDetail } from '../../models/warehouse/transfer/StockRelocationDetail.js';
@@ -124,7 +126,8 @@ const findAdjustmentDetails = (adjustmentIds) => StockAdjustmentDetail.find({ ad
   .sort({ createdAt: 1 })
   .populate({ path: 'variantId', select: 'sku productId', populate: { path: 'productId', select: 'productCode name' } })
   .populate('itemId', 'itemCode serialNumber status')
-  .populate('storageId', 'code name type');
+  .populate('storageId', 'code name type')
+  .populate('toStorageId', 'code name type');
 
 const assertStaffAssigned = (stocktake, user) => {
   const assignedId = stocktake.assignedStaffId?._id || stocktake.assignedStaffId || '';
@@ -516,15 +519,16 @@ export const cancelStocktake = async (stocktakeId, payload, user) => {
   return loadStocktake(stocktakeId, user);
 };
 
-/* ------------------------------ Duyệt = áp dụng (TASK-016 B3) ------------------------------ */
+/* ------------------------------ Duyệt kiểm kê → sinh phiếu điều chỉnh (người dùng chốt 28/11) ------------------------------ */
 
 const OPEN_RELOCATION_STATUSES = ['assigned', 'in_progress'];
 
 /**
  * Món `reserved` ở kho tổng chỉ do phiếu di chuyển kệ giữ: bỏ món khỏi dòng phiếu (giảm số lượng; dòng hết món thì xóa,
  * phiếu hết dòng thì tự hủy). Trả về thông tin để báo nhân viên / quản lý phụ trách chọn món khác.
+ * `slipCode`: mã phiếu điều chỉnh đang áp dụng (ghi vào ghi chú của phiếu bị tự hủy).
  */
-const releaseFromHoldingSlip = async (item, stocktake, session) => {
+const releaseFromHoldingSlip = async (item, slipCode, session) => {
   const rows = await StockRelocationDetail.find({ itemIds: item._id }).session(session);
   const relocations = rows.length
     ? await StockRelocation.find({ _id: { $in: rows.map((row) => row.relocationId) }, status: { $in: OPEN_RELOCATION_STATUSES } }).session(session)
@@ -538,7 +542,7 @@ const releaseFromHoldingSlip = async (item, stocktake, session) => {
   if (!remaining) {
     relocation.status = 'cancelled';
     relocation.cancelledAt = new Date();
-    relocation.note = [relocation.note, `Tự hủy: món cuối cùng bị bỏ ra khi duyệt kiểm kê ${stocktake.stocktakeCode}.`].filter(Boolean).join('\n');
+    relocation.note = [relocation.note, `Tự hủy: món cuối cùng bị bỏ ra khi áp dụng điều chỉnh ${slipCode}.`].filter(Boolean).join('\n');
     await relocation.save({ session });
   }
   return {
@@ -548,11 +552,11 @@ const releaseFromHoldingSlip = async (item, stocktake, session) => {
 };
 
 /** Báo cho người phụ trách phiếu di chuyển kệ (sau khi commit, không chặn nghiệp vụ). */
-const notifyReleasedHolds = async (releases, stocktakeCode) => {
+const notifyReleasedHolds = async (releases, slipCode) => {
   for (const release of releases) {
     const message = release.cancelled
-      ? `Kiểm kê ${stocktakeCode}: món ${release.itemCode} cần xử lý nên đã bỏ khỏi phiếu ${release.relocationCode}; phiếu không còn món nên đã tự hủy.`
-      : `Kiểm kê ${stocktakeCode}: món ${release.itemCode} cần xử lý nên đã bỏ khỏi phiếu ${release.relocationCode}. Vui lòng chọn món khác nếu cần.`;
+      ? `Điều chỉnh ${slipCode}: món ${release.itemCode} đã bỏ khỏi phiếu ${release.relocationCode}; phiếu không còn món nên đã tự hủy.`
+      : `Điều chỉnh ${slipCode}: món ${release.itemCode} đã bỏ khỏi phiếu ${release.relocationCode}. Vui lòng chọn món khác nếu cần.`;
     for (const userId of new Set(release.userIds)) {
       await createNotification({
         userId, title: 'Món bị bỏ khỏi phiếu di chuyển kệ', message, type: 'system',
@@ -562,52 +566,7 @@ const notifyReleasedHolds = async (releases, stocktakeCode) => {
   }
 };
 
-const stocktakeMovement = (stocktake, detail, user, extra) => ({
-  variantId: detail.variantId, locationId: stocktake.locationId,
-  referenceType: 'stocktake', referenceId: stocktake._id, createdBy: user._id, ...extra,
-});
-
-/** Mã cho món mới phát hiện khi kiểm kê: dùng mã đã nhập, không có thì sinh `<SKU>-<4 số>` (TASK-015). */
-const itemCodeForNewItem = async (detail, session) => {
-  if (detail.countedItemCode) {
-    if (await InventoryItem.exists({ itemCode: detail.countedItemCode }).session(session)) {
-      throw appError(`Mã hàng ${detail.countedItemCode} đã tồn tại; hãy ghi lại món đó như món có mã trong hệ thống.`, 409);
-    }
-    return detail.countedItemCode;
-  }
-  const variant = await ProductVariant.findById(detail.variantId).select('sku').session(session).lean();
-  const [code] = await generateItemCodes(variant?.sku, 1, session);
-  return code;
-};
-
-/** Ghi DB cho một dòng theo kế hoạch (đổi món qua itemStateService + sổ biến động). Trả về thông tin nhả giữ (nếu có). */
-const applyStocktakePlan = async ({ stocktake, detail, item, plan, user, session }) => {
-  const movement = (extra) => recordStockMovement(stocktakeMovement(stocktake, detail, user, extra), session);
-  if (plan.outcome === OUTCOMES.CREATED) {
-    const [created] = await createItems([{
-      variantId: detail.variantId, locationId: stocktake.locationId, storageId: plan.toStorageId,
-      itemCode: await itemCodeForNewItem(detail, session),
-      serialNumber: detail.countedSerialNumber || undefined, status: plan.status,
-    }], session);
-    detail.itemId = created._id;
-    await movement({ itemId: created._id, storageId: plan.toStorageId, movementType: 'adjustment', quantityChange: 1 });
-    return null;
-  }
-  if (!plan.change) return null;
-  const release = plan.releaseHold ? await releaseFromHoldingSlip(item, stocktake, session) : null;
-  await moveItem(item, plan.change, session);
-  if (plan.outcome === OUTCOMES.LOST) {
-    await movement({ itemId: item._id, storageId: plan.fromStorageId, movementType: 'adjustment', quantityChange: -1 });
-  } else if (plan.outcome === OUTCOMES.FOUND) {
-    await movement({ itemId: item._id, storageId: plan.toStorageId, movementType: 'adjustment', quantityChange: 1 });
-  } else if (plan.moved) {
-    await movement({ itemId: item._id, storageId: plan.fromStorageId, movementType: 'transfer_out', quantityChange: -1 });
-    await movement({ itemId: item._id, storageId: plan.toStorageId, movementType: 'transfer_in', quantityChange: 1 });
-  }
-  return release;
-};
-
-/** Vượt sức chứa ở kệ / khu / kho nhận thêm hàng → 409, không duyệt. */
+/** Vượt sức chứa ở kệ / khu / kho nhận thêm hàng → 409 (báo sớm lúc duyệt kiểm kê; áp dụng điều chỉnh kiểm lại). */
 const assertStocktakeCapacity = async (stocktake, plans, session) => {
   const snapshot = await capacitySnapshot(stocktake.locationId, session, null);
   const violations = capacityViolations(snapshot, capacityDeltasOf(plans));
@@ -623,24 +582,38 @@ const refreshStockStatusForVariants = async (variantIds) => {
     const variants = await ProductVariant.find({ _id: { $in: variantIds } }).select('productId').lean();
     const productIds = [...new Set(variants.map((variant) => String(variant.productId)).filter(Boolean))];
     if (!productIds.length) return;
-    refreshOutOfStockStatus(productIds).catch((err) => console.error('[TASK-012] stocktake refresh lỗi:', err.message));
+    refreshOutOfStockStatus(productIds).catch((err) => console.error('[TASK-012] stock adjustment refresh lỗi:', err.message));
   } catch (_) { /* non-blocking */ }
 };
 
+/** Sinh phiếu điều chỉnh `requested` (mã DCK-…) từ các dòng lệch của phiếu kiểm kê. */
+const createAdjustmentFromStocktake = async (stocktake, lines, user, session) => {
+  const [adjustment] = await StockAdjustment.create([{
+    adjustmentCode: makeCode('DCK'),
+    locationId: stocktake.locationId,
+    stocktakeId: stocktake._id,
+    reason: `Điều chỉnh từ kiểm kê ${stocktake.stocktakeCode}`,
+    createdBy: user._id,
+    status: ADJUSTMENT_STATUS.REQUESTED,
+  }], { session });
+  await StockAdjustmentDetail.insertMany(lines.map((line) => ({ ...line, adjustmentId: adjustment._id })), { session });
+  return adjustment;
+};
+
 /**
- * Quản lý duyệt kết quả kiểm kê = áp dụng ngay trong một transaction (TASK-016 B3). Không sinh phiếu điều chỉnh.
- * Dòng có món đã đổi sau lúc bắt đầu kiểm bị bỏ qua (`skippedReason`). Trả về { stocktake, summary, adjustment: null }.
+ * Quản lý duyệt kết quả kiểm kê (người dùng chốt 28/11): kiểm kê chỉ ghi lại thực tế, KHÔNG đổi tồn.
+ * Mỗi dòng lệch (không thấy, món lạ, tìm thấy món mất, cần xử lý, sai kệ) thành một dòng của phiếu điều chỉnh chờ duyệt;
+ * duyệt rồi áp dụng phiếu điều chỉnh mới đổi món / tồn. Dòng có món đổi sau lúc bắt đầu kiểm bị bỏ qua (`skippedReason`).
+ * Trả về { stocktake, summary, adjustment } (adjustment null nếu không có gì lệch).
  */
 export const approveStocktake = async (stocktakeId, user) => {
   if (!isManager(user)) throw appError('Chỉ quản lý kho mới được duyệt kiểm kê.', 403);
   if (!idValid(stocktakeId)) throw appError('Mã phiếu kiểm kê không hợp lệ.');
   const session = await mongoose.startSession();
-  let releases = [];
-  let stocktakeCode = '';
-  let changedVariantIds = [];
+  let adjustmentId = null;
   try {
     await session.withTransaction(async () => {
-      releases = [];
+      adjustmentId = null;
       // Giành trạng thái ngay đầu transaction để duyệt và hủy loại trừ nhau.
       const stocktake = await Stocktake.findOneAndUpdate(
         { _id: stocktakeId, status: STOCKTAKE_STATUS.COUNTED },
@@ -648,36 +621,32 @@ export const approveStocktake = async (stocktakeId, user) => {
         { new: true, session },
       );
       if (!stocktake) throw appError('Phiếu kiểm kê chưa gửi kết quả, đã được xử lý hoặc đã bị hủy.', 409);
-      stocktakeCode = stocktake.stocktakeCode;
       const details = await StocktakeDetail.find({ stocktakeId }).sort({ createdAt: 1, _id: 1 }).session(session);
       if (details.some((detail) => !detail.isCounted)) throw appError('Tất cả dòng phải được kiểm đếm trước khi duyệt.');
       const itemIds = details.map((detail) => detail.itemId).filter(Boolean);
-      const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session);
+      const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session).lean();
       const itemById = new Map(items.map((item) => [String(item._id), item]));
       const itemOf = (detail) => (detail.itemId ? itemById.get(String(detail.itemId)) || null : null);
       const plans = details.map((detail) => planStocktakeLine(detail, itemOf(detail), { locationId: stocktake.locationId }));
       await assertStocktakeCapacity(stocktake, plans, session);
+      const lines = [];
       for (let index = 0; index < details.length; index += 1) {
         const detail = details[index];
         const plan = plans[index];
-        if (plan.outcome !== OUTCOMES.SKIPPED) {
-          const release = await applyStocktakePlan({ stocktake, detail, item: itemOf(detail), plan, user, session });
-          if (release) releases.push(release);
-        }
         detail.appliedOutcome = plan.outcome;
         detail.skippedReason = plan.skippedReason || null;
         await detail.save({ session });
+        const line = plan.outcome === OUTCOMES.SKIPPED ? null : adjustmentLineFor(detail, itemOf(detail), plan);
+        if (line) lines.push(line);
       }
-      const changed = details.filter((_, index) => ![OUTCOMES.SKIPPED, OUTCOMES.UNCHANGED].includes(plans[index].outcome));
-      changedVariantIds = [...new Set(changed.map((detail) => String(detail.variantId)))];
+      if (lines.length) adjustmentId = (await createAdjustmentFromStocktake(stocktake, lines, user, session))._id;
     });
   } finally {
     await session.endSession();
   }
-  await notifyReleasedHolds(releases, stocktakeCode).catch((error) => console.error('[TASK-016] thông báo kiểm kê lỗi:', error.message));
-  await refreshStockStatusForVariants(changedVariantIds);
   const stocktake = await loadStocktake(stocktakeId, user);
-  return { stocktake, summary: stocktake.summary, adjustment: null };
+  const adjustment = adjustmentId ? await getStockAdjustment(adjustmentId) : null;
+  return { stocktake, summary: stocktake.summary, adjustment };
 };
 
 /* ======================================== Điều chỉnh tồn ======================================== */
@@ -726,134 +695,124 @@ export const decideStockAdjustment = async (adjustmentId, user, decision, note =
   return getStockAdjustment(adjustmentId);
 };
 
-/** Đã dùng của toàn kho và từng kệ (kể cả cấp cha), chỉ đọc InventoryBalance.quantityOnHand. */
-const getCapacitySnapshot = async (locationId, session) => {
-  const [location, storages, balances] = await Promise.all([
-    InventoryLocation.findById(locationId).session(session).lean(),
-    StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity').session(session).lean(),
-    InventoryBalance.find({ locationId }).select('storageId quantityOnHand').session(session).lean(),
-  ]);
-  const storageById = new Map(storages.map((storage) => [String(storage._id), storage]));
-  const usedByStorage = new Map();
-  let used = 0;
-  for (const row of balances) {
-    const amount = Math.max(0, row.quantityOnHand || 0);
-    used += amount;
-    if (row.storageId) addToStorageChain(usedByStorage, storageById, String(row.storageId), amount);
-  }
-  return { location, storageById, usedByStorage, used };
+/** Sau áp dụng, kho / kệ nhận thêm hàng không được vượt sức chứa (chỉ xét nơi tăng ròng). */
+const assertAdjustmentCapacity = async (adjustment, details, session) => {
+  const snapshot = await capacitySnapshot(adjustment.locationId, session, null);
+  const violations = capacityViolations(snapshot, adjustmentCapacityDeltas(details));
+  if (!violations.length) return;
+  const overLocation = violations.find((row) => row.code === (snapshot.location?.code || 'kho'));
+  if (overLocation) throw appError('Điều chỉnh vượt sức chứa tối đa của kho.', 409);
+  throw appError(`Điều chỉnh vượt sức chứa vị trí ${violations.map((row) => row.code).join(', ')}.`, 409);
 };
 
-/** Sau điều chỉnh, toàn kho và từng kệ không được vượt sức chứa tối đa. */
-const assertCapacity = (snapshot, adjustmentDetails) => {
-  const projectedByStorage = new Map(snapshot.usedByStorage);
-  let projectedLocation = snapshot.used;
-  for (const detail of adjustmentDetails) {
-    projectedLocation += detail.quantityChange;
-    if (detail.storageId) addToStorageChain(projectedByStorage, snapshot.storageById, String(detail.storageId), detail.quantityChange);
-  }
-  if (snapshot.location?.maxCapacity != null && projectedLocation > snapshot.location.maxCapacity) {
-    throw appError('Điều chỉnh vượt sức chứa tối đa của kho.', 409);
-  }
-  for (const [id, projected] of projectedByStorage) {
-    const storage = snapshot.storageById.get(id);
-    if (storage?.maxCapacity != null && projected > storage.maxCapacity) {
-      throw appError(`Điều chỉnh vượt sức chứa vị trí ${id}.`, 409);
+const CHANGED_AFTER_APPROVAL = 'Mã hàng cá thể đã thay đổi vị trí/trạng thái sau khi duyệt. Tạo lại phiếu kiểm kê.';
+
+/** Mã cho món mới: dùng mã đã ghi (không được trùng), không có thì sinh `<SKU>-<4 số>` (TASK-015). */
+const itemCodeForNewItem = async (detail, session) => {
+  if (detail.itemCode) {
+    if (await InventoryItem.exists({ itemCode: detail.itemCode }).session(session)) {
+      throw appError(`Mã hàng ${detail.itemCode} đã tồn tại; hãy tạo lại phiếu kiểm kê và ghi món đó như món có mã trong hệ thống.`, 409);
     }
+    return detail.itemCode;
   }
-};
-
-/**
- * Mã cho món lạ phát hiện khi kiểm kê: dùng mã đã nhập, không có thì sinh `<SKU>-<4 số>` (TASK-015).
- */
-const itemCodeForFoundItem = async (detail, session) => {
-  if (detail.itemCode) return detail.itemCode;
   const variant = await ProductVariant.findById(detail.variantId).select('sku').session(session).lean();
   const [code] = await generateItemCodes(variant?.sku, 1, session);
   return code;
 };
 
-/** Phiếu điều chỉnh cũ: món thiếu → lost (TASK-016); món thừa → tạo món mới qua itemStateService. Trả về id món để ghi sổ. */
-const applyItemAdjustment = async (adjustment, detail, session) => {
-  if (detail.itemId && detail.quantityChange === -1) {
-    const item = await InventoryItem.findOne({
-      _id: detail.itemId, locationId: adjustment.locationId, storageId: detail.storageId || null,
-      status: { $nin: NOT_IN_STOCK_STATUSES },
-    }).session(session);
-    if (!item) throw appError('Mã hàng cá thể đã thay đổi vị trí/trạng thái sau khi duyệt. Tạo lại phiếu kiểm kê.', 409);
+/** Món của dòng phải còn đúng trạng thái / vị trí như lúc duyệt; dòng cũ (không `action`) chỉ cần còn ở kệ trong kho. */
+const loadLineItem = async (adjustment, detail, session) => {
+  const item = await InventoryItem.findById(detail.itemId).session(session);
+  if (!item) throw appError(CHANGED_AFTER_APPROVAL, 409);
+  const sameStorage = String(item.storageId || '') === String((detail.action ? detail.expectedStorageId : detail.storageId) || '');
+  const matches = detail.action
+    ? item.status === detail.expectedStatus && String(item.locationId) === String(detail.expectedLocationId) && sameStorage
+    : String(item.locationId) === String(adjustment.locationId) && sameStorage && !NOT_IN_STOCK_STATUSES.includes(item.status);
+  if (!matches) throw appError(CHANGED_AFTER_APPROVAL, 409);
+  return item;
+};
+
+/**
+ * Áp dụng một dòng: đổi món qua itemStateService và ghi sổ (`adjustment` ±1 cho mất / tìm thấy / món mới,
+ * cặp transfer_out / transfer_in khi chuyển kệ). Trả thông tin nhả giữ (nếu có) để gửi thông báo sau commit.
+ */
+const applyAdjustmentLine = async ({ adjustment, detail, user, session }) => {
+  const action = actionOfLine(detail);
+  const movement = (extra) => recordStockMovement({
+    variantId: detail.variantId, locationId: adjustment.locationId, referenceType: 'stock_adjustment',
+    referenceId: adjustment._id, createdBy: user._id, ...extra,
+  }, session);
+  if (action === 'create') {
+    const storageId = detail.toStorageId || detail.storageId || null;
+    const [created] = await createItems([{
+      variantId: detail.variantId, locationId: adjustment.locationId, storageId,
+      itemCode: await itemCodeForNewItem(detail, session), serialNumber: detail.serialNumber || undefined,
+      status: detail.targetStatus || detail.itemStatus || 'available',
+    }], session);
+    detail.itemId = created._id;
+    await detail.save({ session });
+    await movement({ itemId: created._id, storageId, movementType: 'adjustment', quantityChange: 1 });
+    return null;
+  }
+  const item = await loadLineItem(adjustment, detail, session);
+  const from = item.storageId || null;
+  if (!detail.action) {
+    // Dòng cũ: chỉ có báo mất; món đang giữ phải được nhả tay trước.
     if (item.status === 'reserved') {
       throw appError(`Món ${item.itemCode} đang được giữ cho phiếu kho hoặc đơn hàng. Hãy nhả giữ trước khi áp dụng điều chỉnh.`, 409);
     }
     await moveItem(item, { status: 'lost' }, session);
-    return detail.itemId;
+    await movement({ itemId: item._id, storageId: from, movementType: 'adjustment', quantityChange: -1 });
+    return null;
   }
-  if (!detail.itemId && detail.quantityChange > 0) {
-    if (detail.quantityChange !== 1) throw appError('Mỗi dòng điều chỉnh tăng chỉ tạo một món mới.');
-    if (detail.itemStatus === 'reserved') throw appError('Không thể tạo món mới ở trạng thái giữ chỗ.', 409);
-    const [createdItem] = await createItems([{
-      variantId: detail.variantId,
-      locationId: adjustment.locationId,
-      storageId: detail.storageId || null,
-      itemCode: await itemCodeForFoundItem(detail, session),
-      serialNumber: detail.serialNumber || undefined,
-      status: detail.itemStatus || 'available',
-    }], session);
-    return createdItem._id;
+  const release = detail.releaseHold ? await releaseFromHoldingSlip(item, adjustment.adjustmentCode, session) : null;
+  const change = { status: detail.targetStatus, locationId: detail.targetLocationId, storageId: detail.targetStorageId };
+  if (detail.warehouseHold) change.warehouseHold = detail.warehouseHold;
+  await moveItem(item, change, session);
+  const to = detail.targetStorageId || null;
+  if (action === 'lost') await movement({ itemId: item._id, storageId: from, movementType: 'adjustment', quantityChange: -1 });
+  else if (action === 'found') await movement({ itemId: item._id, storageId: to, movementType: 'adjustment', quantityChange: 1 });
+  else if (String(from || '') !== String(to || '')) {
+    await movement({ itemId: item._id, storageId: from, movementType: 'transfer_out', quantityChange: -1 });
+    await movement({ itemId: item._id, storageId: to, movementType: 'transfer_in', quantityChange: 1 });
   }
-  if (detail.quantityChange !== 0) throw appError('Chênh lệch cá thể phải là một mã hàng cụ thể.');
-  return detail.itemId || null;
+  return release;
 };
 
-/** Cập nhật cờ hết hàng của sản phẩm sau khi áp dụng điều chỉnh; không chặn nghiệp vụ. */
-const refreshStockStatusAfterAdjustment = async (adjustmentId) => {
-  // TASK-012: Điều chỉnh kho → tồn thay đổi → kiểm tra lại hết hàng
-  try {
-    const adj = await StockAdjustment.findById(adjustmentId).select('_id').lean();
-    if (!adj) return;
-    const details = await StockAdjustmentDetail.find({ adjustmentId: adj._id }).select('variantId').lean();
-    const variantIds = [...new Set(details.map((d) => String(d.variantId)).filter(Boolean))];
-    if (!variantIds.length) return;
-    const pvs = await ProductVariant.find({ _id: { $in: variantIds } }).select('productId').lean();
-    const productIds = [...new Set(pvs.map((v) => String(v.productId)).filter(Boolean))];
-    if (!productIds.length) return;
-    refreshOutOfStockStatus(productIds).catch((err) => console.error('[TASK-012] stock adjustment refresh lỗi:', err.message));
-  } catch (_) { /* non-blocking */ }
-};
-
-/** Quản lý áp dụng phiếu điều chỉnh đã duyệt: đổi trạng thái / tạo món theo từng dòng và ghi sổ biến động `adjustment`. */
+/**
+ * Quản lý áp dụng phiếu điều chỉnh đã duyệt (một transaction): kiểm sức chứa, áp dụng từng dòng.
+ * Một dòng có món đã đổi sau khi duyệt → 409, không dòng nào được áp dụng.
+ */
 export const applyStockAdjustment = async (adjustmentId, user) => {
   if (!isManager(user)) throw appError('Chỉ quản lý kho mới được áp dụng điều chỉnh.', 403);
   const session = await mongoose.startSession();
+  let releases = [];
+  let adjustmentCode = '';
+  let variantIds = [];
   try {
     await session.withTransaction(async () => {
+      releases = [];
       const adjustment = await StockAdjustment.findOne({ _id: adjustmentId, status: ADJUSTMENT_STATUS.APPROVED })
         .session(session);
       if (!adjustment) throw appError('Phiếu điều chỉnh chưa được duyệt hoặc đã được áp dụng.', 409);
-      const details = await StockAdjustmentDetail.find({ adjustmentId }).session(session);
-      assertCapacity(await getCapacitySnapshot(adjustment.locationId, session), details);
+      adjustmentCode = adjustment.adjustmentCode;
+      const details = await StockAdjustmentDetail.find({ adjustmentId }).sort({ createdAt: 1, _id: 1 }).session(session);
+      await assertAdjustmentCapacity(adjustment, details, session);
       for (const detail of details) {
         if (detail.quantityAfter < 0 || detail.quantityAfter !== detail.quantityBefore + detail.quantityChange) {
           throw appError('Dữ liệu số lượng điều chỉnh không hợp lệ.');
         }
-        const movementItemId = await applyItemAdjustment(adjustment, detail, session);
-        await recordStockMovement({
-          variantId: detail.variantId,
-          itemId: movementItemId,
-          locationId: adjustment.locationId,
-          storageId: detail.storageId || null,
-          movementType: 'adjustment',
-          quantityChange: detail.quantityChange,
-          referenceType: 'stock_adjustment',
-          referenceId: adjustment._id,
-          createdBy: user._id,
-        }, session);
+        const release = await applyAdjustmentLine({ adjustment, detail, user, session });
+        if (release) releases.push(release);
       }
+      variantIds = [...new Set(details.map((detail) => String(detail.variantId)))];
       adjustment.status = ADJUSTMENT_STATUS.APPLIED;
       await adjustment.save({ session });
     });
   } finally {
     await session.endSession();
   }
-  await refreshStockStatusAfterAdjustment(adjustmentId);
+  await notifyReleasedHolds(releases, adjustmentCode).catch((error) => console.error('[điều chỉnh] thông báo lỗi:', error.message));
+  await refreshStockStatusForVariants(variantIds);
   return getStockAdjustment(adjustmentId);
 };

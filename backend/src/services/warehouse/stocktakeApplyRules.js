@@ -184,3 +184,76 @@ export const summarizeOutcomes = (details) => {
   }
   return summary;
 };
+
+/* ------------------------------ Kiểm kê → phiếu điều chỉnh (người dùng chốt 28/11) ------------------------------ */
+// Duyệt kiểm kê KHÔNG đổi tồn: mỗi dòng lệch thành một dòng StockAdjustmentDetail; áp dụng phiếu điều chỉnh mới đổi món.
+
+export const ADJUSTMENT_ACTIONS = Object.freeze(['lost', 'create', 'found', 'needs_service', 'relocate']);
+const ACTION_BY_OUTCOME = Object.freeze({
+  [OUTCOMES.LOST]: 'lost',
+  [OUTCOMES.CREATED]: 'create',
+  [OUTCOMES.FOUND]: 'found',
+  [OUTCOMES.NEEDS_SERVICE]: 'needs_service',
+  [OUTCOMES.RELOCATED]: 'relocate',
+});
+const ACTION_REASON = Object.freeze({
+  lost: 'Kiểm kê không thấy món',
+  create: 'Món lạ phát hiện khi kiểm kê',
+  found: 'Tìm thấy món đang mất khi kiểm kê',
+  needs_service: 'Món cần xử lý (giặt / sửa)',
+  relocate: 'Món nằm sai kệ',
+});
+/** [trước, chênh, sau] của dòng: chỉ mất / tìm thấy / món mới làm đổi số tồn. */
+const QUANTITIES = Object.freeze({ lost: [1, -1, 0], create: [0, 1, 1], found: [0, 1, 1], needs_service: [1, 0, 1], relocate: [1, 0, 1] });
+
+const nullableId = (value) => (value?._id ?? value) || null;
+
+/**
+ * Dòng điều chỉnh cho một dòng kiểm kê theo kế hoạch đã lập (planStocktakeLine). Trả null khi không cần điều chỉnh
+ * (đúng, bị bỏ qua, hoặc "cần xử lý" với món đã unavailable / maintenance ở đúng kệ).
+ * Dòng lưu trạng thái món lúc duyệt (`expected*`) để lúc áp dụng phát hiện món đã đổi, và trạng thái đích (`target*`).
+ */
+export const adjustmentLineFor = (detail, item, plan) => {
+  const action = ACTION_BY_OUTCOME[plan.outcome];
+  if (!action) return null;
+  const [quantityBefore, quantityChange, quantityAfter] = QUANTITIES[action];
+  const base = {
+    stocktakeDetailId: detail._id, variantId: detail.variantId, action,
+    quantityBefore, quantityChange, quantityAfter, reason: detail.note || ACTION_REASON[action],
+  };
+  if (action === 'create') {
+    return {
+      ...base, itemId: null, storageId: plan.toStorageId, toStorageId: plan.toStorageId,
+      itemCode: detail.countedItemCode || null, serialNumber: detail.countedSerialNumber || null, itemStatus: plan.status || 'available',
+      targetStatus: plan.status || 'available',
+    };
+  }
+  if (!plan.change) return null;
+  const from = nullableId(item.storageId);
+  const target = {
+    targetStatus: plan.change.status ?? item.status,
+    targetLocationId: nullableId(plan.change.locationId) || nullableId(item.locationId),
+    targetStorageId: plan.change.storageId !== undefined ? nullableId(plan.change.storageId) : from,
+  };
+  return {
+    ...base, ...target,
+    itemId: item._id, storageId: from, toStorageId: target.targetStorageId,
+    itemCode: item.itemCode || null, serialNumber: item.serialNumber || null, itemStatus: target.targetStatus,
+    expectedStatus: item.status, expectedLocationId: nullableId(item.locationId), expectedStorageId: from,
+    warehouseHold: plan.change.warehouseHold || 0, releaseHold: Boolean(plan.releaseHold),
+  };
+};
+
+/** Hành động của dòng điều chỉnh; dòng cũ (trước 28/11) không có `action`: −1 = mất, +1 = món mới. */
+export const actionOfLine = (line) => line.action || (Number(line.quantityChange) < 0 ? 'lost' : 'create');
+
+/** Phần thay đổi chỗ trên kệ khi áp dụng các dòng điều chỉnh (cùng dạng capacityDeltasOf). */
+export const adjustmentCapacityDeltas = (lines) => capacityDeltasOf((lines || []).map((line) => {
+  const action = actionOfLine(line);
+  const toStorageId = line.toStorageId ?? line.targetStorageId ?? line.storageId ?? null;
+  const fromStorageId = line.expectedStorageId ?? line.storageId ?? null;
+  if (action === 'lost') return { outcome: OUTCOMES.LOST, fromStorageId };
+  if (action === 'create') return { outcome: OUTCOMES.CREATED, toStorageId };
+  if (action === 'found') return { outcome: OUTCOMES.FOUND, toStorageId };
+  return { outcome: OUTCOMES.RELOCATED, fromStorageId, toStorageId, moved: idOf(fromStorageId) !== idOf(toStorageId) };
+}));

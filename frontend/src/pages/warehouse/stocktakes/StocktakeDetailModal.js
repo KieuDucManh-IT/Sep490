@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Button, Modal } from 'react-bootstrap';
 import WarehouseWorkflowProgress from '../../../components/WarehouseWorkflowProgress';
 import { WarehouseCancelledNote } from '../../../components/WarehouseCancelSlipModal';
@@ -22,14 +23,17 @@ function countingCards(summary) {
   ];
 }
 
-/** Thẻ tổng kết sau khi duyệt (TASK-016 B3): đúng / cần xử lý / mất / tìm thấy / chuyển kệ / bị bỏ qua. */
+/**
+ * Thẻ tổng kết sau khi duyệt: đúng / cần xử lý / mất / tìm thấy / chuyển kệ / bị bỏ qua.
+ * Các dòng lệch nằm trong phiếu điều chỉnh, chỉ đổi tồn khi phiếu điều chỉnh được duyệt và áp dụng.
+ */
 function approvedCards(summary) {
   return [
     { key: 'unchanged', label: 'Đúng', value: summary.unchanged },
     { key: 'needsService', label: 'Cần xử lý', value: summary.needsService, tone: summary.needsService > 0 ? 'warn' : 'default' },
-    { key: 'lost', label: 'Mất', value: summary.lost, tone: summary.lost > 0 ? 'danger' : 'default' },
-    { key: 'found', label: 'Tìm thấy', value: summary.found },
-    { key: 'relocated', label: 'Chuyển kệ', value: summary.relocated },
+    { key: 'lost', label: 'Không thấy', value: summary.lost, tone: summary.lost > 0 ? 'danger' : 'default' },
+    { key: 'found', label: 'Món lạ / tìm thấy', value: summary.found },
+    { key: 'relocated', label: 'Sai kệ', value: summary.relocated },
     { key: 'skipped', label: 'Bị bỏ qua', value: summary.skipped, tone: summary.skipped > 0 ? 'warn' : 'default' },
   ];
 }
@@ -51,7 +55,10 @@ function DetailActions({ stocktake, isManager, busy, actions }) {
         </>
       )}
       {status === 'counted' && isManager && (
-        <Button variant="dark" disabled={busy} onClick={actions.onApprove}>Duyệt và áp dụng</Button>
+        <Button variant="dark" disabled={busy} onClick={actions.onApprove}>Duyệt và tạo điều chỉnh</Button>
+      )}
+      {status === 'approved' && isManager && (
+        <Link className="btn btn-dark" to="/warehousemanager/adjustments">Mở phiếu điều chỉnh</Link>
       )}
     </>
   );
@@ -91,7 +98,7 @@ export default function StocktakeDetailModal({
         {editable && (
           <p className="wm-stock-subline">
             Mọi món mặc định "Có mặt – dùng được". Chỉ sửa món cần xử lý, không thấy hoặc nằm ở kệ khác; món gặp trên kệ mà không có
-            trong danh sách thì thêm ở mục "Món lạ". Duyệt sẽ áp dụng ngay vào tồn kho.
+            trong danh sách thì thêm ở mục "Món lạ". Duyệt sẽ tạo phiếu điều chỉnh cho các dòng lệch; tồn chỉ đổi khi áp dụng phiếu đó.
           </p>
         )}
         {error && <div className="wm-error">{error}</div>}

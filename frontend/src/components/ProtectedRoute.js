@@ -57,9 +57,7 @@ export default function ProtectedRoute({ children, allowedRoles = [], allowAdmin
       if (rawRole === "SHOP_OWNER" || rawRole === "OWNER") {
         return <Navigate to="/owner/branches" replace />;
       }
-      if (rawRole === "OPERATION_STAFF" || rawRole === "OPS") {
-        return <Navigate to="/ops/shops" replace />;
-      }
+
       return <Navigate to="/" replace />;
     }
   }

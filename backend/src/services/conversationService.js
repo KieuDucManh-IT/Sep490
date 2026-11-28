@@ -440,7 +440,7 @@ export const listConversations = async ({ userId, userRole, status, search, page
     const shopIds = await getUserManagedShopIds(userId, userRole);
     filter.shopId = { $in: shopIds };
   } else {
-    // Mọi vai trò khác (customer, warehouse_staff, operation_staff, v.v...) đều lấy các cuộc hội thoại mà họ tham gia
+    // Mọi vai trò khác (customer, warehouse_staff, v.v...) đều lấy các cuộc hội thoại mà họ tham gia
     filter.$or = [{ customerId: userId }, { participants: userId }];
   }
 

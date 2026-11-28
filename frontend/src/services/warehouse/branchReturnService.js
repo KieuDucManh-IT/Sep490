@@ -2,12 +2,15 @@ import api from '../api';
 
 const branchReturnService = {
   list: async () => (await api.get('/warehouse/returns')).data || [],
+  /** Danh sách phân trang: params gồm page, limit, status, search → { items, total, page, limit }. */
+  listPage: async (params = {}) => (await api.get('/warehouse/returns', { params })).data,
   listStaff: async () => (await api.get('/warehouse/returns/staff')).data || [],
   get: async (id) => (await api.get(`/warehouse/returns/${id}`)).data,
   create: async (payload) => (await api.post('/warehouse/returns', payload)).data,
   decide: async (id, payload) => (await api.post(`/warehouse/returns/${id}/decision`, payload)).data,
   dispatch: async (id) => (await api.post(`/warehouse/returns/${id}/dispatch`)).data,
-  cancel: async (id) => (await api.post(`/warehouse/returns/${id}/cancel`)).data,
+  // TASK-016 D2: bắt buộc lý do; chỉ hủy được khi requested / approved.
+  cancel: async (id, reason) => (await api.post(`/warehouse/returns/${id}/cancel`, { reason })).data,
   receive: async (id, payload) => (await api.post(`/warehouse/returns/${id}/receive`, payload)).data,
   decideReceipt: async (id, payload) => (await api.post(`/warehouse/returns/${id}/receipt-decision`, payload)).data,
   putaway: async (id, payload) => (await api.post(`/warehouse/returns/${id}/putaway`, payload)).data,

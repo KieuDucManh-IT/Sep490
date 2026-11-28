@@ -308,12 +308,46 @@
   background: #F5F3EF;
 }
 
+.admin-shops-topbar__avatar-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .admin-shops-topbar__avatar {
   width: 38px;
   height: 38px;
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid #ECEAE5;
+}
+
+.admin-shops-topbar__avatar-status {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  background-color: #10B981;
+  border-radius: 50%;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.25), 0 0 6px rgba(16, 185, 129, 0.6);
+  animation: adminStatusPulse 2.4s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes adminStatusPulse {
+  0% {
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2), 0 0 4px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.45), 0 0 10px rgba(16, 185, 129, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2), 0 0 4px rgba(16, 185, 129, 0.4);
+  }
 }
 
 .admin-shops-topbar__user-meta {

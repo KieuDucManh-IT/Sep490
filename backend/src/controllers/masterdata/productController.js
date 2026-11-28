@@ -5,6 +5,7 @@ import { Product } from '../../models/masterdata/Product.js';
 import { Category } from '../../models/masterdata/Category.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { ProductImage } from '../../models/masterdata/ProductImages.js';
+import { Review } from '../../models/masterdata/Review.js';
 import { productService } from '../../services/masterdata/productService.js';
 import { createCrudController } from '../../generic/crudController.js';
 import { enrichProductsWithInventory } from '../../services/warehouse/productInventoryHelper.js';
@@ -226,6 +227,38 @@ export const getProducts = async (req, res, next) => {
 
     // Lấy variants từ database để làm giàu thông tin sản phẩm
     const productIds = products.map((p) => p._id);
+
+    // Lấy thống kê đánh giá thật từ Review collection cho các sản phẩm trong danh sách
+    const validProductIds = productIds
+      .filter((id) => mongoose.Types.ObjectId.isValid(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+
+    let reviewStats = [];
+    try {
+      if (validProductIds.length > 0) {
+        reviewStats = await Review.aggregate([
+          { $match: { productId: { $in: validProductIds }, isDeleted: { $ne: true } } },
+          {
+            $group: {
+              _id: '$productId',
+              avgRating: { $avg: '$rating' },
+              totalCount: { $sum: 1 },
+            },
+          },
+        ]);
+      }
+    } catch (revErr) {
+      console.warn('Lỗi aggregate review stats:', revErr.message);
+    }
+
+    const reviewStatsMap = new Map();
+    reviewStats.forEach((st) => {
+      reviewStatsMap.set(String(st._id), {
+        rating: Math.round(st.avgRating * 10) / 10,
+        reviewsCount: st.totalCount,
+      });
+    });
+
     const productImages = await ProductImage.find({ productId: { $in: productIds } }).sort({ displayOrder: 1 }).lean();
     const imagesByProduct = {};
     productImages.forEach((image) => {
@@ -335,17 +368,44 @@ export const getProducts = async (req, res, next) => {
         branchName,
         branches,
         variantAvailability: inv.variantAvailability,
-        rating: typeof p.rating === 'number' ? p.rating : null,
-        reviewsCount: typeof p.reviewsCount === 'number' ? p.reviewsCount : 0,
+        rating: reviewStatsMap.has(String(p._id))
+          ? reviewStatsMap.get(String(p._id)).rating
+          : (typeof p.rating === 'number' && p.reviewsCount > 0 ? p.rating : 0),
+        reviewsCount: reviewStatsMap.has(String(p._id))
+          ? reviewStatsMap.get(String(p._id)).reviewsCount
+          : (typeof p.reviewsCount === 'number' && p.reviewsCount > 0 ? p.reviewsCount : 0),
         inStock: inv.inStock != null ? inv.inStock : (quantityAvailable > 0),
       };
     });
 
+    // TASK-012: Phát hiện sản phẩm hết hàng ở tất cả chi nhánh nhưng chưa được đánh dấu isOutOfStock trong DB
+    const outOfStockToMark = [];
+    enrichedProducts.forEach((item) => {
+      const isZeroStock = Number(item.quantityAvailable ?? 0) <= 0;
+      const isRestockRequested = Boolean(item.restockRequestedAt);
+      if (isZeroStock && !isRestockRequested && item.isOutOfStock !== true) {
+        outOfStockToMark.push(item._id);
+      }
+    });
+    if (outOfStockToMark.length) {
+      Product.updateMany(
+        { _id: { $in: outOfStockToMark } },
+        { $set: { isOutOfStock: true, outOfStockAt: new Date() } }
+      ).catch((err) => console.error('[TASK-012] Auto-update outOfStock error:', err.message));
+    }
+
+    // TASK-012: Ẩn sản phẩm hết hàng ở tất cả chi nhánh, trừ khi có yêu cầu nhập hàng từ Branch Manager (restockRequestedAt)
+    const customerVisibleProducts = enrichedProducts.filter((item) => {
+      if (item.isOutOfStock === true) return false;
+      const isZeroStock = Number(item.quantityAvailable ?? 0) <= 0;
+      const isRestockRequested = Boolean(item.restockRequestedAt);
+      if (isZeroStock && !isRestockRequested) return false;
+      return true;
+    });
+
     res.json({
       success: true,
-      // Availability remains part of each record (inStock/quantityAvailable);
-      // filtering it after skip/limit made pages incomplete and totals incorrect.
-      data: enrichedProducts,
+      data: customerVisibleProducts,
       pagination: {
         total,
         page: pageNum,
@@ -440,6 +500,15 @@ export const getProductById = async (req, res, next) => {
     const branches = invData.branches || [];
     const inv = invData;
 
+    // TASK-012: Hết hàng ở tất cả chi nhánh và không có yêu cầu nhập hàng -> ẩn với khách hàng (404)
+    if (quantityAvailable <= 0 && !product.restockRequestedAt) {
+      Product.updateOne(
+        { _id: product._id, isOutOfStock: { $ne: true } },
+        { $set: { isOutOfStock: true, outOfStockAt: new Date() } }
+      ).catch(() => {});
+      return res.status(404).json({ success: false, message: 'Sản phẩm hiện đang hết hàng tại tất cả chi nhánh.' });
+    }
+
     let imageRecords = [];
     try {
       imageRecords = await ProductImage.find({ productId: product._id }).sort({ displayOrder: 1 }).lean();
@@ -505,6 +574,30 @@ export const getProductById = async (req, res, next) => {
 
     const shopId = product.shopId || { name: product.brand || 'Vestora Fashion Store' };
 
+    let realRating = 0;
+    let realReviewsCount = 0;
+    try {
+      const revAgg = await Review.aggregate([
+        { $match: { productId: product._id, isDeleted: { $ne: true } } },
+        {
+          $group: {
+            _id: '$productId',
+            avgRating: { $avg: '$rating' },
+            totalCount: { $sum: 1 },
+          },
+        },
+      ]);
+      if (revAgg.length > 0) {
+        realRating = Math.round(revAgg[0].avgRating * 10) / 10;
+        realReviewsCount = revAgg[0].totalCount;
+      } else if (typeof product.rating === 'number' && product.reviewsCount > 0) {
+        realRating = product.rating;
+        realReviewsCount = product.reviewsCount;
+      }
+    } catch (e) {
+      console.warn('Lỗi aggregate review for product detail:', e.message);
+    }
+
     res.json({
       success: true,
       data: {
@@ -530,8 +623,8 @@ export const getProductById = async (req, res, next) => {
         branchName,
         branches,
         variantAvailability: inv.variantAvailability,
-        rating: typeof product.rating === 'number' ? product.rating : 5,
-        reviewsCount: typeof product.reviewsCount === 'number' ? product.reviewsCount : 0,
+        rating: realRating,
+        reviewsCount: realReviewsCount,
         inStock: inv.inStock != null ? inv.inStock : (quantity > 0),
           // inStock
           // variants

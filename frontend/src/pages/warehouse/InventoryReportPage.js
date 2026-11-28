@@ -1,80 +1,179 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button } from 'react-bootstrap';
 import { RefreshCw } from 'lucide-react';
-import WarehouseSidebar from '../../components/WarehouseSidebar';
 import InventorySerialsModal from '../../components/InventorySerialsModal';
+import { EmptyState, KpiCards, PageHeader, Pagination } from '../../components/warehouse';
 import inventoryReportService from '../../services/warehouse/inventoryReportService';
 import { useAuth } from '../../context/AuthContext';
-import '../../styles/WarehouseManager.css';
+import WarehousePageLayout from './shared/WarehousePageLayout';
+import CentralCapacityPanel from './inventory/CentralCapacityPanel';
+import ItemHistoryOffcanvas from './inventory/ItemHistoryOffcanvas';
 
-const pageSizes = [10, 20, 50];
 const number = (value) => Number(value || 0).toLocaleString('vi-VN');
-const overdueStyle = { color: '#b42318', fontWeight: 700 };
+const STORAGE_LEVEL_OPTIONS = [['zone', 'Khu'], ['row', 'Dãy'], ['shelf', 'Kệ']];
+const ITEM_LEVEL_OPTIONS = [['product', 'Sản phẩm'], ['variant', 'Biến thể']];
 
+function summaryCards(summary) {
+  const overdue = Number(summary.totalOverdue) || 0;
+  return [
+    { key: 'onHand', label: 'Tổng tồn', value: summary.totalOnHand, unit: 'cái' },
+    { key: 'available', label: 'Có thể sử dụng', value: summary.totalAvailable, unit: 'cái' },
+    { key: 'reserved', label: 'Đang giữ chỗ', value: summary.totalReserved, unit: 'cái' },
+    { key: 'unavailable', label: 'Không khả dụng', value: summary.totalUnavailable, unit: 'cái' },
+    { key: 'renting', label: 'Đang cho thuê', value: summary.totalRenting, unit: 'cái' },
+    { key: 'overdue', label: 'Quá hạn trả', value: summary.totalOverdue, unit: 'cái', tone: overdue > 0 ? 'danger' : 'default' },
+  ];
+}
+
+/** Dòng báo cáo khớp từ khóa (kho, quản lý, vị trí, sản phẩm, danh mục, SKU, size, màu). */
+function matchesQuery(row, query) {
+  if (!query) return true;
+  const text = [row.locationCode, row.locationName, row.managerName, row.storagePath, row.productCode,
+    row.productName, row.categoryName, row.sku, row.size, row.color].join(' ');
+  return text.toLowerCase().includes(query.toLowerCase());
+}
+
+function ReportRow({ row, onShowItems }) {
+  const overdue = Number(row.quantityOverdue) > 0;
+  return (
+    <tr>
+      <td><strong>{row.locationCode}</strong><br />{row.locationName}</td>
+      <td>{row.managerName || '—'}</td>
+      <td>{row.storagePath}</td>
+      <td>
+        <strong>{row.productName}</strong><br />
+        <small>{[row.productCode, row.sku, row.size, row.color].filter(Boolean).join(' · ')}</small>
+      </td>
+      <td>
+        <span>{`${number(row.itemCount ?? row.quantityOnHand)} mã hàng`}</span><br />
+        <button type="button" className="wm-text-button" onClick={() => onShowItems(row)}>Xem các món hàng tại vị trí</button>
+      </td>
+      <td>{number(row.quantityOnHand)}</td>
+      <td>{number(row.quantityAvailable)}</td>
+      <td>{number(row.quantityReserved)}</td>
+      <td>{number(row.quantityUnavailable)}</td>
+      <td>{number(row.quantityRenting)}</td>
+      <td className={overdue ? 'text-danger fw-bold' : undefined}>{number(row.quantityOverdue)}</td>
+    </tr>
+  );
+}
+
+function SelectFilter({ label, value, options, onChange, allLabel }) {
+  return (
+    <label>
+      {label}
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {allLabel && <option value="">{allLabel}</option>}
+        {options.map(([optionValue, text]) => <option key={optionValue} value={optionValue}>{text}</option>)}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * Báo cáo tồn kho: gộp số tồn theo cấp vị trí (khu / dãy / kệ) và cấp mặt hàng (sản phẩm / biến thể),
+ * kèm số đang cho thuê và quá hạn trả. Báo cáo trả toàn bộ dòng một lần nên tìm / phân trang ngay trên trình duyệt.
+ */
 export default function InventoryReportPage({ mode = 'manager' }) {
   const { user } = useAuth();
   const isStaff = mode === 'staff' || /warehouse_staff/i.test(user?.Role || user?.role || '');
   const [report, setReport] = useState({ items: [], locations: [], summary: {} });
-  const [locationId, setLocationId] = useState('');
-  const [storageLevel, setStorageLevel] = useState('shelf');
-  const [itemLevel, setItemLevel] = useState('variant');
+  const [filters, setFilters] = useState({ locationId: '', storageLevel: 'shelf', itemLevel: 'variant' });
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [serialDetail, setSerialDetail] = useState(null);
+  const [historyItemId, setHistoryItemId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
-    try { setReport(await inventoryReportService.get({ locationId, storageLevel, itemLevel })); }
-    catch (err) { setError(err.message); }
-    finally { setLoading(false); }
-  }, [locationId, storageLevel, itemLevel]);
+    try {
+      setReport(await inventoryReportService.get(filters));
+    } catch (loadError) {
+      setError(loadError.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [locationId, storageLevel, itemLevel, query, pageSize]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const filtered = useMemo(() => report.items.filter((item) => {
-    const text = [item.locationCode, item.locationName, item.managerName, item.storagePath, item.productCode, item.productName, item.categoryName, item.sku, item.size, item.color].join(' ').toLowerCase();
-    return !query || text.includes(query.toLowerCase());
-  }), [report.items, query]);
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  useEffect(() => {
+    setPage(1);
+  }, [filters, query, pageSize]);
+
+  const filtered = useMemo(() => report.items.filter((row) => matchesQuery(row, query)), [report.items, query]);
   const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
-  useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
+  const setFilter = (key) => (value) => setFilters((old) => ({ ...old, [key]: value }));
+  const locationOptions = report.locations.map((location) => [location._id, `${location.code} — ${location.name}`]);
 
-  const cards = [
-    ['Tổng tồn', report.summary.totalOnHand],
-    ['Có thể sử dụng', report.summary.totalAvailable],
-    ['Đang giữ chỗ', report.summary.totalReserved],
-    ['Không khả dụng', report.summary.totalUnavailable],
-    ['Đang cho thuê', report.summary.totalRenting],
-    ['Quá hạn trả', report.summary.totalOverdue, Number(report.summary.totalOverdue) > 0],
-  ];
-
-  return <div className="wm-layout"><WarehouseSidebar mode={isStaff ? 'staff' : 'manager'} /><main className="wm-main">
-    <header className="wm-header"><div><span>WAREHOUSE MANAGER / BÁO CÁO</span><h1>Báo cáo tồn kho</h1><p>Tùy chọn cấp vị trí và cấp mặt hàng để gộp số tồn; serial có thể xem trong chi tiết.</p></div><button type="button" className="wm-primary-button wm-refresh-button" onClick={() => load()} disabled={loading}><RefreshCw size={15} />Làm mới</button></header>
-    {error && <div className="wm-error">{error}</div>}
-    <section className="wm-report-cards">{cards.map(([label, value, warn]) => <article className="wm-report-card" key={label}><span>{label}</span><strong style={warn ? overdueStyle : undefined}>{number(value)}</strong><small>cái</small></article>)}</section>
-    <section className="wm-panel wm-list-panel">
-      <div className="wm-list-toolbar">
-        <label className="wm-search-field">Tìm mặt hàng<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên sản phẩm, SKU hoặc vị trí..." /></label>
-        <label>Kho / cửa hàng<select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Tất cả</option>{report.locations.map((location) => <option key={location._id} value={location._id}>{location.code} — {location.name}</option>)}</select></label>
-        <label>Gộp vị trí<select value={storageLevel} onChange={(event) => setStorageLevel(event.target.value)}><option value="zone">Khu (zone)</option><option value="row">Hàng (row)</option><option value="shelf">Kệ (shelf)</option></select></label>
-        <label>Gộp mặt hàng<select value={itemLevel} onChange={(event) => setItemLevel(event.target.value)}><option value="product">Sản phẩm</option><option value="variant">Biến thể</option></select></label>
-        <label className="wm-page-size">Số dòng<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
-      </div>
-      <div className="wm-table-wrap"><table><thead><tr><th>Kho / cửa hàng</th><th>Quản lý</th><th>Vị trí</th><th>Sản phẩm / biến thể</th><th>Mã hàng / serial</th><th>Tồn</th><th>Khả dụng</th><th>Đang giữ</th><th>Không khả dụng</th><th>Đang cho thuê</th><th>Quá hạn trả</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={11}>Đang tải báo cáo...</td></tr> : visible.length ? visible.map((item) => <tr key={item.key}>
-          <td><strong>{item.locationCode}</strong><br />{item.locationName}</td><td>{item.managerName || '—'}</td><td>{item.storagePath}</td>
-          <td><strong>{item.productName}</strong><br /><small>{[item.productCode, item.sku, item.size, item.color].filter(Boolean).join(' · ')}</small></td>
-          <td><span>{item.trackingType === 'individual' ? `${number(item.itemCount)} mã hàng` : 'Quản lý theo số lượng'}</span><br /><button type="button" className="wm-text-button" onClick={() => setSerialDetail(item)}>Xem InventoryItem tại vị trí</button></td>
-          <td>{number(item.quantityOnHand)}</td><td>{number(item.quantityAvailable)}</td><td>{number(item.quantityReserved)}</td><td>{number(item.quantityUnavailable)}</td>
-          <td>{number(item.quantityRenting)}</td><td style={Number(item.quantityOverdue) > 0 ? overdueStyle : undefined}>{number(item.quantityOverdue)}</td>
-        </tr>) : <tr><td colSpan={11}>Không có tồn kho phù hợp.</td></tr>}</tbody>
-      </table></div>
-      <div className="wm-pagination"><span>{filtered.length ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filtered.length)} / ${filtered.length}` : '0 kết quả'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</button><span>Trang {page} / {pages}</span><button type="button" disabled={page >= pages} onClick={() => setPage(page + 1)}>Sau</button></div></div>
-    </section>
-    {serialDetail && <InventorySerialsModal item={serialDetail} onClose={() => setSerialDetail(null)} />}
-  </main></div>;
+  return (
+    <WarehousePageLayout mode={isStaff ? 'staff' : 'manager'}>
+      <PageHeader
+        eyebrow="KHO TỔNG / BÁO CÁO"
+        title="Báo cáo tồn kho"
+        description="Tùy chọn cấp vị trí và cấp mặt hàng để gộp số tồn; serial có thể xem trong chi tiết."
+        actions={(
+          <Button variant="dark" onClick={load} disabled={loading}><RefreshCw size={15} /> Làm mới</Button>
+        )}
+      />
+      {error && <div className="wm-error">{error}</div>}
+      <KpiCards items={summaryCards(report.summary)} loading={loading} />
+      <CentralCapacityPanel />
+      <section className="wm-panel wm-list-panel">
+        <div className="wm-list-toolbar">
+          <label className="wm-search-field">
+            Tìm mặt hàng
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên sản phẩm, SKU hoặc vị trí..." />
+          </label>
+          <SelectFilter label="Kho / cửa hàng" value={filters.locationId} options={locationOptions}
+            onChange={setFilter('locationId')} allLabel="Tất cả" />
+          <SelectFilter label="Gộp vị trí" value={filters.storageLevel} options={STORAGE_LEVEL_OPTIONS}
+            onChange={setFilter('storageLevel')} />
+          <SelectFilter label="Gộp mặt hàng" value={filters.itemLevel} options={ITEM_LEVEL_OPTIONS}
+            onChange={setFilter('itemLevel')} />
+        </div>
+        <div className="wm-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Kho / cửa hàng</th>
+                <th>Quản lý</th>
+                <th>Vị trí</th>
+                <th>Sản phẩm / biến thể</th>
+                <th>Mã hàng / serial</th>
+                <th>Tồn</th>
+                <th>Khả dụng</th>
+                <th>Đang giữ</th>
+                <th>Không khả dụng</th>
+                <th>Đang cho thuê</th>
+                <th>Quá hạn trả</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr className="wm-loading-row"><td colSpan={11}>Đang tải báo cáo...</td></tr>}
+              {!loading && visible.map((row) => <ReportRow key={row.key} row={row} onShowItems={setSerialDetail} />)}
+            </tbody>
+          </table>
+        </div>
+        {!loading && !visible.length && <EmptyState title="Không có tồn kho phù hợp." />}
+        <Pagination page={page} limit={pageSize} total={filtered.length} onChange={setPage}
+          onLimitChange={setPageSize} limitOptions={[10, 20, 50]} disabled={loading} />
+      </section>
+      {/* Mở lịch sử mã hàng thì tạm ẩn danh sách món (Offcanvas nằm dưới Modal), đóng lại thì hiện lại. */}
+      {serialDetail && !historyItemId && (
+        <InventorySerialsModal
+          item={serialDetail}
+          onClose={() => setSerialDetail(null)}
+          onItemClick={(serial) => setHistoryItemId(serial._id)}
+        />
+      )}
+      <ItemHistoryOffcanvas itemId={historyItemId} onHide={() => setHistoryItemId(null)} />
+    </WarehousePageLayout>
+  );
 }

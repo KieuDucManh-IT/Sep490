@@ -6,6 +6,8 @@ const statusHistorySchema = new mongoose.Schema({
   description: { type: String, trim: true },
   location: { type: String, trim: true },
   timestamp: { type: Date, default: Date.now },
+  evidenceImage: { type: String, trim: true, default: null }, // Ảnh chụp xác nhận giao hàng
+  failReason: { type: String, trim: true, default: null },    // Lý do chưa giao được hàng (nếu có)
 }, { _id: false });
 
 const addressInfoSchema = new mongoose.Schema({
@@ -17,15 +19,37 @@ const addressInfoSchema = new mongoose.Schema({
   provinceId: { type: Number, default: null },
   districtId: { type: Number, default: null },
   wardCode: { type: String, trim: true, default: null },
+  provinceName: { type: String, trim: true, default: '' },
+  districtName: { type: String, trim: true, default: '' },
+  wardName: { type: String, trim: true, default: '' },
+  isNewAddress: { type: Boolean, default: false },
+}, { _id: false });
+
+const shipmentItemSnapshotSchema = new mongoose.Schema({
+  name: { type: String, trim: true },
+  sku: { type: String, trim: true, default: '' },
+  size: { type: String, trim: true, default: '' },
+  color: { type: String, trim: true, default: '' },
+  quantity: { type: Number, min: 1, default: 1 },
+  price: { type: Number, min: 0, default: 0 },
+  salesOrderDetailId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  rentalOrderDetailId: { type: mongoose.Schema.Types.ObjectId, default: null },
+}, { _id: false });
+
+const shipmentEvidenceVideoSchema = new mongoose.Schema({
+  publicId: { type: String, required: true },
+  format: { type: String, required: true },
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  uploadedAt: { type: Date, default: Date.now },
 }, { _id: false });
 
 const orderShipmentSchema = new mongoose.Schema({
-  trackingCode: { type: String, trim: true, unique: true, sparse: true }, 
+  trackingCode: { type: String, trim: true, unique: true, sparse: true },
   shipmentCode: { type: String, trim: true, index: true },
   orderCode: { type: String, trim: true, index: true }, // Mã đơn của sàn tham chiếu song hành với mã GHN
   orderType: { type: String, required: true, enum: ['sale', 'rental'] },
   orderId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  fromShopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', default: null }, 
+  fromShopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', default: null },
   fromLocationId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryLocation', default: null },
   deliveryAddress: { type: String, trim: true },
   deliveryMethod: { type: String, enum: ['pickup', 'internal', 'carrier', 'delivery'], default: 'delivery' },
@@ -42,11 +66,20 @@ const orderShipmentSchema = new mongoose.Schema({
   senderInfo: { type: addressInfoSchema, default: null },
   receiverInfo: { type: addressInfoSchema, default: null },
   statusHistory: [statusHistorySchema],
+  items: { type: [shipmentItemSnapshotSchema], default: [] },
+  returnVideo: { type: shipmentEvidenceVideoSchema, default: null },
+  returnReceivedVideo: { type: shipmentEvidenceVideoSchema, default: null },
   lastSyncedAt: { type: Date, default: null },
   cancellationReason: { type: String, trim: true },
+  deliveryProofImage: { type: String, trim: true, default: null }, // Ảnh chụp xác nhận giao hàng thành công
+  failureReason: { type: String, trim: true, default: null },      // Lý do giao hàng không thành công
   note: { type: String, trim: true },
   shippedAt: { type: Date, default: null },
   deliveredAt: { type: Date, default: null },
+  isSimulated: {
+    type: Boolean,
+    default: false,
+  },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
 

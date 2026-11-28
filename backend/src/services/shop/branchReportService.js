@@ -22,8 +22,7 @@ const normalizeRole = (role) =>
   String(role || '')
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, '')
-    .replace('brandmanager', 'branchmanager');
+    .replace(/[\s_-]/g, '');
 
 const extractCustomerName = (customer, shippingAddress) =>
   customer?.FullName || customer?.fullName || shippingAddress?.receiverName || 'Khách hàng';
@@ -309,7 +308,6 @@ const buildEmptyReport = ({
         city: shop.city || '',
         phone: shop.phone || '',
         status: shop.status || 'ACTIVE',
-        isHQ: Boolean(shop.isHQ),
       }
     : null,
   storeLocation: locations[0]
@@ -366,14 +364,15 @@ const buildEmptyReport = ({
 
 /**
  * Xác định chi nhánh được phép xem cho Quản lý chi nhánh (hoặc Admin)
+ * @ears .sdd/features/branch-performance-reports/SPEC-B4-AUTHORIZATION.md#REQ-B4-AUTH-002
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-001
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-002
  */
 async function resolveAuthorizedBranch({ user, branchId }) {
   const role = user ? normalizeRole(user.Role || user.role) : 'admin';
 
-  if (user && role !== 'branchmanager' && role !== 'admin') {
-    throw validationError('Chức năng báo cáo hiệu suất chi nhánh chỉ dành riêng cho Quản lý chi nhánh.', 403);
+  if (user && !['branchmanager', 'admin'].includes(role)) {
+    throw validationError('Chức năng báo cáo hiệu suất chi nhánh chỉ dành cho Quản lý chi nhánh hoặc Ban quản trị.', 403);
   }
 
   if (branchId && !mongoose.isValidObjectId(branchId)) {
@@ -403,11 +402,10 @@ async function resolveAuthorizedBranch({ user, branchId }) {
       }
     } else {
       shop = await Shop.findOne({ isDeleted: { $ne: true } })
-        .sort({ isHQ: -1, createdAt: 1, _id: 1 })
+        .sort({ createdAt: 1, _id: 1 })
         .lean();
     }
   }
-
   return shop;
 }
 
@@ -577,7 +575,7 @@ export async function getBranchPerformanceReportData({
     }),
     StockTransfer.countDocuments({
       toLocationId: { $in: locationIds },
-      status: { $in: ['shipped', 'partially_received'] },
+      status: 'shipped',
     }),
     // TASK-011: số đang cho thuê đọc balance.quantityRenting (mọi loại hàng), không đếm món.
     InventoryBalance.aggregate([
@@ -950,7 +948,6 @@ export async function getBranchPerformanceReportData({
       city: shop.city || '',
       phone: shop.phone || '',
       status: shop.status || 'ACTIVE',
-      isHQ: Boolean(shop.isHQ),
     },
     storeLocation: {
       _id: locations[0]._id,

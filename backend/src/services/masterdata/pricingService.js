@@ -4,7 +4,7 @@ import { ProductImage } from '../../models/masterdata/ProductImages.js';
 import { missingRequiredPrices } from './productPricing.js';
 import { representativeUrlByProduct } from './productImageHelper.js';
 
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const TAG_LABELS = { rental: 'cho thuê', sale: 'bán', both: 'vừa thuê vừa bán' };
 
@@ -31,6 +31,10 @@ export const pricingService = {
     if (!Number.isFinite(numericSalePrice) || numericSalePrice < 0) throw fail('Giá trị trang phục / giá bán phải là số không âm.');
     if (!Number.isFinite(numericRentalPrice) || numericRentalPrice < 0) throw fail('Giá thuê mỗi ngày phải là số không âm.');
     if (!Number.isFinite(numericDeposit) || numericDeposit < 0) throw fail('Tiền cọc bảo đảm phải là số không âm.');
+
+    if (numericSalePrice > 0 && numericDeposit > numericSalePrice) {
+      throw fail(`Tiền cọc bảo đảm không được vượt quá 100% giá trị trang phục (tối đa ${numericSalePrice.toLocaleString('vi-VN')} VND).`);
+    }
 
     const product = await Product.findById(productId);
     if (!product || product.isDeleted) throw fail('Không tìm thấy sản phẩm hoặc sản phẩm đã bị xóa.', 404);

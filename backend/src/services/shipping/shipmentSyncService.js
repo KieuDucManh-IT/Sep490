@@ -3,6 +3,7 @@ import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import * as ghnService from './ghnService.js';
 import { mapGhnStatus } from './ghnStatusMapper.js';
+import { recordSalesDelivery } from '../sale&rental/salesOrderService.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,6 +30,7 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
     if (!shipment || !shipment.trackingCode) {
       return shipment;
     }
+    if (shipment.isSimulated) return shipment;
 
     // Tránh spam request lên GHN nếu vừa mới sync trong 3 giây qua (trừ khi có flag force)
     if (!force && shipment.lastSyncedAt && Date.now() - new Date(shipment.lastSyncedAt).getTime() < 3000) {
@@ -103,6 +105,27 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
     const mapped = mapGhnStatus(ghnData.status);
     let hasChanged = false;
 
+    // Rollback Guard: Không để API GHN (vốn có độ trễ hoặc trên Sandbox chưa đổi) kéo lùi trạng thái nếu DB đã ở rank cao hơn
+    const STATUS_RANK = { preparing: 1, shipped: 2, failed: 2, delivered: 3, cancelled: 3 };
+    const currentRank = STATUS_RANK[shipment.shipmentStatus] ?? 0;
+    const incomingRank = STATUS_RANK[mapped.internalStatus] ?? 0;
+
+    if (incomingRank < currentRank) {
+      await OrderShipment.updateOne({ _id: shipment._id }, { $set: { lastSyncedAt: new Date() } });
+      return shipment;
+    }
+
+    // Nếu đơn vừa mới có cập nhật trong vòng 10 phút và rank GHN <= rank hiện tại, không để GHN polling ghi đè
+    const recentHistory = shipment.statusHistory?.[shipment.statusHistory.length - 1];
+    if (
+      recentHistory &&
+      incomingRank <= currentRank &&
+      Date.now() - new Date(recentHistory.timestamp || 0).getTime() < 600000
+    ) {
+      await OrderShipment.updateOne({ _id: shipment._id }, { $set: { lastSyncedAt: new Date() } });
+      return shipment;
+    }
+
     if (mapped.internalStatus !== shipment.shipmentStatus) {
       shipment.shipmentStatus = mapped.internalStatus;
       hasChanged = true;
@@ -111,10 +134,7 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
       if (mapped.internalStatus === 'delivered') {
         shipment.deliveredAt = shipment.deliveredAt || actionTime;
         if (shipment.orderType === 'sale') {
-          await SalesOrder.findOneAndUpdate(
-            { _id: shipment.orderId, orderStatus: { $nin: ['cancelled'] } },
-            { orderStatus: 'completed' }
-          );
+          await recordSalesDelivery(shipment, actionTime);
         } else if (shipment.orderType === 'rental') {
           if (shipment.shipmentType === 'outbound') {
             const rental = await RentalOrder.findOne({ _id: shipment.orderId });
@@ -212,6 +232,7 @@ export const syncInFlightShipments = async () => {
 
     const inFlightShipments = await OrderShipment.find({
       shipmentStatus: { $in: ['preparing', 'shipped'] },
+      isSimulated: { $ne: true },
       trackingCode: { $exists: true, $ne: '', $not: /^(SHP|TRK)-/ },
       $or: [
         { lastSyncedAt: { $lt: thresholdDate } },
@@ -246,11 +267,11 @@ export const startShipmentSyncJob = (intervalMinutes = 2) => {
 
   // Chạy lần đầu sau 15 giây khi server khởi động
   setTimeout(() => {
-    syncInFlightShipments().catch(() => {});
+    syncInFlightShipments().catch(() => { });
   }, 15 * 1000);
 
   // Thiết lập interval định kỳ
   return setInterval(() => {
-    syncInFlightShipments().catch(() => {});
+    syncInFlightShipments().catch(() => { });
   }, intervalMs);
 };

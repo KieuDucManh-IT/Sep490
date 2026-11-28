@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import cloudinary, { uploadToCloudinary, deleteFromCloudinary } from "../config/cloudinary.js";
 import sharp from "sharp";
+import { notifyRoles } from "./system/notificationService.js";
 
 const pendingRegistrations = new Map();
 const processingEmails = new Set();
@@ -267,6 +268,16 @@ export async function verifyRegisterOtp(data = {}) {
     try {
       // Chỉ lưu MongoDB sau khi xác thực thành công.
       await user.save();
+
+      // Bắn thông báo có tài khoản mới tới Dashboard Quản trị viên & Chủ shop
+      notifyRoles(['admin', 'shopOwner'], {
+        type: 'account_created',
+        title: 'Khách hàng mới đăng ký',
+        message: `Khách hàng ${user.FullName} (${user.Email}) vừa đăng ký tài khoản thành công.`,
+        link: '/admin/accounts',
+        referenceType: 'User',
+        referenceId: user._id
+      }).catch(err => console.error('[Notification] Lỗi bắn thông báo đăng ký:', err.message));
     } catch (error) {
       if (error.code === 11000) {
         fail(409, "Thông tin tài khoản đã tồn tại");

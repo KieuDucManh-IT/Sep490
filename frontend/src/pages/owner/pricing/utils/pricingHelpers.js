@@ -66,3 +66,89 @@ export const requiredPriceText = (tag) => {
   if (value === 'both') return 'Sản phẩm vừa thuê vừa bán: bắt buộc giá thuê mỗi ngày > 0 và giá bán > 0.';
   return 'Sản phẩm chưa có hình thức: cần ít nhất giá thuê mỗi ngày hoặc giá bán > 0.';
 };
+
+/**
+ * Kiểm tra xem sản phẩm đã được cấu hình giá thuê và tiền cọc hay chưa
+ * @param {Object} item
+ * @returns {boolean}
+ */
+export const isRentalConfigured = (item) => {
+  if (!item) return false;
+  const rent = Number(item.rentalPricePerDay || 0);
+  const deposit = Number(item.deposit || 0);
+  return rent > 0 && deposit > 0;
+};
+
+export const PRODUCT_NAME_MAX_LENGTH = 40;
+export const PRODUCT_CODE_MAX_LENGTH = 22;
+
+/**
+ * Giới hạn số ký tự hiển thị cho chuỗi dài (kèm dấu ...)
+ * @param {string} text
+ * @param {number} maxLength
+ * @returns {string}
+ */
+export const truncateText = (text, maxLength = PRODUCT_NAME_MAX_LENGTH) => {
+  if (!text) return '';
+  const str = String(text).trim();
+  if (str.length <= maxLength) return str;
+  return `${str.slice(0, Math.max(1, maxLength)).trimEnd()}...`;
+};
+
+/**
+ * Chuẩn hóa thông tin hiển thị loại hình kinh doanh của sản phẩm (đồ thuê / đồ mua)
+ * @param {string} tag - 'rental' | 'sale' | 'both'
+ * @returns {{ key: string, label: string, toneClass: string }}
+ */
+export const getProductTagMeta = (tag) => {
+  const normalized = String(tag || '').trim().toLowerCase();
+  if (normalized === 'rental') {
+    return { key: 'rental', label: 'Đồ thuê', toneClass: 'type-rental' };
+  }
+  if (normalized === 'sale') {
+    return { key: 'sale', label: 'Đồ mua', toneClass: 'type-sale' };
+  }
+  if (normalized === 'both') {
+    return { key: 'both', label: 'Thuê & Mua', toneClass: 'type-both' };
+  }
+  return { key: 'unknown', label: 'Chưa phân loại', toneClass: 'type-unknown' };
+};
+
+/**
+ * Kiểm tra sản phẩm có khớp bộ lọc loại hình (phân tách rạch ròi để số đếm cộng đúng bằng tổng)
+ * @param {string} itemTag
+ * @param {string} filterValue - 'ALL' | 'rental' | 'sale' | 'both' | 'unknown'
+ * @returns {boolean}
+ */
+export const matchesProductTagFilter = (itemTag, filterValue = 'ALL') => {
+  const filter = String(filterValue || 'ALL').trim().toLowerCase();
+  if (!filter || filter === 'all') return true;
+  const normalized = String(itemTag || '').trim().toLowerCase();
+  if (filter === 'unknown') return !['rental', 'sale', 'both'].includes(normalized);
+  return normalized === filter;
+};
+
+/**
+ * Tính KPI bảng giá: chỉ chia trung bình trên các sản phẩm thực tế có giá thuê / tiền cọc (> 0)
+ * @param {Array<Object>} items
+ * @returns {{ total: number, rentalCount: number, depositCount: number, avgRental: number, avgDeposit: number }}
+ */
+export const computePricingKpis = (items = []) => {
+  const total = items.length;
+  const rentalItems = items.filter((i) => Number(i.rentalPricePerDay || 0) > 0);
+  const depositItems = items.filter((i) => Number(i.deposit || 0) > 0);
+  const avgRental = rentalItems.length
+    ? Math.round(rentalItems.reduce((s, i) => s + Number(i.rentalPricePerDay || 0), 0) / rentalItems.length)
+    : 0;
+  const avgDeposit = depositItems.length
+    ? Math.round(depositItems.reduce((s, i) => s + Number(i.deposit || 0), 0) / depositItems.length)
+    : 0;
+  return {
+    total,
+    rentalCount: rentalItems.length,
+    depositCount: depositItems.length,
+    avgRental,
+    avgDeposit,
+  };
+};
+

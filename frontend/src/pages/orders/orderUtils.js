@@ -1,9 +1,9 @@
 export const RENTAL_STATUS_MAP = {
   draft: { text: 'Đơn mới', chipClass: 'draft' },
-  confirmed: { text: 'Chờ giao trang phục', chipClass: 'confirmed' },
+  confirmed: { text: 'Chờ giao hàng', chipClass: 'confirmed' },
   renting: { text: 'Đang cho thuê', chipClass: 'renting' },
   partially_returned: { text: 'Đã trả một phần', chipClass: 'partially_returned' },
-  returned: { text: 'Đã trả đủ trang phục', chipClass: 'returned' },
+  returned: { text: 'Đã trả đồ hoàn tất', chipClass: 'returned' },
   overdue: { text: 'Quá hạn hoàn trả', chipClass: 'overdue' },
   cancelled: { text: 'Đã hủy', chipClass: 'cancelled' },
 };
@@ -59,6 +59,20 @@ export const formatDate = (dateStr) => {
 };
 
 /**
+ * Format date only (DD/MM/YYYY) for rental start/due dates without misleading UTC hours
+ */
+export const formatDateOnly = (dateStr) => {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+/**
  * Format rental period in friendly Vietnamese date range
  */
 export const formatPeriod = (start, due) => {
@@ -76,6 +90,12 @@ export const formatPeriod = (start, due) => {
   return `${formatSingle(start)} → ${formatEnd(due)}`;
 };
 
+export const truncateText = (val, maxLength = 24) => {
+  const text = String(val ?? '');
+  if (!text || text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trimEnd()}...`;
+};
+
 /**
  * Xác định nhãn và màu sắc trạng thái hiển thị thông minh đồng bộ giữa Khách hàng và Branch Manager
  * Tự động cập nhật theo trạng thái vận đơn GHN (Chờ lấy hàng, Đang giao hàng, Đang thuê, Đã hoàn tất, Đã hủy)
@@ -85,24 +105,61 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
 
   const isSale = type === 'sale' || Boolean(order.orderStatus && !order.rentalStatus);
   const currentStatus = isSale ? (order.orderStatus || order.status) : (order.rentalStatus || order.status);
-
-  // 1. Đơn bị hủy ở cấp đơn hàng (Order Level) -> Hiển thị "Đã hủy"
-  if (currentStatus === 'cancelled') {
-    return {
-      text: 'Đã hủy',
-      chipClass: 'cancelled',
+  if (isSale) {
+    const returnStates = {
+      requested: {
+        text: 'Chờ lấy hàng trả',
+        chipClass: 'confirmed',
+      },
+      returning: {
+        text: 'Đang chuyển hàng trả về shop',
+        chipClass: 'processing',
+      },
+      received: {
+        text: 'Đã về shop, chờ nghiệm thu',
+        chipClass: 'processing',
+      },
+      completed: {
+        text: 'Đã trả hàng hoàn tất',
+        chipClass: 'returned',
+      },
     };
+
+    if (returnStates[order.returnStatus]) {
+      return returnStates[order.returnStatus];
+    }
+  }
+  // Ưu tiên kết quả nghiệm thu của đơn thuê.
+  if (!isSale && currentStatus === 'returned') {
+    return RENTAL_STATUS_MAP.returned;
   }
 
-  // 2. Vận đơn đang trong hành trình giao nhận thực tế (chỉ xét: preparing, shipped, delivered)
-  // Các vận đơn đã hủy (cancelled) là vé hủy, KHÔNG làm đơn hàng bị hủy
+  // 1. Vận đơn đang trong hành trình giao nhận thực tế (chỉ xét: preparing, shipped, delivered)
+  // Ưu tiên hiển thị theo vận đơn return đang active, hoặc vận đơn active mới nhất
   const allShipments = Array.isArray(order.shipments)
     ? order.shipments
     : (order.shipment ? [order.shipment] : []);
 
-  const activeShipment = allShipments.find(
-    (s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)
-  );
+  const activeShipments = allShipments
+    .filter((s) => {
+      if (!s || !['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)) return false;
+      if (s.shipmentType === 'return' && s.settled) return false;
+      if (!isSale && currentStatus === 'partially_returned' && s.shipmentType !== 'return' && s.shipmentStatus === 'delivered') {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      // Ưu tiên vận đơn return đang active trong quá trình thu hồi đồ
+      const aIsReturn = a.shipmentType === 'return';
+      const bIsReturn = b.shipmentType === 'return';
+      if (aIsReturn && !bIsReturn) return -1;
+      if (!aIsReturn && bIsReturn) return 1;
+      return (new Date(b.createdAt || b.updatedAt || 0).getTime() || 0) -
+        (new Date(a.createdAt || a.updatedAt || 0).getTime() || 0);
+    });
+
+  const activeShipment = activeShipments[0];
 
   if (activeShipment) {
     const isReturn = activeShipment.shipmentType === 'return';
@@ -110,7 +167,7 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     if (activeShipment.shipmentStatus === 'shipped') {
       return {
         text: isReturn
-          ? (isBranch ? 'Đang thu hồi về shop' : 'Đang Thu Hồi')
+          ? (isBranch ? 'Đang thu hồi về shop' : 'Đang chuyển về cửa hàng')
           : (isBranch ? 'Đang giao hàng' : 'Đang Giao Hàng'),
         chipClass: 'processing',
       };
@@ -119,8 +176,8 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     if (activeShipment.shipmentStatus === 'delivered') {
       if (isReturn) {
         return {
-          text: isBranch ? 'Đã nhận hàng thu hồi' : 'Đã Hoàn Tất',
-          chipClass: 'returned',
+          text: 'Đã về shop, chờ nghiệm thu',
+          chipClass: 'warning',
         };
       }
       if (isSale) {
@@ -138,16 +195,18 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     if (activeShipment.shipmentStatus === 'preparing') {
       return {
         text: isReturn
-          ? (isBranch ? 'Chờ lấy hàng thu hồi' : 'Chờ Shipper Thu Hồi')
+          ? (isBranch ? 'Chờ lấy hàng thu hồi' : 'Chờ shipper lấy đồ trả')
           : (isBranch ? 'Chờ lấy hàng' : 'Chờ Lấy Hàng'),
         chipClass: 'confirmed',
       };
     }
   }
 
-  // 3. Nếu toàn bộ vận đơn xuất hàng (outbound) đã bị hủy và không có vận đơn active -> Hiển thị "Đã hủy"
+  // 2. Nếu đơn bị hủy ở cấp đơn hàng HOẶC toàn bộ vận đơn xuất hàng đã bị hủy và không có vận đơn active -> Hiển thị "Đã hủy"
   const outboundShipments = allShipments.filter((s) => s && s.shipmentType !== 'return');
-  if (outboundShipments.length > 0 && outboundShipments.every((s) => s.shipmentStatus === 'cancelled')) {
+  const allOutboundCancelled = outboundShipments.length > 0 && outboundShipments.every((s) => s.shipmentStatus === 'cancelled');
+
+  if (currentStatus === 'cancelled' || allOutboundCancelled) {
     return {
       text: 'Đã hủy',
       chipClass: 'cancelled',
@@ -168,12 +227,7 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
         chipClass: 'partially_returned',
       };
     }
-    if (currentStatus === 'returned') {
-      return {
-        text: isBranch ? 'Đã trả đủ trang phục' : 'Đã Hoàn Tất',
-        chipClass: 'returned',
-      };
-    }
+
     if (currentStatus === 'overdue') {
       return {
         text: isBranch ? 'Quá hạn hoàn trả' : 'Quá Hạn Trả',
@@ -182,7 +236,7 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     }
     // Mặc định cho confirmed hoặc draft
     return {
-      text: isBranch ? 'Chờ giao trang phục' : 'Chờ Giao Đồ',
+      text: isBranch ? 'Chờ giao hàng' : 'Chờ Giao Hàng',
       chipClass: 'confirmed',
     };
   }
@@ -204,4 +258,24 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     text: isBranch ? 'Chờ đóng gói' : 'Đã Xác Nhận',
     chipClass: 'confirmed',
   };
+};
+
+/** Trích xuất lý do hủy đơn từ field riêng, ghi chú đơn hoặc vận đơn đã hủy. */
+export const extractOrderCancelReason = (order, shipments = []) => {
+  if (order?.cancelReason && String(order.cancelReason).trim()) {
+    return String(order.cancelReason).trim();
+  }
+  const note = String(order?.note || '');
+  const rentalMatch = note.match(/Hủy đơn:\s*([^;]+)/);
+  if (rentalMatch?.[1]?.trim()) {
+    return rentalMatch[1].trim();
+  }
+  const ghnMatch = note.match(/\[Hủy vận đơn GHN:\s*([^\]]+)\]/);
+  if (ghnMatch?.[1]?.trim()) {
+    return ghnMatch[1].trim();
+  }
+  const cancelledShip = (Array.isArray(shipments) ? shipments : []).find(
+    (s) => s?.shipmentStatus === 'cancelled' && s?.cancellationReason
+  );
+  return cancelledShip?.cancellationReason ? String(cancelledShip.cancellationReason).trim() : '';
 };

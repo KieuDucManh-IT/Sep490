@@ -44,7 +44,7 @@ export function useBranchesData() {
             .toLowerCase()
             .replace(/[\s_-]/g, '');
 
-          const isManagerRole = roleNormalized === 'branchmanager' || roleNormalized === 'brandmanager';
+          const isManagerRole = roleNormalized === 'branchmanager';
           const isNotCustomer = roleNormalized !== 'customer';
 
           return isManagerRole && isNotCustomer;
@@ -95,12 +95,8 @@ export function useBranchesData() {
       return true;
     });
 
-    // Trụ sở chính luôn được ưu tiên ghim ở đầu tiên.
-    // Các chi nhánh thông thường được hiển thị theo thứ tự từ cũ đến mới (ngày thành lập tăng dần).
+    // Các chi nhánh được hiển thị theo thứ tự từ cũ đến mới (ngày thành lập tăng dần).
     return matched.sort((a, b) => {
-      if (a.isHQ && !b.isHQ) return -1;
-      if (!a.isHQ && b.isHQ) return 1;
-
       const timeA = new Date(a.createdAt || 0).getTime();
       const timeB = new Date(b.createdAt || 0).getTime();
 

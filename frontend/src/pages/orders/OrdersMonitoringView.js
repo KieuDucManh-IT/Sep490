@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Inbox,
   CreditCard,
+  ShieldCheck,
 } from 'lucide-react';
 import OwnerSidebar from '../../components/OwnerSidebar';
 import BranchSidebar from '../../components/BranchSidebar';
@@ -23,6 +24,7 @@ import {
   formatCurrency,
   formatDate,
   formatPeriod,
+  truncateText,
   DEPOSIT_STATUS_MAP,
   PAYMENT_STATUS_MAP,
   resolveOrderDisplayStatus,
@@ -48,7 +50,6 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
     branchesList,
     activeBranch,
     activeBranchName,
-    isActiveBranchHQ,
     isChainScope,
     pagination,
     selectedOrderId,
@@ -68,7 +69,7 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
       const m = metrics || {};
       return [
         { key: 'all', label: 'Tất Cả', count: m.total },
-        { key: 'confirmed', label: 'Chờ Giao Đồ', count: m.confirmed },
+        { key: 'confirmed', label: 'Chờ Giao Hàng', count: m.confirmed },
         { key: 'renting', label: 'Đang Cho Thuê', count: m.renting },
         { key: 'overdue', label: 'Quá Hạn Trả', count: m.overdue },
         { key: 'partially_returned', label: 'Trả 1 Phần', count: m.partially_returned || m.partiallyReturned },
@@ -90,13 +91,13 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
   const pageTitle = useMemo(() => {
     if (type === 'rental') {
       return isBranch
-        ? `Quản Lý Đơn Thuê Chi Nhánh${activeBranchName ? ` - ${activeBranchName}` : ''}`
+        ? 'Quản Lý Đơn Thuê Chi Nhánh'
         : 'Theo Dõi Đơn Thuê Chuỗi Cửa Hàng';
     }
     return isBranch
-      ? `Quản Lý Đơn Bán Chi Nhánh${activeBranchName ? ` - ${activeBranchName}` : ''}`
+      ? 'Quản Lý Đơn Bán Chi Nhánh'
       : 'Theo Dõi Đơn Bán Chuỗi Cửa Hàng';
-  }, [type, isBranch, activeBranchName]);
+  }, [type, isBranch]);
 
   const pageDesc = useMemo(() => {
     if (type === 'rental') {
@@ -155,9 +156,6 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                   <span className="badge bg-light text-dark border px-3 py-2 d-flex align-items-center gap-1">
                     <MapPin size={13} color="#B45309" />
                     <span>Cơ sở: <strong>{activeBranchName || scopeInfo?.shop?.name}</strong></span>
-                    {(isActiveBranchHQ || scopeInfo?.shop?.isHQ) && (
-                      <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-                    )}
                   </span>
                 ) : (
                   <span className="badge bg-light text-dark border px-3 py-2 d-flex align-items-center gap-1">
@@ -214,11 +212,10 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                       <tr>
                         <th>MÃ ĐƠN</th>
                         <th>KHÁCH HÀNG</th>
-                        <th>TRANG PHỤC THUÊ</th>
                         <th>CHI NHÁNH</th>
                         <th>THỜI HẠN THUÊ</th>
-                        <th style={{ textAlign: 'right' }}>TIỀN THUÊ (VND)</th>
-                        <th style={{ textAlign: 'right' }}>TIỀN CỌC (VND)</th>
+                        <th style={{ textAlign: 'center' }}>TIỀN THUÊ & CỌC (VND)</th>
+                        <th style={{ textAlign: 'center' }}>TRẠNG THÁI CỌC</th>
                         <th style={{ textAlign: 'center' }}>TRẠNG THÁI</th>
                         <th style={{ textAlign: 'center' }}>{isBranch ? 'XỬ LÝ' : 'CHI TIẾT'}</th>
                       </tr>
@@ -226,9 +223,8 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                       <tr>
                         <th>MÃ ĐƠN</th>
                         <th>KHÁCH HÀNG</th>
-                        <th>SẢN PHẨM MUA</th>
                         <th>CHI NHÁNH</th>
-                        <th style={{ textAlign: 'right' }}>TỔNG TIỀN (VND)</th>
+                        <th style={{ textAlign: 'center' }}>TỔNG TIỀN (VND)</th>
                         <th style={{ textAlign: 'center' }}>THANH TOÁN</th>
                         <th style={{ textAlign: 'center' }}>TRẠNG THÁI</th>
                         <th style={{ textAlign: 'center' }}>{isBranch ? 'XỬ LÝ' : 'CHI TIẾT'}</th>
@@ -240,14 +236,14 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                     {loading && !orders.length ? (
                       [1, 2, 3, 4, 5].map((row) => (
                         <tr key={row}>
-                          <td colSpan={type === 'rental' ? 9 : 8} style={{ padding: '12px 16px' }}>
+                          <td colSpan={type === 'rental' ? 8 : 7} style={{ padding: '12px 16px' }}>
                             <div className="order-skeleton" style={{ height: '24px' }} />
                           </td>
                         </tr>
                       ))
                     ) : orders.length === 0 ? (
                       <tr>
-                        <td colSpan={type === 'rental' ? 9 : 8}>
+                        <td colSpan={type === 'rental' ? 8 : 7}>
                           <div className="branch-empty-box py-5 my-2 text-center">
                             <div className="empty-icon-wrap mb-2 mx-auto">
                               <Inbox size={28} />
@@ -280,8 +276,9 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                     ) : (
                       orders.map((o) => {
                         const cust = o.customerId || o.customerInfo || o.customer || {};
+                        const custInfo = Array.isArray(cust.Information) ? cust.Information[0] : (cust.Information || {});
                         const customerName = cust.FullName || cust.fullName || cust.name || 'Khách vãng lai';
-                        const customerPhone = cust.Information?.Phone || cust.phone || cust.Email || cust.email || '—';
+                        const customerPhone = custInfo?.Phone || cust.phone || cust.Email || cust.email || '—';
                         const branchName =
                           o.locationId?.shopId?.name ||
                           o.locationId?.name ||
@@ -289,18 +286,10 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                           o.branchId?.shopName ||
                           o.branchName ||
                           'Cửa hàng chính';
-                        const isOrderHQ = Boolean(
-                          o.locationId?.shopId?.isHQ ||
-                          o.locationId?.isHQ ||
-                          o.shopId?.isHQ ||
-                          o.isHQ ||
-                          o.branchId?.isHQ
-                        );
 
-                        const firstItem = o.items?.[0] || {};
-                        const productInfo = firstItem.variantId?.productId || o.productId || {};
-                        const variantInfo = firstItem.variantId || o.variantId || {};
-                        const extraCount = Math.max(0, (o.items?.length || 1) - 1);
+                        const orderCodeText =
+                          o.orderCode ||
+                          `#${type === 'rental' ? 'THUE' : 'BAN'}-${String(o._id || '').slice(-6).toUpperCase()}`;
 
                         if (type === 'rental') {
                           const statusDef = resolveOrderDisplayStatus(o, 'rental', isBranch);
@@ -319,42 +308,27 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                             <tr key={o._id}>
                               {/* 1. Mã đơn */}
                               <td>
-                                <div className="order-code-title">
-                                  {o.orderCode || `#THUE-${String(o._id || '').slice(-6).toUpperCase()}`}
+                                <div className="order-code-title" title={orderCodeText}>
+                                  {truncateText(orderCodeText, 20)}
                                 </div>
                                 <div className="order-code-date">{formatDate(o.createdAt)}</div>
                               </td>
 
                               {/* 2. Khách hàng */}
                               <td>
-                                <div className="order-customer-name">{customerName}</div>
-                                <div className="order-customer-sub">{customerPhone}</div>
-                              </td>
-
-                              {/* 3. Trang phục thuê */}
-                              <td>
-                                <div className="order-product-name">
-                                  {productInfo?.name || firstItem?.productName || 'Trang phục thuê'}
-                                  {extraCount > 0 && (
-                                    <span className="order-product-extra ms-1">
-                                      +{extraCount} món
-                                    </span>
-                                  )}
+                                <div className="order-customer-name" title={customerName}>
+                                  {truncateText(customerName, 24)}
                                 </div>
-                                <div className="order-product-variant">
-                                  {variantInfo?.size ? `Size ${variantInfo.size}` : ''}
-                                  {variantInfo?.color ? ` • ${variantInfo.color}` : ''}
+                                <div className="order-customer-sub" title={customerPhone}>
+                                  {truncateText(customerPhone, 24)}
                                 </div>
                               </td>
 
-                              {/* 4. Chi nhánh */}
+                              {/* 3. Chi nhánh */}
                               <td>
                                 <div className="order-branch-col-name d-flex align-items-center gap-1 flex-wrap">
                                   <Store size={13} className="text-muted" />
-                                  <span>{branchName}</span>
-                                  {isOrderHQ && (
-                                    <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-                                  )}
+                                  <span title={branchName}>{truncateText(branchName, 22)}</span>
                                 </div>
                               </td>
 
@@ -370,20 +344,20 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                                 )}
                               </td>
 
-                              {/* 6. Tiền thuê */}
-                              <td style={{ textAlign: 'right' }}>
+                              {/* 6. Tiền thuê & tiền cọc */}
+                              <td style={{ textAlign: 'center' }}>
                                 <div className="order-fee-primary">
                                   {formatCurrency(o.rentalFee || o.totalRentalFee || o.totalAmount)}
                                 </div>
+                                <div className="order-deposit-sub">
+                                  Cọc: {formatCurrency(o.depositAmount)}
+                                </div>
                               </td>
 
-                              {/* 7. Tiền cọc */}
-                              <td style={{ textAlign: 'right' }}>
-                                <div className="order-deposit-amount">
-                                  {formatCurrency(o.depositAmount)}
-                                </div>
-                                <span className={`order-badge ${depositDef.chipClass}`} style={{ fontSize: '11px', padding: '2px 6px' }}>
-                                  <span className="order-badge-dot" />
+                              {/* 7. Trạng thái tiền cọc (đồng bộ cột Thanh toán của đơn mua) */}
+                              <td style={{ textAlign: 'center' }}>
+                                <span className={`order-badge ${depositDef.chipClass}`}>
+                                  <ShieldCheck size={12} />
                                   {depositDef.text}
                                 </span>
                               </td>
@@ -423,47 +397,32 @@ export default function OrdersMonitoringView({ type = 'rental', isBranch = false
                           <tr key={o._id}>
                             {/* 1. Mã đơn & Ngày tạo */}
                             <td>
-                              <div className="order-code-title">
-                                {o.orderCode || `#BAN-${String(o._id || '').slice(-6).toUpperCase()}`}
+                              <div className="order-code-title" title={orderCodeText}>
+                                {truncateText(orderCodeText, 20)}
                               </div>
                               <div className="order-code-date">{formatDate(o.createdAt)}</div>
                             </td>
 
                             {/* 2. Khách hàng */}
                             <td>
-                              <div className="order-customer-name">{customerName}</div>
-                              <div className="order-customer-sub">{customerPhone}</div>
-                            </td>
-
-                            {/* 3. Sản phẩm mua */}
-                            <td>
-                              <div className="order-product-name">
-                                {productInfo?.name || firstItem?.productName || 'Trang phục bán'}
-                                {extraCount > 0 && (
-                                  <span className="order-product-extra ms-1">
-                                    +{extraCount} món
-                                  </span>
-                                )}
+                              <div className="order-customer-name" title={customerName}>
+                                {truncateText(customerName, 24)}
                               </div>
-                              <div className="order-product-variant">
-                                {variantInfo?.size ? `Size ${variantInfo.size}` : ''}
-                                {variantInfo?.color ? ` • ${variantInfo.color}` : ''}
+                              <div className="order-customer-sub" title={customerPhone}>
+                                {truncateText(customerPhone, 24)}
                               </div>
                             </td>
 
-                            {/* 4. Chi nhánh */}
+                            {/* 3. Chi nhánh */}
                             <td>
                               <div className="order-branch-col-name d-flex align-items-center gap-1 flex-wrap">
                                 <Store size={13} className="text-muted" />
-                                <span>{branchName}</span>
-                                {isOrderHQ && (
-                                  <span className="branch-tag-hq ms-1">Trụ sở chính</span>
-                                )}
+                                <span title={branchName}>{truncateText(branchName, 22)}</span>
                               </div>
                             </td>
 
-                            {/* 5. Tổng tiền */}
-                            <td style={{ textAlign: 'right' }}>
+                            {/* 4. Tổng tiền */}
+                            <td style={{ textAlign: 'center' }}>
                               <div className="order-fee-primary">
                                 {formatCurrency(o.totalAmount || o.finalAmount)}
                               </div>

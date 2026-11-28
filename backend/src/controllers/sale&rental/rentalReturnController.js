@@ -53,6 +53,11 @@ export const getReturnById = async (req, res, next) => {
       });
     }
 
+    const orderId = returnReceipt.rentalOrderId?._id || returnReceipt.rentalOrderId;
+    if (orderId) {
+      await rentalReturnService.accessReturnOrder(req.user, orderId);
+    }
+
     const details = await RentalReturnDetail.find({ rentalReturnId: id })
       .populate('itemId')
       .lean();

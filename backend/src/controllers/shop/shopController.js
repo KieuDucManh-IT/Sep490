@@ -176,6 +176,7 @@ export const getMyShop = async (req, res) => {
   }
 };
 
+
 /**
  * Lấy chi nhánh được chỉ định cho tài khoản đã xác thực
  * GET /api/shops/assigned-branch
@@ -239,7 +240,7 @@ export const updateShopAddress = async (req, res) => {
 };
 
 /**
- * Cập nhật toàn bộ thông tin chi nhánh, quản lý bổ nhiệm và cờ Trụ sở chính
+ * Cập nhật toàn bộ thông tin chi nhánh và quản lý bổ nhiệm
  * PUT /api/shops/:id/info hoặc PUT /api/shops/:id
  */
 export const updateShopInfo = async (req, res) => {
@@ -292,7 +293,7 @@ export const createBranch = async (req, res) => {
 };
 
 /**
- * Xóa mềm chi nhánh khỏi hệ thống (bảo vệ Trụ sở chính và tối thiểu 1 cơ sở)
+ * Xóa mềm chi nhánh khỏi hệ thống (bảo vệ tối thiểu 1 cơ sở)
  * DELETE /api/shops/:id
  */
 export const deleteBranch = async (req, res) => {
@@ -390,6 +391,7 @@ export const uploadShopImage = async (req, res, next) => {
 /**
  * Lấy báo cáo hiệu suất và vận hành dành riêng cho Quản lý chi nhánh
  * GET /api/shops/reports/branch-performance
+ * @ears .sdd/features/branch-performance-reports/SPEC-B4-AUTHORIZATION.md#REQ-B4-AUTH-001
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-001
  * @ears .sdd/features/branch-performance-reports/SPEC.md#REQ-BPR-002
  */
@@ -398,13 +400,12 @@ export const getBranchPerformanceReport = async (req, res) => {
     const normalizedRole = String(req.user?.Role || req.user?.role || '')
       .trim()
       .toLowerCase()
-      .replace(/[\s_-]/g, '')
-      .replace('brandmanager', 'branchmanager');
+      .replace(/[\s_-]/g, '');
 
-    if (normalizedRole !== 'branchmanager' && normalizedRole !== 'admin') {
+    if (!['branchmanager', 'admin'].includes(normalizedRole)) {
       return res.status(403).json({
         success: false,
-        message: 'Chức năng báo cáo hiệu suất chi nhánh chỉ dành riêng cho Quản lý chi nhánh.',
+        message: 'Chức năng báo cáo hiệu suất chi nhánh chỉ dành cho Quản lý chi nhánh hoặc Ban quản trị.',
       });
     }
 

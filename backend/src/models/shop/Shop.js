@@ -18,10 +18,6 @@ const shopSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
-    isHQ: {
-      type: Boolean,
-      default: false,
-    },
     name: {
       type: String,
       required: [true, 'Tên gian hàng không được để trống'],

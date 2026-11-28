@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
-  Search,
   Heart,
   Bell,
   ShoppingBag,
@@ -22,6 +21,7 @@ import { useWishlistStore } from "../stores/useWishlistStore";
 import NavbarLocationWidget from "./NavbarLocationWidget";
 import chatApi from "../services/chatApi";
 import socketService from "../services/socket";
+import NotificationBell from "./common/NotificationBell";
 import "../styles/Navbar.css";
 
 export default function Navbar() {
@@ -148,7 +148,6 @@ export default function Navbar() {
               <Link to="/catalog" className="nav-sublink">Tất cả sản phẩm</Link>
               <Link to="/catalog?type=rental" className="nav-sublink">Thuê trang phục</Link>
               <Link to="/catalog?type=sale" className="nav-sublink">Mua bán đồ cũ</Link>
-              <Link to="/catalog?filter=new" className="nav-sublink">Sản phẩm mới về</Link>
             </div>
           </div>
 
@@ -159,23 +158,18 @@ export default function Navbar() {
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/wardrobe" className="nav-sublink">Tất cả trang phục đã lưu</Link>
-              <Link to="/stylist" className="nav-sublink">Tư vấn AI Stylist </Link>
               <Link to="/wardrobe?filter=tryon-history" className="nav-sublink">Đã thử qua AI / Camera</Link>
               <Link to="/try-on/photo" className="nav-sublink">Ướm thử bộ đồ mới</Link>
             </div>
           </div>
 
-          {/* Liên Hệ & Về Chúng Tôi */}
+          {/* Liên Hệ & Chính Sách */}
           <div className="nav-dropdown-item">
-            <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
+            <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/policy")}`}>
               Liên Hệ <ChevronDown size={12} className="nav-arrow" />
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/contact" className="nav-sublink">Liên hệ & Hỗ trợ</Link>
-              <div className="nav-dropdown-divider"></div>
-              <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
-              <Link to="/about#mission" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
-              <Link to="/about#commitment" className="nav-sublink">Cam kết dịch vụ</Link>
               <div className="nav-dropdown-divider"></div>
               <Link to="/policy" className="nav-sublink">Chính sách VESTORA</Link>
             </div>
@@ -225,9 +219,13 @@ export default function Navbar() {
           </Link>
 
           {/* Notification Bell Icon */}
-          <Link to="/profile" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
-            <Bell size={18} />
-          </Link>
+          {user ? (
+            <NotificationBell buttonClassName="navbar-icon-btn navbar-bell-btn" />
+          ) : (
+            <Link to="/login" className="navbar-icon-btn navbar-bell-btn" title="Thông báo" aria-label="Thông báo">
+              <Bell size={18} />
+            </Link>
+          )}
 
           {/* Consultation Chat Icon */}
           {user && (
@@ -304,20 +302,22 @@ export default function Navbar() {
                   >
                     <User size={15} className="menu-icon" /> Tài khoản cá nhân
                   </Link>
-                  <Link
-                    to="/rental-orders"
-                    className="menu-item"
-                    onClick={() => setDropdownOpen(false)}
-                  >
-                    <ClipboardList size={15} className="menu-icon" /> Đơn thuê của tôi
-                  </Link>
+                  {String(user?.Role || user?.role || '').trim().toLowerCase() === 'customer' && (
+                    <Link
+                      to="/rental-orders"
+                      className="menu-item"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <ClipboardList size={15} className="menu-icon" /> Đơn thuê của tôi
+                    </Link>
+                  )}
                   <Link
                     to={/branch_manager|owner|shop_owner/i.test(user?.Role || user?.role || '') ? '/branch/chat' : '/chat'}
                     className="menu-item menu-item-chat"
                     onClick={() => setDropdownOpen(false)}
                   >
                     <span className="menu-item-chat-left">
-                      <i className="fa-regular fa-comment-dots menu-icon"></i> Tin nhắn tư vấn
+                      <i className="fa-regular fa-comment-dots menu-icon"></i>   Tin nhắn tư vấn
                     </span>
                     {unreadChatCount > 0 && (
                       <span className="dropdown-chat-badge">
@@ -326,12 +326,13 @@ export default function Navbar() {
                     )}
                   </Link>
                   <Link
-                    to="/favorites"
+                    to="/wallet"
                     className="menu-item"
                     onClick={() => setDropdownOpen(false)}
                   >
                     <Wallet size={15} className="menu-icon" /> Ví Vestora
                   </Link>
+
                   <Link
                     to="/wardrobe"
                     className="menu-item"

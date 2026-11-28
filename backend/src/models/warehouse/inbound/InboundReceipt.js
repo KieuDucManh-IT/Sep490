@@ -19,6 +19,11 @@ const inboundReceiptSchema = new mongoose.Schema({
   cancelledAt: { type: Date, default: null },
   cancelReason: { type: String, trim: true, maxlength: 500, default: '' },
   note: { type: String, trim: true, default: '' },
+  // Quản lý kho yêu cầu nhân viên kiểm nhận lại (received → awaiting_receiving). 'rejected' chỉ còn ở dữ liệu cũ.
+  recountCount: { type: Number, min: 0, default: 0 },
+  lastRecountAt: { type: Date, default: null },
+  lastRecountBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  recountReason: { type: String, trim: true, maxlength: 500, default: '' },
 }, { timestamps: true });
 
 export const InboundReceipt = mongoose.models.InboundReceipt || mongoose.model('InboundReceipt', inboundReceiptSchema);

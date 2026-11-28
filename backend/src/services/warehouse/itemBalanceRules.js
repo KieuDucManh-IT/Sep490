@@ -1,4 +1,4 @@
-// Quy tắc quy đổi trạng thái InventoryItem → InventoryBalance cho hàng trackingType `individual` (TASK-009).
+// Quy tắc quy đổi trạng thái InventoryItem → InventoryBalance (TASK-009; TASK-015: áp dụng cho mọi sản phẩm).
 // File này KHÔNG import model/DB để unit test chạy được không cần MongoDB.
 //
 // Với mỗi dòng balance (locationId, storageId, variantId):
@@ -7,14 +7,13 @@
 //   quantityReserved    = số món `reserved` đang bị PHIẾU KHO giữ (warehouseHold)
 //                         + (chỉ dòng storageId null của chi nhánh) tổng InventoryReservation active của đơn thuê/bán
 //   quantityRenting     = số món `renting`, ghi trên dòng storageId null của location (TASK-010 thêm cột)
-// in_transit, disposed, sold: không tính ở đâu.
+// in_transit, disposed, sold, lost (TASK-016): không tính ở đâu.
+import { appError as fail } from './shared/errors.js';
 
 export const ON_HAND_STATUSES = Object.freeze(['available', 'reserved', 'unavailable', 'maintenance']);
 export const UNAVAILABLE_STATUSES = Object.freeze(['unavailable', 'maintenance']);
-export const OFF_HAND_STATUSES = Object.freeze(['in_transit', 'renting', 'disposed', 'sold']);
+export const OFF_HAND_STATUSES = Object.freeze(['in_transit', 'renting', 'disposed', 'sold', 'lost']);
 export const BALANCE_FIELDS = Object.freeze(['quantityOnHand', 'quantityReserved', 'quantityUnavailable', 'quantityRenting']);
-
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
 export const idOf = (value) => {
   if (value === null || value === undefined || value === '') return '';

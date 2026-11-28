@@ -72,6 +72,7 @@ export default function SaleCheckoutPage() {
     provinceId: null,
     districtId: null,
     wardCode: '',
+    isNewAddress: true,
   });
 
   const handleDivisionsChange = useCallback((divisionData) => {
@@ -83,6 +84,7 @@ export default function SaleCheckoutPage() {
       district: divisionData.district,
       wardCode: divisionData.wardCode,
       ward: divisionData.ward,
+      isNewAddress: true,
     }));
   }, []);
 
@@ -175,16 +177,12 @@ export default function SaleCheckoutPage() {
       setValidationError('Vui lòng nhập họ và tên người nhận hàng');
       return;
     }
-    if (!shippingAddress.phone.trim()) {
-      setValidationError('Vui lòng nhập số điện thoại người nhận');
+    if (!/^[0-9]{10}$/.test(shippingAddress.phone.trim())) {
+      setValidationError('Số điện thoại người nhận phải gồm đúng 10 chữ số.');
       return;
     }
     if (!shippingAddress.provinceId) {
       setValidationError('Vui lòng chọn Tỉnh / Thành phố nhận hàng');
-      return;
-    }
-    if (!shippingAddress.districtId) {
-      setValidationError('Vui lòng chọn Quận / Huyện nhận hàng');
       return;
     }
     if (!shippingAddress.wardCode) {
@@ -229,6 +227,7 @@ export default function SaleCheckoutPage() {
             provinceId: shippingAddress.provinceId ? Number(shippingAddress.provinceId) : null,
             districtId: shippingAddress.districtId ? Number(shippingAddress.districtId) : null,
             wardCode: shippingAddress.wardCode ? String(shippingAddress.wardCode).trim() : null,
+            isNewAddress: true,
           },
           ...(note.trim() ? { note: note.trim() } : {}),
         };
@@ -447,6 +446,8 @@ export default function SaleCheckoutPage() {
                         <label style={styles.label}>Số điện thoại liên hệ *</label>
                         <input
                           type="tel"
+                          inputMode="numeric"
+                          maxLength={10}
                           required
                           value={shippingAddress.phone}
                           onChange={(e) => handleInputChange('phone', e.target.value)}

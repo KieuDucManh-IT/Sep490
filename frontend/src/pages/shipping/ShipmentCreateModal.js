@@ -27,6 +27,7 @@ export default function ShipmentCreateModal({
   show,
   onClose,
   order,
+  initialShipment = null,
   orderType = 'rental',
   onSuccess,
 }) {
@@ -57,9 +58,19 @@ export default function ShipmentCreateModal({
   const [calculatingFee, setCalculatingFee] = useState(false);
   const [feeResult, setFeeResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // 1. Điền thông tin khách hàng từ order và tự động khớp Tỉnh / Xã
+  // Countdown timer cho nút gửi đơn (khóa nút chống gửi dồn / tránh rate-limit GHN)
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  // 1. Điền thông tin khách hàng từ order / initialShipment và tự động khớp Tỉnh / Xã (Hỗ trợ GHN v3)
   useEffect(() => {
     if (!show || !order) return;
 
@@ -74,13 +85,28 @@ export default function ShipmentCreateModal({
       fullAddr,
     } = extractOrderAddressInfo(order);
 
-    setToName(receiverName);
-    setToPhone(receiverPhone);
-    setToAddress(detailedAddress);
+    const prevReceiver = initialShipment?.receiverInfo || {};
+    const finalName = prevReceiver.name || receiverName;
+    const finalPhone = prevReceiver.phone || receiverPhone;
+    const finalAddress = prevReceiver.address || detailedAddress;
+    const finalProvId = prevReceiver.provinceId || provinceIdHint;
+    const finalWardCode = prevReceiver.wardCode || wardCodeHint;
 
-    // Tính COD mặc định theo số dư chưa thanh toán
+    setToName(finalName);
+    setToPhone(finalPhone);
+    setToAddress(finalAddress);
+
+    if (initialShipment?.weight) setWeight(Number(initialShipment.weight));
+    if (initialShipment?.length) setLength(Number(initialShipment.length));
+    if (initialShipment?.width) setWidth(Number(initialShipment.width));
+    if (initialShipment?.height) setHeight(Number(initialShipment.height));
+    if (initialShipment?.note) setNote(initialShipment.note);
+
+    // Tính COD mặc định theo số dư chưa thanh toán hoặc lấy từ vận đơn retry
     let defaultCod = 0;
-    if (order.paymentStatus !== 'paid') {
+    if (initialShipment?.codAmount !== undefined) {
+      defaultCod = initialShipment.codAmount;
+    } else if (order.paymentStatus !== 'paid') {
       if (orderType === 'sale') {
         defaultCod = Math.max(0, (order.totalAmount || 0) - (order.paidAmount || 0));
       } else {
@@ -91,19 +117,24 @@ export default function ShipmentCreateModal({
     setCustomCod(String(defaultCod));
     setFeeResult(null);
     setErrorMsg('');
+    setCooldown(0);
 
     // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã
     if (provinces.length > 0) {
-      if (provinceIdHint) {
-        handleProvinceChange(String(provinceIdHint), wardHint, wardCodeHint, fullAddr);
-      } else {
-        const matchedProv = autoMatchProvince(provHint, fullAddr, provinces);
+      let targetProvId = finalProvId ? String(finalProvId) : '';
+      const exists = targetProvId && provinces.some((p) => String(p._id || p.ProvinceID) === targetProvId);
+      if (!exists) {
+        const matchedProv = autoMatchProvince(targetProvId || provHint, fullAddr, provinces);
         if (matchedProv) {
-          handleProvinceChange(String(matchedProv.ProvinceID), wardHint, wardCodeHint, fullAddr);
+          targetProvId = String(matchedProv._id || matchedProv.ProvinceID);
         }
       }
+
+      if (targetProvId) {
+        handleProvinceChange(targetProvId, wardHint, finalWardCode, fullAddr);
+      }
     }
-  }, [show, order, orderType, provinces, handleProvinceChange]);
+  }, [show, order, initialShipment, orderType, provinces, handleProvinceChange]);
 
   const onProvinceSelect = (val) => {
     setFeeResult(null);
@@ -115,7 +146,7 @@ export default function ShipmentCreateModal({
     handleWardChange(val);
   };
 
-  // 5. Tính trước phí ship
+  // 5. Tính trước phí ship (Hỗ trợ GHN v3)
   const handleCalculateFee = async () => {
     if (!toProvinceId || !toWardCode) {
       setErrorMsg('Vui lòng chọn Tỉnh/Thành và Phường/Xã để tính phí giao hàng.');
@@ -124,12 +155,21 @@ export default function ShipmentCreateModal({
     setErrorMsg('');
     setCalculatingFee(true);
     try {
+      const selectedProv = provinces.find((p) => String(p._id || p.ProvinceID) === String(toProvinceId));
+      const selectedWard = wards.find((w) => String(w.WardCode || w._id) === String(toWardCode));
+      const provName = selectedProv?.name || selectedProv?.ProvinceName || order?.shippingAddress?.city || '';
+      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || order?.shippingAddress?.ward || '';
+      const isNewAddress = Number(toProvinceId) >= 1000000 || Boolean(order?.shippingAddress?.isNewAddress);
+
       const res = await calculateShippingFeeApi({
         orderType,
         orderId: order?._id,
         toProvinceId: Number(toProvinceId),
-        toDistrictId: Number(toDistrictId),
+        toDistrictId: toDistrictId ? Number(toDistrictId) : undefined,
         toWardCode: String(toWardCode || ''),
+        toProvinceName: provName,
+        toWardName: wardName,
+        isNewToAddress: isNewAddress,
         weight: Number(weight) || 500,
         length: Number(length) || 30,
         width: Number(width) || 20,
@@ -148,9 +188,18 @@ export default function ShipmentCreateModal({
     }
   };
 
-  // 6. Gửi tạo đơn
+  const formatErrorText = (msg) => {
+    const raw = String(msg || '');
+    if (raw.toLowerCase().includes('too many request') || raw.toLowerCase().includes('is processing')) {
+      return 'GHN đang xử lý tạo đơn cho mã này, vui lòng đợi vài giây rồi thử lại.';
+    }
+    return raw;
+  };
+
+  // 6. Gửi tạo đơn sang GHN
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting || cooldown > 0) return;
     if (!toProvinceId) {
       setErrorMsg('Vui lòng chọn Tỉnh/Thành phố giao hàng.');
       return;
@@ -183,6 +232,12 @@ export default function ShipmentCreateModal({
     setSubmitting(true);
     setErrorMsg('');
     try {
+      const selectedProv = provinces.find((p) => String(p._id || p.ProvinceID) === String(toProvinceId));
+      const selectedWard = wards.find((w) => String(w.WardCode || w._id) === String(toWardCode));
+      const provName = selectedProv?.name || selectedProv?.ProvinceName || order?.shippingAddress?.city || '';
+      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || order?.shippingAddress?.ward || '';
+      const isNewAddress = Number(toProvinceId) >= 1000000 || Boolean(order?.shippingAddress?.isNewAddress);
+
       const payload = {
         orderType,
         orderId: order._id,
@@ -190,8 +245,11 @@ export default function ShipmentCreateModal({
         toPhone: cleanPhone,
         toAddress: toAddress.trim(),
         toProvinceId: Number(toProvinceId),
-        toDistrictId: Number(toDistrictId),
+        toDistrictId: toDistrictId ? Number(toDistrictId) : undefined,
         toWardCode: String(toWardCode),
+        toProvinceName: provName,
+        toWardName: wardName,
+        isNewToAddress: isNewAddress,
         weight: Number(weight) || 500,
         length: Number(length) || 30,
         width: Number(width) || 20,
@@ -205,10 +263,12 @@ export default function ShipmentCreateModal({
         if (onSuccess) onSuccess(res.data);
         onClose();
       } else {
-        setErrorMsg(res?.message || 'Tạo vận đơn thất bại.');
+        setErrorMsg(formatErrorText(res?.message || 'Tạo vận đơn thất bại.'));
+        setCooldown(5);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Lỗi khi kết nối hệ thống GHN.');
+      setErrorMsg(formatErrorText(err.message || 'Lỗi khi kết nối hệ thống GHN.'));
+      setCooldown(5);
     } finally {
       setSubmitting(false);
     }
@@ -326,15 +386,15 @@ export default function ShipmentCreateModal({
                     />
                   </div>
 
-                  {/* Địa giới hành chính: Chỉ còn cấp Tỉnh/Thành và Phường/Xã (bỏ cấp Huyện) */}
+                  {/* Địa giới hành chính: Cấp Tỉnh/Thành và Phường/Xã (Mô hình 2 cấp GHN v3) */}
                   <div className="col-12 col-md-6">
                     <label className="form-label small text-muted mb-1">Tỉnh / Thành phố *</label>
                     <SearchableSelect
                       id="shipToProvince"
                       options={provinces.map((p) => ({
-                        value: String(p.ProvinceID),
-                        label: p.ProvinceName,
-                        name: p.ProvinceName,
+                        value: String(p._id || p.ProvinceID),
+                        label: p.name || p.ProvinceName,
+                        name: p.name || p.ProvinceName,
                       }))}
                       value={String(toProvinceId || '')}
                       onChange={(val) => onProvinceSelect(val)}
@@ -347,9 +407,9 @@ export default function ShipmentCreateModal({
                     <SearchableSelect
                       id="shipToWard"
                       options={wards.map((w) => ({
-                        value: String(w.WardCode),
-                        label: w.label || w.WardName,
-                        name: w.WardName,
+                        value: String(w.WardCode || w._id),
+                        label: w.label || w.WardName || w.name,
+                        name: w.WardName || w.name,
                       }))}
                       value={String(toWardCode || '')}
                       onChange={(val) => onWardSelect(val)}
@@ -500,10 +560,24 @@ export default function ShipmentCreateModal({
               type="submit"
               form="shipment-create-form"
               className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-              disabled={submitting}
+              disabled={submitting || cooldown > 0}
             >
-              {submitting ? <Loader2 size={14} className="spin" /> : <CheckCircle size={14} />}
-              <span>{submitting ? 'Đang gửi GHN...' : 'Xác nhận tạo đơn GHN'}</span>
+              {submitting ? (
+                <>
+                  <Loader2 size={14} className="spin" />
+                  <span>Đang gửi GHN...</span>
+                </>
+              ) : cooldown > 0 ? (
+                <>
+                  <Loader2 size={14} className="spin" />
+                  <span>Vui lòng đợi ({cooldown}s)...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={14} />
+                  <span>Xác nhận tạo đơn GHN</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -511,4 +585,3 @@ export default function ShipmentCreateModal({
     </div>
   );
 }
-

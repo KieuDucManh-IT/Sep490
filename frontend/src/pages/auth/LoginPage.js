@@ -11,13 +11,13 @@ import AuthLayout from "../../components/AuthLayout";
 import { useAuth } from "../../context/AuthContext";
 
 function getHome(role) {
-  const normalized = (role || "").toLowerCase();
+  const normalized = (role || "").toLowerCase().replace(/[\s_-]/g, "");
   if (normalized === "admin") return "/admin/accounts";
-  if (normalized === "operation_staff" || normalized === "ops") return "/ops/shops";
-  if (normalized === "shop_owner" || normalized === "owner") return "/owner/dashboard";
-  if (normalized === "branch_manager") return "/branch/dashboard";
-  if (normalized === "warehouse_staff") return "/warehousestaff/inbound-receipts";
-  if (normalized === "warehouse_manager") return "/warehousemanager";
+  if (normalized === "operationstaff" || normalized === "ops") return "/ops/shops";
+  if (normalized === "shopowner" || normalized === "owner") return "/owner/dashboard";
+  if (normalized === "branchmanager") return "/branch/dashboard";
+  if (normalized === "warehousestaff") return "/warehousestaff/inbound-receipts";
+  if (normalized === "warehousemanager") return "/warehousemanager";
 
   return "/";
 }
@@ -83,14 +83,17 @@ export default function LoginPage() {
       );
 
       const from = location.state?.from;
+      const rawRole = (loggedInUser?.role || loggedInUser?.Role || "").toLowerCase().replace(/[\s_-]/g, "");
 
-      const destination =
-        typeof from === "string" &&
-          from.startsWith("/") &&
-          !from.startsWith("//") &&
-          from !== "/login"
+      const destination = (rawRole === "admin")
+        ? "/admin/accounts"
+        : (typeof from === "string" &&
+            from.startsWith("/") &&
+            !from.startsWith("//") &&
+            from !== "/login" &&
+            from !== "/"
           ? from
-          : getHome(loggedInUser.role);
+          : getHome(loggedInUser.role));
 
       navigate(destination, { replace: true });
     } catch (error) {
@@ -117,9 +120,10 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      await loginGoogle(response.credential);
+      const loggedUser = await loginGoogle(response.credential);
+      const rawRole = (loggedUser?.role || loggedUser?.Role || "").toLowerCase().replace(/[\s_-]/g, "");
 
-      navigate("/", { replace: true });
+      navigate(rawRole === "admin" ? "/admin/accounts" : "/", { replace: true });
     } catch (error) {
       setErrors({
         server:

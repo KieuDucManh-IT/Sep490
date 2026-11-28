@@ -71,7 +71,7 @@ export default function BranchInventoryPage() {
         <div className="wm-table-wrap"><table><thead><tr><th>Sản phẩm / biến thể</th><th>Mã / SKU</th><th>Tồn tại chi nhánh</th><th>Có thể sử dụng</th><th>Đang giữ</th><th>Không khả dụng</th><th>Đang cho thuê</th><th>Quá hạn trả</th></tr></thead>
           <tbody>{loading ? <tr><td colSpan={8}>Đang tải tồn kho...</td></tr> : visible.length ? visible.map((item) => <tr key={item.key}>
             <td><strong>{item.productName}</strong><br /><small>{[item.size, item.color].filter(Boolean).join(' · ')}</small></td>
-            <td>{item.productCode}{item.sku ? <><br /><small>{item.sku}</small></> : null}{item.trackingType === 'individual' && <><br /><button type="button" className="wm-text-button" onClick={() => setSerialDetail({ ...item, branchId })}>Xem {number(item.itemCount)} mã hàng</button></>}</td>
+            <td>{item.productCode}{item.sku ? <><br /><small>{item.sku}</small></> : null}<br /><button type="button" className="wm-text-button" onClick={() => setSerialDetail({ ...item, branchId })}>Xem {number(item.itemCount ?? item.quantityOnHand)} mã hàng</button></td>
             <td>{number(item.quantityOnHand)}</td><td>{number(item.quantityAvailable)}</td><td>{number(item.quantityReserved)}</td><td>{number(item.quantityUnavailable)}</td>
             <td>{number(item.quantityRenting)}</td><td style={Number(item.quantityOverdue) > 0 ? overdueStyle : undefined}>{number(item.quantityOverdue)}</td>
           </tr>) : <tr><td colSpan={8}>Chi nhánh hiện chưa có tồn kho phù hợp.</td></tr>}</tbody>

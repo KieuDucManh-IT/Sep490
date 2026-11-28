@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import { getPublicPolicies } from "../../services/businessPolicyService";
@@ -70,6 +71,8 @@ function renderFormattedContent(text) {
 }
 
 export default function PolicyPage() {
+  const { tab } = useParams();
+  const navigate = useNavigate();
   const [policies, setPolicies] = useState(null);
   const [activeTab, setActiveTab] = useState("");
   const [loading, setLoading] = useState(true);
@@ -104,7 +107,8 @@ export default function PolicyPage() {
         .filter((p) => p.isActive !== false)
         .map((p) => ({
           key: p.key || p._id,
-          label: p.title || p.key,
+          id: p._id,
+          label: p.title || 'Chính sách',
           title: p.title,
           summary: p.summary,
           content: p.content,
@@ -115,8 +119,9 @@ export default function PolicyPage() {
     return Object.entries(policies)
       .filter(([_, p]) => p?.isActive !== false)
       .map(([k, p]) => ({
-        key: k,
-        label: p?.title || k,
+        key: p?.key || p?._id || k,
+        id: p?._id || k,
+        label: p?.title || 'Chính sách',
         title: p?.title,
         summary: p?.summary,
         content: p?.content,
@@ -124,21 +129,30 @@ export default function PolicyPage() {
       }));
   }, [policies]);
 
-  // Tự động kích hoạt tab đầu tiên khi tải xong dữ liệu
+  // Tự động kích hoạt tab theo URL param (/policy/:tab) hoặc điều hướng vào tab đầu tiên
   useEffect(() => {
-    if (availableTabs.length > 0 && (!activeTab || !availableTabs.some((t) => t.key === activeTab))) {
-      setActiveTab(availableTabs[0].key);
+    if (!availableTabs.length) return;
+    if (tab) {
+      const matched = availableTabs.find((t) => t.key === tab || t.id === tab);
+      if (matched) {
+        if (activeTab !== matched.key) setActiveTab(matched.key);
+        return;
+      }
     }
-  }, [availableTabs, activeTab]);
+    const defaultKey = availableTabs[0].key;
+    setActiveTab(defaultKey);
+    navigate(`/policy/${defaultKey}`, { replace: true });
+  }, [availableTabs, tab, activeTab, navigate]);
 
-  // Chuyển đổi tab có cuộn mềm vào tầm nhìn trên thiết bị di động
+  // Chuyển đổi tab đồng thời cập nhật slug trên URL (/policy/{tên-chính-sách})
   const handleTabChange = useCallback((key) => {
     setActiveTab(key);
+    navigate(`/policy/${key}`, { replace: true });
     const tabEl = document.getElementById(`customer-policy-tab-${key}`);
     if (tabEl && typeof tabEl.scrollIntoView === "function") {
       tabEl.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
     }
-  }, []);
+  }, [navigate]);
 
   // Xử lý điều hướng bằng bàn phím theo chuẩn WAI-ARIA cho Tabs
   const handleTabKeyDown = useCallback(

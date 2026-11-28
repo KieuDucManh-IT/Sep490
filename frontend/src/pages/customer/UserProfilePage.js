@@ -31,7 +31,6 @@ const ROLE_LABELS = {
   customer: "Khách hàng",
   shop_owner: "Chủ cửa hàng",
   admin: "Quản trị viên",
-  operation_staff: "Nhân viên vận hành",
 };
 
 const PASSWORD_FIELDS = [
@@ -624,6 +623,7 @@ export default function UserProfilePage() {
 
   const profile = getProfile(user);
   const roleLabel = ROLE_LABELS[user.role] || user.role;
+  const isCustomer = String(user.Role || user.role || '').trim().toLowerCase() === 'customer';
   const canChangePassword = user.authProvider === "local";
 
   const avatarInitial =
@@ -876,29 +876,33 @@ export default function UserProfilePage() {
               </div>
             )}
 
-            <button
-              type="button"
-              className="profile-nav-btn"
-              onClick={() => navigate("/rental-orders")}
-              disabled={accountBusy}
-            >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <ClipboardList size={15} color="#C5A880" /> Đơn Thuê Của Tôi
-              </span>
-              <ChevronRight size={14} color="#A3A3A3" />
-            </button>
+            {isCustomer && (
+              <>
+                <button
+                  type="button"
+                  className="profile-nav-btn"
+                  onClick={() => navigate("/rental-orders")}
+                  disabled={accountBusy}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <ClipboardList size={15} color="#C5A880" /> Đơn Thuê Của Tôi
+                  </span>
+                  <ChevronRight size={14} color="#A3A3A3" />
+                </button>
 
-            <button
-              type="button"
-              className="profile-nav-btn"
-              onClick={() => navigate("/rental-orders?tab=sale")}
-              disabled={accountBusy}
-            >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <ShoppingBag size={15} color="#C5A880" /> Đơn Mua Sắm Của Tôi
-              </span>
-              <ChevronRight size={14} color="#A3A3A3" />
-            </button>
+                <button
+                  type="button"
+                  className="profile-nav-btn"
+                  onClick={() => navigate("/rental-orders?tab=sale")}
+                  disabled={accountBusy}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <ShoppingBag size={15} color="#C5A880" /> Đơn Mua Sắm Của Tôi
+                  </span>
+                  <ChevronRight size={14} color="#A3A3A3" />
+                </button>
+              </>
+            )}
 
             <button
               type="button"

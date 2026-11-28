@@ -74,6 +74,40 @@ const informationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const lockRecordSchema = new mongoose.Schema(
+  {
+    action: {
+      type: String,
+      enum: ["LOCK", "UNLOCK"],
+      required: true,
+      default: "LOCK",
+    },
+    reason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    performedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    performedByName: {
+      type: String,
+      default: "Quản trị viên",
+    },
+    performedByEmail: {
+      type: String,
+      default: "",
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: true }
+);
+
 function hidePassword(doc, result) {
   delete result.PasswordHash;
   return result;
@@ -113,10 +147,10 @@ const userSchema = new mongoose.Schema(
       enum: {
         values: [
           "customer", "admin", "owner", "branch_manager", "warehouse_manager", "warehouse_staff",
-          "shop_owner", "operation_staff",
-          "shopOwner", "shopowner", "brandmanager", "brandManager", "warehousestaff", "warehouseStaff", "warehouseManager",
+          "shop_owner",
+          "shopOwner", "shopowner", "warehousestaff", "warehouseStaff", "warehouseManager",
           "CUSTOMER", "ADMIN", "OWNER", "BRANCH_MANAGER", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF",
-          "SHOP_OWNER", "OPERATION_STAFF", "SHOPOWNER", "BRANDMANAGER", "WAREHOUSESTAFF", "WAREHOUSEMANAGER"
+          "SHOP_OWNER", "SHOPOWNER", "WAREHOUSESTAFF", "WAREHOUSEMANAGER"
         ],
         message: "Role không hợp lệ",
       },
@@ -203,6 +237,17 @@ const userSchema = new mongoose.Schema(
     MustChangePassword: {
       type: Boolean,
       default: false,
+    },
+
+    ShopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shop",
+      default: null,
+    },
+
+    LockHistory: {
+      type: [lockRecordSchema],
+      default: [],
     },
   },
   {

@@ -10,11 +10,12 @@ const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   description: { type: String, trim: true },
   tag: { type: String, enum: ['sale', 'rental', 'both'] },
-  trackingType: { type: String, default: 'quantity', enum: ['quantity', 'individual'] },
+  // TASK-015: bỏ `trackingType` — mọi sản phẩm quản lý theo từng món (InventoryItem). Dữ liệu cũ gỡ bằng
+  // `migrateQuantityToItems.js --unset-field --apply`.
   brand: { type: String, trim: true },
   material: { type: String, trim: true },
-  rating: { type: Number, default: 5.0, min: 0, max: 5 },
-  reviewsCount: { type: Number, default: 50 },
+  rating: { type: Number, default: 0, min: 0, max: 5 },
+  reviewsCount: { type: Number, default: 0 },
   rentalPricePerDay: { type: Number, default: 0 },
   salePrice: { type: Number, default: 0 },
   deposit: { type: Number, default: 0 },
@@ -27,6 +28,9 @@ const productSchema = new mongoose.Schema({
   isSetPrice: { type: Boolean, default: false, index: true },
   priceSetBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   priceSetAt: { type: Date, default: null },
+  isOutOfStock: { type: Boolean, default: false, index: true },
+  outOfStockAt: { type: Date, default: null },      // thời điểm bị đánh dấu hết hàng
+  restockRequestedAt: { type: Date, default: null }, // thời điểm branch_manager tạo phiếu nhập → hiển thị lại
 
 }, { timestamps: true, strict: false });
 

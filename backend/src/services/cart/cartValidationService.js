@@ -1,6 +1,7 @@
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { getBalances, sumAvailable } from '../warehouse/balanceQueryService.js';
+import { sumAvailable } from '../warehouse/balanceQueryService.js';
+import { getCustomerStock } from '../warehouse/customer-stock-query.js';
 import { isActiveStoreLocation, formatLocationAddress } from '../warehouse/productInventoryHelper.js';
 import { resolveProductPricing, isActiveProduct, isActiveVariant } from '../masterdata/productPricing.js';
 import { validateCalendarRentalRange } from '../../validations/sale&rental/rentalOrderValidation.js';
@@ -8,6 +9,7 @@ const idOf = (v) => String(v?._id || v || '');
 
 /** Read-only quote; no reservations or business data writes.
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-019
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-021
  * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-028
  */
 export const validateCartState = async ({ locationId = null, rentalItems = [], saleItems = [] }) => {
@@ -21,8 +23,8 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
   const location = locationId ? { locationId: String(locationId), name: selected?.name || '', address: formatLocationAddress(selected), type: selected?.type || '', active: isActiveStoreLocation(selected) } : null;
   const siblings = await ProductVariant.find({ productId: { $in: variants.map(v => v.productId?._id).filter(Boolean) }, status: 'active', isDeleted: { $ne: true } }).lean();
   const ids = [...new Set([...variants, ...siblings].map(v => idOf(v)))];
-  // TASK-010: chỉ đọc balance cho mọi loại hàng (bỏ fallback đếm món).
-  const balances = await getBalances({ variantIds: ids });
+  // Shared customer snapshot, scoped to active stores; Balance existence wins even at zero.
+  const balances = await getCustomerStock({ locationIds: activeLocations.map(loc => loc._id), variantIds: ids });
   const stock = (vid, lid) => sumAvailable(balances.filter(row => idOf(row.variantId) === vid && idOf(row.locationId) === lid));
   const totals = new Map();
   for (const row of input) totals.set(String(row.variantId), (totals.get(String(row.variantId)) || 0) + row.quantity);
@@ -31,22 +33,22 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
     const variant = variants.find(v => idOf(v) === String(it.variantId));
     const product = variant?.productId;
     const errors = []; const warnings = [];
-    const fail = (code, message) => errors.push({ code, message });
+    const addItemError = (code, message) => errors.push({ code, message });
     const total = totals.get(String(it.variantId));
     const availableQty = locationId ? (location?.active ? stock(String(it.variantId), String(locationId)) : 0)
       : activeLocations.reduce((sum, loc) => sum + stock(String(it.variantId), idOf(loc)), 0);
-    if (!variant || !product?._id) fail('ERR_ITEM_NOT_FOUND', 'Sản phẩm không còn tồn tại.');
-    else if (!isActiveVariant(variant) || !isActiveProduct(product)) fail('ERR_ITEM_INACTIVE', 'Sản phẩm đã ngừng kinh doanh.');
-    else if (product.isSetPrice !== true) fail('ERR_ITEM_NOT_PRICED', `Sản phẩm [${product.name || variant.sku}] chưa được mở bán.`);
-    if (product && (it.orderType === 'sale' ? String(product.tag).toLowerCase() === 'rental' : String(product.tag).toLowerCase() === 'sale')) fail('ERR_ITEM_TYPE_MISMATCH', 'Sản phẩm không hỗ trợ hình thức giao dịch này.');
-    if (location && !location.active) fail('ERR_BRANCH_UNAVAILABLE', 'Chi nhánh không khả dụng.');
-    if (availableQty < total) fail('ERR_INSUFFICIENT_STOCK', `Chỉ còn ${availableQty} sản phẩm, giỏ đang yêu cầu ${total}.`);
+    if (!variant || !product?._id) addItemError('ERR_ITEM_NOT_FOUND', 'Sản phẩm không còn tồn tại.');
+    else if (!isActiveVariant(variant) || !isActiveProduct(product)) addItemError('ERR_ITEM_INACTIVE', 'Sản phẩm đã ngừng kinh doanh.');
+    else if (product.isSetPrice !== true) addItemError('ERR_ITEM_NOT_PRICED', `Sản phẩm [${product.name || variant.sku}] chưa được mở bán.`);
+    if (product && (it.orderType === 'sale' ? String(product.tag).toLowerCase() === 'rental' : String(product.tag).toLowerCase() === 'sale')) addItemError('ERR_ITEM_TYPE_MISMATCH', 'Sản phẩm không hỗ trợ hình thức giao dịch này.');
+    if (location && !location.active) addItemError('ERR_BRANCH_UNAVAILABLE', 'Chi nhánh không khả dụng.');
+    if (availableQty < total) addItemError('ERR_INSUFFICIENT_STOCK', `Chỉ còn ${availableQty} sản phẩm, giỏ đang yêu cầu ${total}.`);
     const prices = resolveProductPricing(product, variant);
     let authoritative = null;
     let priceChanged = false;
     if (variant && product?._id) {
       if (it.orderType === 'sale') {
-        if (!Number.isFinite(prices.salePrice) || prices.salePrice <= 0) fail('ERR_INVALID_PRICE', 'Giá bán chưa hợp lệ.');
+        if (!Number.isFinite(prices.salePrice) || prices.salePrice <= 0) addItemError('ERR_INVALID_PRICE', 'Giá bán chưa hợp lệ.');
         else {
           authoritative = { salePrice: prices.salePrice, lineTotal: prices.salePrice * it.quantity, lineDeposit: 0 };
           priceChanged = it.clientSalePrice !== undefined && it.clientSalePrice !== prices.salePrice;
@@ -54,8 +56,8 @@ export const validateCartState = async ({ locationId = null, rentalItems = [], s
         }
       } else {
         const range = validateCalendarRentalRange(it.startDate, it.dueDate);
-        if (!range.valid) fail(range.code, range.message);
-        if (!Number.isFinite(prices.rentalPricePerDay) || prices.rentalPricePerDay <= 0 || !Number.isFinite(prices.deposit) || prices.deposit < 0) fail('ERR_INVALID_PRICE', 'Giá thuê hoặc tiền cọc chưa hợp lệ.');
+        if (!range.valid) addItemError(range.code, range.message);
+        if (!Number.isFinite(prices.rentalPricePerDay) || prices.rentalPricePerDay <= 0 || !Number.isFinite(prices.deposit) || prices.deposit < 0) addItemError('ERR_INVALID_PRICE', 'Giá thuê hoặc tiền cọc chưa hợp lệ.');
         else if (range.valid) {
           authoritative = { rentalPricePerDay: prices.rentalPricePerDay, depositPerUnit: prices.deposit, rentalDays: range.rentalDays,
             lineTotal: prices.rentalPricePerDay * range.rentalDays * it.quantity, lineDeposit: prices.deposit * it.quantity };

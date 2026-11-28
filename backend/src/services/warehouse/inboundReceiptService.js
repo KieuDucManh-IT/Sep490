@@ -1,23 +1,55 @@
+// Phiếu nhập kho từ nhà cung cấp vào kho tổng.
+// Luồng trạng thái: awaiting_receiving → received → approved → completed
+//                   (received có thể bị yêu cầu kiểm nhận lại → awaiting_receiving; các trạng thái chưa completed
+//                   có thể bị cancelled; `rejected` chỉ còn ở dữ liệu cũ, không tạo mới).
+// Ai làm bước nào:
+// - Quản lý kho: tạo phiếu và giao nhân viên, duyệt / yêu cầu kiểm nhận lại kết quả ghi nhận, hủy phiếu.
+// - Nhân viên kho được giao: ghi nhận số thực nhận / hỏng, xếp hàng lên kệ.
+// Tồn chỉ được cộng ở bước xếp hàng lên kệ (completed); trước đó phiếu chỉ "giữ chỗ" sức chứa kho.
+// TASK-015: mỗi đơn vị thực nhận thành một món trên kệ (mã `<SKU>-<4 số>`); hàng hỏng là món `damaged` / `unavailable`.
 import mongoose from 'mongoose';
 import { InboundReceipt } from '../../models/warehouse/inbound/InboundReceipt.js';
 import { InboundReceiptDetail } from '../../models/warehouse/inbound/InboundReceiptDetail.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { StorageLocation } from '../../models/warehouse/location/StorageLocation.js';
 import { InventoryBalance } from '../../models/warehouse/inventory/InventoryBalance.js';
-import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { ProductVariant } from '../../models/masterdata/ProductVariant.js';
 import { Supplier } from '../../models/masterdata/Supplier.js';
 import User from '../../models/system/User.js';
-import { validateCancelReason, validateCreateInboundReceipt, validatePutaway, validateReceiptCheck } from '../../validations/warehouse/inboundReceiptValidation.js';
-import { increaseInventoryBalance, recordStockMovement } from './inventoryLedgerService.js';
+import {
+  validateCancelReason, validateCreateInboundReceipt, validatePutaway, validateReceiptCheck, validateReceiptDecision,
+} from '../../validations/warehouse/inboundReceiptValidation.js';
 import { assertCentralWarehouse } from './centralWarehouseService.js';
-import { createItems } from './itemStateService.js';
+import { createItems, generateItemCodes, recordItemMovements } from './itemStateService.js';
+import { buildPutawayPlan, inboundItemDocs } from './inboundPutawayRules.js';
+import { refreshOutOfStockStatus, markRestockRequested } from './productStockStatusService.js';
+import { appError } from './shared/errors.js';
+import { WAREHOUSE_STAFF_ROLE_PATTERN, isSameUser, isWarehouseManagerOrAdmin, isWarehouseStaff } from './shared/roles.js';
+import { addToStorageChain } from './shared/capacity.js';
+import { parsePaging } from './shared/pagination.js';
+import { createNotification } from '../system/notificationService.js';
+import { andFilter, buildSearchFilter, listSlips } from './shared/listing.js';
 
-const openStatuses = ['awaiting_receiving', 'received', 'approved'];
-const receiptStatuses = [...openStatuses, 'completed', 'rejected', 'cancelled'];
-const fail = (message, statusCode = 400, code) => Object.assign(new Error(message), { statusCode, code });
-const capacityOf = (value) => Number.isInteger(value) && value > 0 ? value : 0;
+export const RECEIPT_STATUS = {
+  AWAITING_RECEIVING: 'awaiting_receiving',
+  RECEIVED: 'received',
+  APPROVED: 'approved',
+  COMPLETED: 'completed',
+  REJECTED: 'rejected',
+  CANCELLED: 'cancelled',
+};
+/** Phiếu còn mở: đang chiếm chỗ sức chứa kho và còn hủy được. */
+const OPEN_STATUSES = [RECEIPT_STATUS.AWAITING_RECEIVING, RECEIPT_STATUS.RECEIVED, RECEIPT_STATUS.APPROVED];
+const RECEIPT_STATUSES = Object.values(RECEIPT_STATUS);
+const SUPPLIER_RECEIPT = { receiptType: 'supplier' };
+const NOT_ASSIGNED_MESSAGE = 'Phiếu này chưa được giao cho bạn.';
+
+const capacityOf = (value) => (Number.isInteger(value) && value > 0 ? value : 0);
 const sum = (rows, field) => rows.reduce((total, row) => total + (row[field] || 0), 0);
+const makeCode = () => {
+  const day = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  return `PN-${day}-${new mongoose.Types.ObjectId().toString().slice(-6).toUpperCase()}`;
+};
 
 const receiptPopulation = [
   { path: 'locationId', select: 'code name maxCapacity' },
@@ -28,125 +60,197 @@ const receiptPopulation = [
   { path: 'approvedBy', select: 'FullName Email' },
   { path: 'putawayBy', select: 'FullName Email' },
   { path: 'cancelledBy', select: 'FullName Email' },
+  { path: 'lastRecountBy', select: 'FullName Email' },
 ];
 
-const loadDetails = async (receiptId) => InboundReceiptDetail.find({ receiptId }).sort({ createdAt: 1 })
-  .populate({ path: 'variantId', select: 'sku size color productId', populate: { path: 'productId', select: 'name productCode trackingType' } })
+/** Chi tiết đầy đủ của một hoặc nhiều phiếu (một truy vấn $in). */
+const findDetails = (receiptIds) => InboundReceiptDetail.find({ receiptId: { $in: receiptIds } }).sort({ createdAt: 1 })
+  .populate({
+    path: 'variantId',
+    select: 'sku size color productId',
+    populate: { path: 'productId', select: 'name productCode' },
+  })
   .populate('storageAllocations.storageId', 'code name type')
+  .populate('damagedStorageAllocations.storageId', 'code name type')
   .populate('storageId', 'code name type');
 
-// TASK-009: sức chứa chỉ đọc InventoryBalance.quantityOnHand cho MỌI loại hàng. Balance của hàng individual
-// đã đồng bộ với các món (itemStateService), nên không đếm InventoryItem riêng nữa để tránh đếm hai lần.
+/**
+ * Cập nhật cờ hết hàng của các sản phẩm trong phiếu sau khi phiếu đổi trạng thái.
+ * Chạy ngoài transaction và không chặn nghiệp vụ: lỗi chỉ ghi log.
+ */
+const refreshStockStatusOfReceipt = async (receiptId, stepLabel) => {
+  try {
+    const detailsForStock = await InboundReceiptDetail.find({ receiptId })
+      .populate({ path: 'variantId', select: 'productId' }).lean();
+    const productIds = [...new Set(detailsForStock.map((d) => String(d.variantId?.productId)).filter(Boolean))];
+    if (productIds.length) await refreshOutOfStockStatus(productIds);
+  } catch (err) {
+    console.error(`[TASK-012] Lỗi refreshOutOfStockStatus sau ${stepLabel}:`, err.message);
+  }
+};
+
+/* ------------------------------ Sức chứa ------------------------------ */
+
+/** Đã dùng của toàn kho và từng kệ (cộng dồn lên cấp cha), chỉ đọc InventoryBalance.quantityOnHand. */
 const getPhysicalCapacity = async (locationId, session = null) => {
   const location = await InventoryLocation.findById(locationId).session(session).lean();
-  if (!location) throw fail('Không tìm thấy kho/cửa hàng.', 404);
-  const storageLocations = await StorageLocation.find({ locationId }).select('_id parentStorageId maxCapacity type status').session(session).lean();
+  if (!location) throw appError('Không tìm thấy kho/cửa hàng.', 404);
+  const storageLocations = await StorageLocation.find({ locationId })
+    .select('_id parentStorageId maxCapacity type status').session(session).lean();
   const storageById = new Map(storageLocations.map((storage) => [String(storage._id), storage]));
   const balanceRows = await InventoryBalance.aggregate([
     { $match: { locationId: new mongoose.Types.ObjectId(String(locationId)) } },
     { $group: { _id: '$storageId', quantity: { $sum: '$quantityOnHand' } } },
   ]).session(session);
-  const directByStorage = new Map();
-  for (const row of balanceRows) {
-    const key = row._id ? String(row._id) : '';
-    directByStorage.set(key, (directByStorage.get(key) || 0) + Math.max(0, row.quantity || 0));
-  }
-
   const usedByStorage = new Map();
-  for (const [storageId, quantity] of directByStorage.entries()) {
-    if (!storageId) continue;
-    let cursor = storageById.get(storageId);
-    const visited = new Set();
-    while (cursor && !visited.has(String(cursor._id))) {
-      const cursorId = String(cursor._id);
-      visited.add(cursorId);
-      usedByStorage.set(cursorId, (usedByStorage.get(cursorId) || 0) + quantity);
-      cursor = cursor.parentStorageId ? storageById.get(String(cursor.parentStorageId)) : null;
-    }
+  let used = 0;
+  for (const row of balanceRows) {
+    const quantity = Math.max(0, row.quantity || 0);
+    used += quantity;
+    if (row._id) addToStorageChain(usedByStorage, storageById, String(row._id), quantity);
   }
-  const used = [...directByStorage.values()].reduce((total, value) => total + value, 0);
   return { location, storageLocations, storageById, usedByStorage, used };
 };
 
+/**
+ * Phiếu nhập khác đang mở cũng chiếm chỗ: chờ nhận tính số dự kiến, đã nhận tính số thực nhận
+ * (TASK-015: hàng hỏng cũng lên kệ nên chiếm chỗ như hàng thường).
+ */
 const getOpenCommitment = async (locationId, excludeReceiptId = null, session = null) => {
-  const query = { locationId, status: { $in: openStatuses } };
+  const query = { locationId, status: { $in: OPEN_STATUSES } };
   if (excludeReceiptId) query._id = { $ne: excludeReceiptId };
   const receipts = await InboundReceipt.find(query).select('_id status').session(session).lean();
   if (!receipts.length) return 0;
-  const ids = receipts.map((receipt) => receipt._id);
   const details = await InboundReceiptDetail.aggregate([
-    { $match: { receiptId: { $in: ids } } },
-    { $group: { _id: '$receiptId', expected: { $sum: '$quantityExpected' }, accepted: { $sum: { $cond: [{ $gt: [{ $subtract: ['$quantityReceived', '$quantityDamaged'] }, 0] }, { $subtract: ['$quantityReceived', '$quantityDamaged'] }, 0] } } } },
+    { $match: { receiptId: { $in: receipts.map((receipt) => receipt._id) } } },
+    {
+      $group: {
+        _id: '$receiptId',
+        expected: { $sum: '$quantityExpected' },
+        received: { $sum: { $max: ['$quantityReceived', 0] } },
+      },
+    },
   ]).session(session);
   const receiptById = new Map(receipts.map((receipt) => [String(receipt._id), receipt]));
   return details.reduce((total, detail) => {
     const receipt = receiptById.get(String(detail._id));
-    return total + (receipt.status === 'awaiting_receiving' ? detail.expected : detail.accepted);
+    if (receipt.status === RECEIPT_STATUS.AWAITING_RECEIVING) return total + detail.expected;
+    return total + detail.received;
   }, 0);
 };
 
-export const listWarehouseStaff = async () => User.find({ Role: /^warehouse_staff$/i, Status: /^active$/i })
+/* ------------------------------ Đọc phiếu ------------------------------ */
+
+export const listWarehouseStaff = async () => User.find({ Role: WAREHOUSE_STAFF_ROLE_PATTERN, Status: /^active$/i })
   .select('FullName Email').sort({ FullName: 1 }).lean();
 
-export const listInboundReceipts = async ({ status, staffId } = {}) => {
-  const filter = { receiptType: 'supplier' };
-  if (status && receiptStatuses.includes(status)) filter.status = status;
-  if (staffId) filter.assignedStaffId = staffId;
-  const receipts = await InboundReceipt.find(filter).sort({ createdAt: -1 }).populate(receiptPopulation);
-  return Promise.all(receipts.map(async (receipt) => ({ ...receipt.toObject(), items: await loadDetails(receipt._id) })));
+/**
+ * Danh sách phiếu nhập. Query: status, staffId (controller tự gắn cho nhân viên), search, page, limit.
+ * Có page/limit → { items, total, page, limit } (kèm lineCount, totalQuantity = tổng số dự kiến);
+ * không có → mảng phiếu kèm `items` đầy đủ như API cũ.
+ */
+export const listInboundReceipts = async (query = {}) => {
+  const filter = { ...SUPPLIER_RECEIPT };
+  if (query.status && RECEIPT_STATUSES.includes(query.status)) filter.status = query.status;
+  if (query.staffId) filter.assignedStaffId = query.staffId;
+  const searchFilter = await buildSearchFilter(query.search, {
+    codeField: 'receiptCode',
+    locationFields: ['locationId'],
+    userFields: ['createdBy', 'assignedStaffId'],
+  });
+  return listSlips({
+    Model: InboundReceipt,
+    filter: andFilter(filter, searchFilter),
+    decorate: (find) => find.populate(receiptPopulation),
+    paging: parsePaging(query),
+    attachDetails: { findDetails, parentField: 'receiptId' },
+    summary: { DetailModel: InboundReceiptDetail, parentField: 'receiptId', quantityField: 'quantityExpected' },
+  });
 };
 
+/** Chi tiết phiếu. Nhân viên kho chỉ xem được phiếu giao cho mình. */
 export const getInboundReceipt = async (receiptId, requester = null) => {
-  const receipt = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' }).populate(receiptPopulation);
-  if (!receipt) throw fail('Không tìm thấy phiếu nhập.', 404);
-  if (requester?.Role?.toLowerCase() === 'warehouse_staff' && String(receipt.assignedStaffId?._id || receipt.assignedStaffId) !== String(requester._id)) {
-    throw fail('Phiếu này chưa được giao cho bạn.', 403);
+  const receipt = await InboundReceipt.findOne({ _id: receiptId, ...SUPPLIER_RECEIPT }).populate(receiptPopulation);
+  if (!receipt) throw appError('Không tìm thấy phiếu nhập.', 404);
+  if (isWarehouseStaff(requester) && !isSameUser(receipt.assignedStaffId, requester)) {
+    throw appError(NOT_ASSIGNED_MESSAGE, 403);
   }
-  return { ...receipt.toObject(), items: await loadDetails(receipt._id) };
+  return { ...receipt.toObject(), items: await findDetails([receipt._id]) };
 };
 
+/* ------------------------------ Tạo phiếu ------------------------------ */
+
+const loadCreateReferences = (data) => Promise.all([
+  InventoryLocation.findById(data.locationId),
+  Supplier.findOne({ _id: data.supplierId, status: 'active' }),
+  User.findOne({ _id: data.assignedStaffId, Role: WAREHOUSE_STAFF_ROLE_PATTERN, Status: /^active$/i }),
+  ProductVariant.find({ _id: { $in: data.items.map((item) => item.variantId) }, status: 'active' })
+    .populate('productId', 'status'),
+]);
+
+const checkCreateReferences = async (data, [location, supplier, staff, variants]) => {
+  if (!location || location.status !== 'active') {
+    throw appError('Kho/cửa hàng không tồn tại hoặc đang ngừng hoạt động.', 400);
+  }
+  await assertCentralWarehouse(location._id);
+  if (!supplier) throw appError('Nhà cung cấp không tồn tại hoặc đang ngừng hoạt động.', 400);
+  if (!staff) throw appError('Nhân viên được giao không tồn tại, không phải nhân viên kho hoặc đã ngừng hoạt động.', 400);
+  const uniqueVariantCount = new Set(data.items.map((item) => item.variantId)).size;
+  const inactive = variants.some((variant) => !variant.productId || variant.productId.status !== 'active');
+  if (variants.length !== uniqueVariantCount || inactive) {
+    throw appError('Một hoặc nhiều biến thể không tồn tại hoặc đang ngừng kinh doanh.', 400);
+  }
+};
+
+/**
+ * Quản lý kho tạo phiếu nhập và giao nhân viên. Phiếu và các dòng được tạo trong cùng một transaction,
+ * nên nếu một dòng lỗi thì không còn phiếu "mồ côi" không có chi tiết.
+ */
 export const createInboundReceipt = async (payload, userId) => {
   const data = validateCreateInboundReceipt(payload);
-  const [location, supplier, staff, variants] = await Promise.all([
-    InventoryLocation.findById(data.locationId),
-    Supplier.findOne({ _id: data.supplierId, status: 'active' }),
-    User.findOne({ _id: data.assignedStaffId, Role: /^warehouse_staff$/i, Status: /^active$/i }),
-    ProductVariant.find({ _id: { $in: data.items.map((item) => item.variantId) }, status: 'active' }).populate('productId', 'status'),
-  ]);
-  if (!location || location.status !== 'active') throw fail('Kho/cửa hàng không tồn tại hoặc đang ngừng hoạt động.', 400);
-  await assertCentralWarehouse(location._id);
-  if (!supplier) throw fail('Nhà cung cấp không tồn tại hoặc đang ngừng hoạt động.', 400);
-  if (!staff) throw fail('Nhân viên được giao không tồn tại, không phải nhân viên kho hoặc đã ngừng hoạt động.', 400);
-  if (variants.length !== new Set(data.items.map((item) => item.variantId)).size || variants.some((variant) => !variant.productId || variant.productId.status !== 'active')) throw fail('Một hoặc nhiều biến thể không tồn tại hoặc đang ngừng kinh doanh.', 400);
-
-  const code = 'PN-' + new Date().toISOString().slice(0, 10).replaceAll('-', '') + '-' + new mongoose.Types.ObjectId().toString().slice(-6).toUpperCase();
-  const receipt = await InboundReceipt.create({
-    receiptCode: code,
-    locationId: data.locationId,
-    supplierId: data.supplierId,
-    receiptType: 'supplier',
-    status: 'awaiting_receiving',
-    createdBy: userId,
-    assignedStaffId: data.assignedStaffId,
-    note: data.note,
-  });
+  await checkCreateReferences(data, await loadCreateReferences(data));
+  const code = makeCode();
+  const session = await mongoose.startSession();
+  let receiptId;
   try {
-    await InboundReceiptDetail.insertMany(data.items.map((item, index) => ({
-      receiptId: receipt._id,
-      receiptDetailCode: `${code}-${String(index + 1).padStart(2, '0')}`,
-      ...item,
-    })));
-  } catch (error) {
-    await InboundReceipt.findByIdAndDelete(receipt._id);
-    throw error;
+    await session.withTransaction(async () => {
+      const [receipt] = await InboundReceipt.create([{
+        receiptCode: code,
+        locationId: data.locationId,
+        supplierId: data.supplierId,
+        ...SUPPLIER_RECEIPT,
+        status: RECEIPT_STATUS.AWAITING_RECEIVING,
+        createdBy: userId,
+        assignedStaffId: data.assignedStaffId,
+        note: data.note,
+      }], { session });
+      receiptId = receipt._id;
+      await InboundReceiptDetail.insertMany(data.items.map((item, index) => ({
+        receiptId,
+        receiptDetailCode: `${code}-${String(index + 1).padStart(2, '0')}`,
+        ...item,
+      })), { session });
+    });
+  } finally {
+    await session.endSession();
   }
-  return getInboundReceipt(receipt._id);
+
+  // TASK-012: Branch manager tạo phiếu nhập → hiển thị lại sản phẩm cho khách ngay lập tức
+  await markRestockRequested(data.items.map((item) => item.variantId));
+
+  return getInboundReceipt(receiptId);
 };
 
+/* ------------------------------ Ghi nhận / duyệt ------------------------------ */
+
+/** Nhân viên được giao ghi số thực nhận / hỏng từng dòng. Chưa cộng tồn. */
 export const recordReceipt = async (receiptId, payload, user) => {
-  const existing = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' }).select('status assignedStaffId').lean();
-  if (!existing || existing.status !== 'awaiting_receiving') throw fail('Phiếu không ở trạng thái chờ ghi nhận hàng.', 409);
-  if (String(existing.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+  const existing = await InboundReceipt.findOne({ _id: receiptId, ...SUPPLIER_RECEIPT }).select('status assignedStaffId')
+    .lean();
+  if (!existing || existing.status !== RECEIPT_STATUS.AWAITING_RECEIVING) {
+    throw appError('Phiếu không ở trạng thái chờ ghi nhận hàng.', 409);
+  }
+  if (String(existing.assignedStaffId) !== String(user._id)) throw appError(NOT_ASSIGNED_MESSAGE, 403);
   const details = await InboundReceiptDetail.find({ receiptId }).select('_id');
   const changes = validateReceiptCheck(payload, details.map((item) => String(item._id)));
   const session = await mongoose.startSession();
@@ -154,11 +258,11 @@ export const recordReceipt = async (receiptId, payload, user) => {
     await session.withTransaction(async () => {
       // Chuyển trạng thái có điều kiện để không ghi đè phiếu vừa bị hủy.
       const receipt = await InboundReceipt.findOneAndUpdate(
-        { _id: receiptId, receiptType: 'supplier', status: 'awaiting_receiving', assignedStaffId: user._id },
-        { $set: { status: 'received', receivedBy: user._id, receivedAt: new Date() } },
+        { _id: receiptId, ...SUPPLIER_RECEIPT, status: RECEIPT_STATUS.AWAITING_RECEIVING, assignedStaffId: user._id },
+        { $set: { status: RECEIPT_STATUS.RECEIVED, receivedBy: user._id, receivedAt: new Date() } },
         { new: true, session },
       );
-      if (!receipt) throw fail('Phiếu không ở trạng thái chờ ghi nhận hàng.', 409);
+      if (!receipt) throw appError('Phiếu không ở trạng thái chờ ghi nhận hàng.', 409);
       for (const item of changes) {
         await InboundReceiptDetail.findOneAndUpdate(
           { _id: item.detailId, receiptId },
@@ -167,134 +271,206 @@ export const recordReceipt = async (receiptId, payload, user) => {
         );
       }
     });
-  } finally { await session.endSession(); }
+  } finally {
+    await session.endSession();
+  }
+
+  // TASK-012: sau khi ghi nhận số hàng thực nhận, kiểm tra lại trạng thái hết hàng của các sản phẩm trong phiếu.
+  await refreshStockStatusOfReceipt(receiptId, 'ghi nhận hàng');
+
   return getInboundReceipt(receiptId);
 };
 
-export const approveReceipt = async (receiptId, userId, decision, note = '') => {
-  const receipt = await InboundReceipt.findOne({ _id: receiptId, receiptType: 'supplier' }).select('status note').lean();
-  if (!receipt || receipt.status !== 'received') throw fail('Chỉ có thể duyệt hoặc từ chối phiếu đã được nhân viên ghi nhận.', 409);
-  const changes = decision === 'reject'
-    ? { status: 'rejected', note: note ? `${receipt.note || ''}\nTừ chối: ${note}`.trim() : receipt.note }
-    : { status: 'approved', approvedAt: new Date() };
+/** Thông báo cho nhân viên được giao khi phiếu cần kiểm nhận lại. Không chặn nghiệp vụ: lỗi chỉ ghi log. */
+const notifyRecount = async (receipt, reason) => {
+  try {
+    await createNotification({
+      userId: receipt.assignedStaffId,
+      title: 'Phiếu nhập cần kiểm nhận lại',
+      message: `Phiếu ${receipt.receiptCode} cần kiểm nhận lại: ${reason}`,
+      type: 'inbound_recount',
+      link: '/warehousestaff/inbound-receipts',
+      referenceType: 'InboundReceipt',
+      referenceId: receipt._id,
+      metadata: { recountCount: receipt.recountCount },
+    });
+  } catch (err) {
+    console.error('[TASK-014] Lỗi gửi thông báo kiểm nhận lại:', err.message);
+  }
+};
+
+/**
+ * Quản lý xử lý phiếu đã được nhân viên ghi nhận (`received`):
+ * - `approve`: cho phép xếp hàng lên kệ (→ approved).
+ * - `recount`: yêu cầu nhân viên kiểm nhận lại (→ awaiting_receiving), bắt buộc lý do. Xóa receivedBy/receivedAt,
+ *   giữ số đã nhận ở các dòng để nhân viên sửa. Không đụng tồn (tồn chỉ cộng ở bước xếp kệ).
+ * `reject` không còn được chấp nhận (400); trạng thái `rejected` chỉ còn ở dữ liệu cũ.
+ */
+export const approveReceipt = async (receiptId, userId, payload = {}) => {
+  const { decision, reason } = validateReceiptDecision(payload);
+  const notReceivedMessage = 'Chỉ có thể duyệt hoặc yêu cầu kiểm nhận lại phiếu đã được nhân viên ghi nhận.';
+  const now = new Date();
+  const update = decision === 'recount'
+    ? {
+      $set: {
+        status: RECEIPT_STATUS.AWAITING_RECEIVING,
+        receivedBy: null,
+        receivedAt: null,
+        recountReason: reason,
+        lastRecountAt: now,
+        lastRecountBy: userId,
+      },
+      $inc: { recountCount: 1 },
+    }
+    : { $set: { status: RECEIPT_STATUS.APPROVED, approvedAt: now, approvedBy: userId } };
+  // Chuyển trạng thái có điều kiện: phiếu vừa bị hủy / đã được xử lý bởi người khác → 409.
   const updated = await InboundReceipt.findOneAndUpdate(
-    { _id: receiptId, receiptType: 'supplier', status: 'received' },
-    { $set: { ...changes, approvedBy: userId } },
-    { new: true },
+    { _id: receiptId, ...SUPPLIER_RECEIPT, status: RECEIPT_STATUS.RECEIVED },
+    update,
+    { new: true, runValidators: true },
   );
-  if (!updated) throw fail('Chỉ có thể duyệt hoặc từ chối phiếu đã được nhân viên ghi nhận.', 409);
+  if (!updated) {
+    const exists = await InboundReceipt.exists({ _id: receiptId, ...SUPPLIER_RECEIPT });
+    if (!exists) throw appError('Không tìm thấy phiếu nhập.', 404);
+    throw appError(notReceivedMessage, 409);
+  }
+  if (decision === 'recount') await notifyRecount(updated, reason);
   return getInboundReceipt(receiptId);
 };
 
+/* ------------------------------ Xếp hàng lên kệ ------------------------------ */
+
+const assertShelvesValid = async (receipt, toStore, session) => {
+  const shelfIds = toStore.map((line) => line.storageId);
+  const shelves = await StorageLocation.find({
+    _id: { $in: shelfIds }, type: 'shelf', status: 'active', locationId: receipt.locationId,
+  }).session(session).lean();
+  if (shelves.length !== new Set(shelfIds).size) {
+    throw appError('Một hoặc nhiều kệ không hợp lệ, ngừng hoạt động hoặc thuộc kho khác.', 400);
+  }
+};
+
+/** Kệ (và các cấp cha) cùng toàn kho phải đủ chỗ cho hàng sắp xếp, tính cả phiếu nhập khác đang mở. */
+const assertReceiptCapacity = async (receipt, toStore, snapshot, session) => {
+  const addedByStorage = new Map();
+  for (const line of toStore) addToStorageChain(addedByStorage, snapshot.storageById, String(line.storageId), line.quantity);
+  for (const storage of snapshot.storageLocations) {
+    const id = String(storage._id);
+    if (!addedByStorage.has(id)) continue;
+    const used = snapshot.usedByStorage.get(id) || 0;
+    const limit = capacityOf(storage.maxCapacity);
+    if (used + addedByStorage.get(id) > limit) {
+      throw appError(`Không đủ sức chứa tại ${storage.code}: còn ${Math.max(0, limit - used)} cái.`, 409);
+    }
+  }
+  const otherCommitted = await getOpenCommitment(receipt.locationId, receipt._id, session);
+  const locationLimit = capacityOf(snapshot.location.maxCapacity);
+  if (snapshot.used + otherCommitted + sum(toStore, 'quantity') > locationLimit) {
+    const left = Math.max(0, locationLimit - snapshot.used - otherCommitted);
+    throw appError(`Không đủ sức chứa toàn kho: còn ${left} cái.`, 409);
+  }
+};
+
+/**
+ * Tạo món mới trên kệ cho một phân bổ (balance cộng theo món qua itemStateService), mã `<SKU>-<4 số>`,
+ * rồi ghi sổ mỗi món một dòng có itemId (TASK-014 G1). Phần hỏng: món `damaged` / `unavailable`.
+ */
+const storeOnShelf = async ({ receipt, line, sku, user, session }) => {
+  const itemCodes = await generateItemCodes(sku, line.quantity, session);
+  const docs = inboundItemDocs({ line, locationId: receipt.locationId, itemCodes });
+  const created = await createItems(docs, session);
+  await recordItemMovements(created, { ...inboundMovement(receipt, line, user), quantityChange: 1 }, session);
+};
+
+const inboundMovement = (receipt, line, user) => ({
+  variantId: line.detail.variantId,
+  locationId: receipt.locationId,
+  storageId: line.storageId,
+  movementType: 'inbound',
+  referenceType: 'inbound_receipt',
+  referenceId: receipt._id,
+  createdBy: user._id,
+});
+
+const saveDetailAllocations = async (lines, session) => {
+  for (const { detail, allocations, damagedAllocations } of lines) {
+    await InboundReceiptDetail.findByIdAndUpdate(detail._id, {
+      $set: {
+        storageId: allocations.length === 1 ? allocations[0].storageId : null,
+        storageAllocations: allocations,
+        damagedStorageAllocations: damagedAllocations,
+      },
+    }, { session });
+  }
+};
+
+/**
+ * Nhân viên xếp hàng thực nhận lên kệ (cả phần hỏng): kiểm kệ và sức chứa, tạo món, ghi sổ, lưu vị trí từng dòng.
+ * Trạng thái được giành (approved → completed) ngay đầu transaction để không cộng tồn cho phiếu vừa bị hủy.
+ */
 export const putawayReceipt = async (receiptId, payload, user) => {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      // Giành trạng thái ngay đầu transaction. Nếu phiếu vừa bị hủy (hoặc đã xếp kho) thì dừng trước khi cộng tồn;
-      // nếu hủy chạy song song sau bước này thì hai transaction xung đột ghi và chỉ một bên được commit.
+      // Nếu hủy chạy song song sau bước này thì hai transaction xung đột ghi và chỉ một bên được commit.
       const receipt = await InboundReceipt.findOneAndUpdate(
-        { _id: receiptId, receiptType: 'supplier', status: 'approved' },
-        { $set: { status: 'completed', putawayBy: user._id, putawayAt: new Date() } },
+        { _id: receiptId, ...SUPPLIER_RECEIPT, status: RECEIPT_STATUS.APPROVED },
+        { $set: { status: RECEIPT_STATUS.COMPLETED, putawayBy: user._id, putawayAt: new Date() } },
         { new: true, session },
       );
-      if (!receipt) throw fail('Chỉ có thể sắp xếp kho cho phiếu đã được duyệt.', 409);
-      if (String(receipt.assignedStaffId) !== String(user._id)) throw fail('Phiếu này chưa được giao cho bạn.', 403);
+      if (!receipt) throw appError('Chỉ có thể sắp xếp kho cho phiếu đã được duyệt.', 409);
+      if (String(receipt.assignedStaffId) !== String(user._id)) throw appError(NOT_ASSIGNED_MESSAGE, 403);
       const details = await InboundReceiptDetail.find({ receiptId }).session(session);
       const allocations = validatePutaway(payload, details.map((item) => String(item._id)));
-      const allocationByDetail = new Map(allocations.map((item) => [item.detailId, item.allocations]));
-      const acceptedLines = details.map((detail) => ({ detail, quantity: Math.max(0, detail.quantityReceived - detail.quantityDamaged), allocations: allocationByDetail.get(String(detail._id)) || [] }));
-      for (const line of acceptedLines) {
-        if (sum(line.allocations, 'quantity') !== line.quantity) throw fail(`Tổng số lượng phân bổ cho ${line.detail.variantId} phải bằng số lượng hàng đạt chất lượng (${line.quantity}).`, 400);
-      }
-      const toStore = acceptedLines.flatMap((line) => line.allocations.map((allocation) => ({ detail: line.detail, ...allocation })));
+      const { lines, toStore } = buildPutawayPlan(details, allocations);
       const snapshot = await getPhysicalCapacity(receipt.locationId, session);
-      const shelves = await StorageLocation.find({ _id: { $in: toStore.map((line) => line.storageId) }, type: 'shelf', status: 'active', locationId: receipt.locationId }).session(session).lean();
-      if (shelves.length !== new Set(toStore.map((line) => line.storageId)).size) throw fail('Một hoặc nhiều shelf không hợp lệ, ngừng hoạt động hoặc thuộc kho khác.', 400);
-
-      const addedByAncestor = new Map();
+      await assertShelvesValid(receipt, toStore, session);
+      await assertReceiptCapacity(receipt, toStore, snapshot, session);
+      const variants = await ProductVariant.find({ _id: { $in: toStore.map((line) => line.detail.variantId) } })
+        .select('sku').session(session).lean();
+      const skuByVariant = new Map(variants.map((variant) => [String(variant._id), variant.sku]));
       for (const line of toStore) {
-        const storageId = String(line.storageId);
-        let cursor = snapshot.storageById.get(storageId);
-        const visited = new Set();
-        while (cursor && !visited.has(String(cursor._id))) {
-          const id = String(cursor._id);
-          visited.add(id);
-          addedByAncestor.set(id, (addedByAncestor.get(id) || 0) + line.quantity);
-          cursor = cursor.parentStorageId ? snapshot.storageById.get(String(cursor.parentStorageId)) : null;
-        }
+        const sku = skuByVariant.get(String(line.detail.variantId));
+        await storeOnShelf({ receipt, line, sku, user, session });
       }
-      for (const storage of snapshot.storageLocations) {
-        const id = String(storage._id);
-        if (!addedByAncestor.has(id)) continue;
-        const projected = (snapshot.usedByStorage.get(id) || 0) + (addedByAncestor.get(id) || 0);
-        if (projected > capacityOf(storage.maxCapacity)) throw fail(`Không đủ sức chứa tại ${storage.code}: còn ${Math.max(0, capacityOf(storage.maxCapacity) - (snapshot.usedByStorage.get(id) || 0))} cái.`, 409);
-      }
-      const otherCommitted = await getOpenCommitment(receipt.locationId, receipt._id, session);
-      const locationProjected = snapshot.used + otherCommitted + sum(toStore, 'quantity');
-      if (locationProjected > capacityOf(snapshot.location.maxCapacity)) throw fail(`Không đủ sức chứa toàn kho: còn ${Math.max(0, capacityOf(snapshot.location.maxCapacity) - snapshot.used - otherCommitted)} cái.`, 409);
-
-      const variantTracking = await ProductVariant.find({ _id: { $in: toStore.map((line) => line.detail.variantId) } })
-        .select('productId').populate('productId', 'trackingType').session(session).lean();
-      const trackingByVariant = new Map(variantTracking.map((variant) => [String(variant._id), variant.productId?.trackingType || 'quantity']));
-      for (const line of toStore) {
-        if (trackingByVariant.get(String(line.detail.variantId)) === 'individual') {
-          // TASK-009: hàng individual tạo món qua itemStateService, balance kệ được cộng đúng theo số món.
-          const items = Array.from({ length: line.quantity }, () => ({
-            variantId: line.detail.variantId,
-            locationId: receipt.locationId,
-            storageId: line.storageId,
-            inboundReceiptDetail: line.detail._id,
-            itemCode: `ITM-${new mongoose.Types.ObjectId().toString().toUpperCase()}`,
-            condition: 'new',
-            status: 'available',
-          }));
-          await createItems(items, session);
-        } else {
-          await increaseInventoryBalance({ locationId: receipt.locationId, storageId: line.storageId, variantId: line.detail.variantId, quantity: line.quantity, session });
-        }
-        await recordStockMovement({
-          variantId: line.detail.variantId,
-          locationId: receipt.locationId,
-          storageId: line.storageId,
-          movementType: 'inbound',
-          quantityChange: line.quantity,
-          referenceType: 'inbound_receipt',
-          referenceId: receipt._id,
-          createdBy: user._id,
-        }, session);
-      }
-      for (const { detail, allocations: lineAllocations } of acceptedLines) {
-        await InboundReceiptDetail.findByIdAndUpdate(detail._id, {
-          $set: {
-            storageId: lineAllocations.length === 1 ? lineAllocations[0].storageId : null,
-            storageAllocations: lineAllocations,
-          },
-        }, { session });
-      }
+      await saveDetailAllocations(lines, session);
     });
-  } finally { await session.endSession(); }
+  } finally {
+    await session.endSession();
+  }
+
+  // TASK-012: Sau khi xếp hàng lên kệ hoàn tất, hàng đã vào kho → kiểm tra lại trạng thái hết hàng
+  await refreshStockStatusOfReceipt(receiptId, 'putaway');
+
   return getInboundReceipt(receiptId);
 };
 
+/* ------------------------------ Hủy ------------------------------ */
+
+/** Quản lý kho hủy phiếu chưa xếp kho. Không đổi tồn vì tồn chỉ được cộng ở bước xếp hàng lên kệ. */
 export const cancelInboundReceipt = async (receiptId, payload, user) => {
-  if (!mongoose.isValidObjectId(receiptId)) throw fail('Mã phiếu nhập không hợp lệ.');
-  if (!['warehouse_manager', 'admin'].includes(String(user?.Role || '').toLowerCase())) throw fail('Chỉ quản lý kho mới được hủy phiếu nhập.', 403);
+  if (!mongoose.isValidObjectId(receiptId)) throw appError('Mã phiếu nhập không hợp lệ.');
+  if (!isWarehouseManagerOrAdmin(user)) throw appError('Chỉ quản lý kho mới được hủy phiếu nhập.', 403);
   const { reason } = validateCancelReason(payload);
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      // Hủy không đổi tồn: tồn chỉ được cộng ở bước putaway (trạng thái completed).
       const cancelled = await InboundReceipt.findOneAndUpdate(
-        { _id: receiptId, receiptType: 'supplier', status: { $in: openStatuses } },
-        { $set: { status: 'cancelled', cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
+        { _id: receiptId, ...SUPPLIER_RECEIPT, status: { $in: OPEN_STATUSES } },
+        { $set: { status: RECEIPT_STATUS.CANCELLED, cancelledBy: user._id, cancelledAt: new Date(), cancelReason: reason } },
         { new: true, session },
       );
-      if (!cancelled) {
-        const exists = await InboundReceipt.exists({ _id: receiptId, receiptType: 'supplier' }).session(session);
-        if (!exists) throw fail('Không tìm thấy phiếu nhập.', 404);
-        throw fail('Chỉ hủy được phiếu nhập đang chờ nhận, đã ghi nhận hoặc đã duyệt nhưng chưa xếp kho.', 409);
-      }
+      if (cancelled) return;
+      const exists = await InboundReceipt.exists({ _id: receiptId, ...SUPPLIER_RECEIPT }).session(session);
+      if (!exists) throw appError('Không tìm thấy phiếu nhập.', 404);
+      throw appError('Chỉ hủy được phiếu nhập đang chờ nhận, đã ghi nhận hoặc đã duyệt nhưng chưa xếp kho.', 409);
     });
-  } finally { await session.endSession(); }
+  } finally {
+    await session.endSession();
+  }
+
+  // TASK-012: phiếu bị hủy thì hàng sẽ không về nữa → kiểm tra lại trạng thái hết hàng của các sản phẩm trong phiếu.
+  await refreshStockStatusOfReceipt(receiptId, 'hủy phiếu nhập');
+
   return getInboundReceipt(receiptId);
 };

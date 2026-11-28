@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Store, Sparkles, Star, MapPin, Phone, Clock, Navigation } from 'lucide-react';
+import { Eye, Store, Sparkles, MapPin, Phone, Clock, Navigation } from 'lucide-react';
 import { DEFAULT_SHOP_BANNER } from '../../../owner/branches/utils/branchConstants';
 
 export default function BranchHeroCard({ shop, formData, onOpenLightbox }) {
@@ -80,12 +80,6 @@ export default function BranchHeroCard({ shop, formData, onOpenLightbox }) {
                   <Sparkles size={11} />
                   CHI NHÁNH PHỤ TRÁCH
                 </span>
-                {shop?.isHQ && (
-                  <span className="branch-badge-hq">
-                    <Star size={11} fill="#B45309" />
-                    TRỤ SỞ CHÍNH (HQ)
-                  </span>
-                )}
               </div>
               <h1 className="branch-hero-title">
                 {formData.name || shop?.name || 'Chi Nhánh Cửa Hàng'}

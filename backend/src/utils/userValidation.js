@@ -10,9 +10,9 @@ export const VN_PHONE_REGEX = /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/;
 export const ALLOWED_ROLES = [
   'customer',
   'shopOwner',
-  'brandmanager',
-  'warehouseManager',
-  'warehousestaff',
+  'branch_manager',
+  'warehouse_manager',
+  'warehouse_staff',
   'admin'
 ];
 

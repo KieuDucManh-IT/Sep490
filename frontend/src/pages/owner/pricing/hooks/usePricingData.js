@@ -1,19 +1,30 @@
 import { useState, useEffect, useCallback, useMemo, useDeferredValue } from 'react';
 import productService from '../../../../services/productService';
-import { calculateRentalPrice, calculateDeposit } from '../utils/pricingHelpers';
+import {
+  calculateRentalPrice,
+  calculateDeposit,
+  matchesProductTagFilter,
+  computePricingKpis,
+} from '../utils/pricingHelpers';
+
+const DEFAULT_PAGE_SIZE = 10;
 
 /**
- * Custom hook quản lý toàn bộ dữ liệu, tìm kiếm, lọc và trạng thái cập nhật bảng giá
+ * Custom hook quản lý toàn bộ dữ liệu, tìm kiếm, lọc, phân trang và trạng thái cập nhật bảng giá
  */
 export function usePricingData() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-  // TASK-008: lọc theo trạng thái định giá: 'unset' | 'set' | 'all'
-  const [pricingFilter, setPricingFilter] = useState('all');
-  const [pricingFilterTouched, setPricingFilterTouched] = useState(false);
+  const [search, setSearchState] = useState('');
+  const [selectedCategory, setSelectedCategoryState] = useState('ALL');
+  // Mặc định chọn "Tất cả" khi mới truy cập trang
+  const [pricingFilter, setPricingFilterState] = useState('all');
+  // Lọc theo hình thức: 'ALL' | 'rental' | 'sale' | 'both'
+  const [tagFilter, setTagFilterState] = useState('ALL');
+  // Phân trang
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSizeState] = useState(DEFAULT_PAGE_SIZE);
 
   // Deferred search value để giao diện luôn mượt mà khi lọc danh sách
   const deferredSearch = useDeferredValue(search);
@@ -31,20 +42,34 @@ export function usePricingData() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [modalError, setModalError] = useState('');
 
-  // Tải danh sách sản phẩm từ MongoDB Atlas
+  // Tải danh sách sản phẩm từ MongoDB Atlas (tự động gộp đủ trang nếu > 200 sản phẩm)
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     setErrorMsg('');
     try {
       // TASK-008: API riêng cho Owner, gồm cả sản phẩm chưa định giá (API public đã ẩn chúng).
-      const res = await productService.getOwnerPricingProducts({ pricingStatus: 'all', limit: 200 });
+      const firstRes = await productService.getOwnerPricingProducts({ pricingStatus: 'all', page: 1, limit: 200 });
       let rawList = [];
-      if (res && res.data) {
-        if (Array.isArray(res.data.data)) {
-          rawList = res.data.data;
-        } else if (Array.isArray(res.data)) {
-          rawList = res.data;
+      if (firstRes && firstRes.data) {
+        if (Array.isArray(firstRes.data.data)) {
+          rawList = [...firstRes.data.data];
+        } else if (Array.isArray(firstRes.data)) {
+          rawList = [...firstRes.data];
         }
+      }
+
+      const serverTotalPages = Number(firstRes?.data?.pagination?.totalPages || 1);
+      if (serverTotalPages > 1) {
+        const restResponses = await Promise.all(
+          Array.from({ length: serverTotalPages - 1 }, (_, idx) =>
+            productService.getOwnerPricingProducts({ pricingStatus: 'all', page: idx + 2, limit: 200 })
+          )
+        );
+        restResponses.forEach((res) => {
+          if (Array.isArray(res?.data?.data)) {
+            rawList.push(...res.data.data);
+          }
+        });
       }
 
       const mapped = rawList.map((p) => {
@@ -82,30 +107,71 @@ export function usePricingData() {
       });
 
       setItems(mapped);
-      // Mặc định "Chưa định giá" nếu còn sản phẩm chưa định giá (trừ khi Owner đã tự chọn bộ lọc).
-      if (!pricingFilterTouched) setPricingFilter(mapped.some((it) => !it.isSetPrice) ? 'unset' : 'all');
     } catch (err) {
       console.error('Lỗi tải danh sách sản phẩm:', err);
       setErrorMsg('Không thể kết nối đến máy chủ để tải bảng giá. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
-  }, [pricingFilterTouched]);
+  }, []);
 
   useEffect(() => {
     fetchProducts();
-    // Chỉ tải khi mở trang; nút "Làm mới" gọi fetchProducts trực tiếp.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchProducts]);
+
+  const setSearch = useCallback((value) => {
+    setSearchState(value);
+    setPage(1);
   }, []);
 
-  const changePricingFilter = useCallback((value) => {
-    setPricingFilterTouched(true);
-    setPricingFilter(value);
+  const setSelectedCategory = useCallback((value) => {
+    setSelectedCategoryState(value);
+    setPage(1);
+  }, []);
+
+  const setPricingFilter = useCallback((value) => {
+    setPricingFilterState(value);
+    setPage(1);
+  }, []);
+
+  const setTagFilter = useCallback((value) => {
+    setTagFilterState(value);
+    setPage(1);
+  }, []);
+
+  const setPageSize = useCallback((size) => {
+    setPageSizeState(Number(size) || DEFAULT_PAGE_SIZE);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setSearchState('');
+    setSelectedCategoryState('ALL');
+    setPricingFilterState('all');
+    setTagFilterState('ALL');
+    setPage(1);
   }, []);
 
   const pricingCounts = useMemo(() => {
     const unset = items.filter((it) => !it.isSetPrice).length;
-    return { unset, set: items.length - unset, all: items.length };
+    return {
+      unset,
+      set: items.length - unset,
+      all: items.length,
+    };
+  }, [items]);
+
+  const tagCounts = useMemo(() => {
+    const rental = items.filter((it) => matchesProductTagFilter(it.tag, 'rental')).length;
+    const sale = items.filter((it) => matchesProductTagFilter(it.tag, 'sale')).length;
+    const both = items.filter((it) => matchesProductTagFilter(it.tag, 'both')).length;
+    return {
+      all: items.length,
+      rental,
+      sale,
+      both,
+      unknown: items.length - rental - sale - both,
+    };
   }, [items]);
 
   // Danh mục lấy từ dữ liệu thực kèm số lượng sản phẩm mỗi danh mục
@@ -124,7 +190,7 @@ export function usePricingData() {
     return list;
   }, [items]);
 
-  // Lọc sản phẩm theo từ khóa tìm kiếm (dùng deferredSearch) và danh mục
+  // Lọc sản phẩm theo từ khóa tìm kiếm, danh mục, loại hình và trạng thái định giá
   const filteredItems = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
     return items.filter((it) => {
@@ -135,26 +201,35 @@ export function usePricingData() {
         it.brand.toLowerCase().includes(query);
       const matchCategory =
         selectedCategory === 'ALL' || it.category === selectedCategory;
+      const matchTag = matchesProductTagFilter(it.tag, tagFilter);
       const matchPricing =
-        pricingFilter === 'all' || (pricingFilter === 'unset' ? !it.isSetPrice : it.isSetPrice);
-      return matchSearch && matchCategory && matchPricing;
-    });
-  }, [items, deferredSearch, selectedCategory, pricingFilter]);
+        pricingFilter === 'all' ||
+        (pricingFilter === 'unset' ? !it.isSetPrice : it.isSetPrice);
 
-  // Tính toán KPI động
-  const kpiStats = useMemo(() => {
-    const total = items.length;
-    if (!total) {
-      return { total: 0, avgRental: 0, avgDeposit: 0 };
+      return matchSearch && matchCategory && matchTag && matchPricing;
+    });
+  }, [items, deferredSearch, selectedCategory, tagFilter, pricingFilter]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredItems.length / pageSize)),
+    [filteredItems.length, pageSize]
+  );
+
+  const safePage = Math.min(page, totalPages);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
     }
-    const sumRental = items.reduce((s, i) => s + (i.rentalPricePerDay || 0), 0);
-    const sumDeposit = items.reduce((s, i) => s + (i.deposit || 0), 0);
-    return {
-      total,
-      avgRental: Math.round(sumRental / total),
-      avgDeposit: Math.round(sumDeposit / total),
-    };
-  }, [items]);
+  }, [page, totalPages]);
+
+  const paginatedItems = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, safePage, pageSize]);
+
+  // Tính toán KPI động (trung bình chỉ tính trên các mẫu có giá thuê / tiền cọc > 0)
+  const kpiStats = useMemo(() => computePricingKpis(items), [items]);
 
   // Mở modal chỉnh sửa giá & cọc
   const handleOpenEdit = useCallback((it) => {
@@ -174,7 +249,7 @@ export function usePricingData() {
 
     let initDepositPct = 50;
     if (sale > 0 && currentDep > 0) {
-      initDepositPct = Math.round((currentDep / sale) * 100);
+      initDepositPct = Math.min(100, Math.round((currentDep / sale) * 100));
     }
 
     const calculatedRental = calculateRentalPrice(sale, initRentalPct);
@@ -228,7 +303,7 @@ export function usePricingData() {
 
   // Handler khi Shop Owner nhập số % cọc bằng tay (hoặc click nút % gợi ý nhanh)
   const handleDepositPercentChange = useCallback((val) => {
-    const p = val === '' ? '' : Math.max(0, Math.min(200, Number(val)));
+    const p = val === '' ? '' : Math.max(0, Math.min(100, Number(val)));
     setEditForm((prev) => {
       const autoDeposit = calculateDeposit(prev.salePrice, p);
       return {
@@ -264,6 +339,11 @@ export function usePricingData() {
 
     if (isNaN(dep) || dep < 0) {
       setModalError('Vui lòng nhập tiền cọc hợp lệ (không âm).');
+      return;
+    }
+
+    if (sale > 0 && dep > sale) {
+      setModalError(`Tiền cọc bảo đảm không được vượt quá 100% giá trị trang phục (tối đa ${sale.toLocaleString('vi-VN')} VND).`);
       return;
     }
 
@@ -320,10 +400,20 @@ export function usePricingData() {
     setSelectedCategory,
     categoryOptions,
     filteredItems,
+    paginatedItems,
+    page: safePage,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalPages,
     kpiStats,
     pricingFilter,
-    setPricingFilter: changePricingFilter,
+    setPricingFilter,
     pricingCounts,
+    tagFilter,
+    setTagFilter,
+    tagCounts,
+    resetFilters,
     fetchProducts,
     // Modal
     editingItem,

@@ -9,12 +9,27 @@ import { resolveLocationScope } from '../order/orderMonitoringService.js';
 import { resolveGpsToGhn } from './storeGpsResolver.js';
 import { Shop } from '../../models/shop/Shop.js';
 
-export const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
+
+export { fail };
 
 /**
  * Chuẩn hóa đối tượng người gửi / người nhận (Tỉnh/Thành, Quận/Huyện, Phường/Xã)
  */
-export const formatPartyInfo = ({ name, phone, address, provinceId, districtId, wardCode, latitude, longitude }) => ({
+export const formatPartyInfo = ({
+  name,
+  phone,
+  address,
+  provinceId,
+  districtId,
+  wardCode,
+  provinceName,
+  districtName,
+  wardName,
+  isNewAddress,
+  latitude,
+  longitude,
+}) => ({
   name: name || '',
   phone: phone || '',
   address: address || '',
@@ -23,6 +38,10 @@ export const formatPartyInfo = ({ name, phone, address, provinceId, districtId, 
   provinceId: provinceId ? Number(provinceId) : undefined,
   districtId: districtId ? Number(districtId) : undefined,
   wardCode: wardCode ? String(wardCode) : undefined,
+  provinceName: provinceName || '',
+  districtName: districtName || '',
+  wardName: wardName || '',
+  isNewAddress: Boolean(isNewAddress),
 });
 
 /**
@@ -46,7 +65,7 @@ export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
       select: 'name code address type shopId phone provinceId districtId wardCode ghnShopId',
       populate: {
         path: 'shopId',
-        select: 'name code address phone managerId isHQ provinceId districtId wardCode ghnShopId city ward latitude longitude',
+        select: 'name code address phone managerId provinceId districtId wardCode ghnShopId city ward latitude longitude',
       },
     })
     .lean();
@@ -55,7 +74,17 @@ export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
     throw fail(`Không tìm thấy ${isRental ? 'đơn thuê' : 'đơn bán'} yêu cầu.`, 404);
   }
 
-  // Kiểm tra quyền theo chi nhánh
+  // Khách hàng chính chủ chỉ được thao tác đơn của chính mình
+  const role = String(user?.Role || user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
+  if (role === 'customer') {
+    const custId = String(order.customerId?._id || order.customerId || '');
+    if (custId !== String(user._id)) {
+      throw fail('Bạn không có quyền thao tác đơn hàng này.', 403);
+    }
+    return order;
+  }
+
+  // Kiểm tra quyền theo chi nhánh đối với quản lý và nhân viên
   const scope = await resolveLocationScope(user);
   const shopManagerId = order.locationId?.shopId?.managerId;
   const isManagerOfThisShop = shopManagerId && String(shopManagerId) === String(user._id);
@@ -87,21 +116,33 @@ export const resolveBranchShippingInfo = async (order) => {
     if (foundShop) shop = foundShop;
   }
 
-  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop chính (isHQ: true) hoặc Shop bất kỳ đang active
+  const originalShopId = shop?._id || null;
+  const originalHasAddress = Boolean(shop?.address);
+  let persistShopId = originalShopId && originalHasAddress ? originalShopId : null;
+
+  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop đầu tiên đang active
   if (!shop?.phone || !shop?.address) {
-    const fallbackShop = (await Shop.findOne({ isHQ: true, status: 'ACTIVE' }).lean())
-      || (await Shop.findOne({ status: 'ACTIVE' }).lean());
+    const fallbackShop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
     if (fallbackShop) {
-      shop = {
-        ...fallbackShop,
-        ...shop,
-        phone: shop?.phone || fallbackShop.phone,
-        address: shop?.address || fallbackShop.address,
-        provinceId: shop?.provinceId || fallbackShop.provinceId,
-        districtId: shop?.districtId || fallbackShop.districtId,
-        wardCode: shop?.wardCode || fallbackShop.wardCode,
-        ghnShopId: shop?.ghnShopId || fallbackShop.ghnShopId,
-      };
+      if (originalHasAddress) {
+        shop = { ...shop, phone: shop?.phone || fallbackShop.phone };
+      } else {
+        if (!originalShopId && fallbackShop._id && fallbackShop.address) {
+          persistShopId = fallbackShop._id;
+        }
+        shop = {
+          ...fallbackShop,
+          ...shop,
+          phone: shop?.phone || fallbackShop.phone,
+          address: shop?.address || fallbackShop.address,
+          provinceId: shop?.provinceId || fallbackShop.provinceId,
+          districtId: shop?.districtId || fallbackShop.districtId,
+          wardCode: shop?.wardCode || fallbackShop.wardCode,
+          ghnShopId: shop?.ghnShopId || fallbackShop.ghnShopId,
+        };
+      }
     }
   }
 
@@ -136,6 +177,23 @@ export const resolveBranchShippingInfo = async (order) => {
     provinceId = resolvedGhn.provinceId;
     districtId = resolvedGhn.districtId;
     wardCode = resolvedGhn.wardCode;
+
+    const numDistrictId = Number(districtId);
+    const numProvinceId = Number(provinceId);
+    if (persistShopId && Number.isFinite(numDistrictId) && numDistrictId > 0 && wardCode) {
+      Shop.updateOne(
+        { _id: persistShopId },
+        {
+          $set: {
+            districtId: numDistrictId,
+            wardCode: String(wardCode),
+            ...(Number.isFinite(numProvinceId) && numProvinceId > 0 && numProvinceId < 1000000
+              ? { provinceId: numProvinceId }
+              : {}),
+          },
+        }
+      ).catch(() => { });
+    }
   }
 
   if (!districtId || !wardCode) {
@@ -222,7 +280,9 @@ export const saveShipmentRecord = async ({
   width = 20,
   height = 10,
   note = '',
+  items = [],
   initialDescription = 'Đơn hàng đã được tạo thành công, đang chờ bàn giao cho bưu tá vận chuyển',
+  session = null,
 }) => {
   const canonicalTrackingCode = ghnRes.order_code;
   const initialHistory = [
@@ -243,7 +303,7 @@ export const saveShipmentRecord = async ({
   const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
   const shipmentCode = `SHP-${shipmentDateStr}-${randomHex}`;
 
-  return await OrderShipment.create({
+  const doc = {
     trackingCode: canonicalTrackingCode,
     shipmentCode,
     orderCode: order.orderCode,
@@ -266,9 +326,16 @@ export const saveShipmentRecord = async ({
     senderInfo,
     receiverInfo,
     statusHistory: initialHistory,
+    items: Array.isArray(items) ? items : [],
     note,
     createdBy: user._id,
     lastSyncedAt: new Date(),
-  });
+  };
+
+  if (session) {
+    const [created] = await OrderShipment.create([doc], { session });
+    return created;
+  }
+  return await OrderShipment.create(doc);
 };
 

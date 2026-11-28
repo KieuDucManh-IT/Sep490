@@ -4,6 +4,7 @@
  * @ears .sdd/features/rental-orders/SPEC.md#NFR-CLI-001
  * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-009..REQ-RENT-017
  */
+import apiClient from './api';
 
 const getApiBaseUrl = () => {
   const envUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
@@ -19,7 +20,7 @@ const getAuthHeaders = () => {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-  } catch (_) {}
+  } catch (_) { }
   return headers;
 };
 
@@ -81,7 +82,9 @@ export async function returnDisputeRequest(endpoint = '', options = {}) {
 // -------------------------------------------------------------
 
 /**
- * Lập biên bản nghiệm thu trả đồ & quyết toán cọc
+ * Lập biên bản nghiệm thu trả đồ & quyết toán cọc.
+ * TASK-016: `items: [{ itemId, inspectionResult: 'ok' | 'needs_service' | 'missing', damageFee?, note? }]`
+ * (Đạt / Cần xử lý / Mất).
  * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-013..REQ-RENT-017
  */
 export async function createRentalReturn(rentalOrderId, returnPayload) {
@@ -152,3 +155,31 @@ export async function completeDisputeKCS(disputeId, kcsPayload) {
 export async function getDisputeById(disputeId) {
   return returnDisputeRequest(`/rental-disputes/${disputeId}`, { method: 'GET' });
 }
+
+export const getRentalReturnFlow = id =>
+  apiClient.get(`/rental-returns/orders/${id}/flow`);
+
+export const requestRentalReturn = id =>
+  apiClient.post(`/rental-returns/orders/${id}/request`, {});
+
+export const advanceRentalReturn = (id, newStatus) =>
+  apiClient.post(
+    `/rental-returns/orders/${id}/simulate`,
+    { newStatus }
+  );
+
+export const completeRentalReturn = id =>
+  apiClient.post(
+    `/rental-returns/orders/${id}/complete`,
+    { confirmed: true }
+  );
+
+export const uploadRentalEvidence = (id, kind, file) => {
+  const form = new FormData();
+  form.append('video', file);
+
+  return apiClient.post(
+    `/rental-returns/orders/${id}/evidence/${kind}`,
+    form
+  );
+};

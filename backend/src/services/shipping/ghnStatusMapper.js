@@ -113,3 +113,31 @@ export const mapGhnStatus = (ghnStatus) => {
   };
 };
 
+const VALID_SIMULATED_TRANSITIONS = {
+  preparing: ['shipped', 'failed', 'cancelled'],
+  shipped: ['delivered', 'failed', 'cancelled'],
+  failed: ['shipped', 'cancelled'],
+  delivered: [],
+  cancelled: [],
+};
+
+const TERMINAL_STATUSES = new Set(['delivered', 'cancelled']);
+
+export const assertValidSimulatedTransition = (currentStatus, nextStatus) => {
+  if (TERMINAL_STATUSES.has(currentStatus)) {
+    const err = new Error(
+      `Vận đơn đã ở trạng thái cuối [${currentStatus}], không thể mô phỏng thay đổi thêm.`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+  const allowed = VALID_SIMULATED_TRANSITIONS[currentStatus] || [];
+  if (!allowed.includes(nextStatus)) {
+    const err = new Error(
+      `Không thể chuyển trạng thái mô phỏng từ [${currentStatus}] sang [${nextStatus}].`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+};
+

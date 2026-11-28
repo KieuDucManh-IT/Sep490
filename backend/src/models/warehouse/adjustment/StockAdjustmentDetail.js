@@ -6,8 +6,8 @@ const stockAdjustmentDetailSchema = new mongoose.Schema({
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
   itemCode: { type: String, trim: true, default: null },
   serialNumber: { type: String, trim: true, default: null },
-  itemStatus: { type: String, enum: ['available', 'reserved', 'maintenance', 'unavailable'], default: 'available' },
-  itemCondition: { type: String, enum: ['new', 'good', 'worn', 'damaged', 'unrepairable', 'missing'], default: null },
+  // TASK-016: bỏ `itemCondition`; thêm `lost`. Kiểm kê không còn sinh phiếu điều chỉnh (chỉ còn phiếu cũ / tạo tay).
+  itemStatus: { type: String, enum: ['available', 'reserved', 'maintenance', 'unavailable', 'lost'], default: 'available' },
   storageId: { type: mongoose.Schema.Types.ObjectId, ref: 'StorageLocation', default: null },
   quantityBefore: { type: Number, min: 0 },
   quantityChange: { type: Number, required: true },

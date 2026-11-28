@@ -9,7 +9,6 @@ const money = (message) => z.preprocess((value) => (value === '' || value === nu
 export const MAINTENANCE_TYPES = ['cleaning', 'repair', 'inspection', 'replacement_part', 'other'];
 export const DISPOSAL_METHODS = ['discard', 'sell_as_is', 'recycle', 'donate', 'other'];
 export const MAINTENANCE_RESULTS = ['success', 'failed', 'unrepairable'];
-export const RESTORED_CONDITIONS = ['new', 'good', 'worn'];
 
 const parse = (schema, payload) => {
   const result = schema.safeParse(payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {});
@@ -27,14 +26,12 @@ const createMaintenanceSchema = z.object({
 
 const completeMaintenanceSchema = z.object({
   repairResult: z.enum(MAINTENANCE_RESULTS, { error: 'Chọn kết quả xử lý.' }),
-  afterCondition: z.enum(RESTORED_CONDITIONS, { error: 'Tình trạng sau xử lý không hợp lệ.' }).optional().nullable(),
   targetStorageId: objectId('Kệ xếp lại không hợp lệ.').optional().nullable(),
   disposalMethod: z.enum(DISPOSAL_METHODS, { error: 'Cách thanh lý đề xuất không hợp lệ.' }).optional().nullable(),
   repairDescription: text(1000, 'Mô tả công việc').optional().default(''),
   cost: money('Chi phí phải là số không âm.'),
 }).superRefine((value, ctx) => {
   if (value.repairResult === 'success') {
-    if (!value.afterCondition) ctx.addIssue({ code: 'custom', message: 'Chọn tình trạng sau xử lý.' });
     if (!value.targetStorageId) ctx.addIssue({ code: 'custom', message: 'Chọn kệ để xếp lại món hàng.' });
   }
   if (value.repairResult === 'unrepairable') {
@@ -66,7 +63,6 @@ export const validateCompleteMaintenance = (payload) => {
   const data = parse(completeMaintenanceSchema, payload);
   return {
     repairResult: data.repairResult,
-    afterCondition: data.repairResult === 'success' ? data.afterCondition : null,
     targetStorageId: data.repairResult === 'success' ? data.targetStorageId : null,
     disposalMethod: data.repairResult === 'unrepairable' ? data.disposalMethod : null,
     repairDescription: data.repairDescription,

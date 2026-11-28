@@ -7,6 +7,9 @@ import registerChatHandlers from './chatHandler.js';
 // Map<userIdString, Set<socketId>>
 export const userConnections = new Map();
 
+let ioInstance = null;
+export const getIO = () => ioInstance;
+
 /**
  * Trích xuất danh sách token ứng viên từ handshake Socket.IO
  */
@@ -102,12 +105,6 @@ export function initSocket(httpServer, allowedOrigins) {
         return next(new Error('AUTHORIZATION_ERROR: Tài khoản đã bị khóa'));
       }
 
-      // Theo yêu cầu người dùng: bỏ role admin không can thiệp vào chat
-      const roleStr = String(user.Role || user.role || '').toLowerCase();
-      if (roleStr === 'admin') {
-        return next(new Error('AUTHORIZATION_ERROR: Admin không có quyền truy cập Chat tư vấn'));
-      }
-
       socket.user = user;
       return next();
     } catch (err) {
@@ -128,8 +125,21 @@ export function initSocket(httpServer, allowedOrigins) {
     }
     userSockets.add(socket.id);
 
-    // 2. Tự động đưa socket vào phòng riêng của người dùng
+    // 2. Tự động đưa socket vào phòng riêng của người dùng & phòng vai trò
     socket.join(`user:${userId}`);
+    const rawRole = socket.user.Role || socket.user.role || '';
+    const cleanRole = String(rawRole).trim().toLowerCase().replace(/[_\s-]/g, '');
+    if (cleanRole) {
+      socket.join(`role:${cleanRole}`);
+      if (cleanRole === 'shopowner' || cleanRole === 'owner') {
+        socket.join('role:owner');
+        socket.join('role:shopowner');
+      }
+      if (cleanRole === 'branchmanager' || cleanRole === 'brandmanager') {
+        socket.join('role:branch_manager');
+        socket.join('role:branchmanager');
+      }
+    }
 
     // Gửi danh sách các user đang online cho socket mới kết nối
     const onlineUserIds = Array.from(userConnections.keys());
@@ -151,6 +161,8 @@ export function initSocket(httpServer, allowedOrigins) {
       }
     });
   });
+
+  ioInstance = io;
 
   return io;
 }

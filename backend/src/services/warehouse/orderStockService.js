@@ -1,18 +1,17 @@
 // TASK-010 — Tồn kho cho đơn thuê/bán tại chi nhánh (dòng balance `storageId: null`).
-// - Giữ chỗ nguyên tử: một lệnh findOneAndUpdate có điều kiện `onHand − reserved − unavailable ≥ qty` (không upsert).
+// - Giữ chỗ nguyên tử: một lệnh có điều kiện `onHand − reserved − unavailable ≥ qty` (không upsert), ghi qua
+//   itemStateService.adjustOrderReservation (TASK-015: file này không còn ghi balance trực tiếp).
 // - Đổi trạng thái món (gán, bàn giao, nhận trả, hủy, bán) đi qua itemStateService (TASK-009).
 // - Phần `quantityReserved` của ĐƠN nằm trong InventoryReservation `active`; nhả theo đúng số đang active.
 // Hàm thuần ở đầu file (availableFromBalances, canReserve, returnTransition, ...) có unit test.
 import { InventoryBalance as InventoryBalanceModel } from '../../models/warehouse/inventory/InventoryBalance.js';
 import { InventoryItem as InventoryItemModel } from '../../models/warehouse/inventory/InventoryItem.js';
 import { InventoryReservation as InventoryReservationModel } from '../../models/warehouse/inventory/InventoryReservation.js';
-import { ProductVariant as ProductVariantModel } from '../../models/masterdata/ProductVariant.js';
-import { assertBalanceInvariant, idOf } from './itemBalanceRules.js';
-import { moveItems as defaultMoveItems } from './itemStateService.js';
+import { idOf } from './itemBalanceRules.js';
+import {
+  adjustOrderReservation as defaultAdjustOrderReservation, moveItems as defaultMoveItems,
+} from './itemStateService.js';
 import { availableOf, sumAvailable } from './balanceQueryService.js';
-
-/** Tình trạng món không được bán/cho thuê dù status `available`. */
-export const UNUSABLE_CONDITIONS = Object.freeze(['damaged', 'unrepairable', 'missing']);
 
 /** Lỗi nghiệp vụ dùng chung cho các service đơn hàng (controller đơn đọc `status`, controller khác đọc `statusCode`). */
 export const orderError = (status, message, code = null, details = null) =>
@@ -35,21 +34,8 @@ export const availableOfBalance = availableOf;
 /** Khả dụng cho khách tại một chi nhánh = Σ khả dụng các dòng balance (mọi loại hàng, không đếm món). */
 export const availableFromBalances = sumAvailable;
 
-/** Điều kiện giữ chỗ (đúng điều kiện `$expr` của reserveFilter). */
+/** Điều kiện giữ chỗ (đúng điều kiện `$expr` của itemStateService.orderReservationFilter). */
 export const canReserve = (row, quantity) => Boolean(row) && Number(quantity) > 0 && availableOfBalance(row) >= Number(quantity);
-
-/** Filter nguyên tử cho lệnh giữ chỗ trên dòng (locationId, storageId: null, variantId). */
-export const reserveFilter = (locationId, variantId, quantity) => ({
-  locationId,
-  storageId: null,
-  variantId,
-  $expr: {
-    $gte: [
-      { $subtract: [{ $ifNull: ['$quantityOnHand', 0] }, { $add: [{ $ifNull: ['$quantityReserved', 0] }, { $ifNull: ['$quantityUnavailable', 0] }] }] },
-      quantity,
-    ],
-  },
-});
 
 /** Gộp các dòng đơn theo biến thể: [{ variantId, quantity, sku }] → mảng đã cộng dồn. */
 export const aggregateLines = (lines = []) => {
@@ -64,21 +50,19 @@ export const aggregateLines = (lines = []) => {
 };
 
 /**
- * Bảng quy đổi khi nhận trả đồ thuê (người dùng chốt 17/11). Không dùng `maintenance` ở chi nhánh:
- *   new/good → available; worn/damaged → unavailable; unrepairable → unavailable + condition unrepairable.
- * `condition` của món luôn cập nhật theo conditionOnReturn.
+ * Kết quả kiểm khi nhận trả đồ thuê → trạng thái món (TASK-016 A3). Không dùng `maintenance` ở chi nhánh:
+ *   ok → available; needs_service → unavailable (chờ chuyển về kho tổng xử lý); missing → lost (khách không trả).
  */
+export const RETURN_INSPECTION_RESULTS = Object.freeze(['ok', 'needs_service', 'missing']);
 export const RETURN_TRANSITIONS = Object.freeze({
-  new: Object.freeze({ status: 'available', condition: 'new' }),
-  good: Object.freeze({ status: 'available', condition: 'good' }),
-  worn: Object.freeze({ status: 'unavailable', condition: 'worn' }),
-  damaged: Object.freeze({ status: 'unavailable', condition: 'damaged' }),
-  unrepairable: Object.freeze({ status: 'unavailable', condition: 'unrepairable' }),
+  ok: Object.freeze({ status: 'available' }),
+  needs_service: Object.freeze({ status: 'unavailable' }),
+  missing: Object.freeze({ status: 'lost' }),
 });
 
-export const returnTransition = (conditionOnReturn) => {
-  const transition = RETURN_TRANSITIONS[conditionOnReturn];
-  if (!transition) throw orderError(400, `Tình trạng khi trả không hợp lệ: ${conditionOnReturn}.`);
+export const returnTransition = (inspectionResult) => {
+  const transition = RETURN_TRANSITIONS[inspectionResult];
+  if (!transition) throw orderError(400, `Kết quả kiểm khi trả không hợp lệ: ${inspectionResult}.`);
   return { ...transition };
 };
 
@@ -87,9 +71,13 @@ const isWriteConflict = (err) => err?.code === 112 || err?.codeName === 'WriteCo
 
 /* --------------------------------------------- Service có model --------------------------------------------- */
 
-/** Tạo service với model truyền vào (test dùng model giả). Bản mặc định ở cuối file dùng model thật. */
+/**
+ * Tạo service với model truyền vào (test dùng model giả). Bản mặc định ở cuối file dùng model thật.
+ * `InventoryBalance` chỉ dùng để ĐỌC (báo số còn lại khi hết hàng); mọi lệnh ghi đi qua `moveItems` /
+ * `adjustOrderReservation` của itemStateService.
+ */
 export const createOrderStockService = ({
-  InventoryBalance, InventoryItem, InventoryReservation, ProductVariant, moveItems,
+  InventoryBalance, InventoryItem, InventoryReservation, moveItems, adjustOrderReservation,
 } = {}) => {
   const requireSession = (session) => {
     if (!session) throw new Error('orderStockService phải chạy trong transaction: thiếu session.');
@@ -98,7 +86,7 @@ export const createOrderStockService = ({
   const lean = (query) => (query && typeof query.lean === 'function' ? query.lean() : query);
 
   /**
-   * Giữ chỗ cho đơn: mỗi biến thể một lệnh $inc có điều kiện trên dòng chi nhánh (storageId null), KHÔNG upsert.
+   * Giữ chỗ cho đơn: mỗi biến thể một lệnh giữ có điều kiện trên dòng chi nhánh (storageId null), KHÔNG upsert.
    * Không đủ hàng / không có dòng balance → 409 ERR_OUT_OF_STOCK. Hai request giành món cuối: request sau
    * hoặc thấy điều kiện sai, hoặc bị WriteConflict trong transaction → cũng trả 409 ERR_OUT_OF_STOCK.
    */
@@ -108,11 +96,7 @@ export const createOrderStockService = ({
     for (const line of aggregateLines(lines)) {
       let row;
       try {
-        row = await InventoryBalance.findOneAndUpdate(
-          reserveFilter(locationId, line.variantId, line.quantity),
-          { $inc: { quantityReserved: line.quantity } },
-          { returnDocument: 'after', session },
-        );
+        row = await adjustOrderReservation({ locationId, variantId: line.variantId, quantity: line.quantity }, session);
       } catch (err) {
         if (isWriteConflict(err)) {
           throw orderError(409, `Sản phẩm ${line.sku || line.variantId} vừa được khách khác đặt, vui lòng thử lại.`, 'ERR_OUT_OF_STOCK',
@@ -150,34 +134,14 @@ export const createOrderStockService = ({
     return byVariant;
   };
 
-  /** $inc có chặn trên dòng chi nhánh (storageId null): cột bị trừ phải đủ; sau ghi kiểm invariant. Không upsert. */
-  const incBranchBalance = async ({ locationId, variantId, inc }, session) => {
-    requireSession(session);
-    const changes = Object.fromEntries(Object.entries(inc || {}).filter(([, amount]) => Number(amount)));
-    if (!Object.keys(changes).length) return null;
-    const filter = { locationId, storageId: null, variantId };
-    for (const [field, amount] of Object.entries(changes)) if (amount < 0) filter[field] = { $gte: -amount };
-    const row = await InventoryBalance.findOneAndUpdate(filter, { $inc: changes }, { returnDocument: 'after', session });
-    if (!row) throw orderError(409, 'Tồn kho chi nhánh không khớp với đơn hàng (giữ chỗ hoặc tồn không đủ). Vui lòng báo quản lý kho đối soát tồn.', 'ERR_BALANCE_MISMATCH');
-    const plain = typeof row.toObject === 'function' ? row.toObject() : row;
-    assertBalanceInvariant(plain, 'Tồn kho chi nhánh');
-    return plain;
-  };
-
-  /** Hủy đơn: nhả giữ chỗ đúng bằng số `active` của từng biến thể. */
+  /** Hủy đơn: nhả giữ chỗ đúng bằng số `active` của từng biến thể. Lệch với balance → 409 (cần đối soát). */
   const releaseReserved = async ({ locationId, reservedByVariant }, session) => {
+    requireSession(session);
     for (const [variantId, quantity] of reservedByVariant || []) {
-      if (quantity > 0) await incBranchBalance({ locationId, variantId, inc: { quantityReserved: -quantity } }, session);
+      if (quantity <= 0) continue;
+      const row = await adjustOrderReservation({ locationId, variantId, quantity: -quantity }, session);
+      if (!row) throw orderError(409, 'Tồn kho chi nhánh không khớp với đơn hàng (giữ chỗ hoặc tồn không đủ). Vui lòng báo quản lý kho đối soát tồn.', 'ERR_BALANCE_MISMATCH');
     }
-  };
-
-  /** Map variantId → trackingType (`quantity` | `individual`). */
-  const trackingTypes = async (variantIds, session) => {
-    const ids = [...new Set((variantIds || []).map(idOf))];
-    if (!ids.length) return new Map();
-    const query = ProductVariant.find({ _id: { $in: ids } }).select('productId').populate('productId', 'trackingType');
-    const variants = await lean(withSession(query, session));
-    return new Map((variants || []).map((variant) => [idOf(variant._id), variant.productId?.trackingType || 'quantity']));
   };
 
   /** Gán món cho đơn thuê: available → reserved (không warehouseHold, balance không đổi). */
@@ -197,9 +161,12 @@ export const createOrderStockService = ({
     return moveItems(items, { status: 'renting' }, session, { adjustments });
   };
 
-  /** Nhận trả đồ thuê: renting → theo RETURN_TRANSITIONS (helper: renting −1, onHand +1, unavailable +1 nếu cần). */
+  /**
+   * Nhận trả đồ thuê: renting → theo RETURN_TRANSITIONS (renting −1; onHand +1 và unavailable +1 nếu cần; `lost` chỉ trừ renting).
+   * entries: [{ item, inspectionResult }].
+   */
   const returnItems = async (entries, session) => {
-    const byId = new Map((entries || []).map(({ item, conditionOnReturn }) => [idOf(item._id), returnTransition(conditionOnReturn)]));
+    const byId = new Map((entries || []).map(({ item, inspectionResult }) => [idOf(item._id), returnTransition(inspectionResult)]));
     for (const { item } of entries || []) {
       if (item.status !== 'renting') throw orderError(409, `Món hàng ${item.itemCode || item._id} không ở trạng thái đang cho thuê (hiện tại: ${item.status}).`);
     }
@@ -207,13 +174,13 @@ export const createOrderStockService = ({
   };
 
   /**
-   * Hoàn tất đơn bán hàng individual: chọn FIFO `quantity` món `available` (condition dùng được, cũ nhất theo createdAt)
+   * Hoàn tất đơn bán: chọn FIFO `quantity` món `available` (cũ nhất theo createdAt)
    * tại chi nhánh → `sold` (onHand −1 mỗi món) gộp với nhả giữ chỗ `reservedQuantity`. Không đủ món → 409.
    */
   const sellItems = async ({ locationId, variantId, quantity, reservedQuantity = 0, sku }, session) => {
     requireSession(session);
     const query = InventoryItem.find({
-      locationId, variantId, status: 'available', condition: { $nin: UNUSABLE_CONDITIONS },
+      locationId, variantId, status: 'available',
     }).sort({ createdAt: 1, _id: 1 }).limit(quantity);
     const items = await withSession(query, session);
     if ((items || []).length < quantity) {
@@ -225,7 +192,7 @@ export const createOrderStockService = ({
   };
 
   return {
-    reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes,
+    reserveStock, closeReservations, releaseReserved,
     reserveItemsForOrder, releaseItemsFromOrder, handoverItems, returnItems, sellItems,
   };
 };
@@ -234,11 +201,11 @@ const defaultService = createOrderStockService({
   InventoryBalance: InventoryBalanceModel,
   InventoryItem: InventoryItemModel,
   InventoryReservation: InventoryReservationModel,
-  ProductVariant: ProductVariantModel,
   moveItems: defaultMoveItems,
+  adjustOrderReservation: defaultAdjustOrderReservation,
 });
 
 export const {
-  reserveStock, closeReservations, incBranchBalance, releaseReserved, trackingTypes,
+  reserveStock, closeReservations, releaseReserved,
   reserveItemsForOrder, releaseItemsFromOrder, handoverItems, returnItems, sellItems,
 } = defaultService;

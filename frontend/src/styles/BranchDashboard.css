@@ -1,0 +1,457 @@
+/* =========================================================
+   VESTORA — BRANCH OVERVIEW DASHBOARD (DELTA STYLES)
+   Reuses layout, cards, KPIs, segmented pills, tables from shared CSS.
+   ========================================================= */
+
+.bd-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.bd-meta-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.bd-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bd-meta-sep {
+  color: #cbd5e1;
+}
+
+.bd-spin {
+  animation: bdSpin 0.8s linear infinite;
+}
+
+@keyframes bdSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.bd-notice-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+
+.bd-notice-ribbon.danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.bd-notice-link {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bd-notice-link:hover {
+  text-decoration: underline;
+}
+
+.bd-kpi-sub {
+  font-size: 12.5px;
+  color: #64748b;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bd-kpi-unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.bd-grid-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 20px;
+  margin-bottom: 20px;
+  align-items: stretch;
+}
+
+.bd-card {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.bd-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.bd-card-title {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bd-card-subtitle {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 3px 0 0 0;
+}
+
+.bd-link-subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bd-link-subtle:hover {
+  color: #0f172a;
+}
+
+.bd-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.bd-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.bd-legend-dot.rental {
+  background: #171717;
+}
+
+.bd-legend-dot.sale {
+  background: #c5a880;
+}
+
+.bd-chart-area {
+  flex: 1;
+  min-height: 184px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 18px 8px 6px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  background-image: linear-gradient(to bottom, transparent 49%, #f1f5f9 50%, transparent 50.5%);
+}
+
+.bd-chart-col {
+  flex: 1;
+  min-width: 0;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  position: relative;
+}
+
+.bd-chart-stack {
+  width: 100%;
+  max-width: 30px;
+  height: calc(100% - 22px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.bd-chart-fill-column {
+  width: 100%;
+  min-height: 6px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+
+.bd-bar-seg {
+  width: 100%;
+  border-radius: 4px;
+  transition: height 0.25s ease, filter 0.15s ease;
+}
+
+.bd-bar-seg.rental {
+  background: #171717;
+}
+
+.bd-bar-seg.sale {
+  background: #c5a880;
+}
+
+.bd-bar-seg.empty {
+  background: #e2e8f0;
+  height: 4px;
+}
+
+.bd-chart-col:hover .bd-bar-seg {
+  filter: brightness(1.12);
+}
+
+.bd-chart-tooltip {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 11px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 20;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+}
+
+.bd-chart-col:hover .bd-chart-tooltip {
+  opacity: 1;
+}
+
+.bd-chart-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: #64748b;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bd-stock-bar {
+  height: 8px;
+  width: 100%;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.bd-stock-seg-avail { background: #10b981; }
+.bd-stock-seg-renting { background: #171717; }
+.bd-stock-seg-reserved { background: #f59e0b; }
+.bd-stock-seg-unavail { background: #ef4444; }
+
+.bd-stock-inline-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #475569;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.bd-section-micro-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin: 12px 0 6px 0;
+}
+
+.bd-flat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid #f1f5f9;
+  text-decoration: none;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.bd-flat-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.bd-flat-row:hover {
+  color: #0f172a;
+}
+
+.bd-count-pill {
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 26px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.bd-count-pill.warn { background: #fef3c7; color: #92400e; }
+.bd-count-pill.danger { background: #fee2e2; color: #991b1b; }
+
+.bd-search-wrap {
+  position: relative;
+  max-width: 280px;
+  margin-bottom: 12px;
+}
+
+.bd-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.bd-search-input {
+  width: 100%;
+  padding: 7px 10px 7px 32px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 12.5px;
+  color: #0f172a;
+}
+
+.bd-search-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #171717;
+}
+
+.bd-product-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.bd-product-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.bd-product-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  object-fit: cover;
+  border: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.bd-product-thumb-fallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bd-product-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-card-footer-links {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.bd-empty-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 28px 16px;
+  color: #64748b;
+  font-size: 13px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  gap: 6px;
+}
+
+.bd-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 55vh;
+  gap: 12px;
+  color: #64748b;
+}
+
+@media (max-width: 1150px) {
+  .bd-grid-main {
+    grid-template-columns: 1fr;
+  }
+}

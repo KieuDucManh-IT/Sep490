@@ -1,5 +1,6 @@
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
-import { getBalances, sumAvailable, sumByVariantLocation } from './balanceQueryService.js';
+import { sumAvailable, sumByVariantLocation } from './balanceQueryService.js';
+import { getCustomerStock } from './customer-stock-query.js';
 
 export const formatLocationAddress = (loc) => {
   if (!loc) return '';
@@ -33,7 +34,8 @@ export const validateActiveStoreLocation = async (locationId, session = null) =>
 };
 
 /** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025
- * TASK-011: chỉ đọc balance qua balanceQueryService (mọi loại hàng), chỉ chi nhánh `store` + `active`.
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-021
+ * Customer snapshot: Balance ưu tiên, Item fallback chỉ khi thiếu Balance; chỉ chi nhánh `store` + `active`.
  * Trả thêm `variantAvailability: { [variantId]: { total, byLocation } }`; giữ nguyên các field cũ cho giao diện. */
 export const enrichProductsWithInventory = async (products = [], variants = []) => {
   if (!products.length) return [];
@@ -42,7 +44,7 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
     ? (await InventoryLocation.find({ type: 'store', status: 'active' }).populate('shopId').lean()).filter(isActiveStoreLocation)
     : [];
   const storeById = new Map(stores.map(loc => [idOf(loc), loc]));
-  const balances = stores.length ? await getBalances({ locationIds: stores.map(loc => loc._id), variantIds }) : [];
+  const balances = stores.length ? await getCustomerStock({ locationIds: stores.map(loc => loc._id), variantIds }) : [];
   const availability = sumByVariantLocation(balances);
   return products.map(product => {
     const pVariants = variants.filter(v => idOf(v.productId) === idOf(product));
@@ -79,13 +81,14 @@ export const enrichProductsWithInventory = async (products = [], variants = []) 
   });
 };
 
-/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-025
- * TASK-010: chỉ đọc balance (bỏ fallback đếm món). Nhận `session` để đọc trong transaction tạo đơn.
+/** @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-021
+ * @ears .sdd/features/shopping-cart/SPEC.md#REQ-CART-023
+ * Kiểm tra snapshot Balance-first/Item fallback. Nhận `session` để đọc trong transaction tạo đơn.
  * Đây chỉ là kiểm tra sớm để báo lỗi đẹp; chốt chặn thật là lệnh giữ chỗ nguyên tử (orderStockService.reserveStock). */
 const checkAvailability = async (variantId, locationId, requestedQty, session = null) => {
   const branch = await validateActiveStoreLocation(locationId, session);
   if (!variantId || !branch.valid) return { available: false, availableQty: 0, code: branch.code || 'ERR_INVALID_VARIANT', message: branch.message || 'Thiếu biến thể.' };
-  const availableQty = sumAvailable(await getBalances({ locationIds: [locationId], variantIds: [variantId] }, session));
+  const availableQty = sumAvailable(await getCustomerStock({ locationIds: [locationId], variantIds: [variantId] }, session));
   const available = Number.isInteger(requestedQty) && requestedQty > 0 && availableQty >= requestedQty;
   return { available, availableQty, code: available ? null : 'ERR_OUT_OF_STOCK',
     message: available ? 'Còn hàng khả dụng' : 'Chi nhánh chỉ còn ' + availableQty + ' sản phẩm khả dụng.' };

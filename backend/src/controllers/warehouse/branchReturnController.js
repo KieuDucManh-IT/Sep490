@@ -20,13 +20,13 @@ const handle = (work) => async (req, res, next) => {
   }
 };
 
-export const listBranchReturnRows = handle((req) => listBranchReturns(req.user));
+export const listBranchReturnRows = handle((req) => listBranchReturns(req.user, req.query));
 export const getBranchReturnRow = handle((req) => getBranchReturn(req.params.id, req.user));
 export const listBranchReturnStaffRows = handle(() => listBranchReturnStaff());
 export const createBranchReturnRow = handle((req) => createBranchReturn(req.body, req.user));
 export const decideBranchReturnRow = handle((req) => decideBranchReturn(req.params.id, req.body, req.user));
 export const dispatchBranchReturnRow = handle((req) => dispatchBranchReturn(req.params.id, req.user));
-export const cancelBranchReturnRow = handle((req) => cancelBranchReturn(req.params.id, req.user));
+export const cancelBranchReturnRow = handle((req) => cancelBranchReturn(req.params.id, req.body, req.user));
 export const submitBranchReturnReceiptRow = handle((req) => submitBranchReturnReceipt(req.params.id, req.body, req.user));
 export const decideBranchReturnReceiptRow = handle((req) => decideBranchReturnReceipt(req.params.id, req.body, req.user));
 export const putawayBranchReturnRow = handle((req) => putawayBranchReturn(req.params.id, req.body, req.user));

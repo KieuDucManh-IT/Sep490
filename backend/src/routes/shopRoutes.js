@@ -8,6 +8,7 @@ import {
   getShopById,
   getMyShop,
   getAssignedBranch,
+  getBranchPerformanceReport,
   updateShopAddress,
   updateShopInfo,
   reverseGeocodeAddress,
@@ -15,7 +16,6 @@ import {
   deleteBranch,
   getBranchManagers,
   uploadShopImage,
-  getBranchPerformanceReport,
 } from '../controllers/shop/shopController.js';
 import {
   getMyPolicy,
@@ -26,6 +26,7 @@ import {
   getPublicPolicies,
 } from '../controllers/shop/businessPolicyController.js';
 import { authMiddleware, requireRole } from '../middlewares/errorMiddleware.js';
+import { ownerPerformanceAuthentication, getOwnerPerformanceReportController } from '../controllers/shop/owner-performance-controller.js';
 import { Shop } from '../models/shop/Shop.js';
 
 const router = express.Router();
@@ -50,7 +51,7 @@ router.post(
   authMiddleware,
   async (req, res, next) => {
     const userRole = String(req.user?.Role || req.user?.role || '').trim().toLowerCase().replace(/[\s_-]/g, '');
-    if (['admin', 'shopowner', 'owner', 'branchmanager', 'brandmanager'].includes(userRole)) {
+    if (['admin', 'shopowner', 'owner', 'branchmanager'].includes(userRole)) {
       return next();
     }
     try {
@@ -75,7 +76,7 @@ router.post(
 router.get(
   '/managers',
   authMiddleware,
-  requireRole('admin', 'shop_owner', 'owner', 'operation_staff'),
+  requireRole('admin', 'shop_owner', 'owner'),
   getBranchManagers
 );
 
@@ -87,13 +88,18 @@ router.get(
   requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
   getAssignedBranch
 );
-router.get('/reverse-geocode', reverseGeocodeAddress);
+router.get(
+  '/reports/owner-performance',
+  ownerPerformanceAuthentication,
+  getOwnerPerformanceReportController
+);
 router.get(
   '/reports/branch-performance',
   authMiddleware,
-  requireRole('branch_manager'),
+  requireRole('admin', 'shop_owner', 'owner', 'branch_manager'),
   getBranchPerformanceReport
 );
+router.get('/reverse-geocode', reverseGeocodeAddress);
 
 // ==========================================
 // BUSINESS POLICIES (Chain Management)
@@ -165,13 +171,13 @@ router.delete(
 router.put(
   '/:id/toggle-suspend',
   authMiddleware,
-  requireRole('admin', 'shop_owner', 'owner', 'operation_staff'),
+  requireRole('admin', 'shop_owner', 'owner'),
   toggleSuspendShop
 );
 router.put(
   '/:id/operating-status',
   authMiddleware,
-  requireRole('admin', 'operation_staff'),
+  requireRole('admin'),
   updateShopOperatingStatus
 );
 

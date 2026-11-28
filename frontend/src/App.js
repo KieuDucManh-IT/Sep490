@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import './styles/WarehouseUx.css';
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -25,12 +25,10 @@ import AboutPage from './pages/customer/AboutPage';
 import ContactPage from './pages/customer/ContactPage';
 import PolicyPage from './pages/customer/PolicyPage';
 import WardrobePage from './pages/customer/WardrobePage';
-import StylistPage from './pages/customer/StylistPage';
 import AiStylistWidget from './components/AiStylistWidget';
 import WalletPage from './pages/customer/WalletPage';
 import ChatPage from './pages/customer/ChatPage';
 import BranchChatPage from './pages/branch/BranchChatPage';
-import CustomerOrderTrackingPage from './pages/customer/CustomerOrderTrackingPage';
 import SharedLookbookPage from './pages/customer/SharedLookbookPage';
 import RentalOrdersHistoryPage from './pages/customer/RentalOrdersHistoryPage';
 
@@ -50,14 +48,14 @@ import WarehouseManagerPage from './pages/warehouse/WarehouseManagerPage';
 import WarehousePlaceholderPage from './pages/warehouse/WarehousePlaceholderPage';
 import ForceChangePasswordModal from './components/ForceChangePasswordModal';
 import CartDrawer from './components/customer/cart/CartDrawer';
-import InboundReceiptsPage from './pages/warehouse/InboundReceiptsPage';
+import InboundReceiptsPage from './pages/warehouse/inboundReceipts/InboundReceiptsPage';
 import InventoryReportPage from './pages/warehouse/InventoryReportPage';
-import WarehouseStocktakePage from './pages/warehouse/WarehouseStocktakePage';
-import WarehouseAdjustmentPage from './pages/warehouse/WarehouseAdjustmentPage';
-import WarehouseTransfersPage from './pages/warehouse/WarehouseTransfersPage';
-import WarehouseBranchReturnsPage from './pages/warehouse/BranchReturnsPage';
-import WarehouseRelocationsPage from './pages/warehouse/WarehouseRelocationsPage';
-import WarehouseDiscrepanciesPage from './pages/warehouse/WarehouseDiscrepanciesPage';
+import WarehouseStocktakePage from './pages/warehouse/stocktakes/WarehouseStocktakePage';
+import WarehouseAdjustmentPage from './pages/warehouse/adjustments/WarehouseAdjustmentPage';
+import WarehouseTransfersPage from './pages/warehouse/transfers/WarehouseTransfersPage';
+import WarehouseBranchReturnsPage from './pages/warehouse/branchReturns/BranchReturnsPage';
+import WarehouseRelocationsPage from './pages/warehouse/relocations/WarehouseRelocationsPage';
+import WarehouseDiscrepanciesPage from './pages/warehouse/discrepancies/WarehouseDiscrepanciesPage';
 import WarehouseMaintenancePage from './pages/warehouse/WarehouseMaintenancePage';
 import CategoryManagementPage from './pages/warehouse/CategoryManagementPage';
 import ProductManagementPage from './pages/warehouse/ProductManagementPage';
@@ -69,6 +67,7 @@ import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerBranchesPage from './pages/owner/OwnerBranchesPage';
 import OwnerPricingPage from './pages/owner/OwnerPricingPage';
 import OwnerAnalyticsPage from './pages/owner/OwnerAnalyticsPage';
+import { OwnerPerformanceRoute } from './pages/owner/owner-performance-page';
 import OwnerDisputesPage from './pages/owner/OwnerDisputesPage';
 import OwnerSettingsPage from './pages/owner/OwnerSettingsPage';
 import OwnerBranchesListPage from './pages/owner/OwnerBranchesListPage';
@@ -78,17 +77,36 @@ import OwnerSaleOrdersPage from './pages/owner/OwnerSaleOrdersPage';
 
 // 6. Role System Admin (UC-09, UC-10, UC-11)
 import AdminAccountsPage from './pages/admin/AdminAccountsPage';
+import { NotificationProvider } from './context/NotificationContext';
+import { useAuth } from './context/AuthContext';
+
+function TrackingRedirect() {
+  const { trackingCode } = useParams();
+  const target = trackingCode ? `/rental-orders?code=${encodeURIComponent(trackingCode)}` : '/rental-orders';
+  return <Navigate to={target} replace />;
+}
+
+function CustomerHomeRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  const rawRole = String(user?.Role || user?.role || "").trim().toUpperCase();
+  if (rawRole === "ADMIN") {
+    return <Navigate to="/admin/accounts" replace />;
+  }
+  return <HomePage />;
+}
 
 function App() {
   return (
     <Router>
-      <ForceChangePasswordModal />
+      <NotificationProvider>
+        <ForceChangePasswordModal />
       <CartDrawer />
       <Routes>
         {/* ========================================================
             CUSTOMER PORTAL (Khách Hàng)
             ======================================================== */}
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<CustomerHomeRoute />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/product" element={<ProductDetailPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
@@ -117,7 +135,7 @@ function App() {
         <Route path="/policy/:tab" element={<PolicyPage />} />
         <Route path="/wardrobe" element={<WardrobePage />} />
         <Route path="/my-wardrobe" element={<WardrobePage />} />
-        <Route path="/stylist" element={<StylistPage />} />
+        <Route path="/stylist" element={<Navigate to="/" replace />} />
         <Route path="/lookbook/:shareCode" element={<SharedLookbookPage />} />
 
         <Route path="/login" element={<LoginPage />} />
@@ -128,21 +146,14 @@ function App() {
         <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/chat/:conversationId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/tracking" element={<Navigate to="/rental-orders" replace />} />
-        <Route path="/tracking/:trackingCode" element={<CustomerOrderTrackingPage />} />
-        <Route path="/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
-        <Route path="/customer/rental-orders" element={<ProtectedRoute><RentalOrdersHistoryPage /></ProtectedRoute>} />
+        <Route path="/tracking/:trackingCode" element={<TrackingRedirect />} />
+        <Route path="/rental-orders" element={<ProtectedRoute allowedRoles={['CUSTOMER']} allowAdmin={false}><RentalOrdersHistoryPage /></ProtectedRoute>} />
+        <Route path="/customer/rental-orders" element={<ProtectedRoute allowedRoles={['CUSTOMER']} allowAdmin={false}><RentalOrdersHistoryPage /></ProtectedRoute>} />
 
         {/* ========================================================
             ROLE: BRANCH MANAGER (Quáº£n LÃ½ Chi NhÃ¡nh Cá»­a HÃ ng)
             ======================================================== */}
-        {/* <Route
-          path="/branch/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
-              <BranchDashboardPage />
-            </ProtectedRoute>
-          }
-        /> */}
+
         <Route
           path="/branch/chat"
           element={
@@ -194,7 +205,15 @@ function App() {
         <Route
           path="/branch/dashboard"
           element={
-            <ProtectedRoute allowedRoles={['BRANCH_MANAGER']}>
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
+              <BranchAnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch/analytics"
+          element={
+            <ProtectedRoute allowedRoles={['BRANCH_MANAGER', 'SHOP_OWNER', 'OWNER', 'ADMIN']}>
               <BranchAnalyticsPage />
             </ProtectedRoute>
           }
@@ -247,8 +266,10 @@ function App() {
         <Route path="/warehousemanager/outbound" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/transfers" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseTransfersPage mode="warehouse" /></ProtectedRoute>} />
         <Route path="/warehousemanager/branch-returns" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseBranchReturnsPage mode="warehouse" /></ProtectedRoute>} />
-        <Route path="/warehousemanager/relocations/split" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="split" /></ProtectedRoute>} />
-        <Route path="/warehousemanager/relocations/merge" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" operationType="merge" /></ProtectedRoute>} />
+        <Route path="/warehousemanager/relocations" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseRelocationsPage mode="manager" /></ProtectedRoute>} />
+        {/* Hai màn tách / gộp cũ gộp thành "Di chuyển hàng". */}
+        <Route path="/warehousemanager/relocations/split" element={<Navigate to="/warehousemanager/relocations" replace />} />
+        <Route path="/warehousemanager/relocations/merge" element={<Navigate to="/warehousemanager/relocations" replace />} />
         <Route path="/warehousemanager/discrepancies" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseDiscrepanciesPage /></ProtectedRoute>} />
         <Route path="/warehousemanager/maintenance" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'ADMIN']}><WarehouseMaintenancePage mode="manager" /></ProtectedRoute>} />
         <Route path="/warehousemanager/categories" element={<ProtectedRoute allowedRoles={['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ADMIN', 'BRANCH_MANAGER', 'SHOP_OWNER']}><CategoryManagementPage /></ProtectedRoute>} />
@@ -355,11 +376,7 @@ function App() {
         />
         <Route
           path="/owner/analytics"
-          element={
-            <ProtectedRoute allowedRoles={['SHOP_OWNER', 'OWNER', 'ADMIN']}>
-              <OwnerAnalyticsPage />
-            </ProtectedRoute>
-          }
+          element={<OwnerPerformanceRoute />}
         />
         <Route
           path="/owner/disputes"
@@ -488,6 +505,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <AiStylistWidget />
+      </NotificationProvider>
     </Router>
   );
 }

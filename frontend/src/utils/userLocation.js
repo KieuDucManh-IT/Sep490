@@ -1,4 +1,4 @@
-import { PROVINCE_DEFAULT_COORDS } from '../pages/owner/branches/utils/branchConstants';
+import { PROVINCE_DEFAULT_COORDS } from '../pages/owner/branches/utils/branchConstants.js';
 
 const STORAGE_KEY = 'vestora_user_location';
 

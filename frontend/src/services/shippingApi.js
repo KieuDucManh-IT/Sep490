@@ -21,11 +21,20 @@ export const getShipmentsByOrderApi = async (orderType, orderId) => {
 };
 
 export const getPrintTokenApi = async (trackingCode) => {
-  return await api.get(`/shipping/print-token/${trackingCode}`);
+  return await api.get(`/shipping/print-token/${encodeURIComponent(trackingCode)}`);
 };
 
 export const getGHNProvincesApi = async () => {
   return await api.get('/shipping/master-data/provinces');
+};
+
+// GHN v3 master data (mô hình địa chỉ 2 cấp sau 01/07/2025).
+export const getGHNNewProvincesApi = async () => {
+  return await api.get('/shipping/master-data/provinces-new');
+};
+
+export const getGHNNewWardsApi = async (provinceId) => {
+  return await api.get(`/shipping/master-data/wards-new/${provinceId}`);
 };
 
 export const getGHNDistrictsApi = async (provinceId) => {
@@ -40,9 +49,25 @@ export const getGHNWardsByProvinceApi = async (provinceId) => {
   return await api.get(`/shipping/master-data/wards-by-province/${provinceId}`);
 };
 
-export const trackPublicShipmentApi = async (trackingCode, options = {}) => {
+export const trackShipmentApi = async (trackingCode, options = {}) => {
   const params = options?.force ? { force: 'true' } : {};
-  return await api.get(`/public/shipping/track/${encodeURIComponent(trackingCode)}`, { params });
+  return await api.get(`/shipping/track/${encodeURIComponent(trackingCode)}`, { params });
+};
+
+export const trackPublicShipmentApi = trackShipmentApi;
+
+export const updateManualShipmentStatusApi = async (id, payload) => {
+  return await api.put(`/shipping/${id}/manual-status`, payload);
+};
+
+export const uploadShipmentProofApi = async (file) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  return await api.post('/shipping/upload-proof', formData);
+};
+
+export const simulateGhnApi = async (payload) => {
+  return await api.post('/shipping/dev/simulate-ghn', payload);
 };
 
 const shippingApi = {
@@ -50,12 +75,18 @@ const shippingApi = {
   createOutboundShipmentApi,
   createReturnShipmentApi,
   cancelShipmentApi,
+  updateManualShipmentStatusApi,
+  simulateGhnApi,
+  uploadShipmentProofApi,
   getShipmentsByOrderApi,
   getPrintTokenApi,
   getGHNProvincesApi,
+  getGHNNewProvincesApi,
+  getGHNNewWardsApi,
   getGHNDistrictsApi,
   getGHNWardsApi,
   getGHNWardsByProvinceApi,
+  trackShipmentApi,
   trackPublicShipmentApi,
 };
 

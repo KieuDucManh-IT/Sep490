@@ -3,7 +3,11 @@ import { RentalOrder } from '../../models/sale&rental/RentalOrder.js';
 import { RentalOrderDetail } from '../../models/sale&rental/RentalOrderDetail.js';
 import { SalesOrder } from '../../models/sale&rental/SalesOrder.js';
 import { SalesOrderDetail } from '../../models/sale&rental/SalesOrderDetail.js';
+import { SalesReturnDetail } from '../../models/sale&rental/SalesReturnDetail.js';
+import { RentalReturn } from '../../models/sale&rental/RentalReturn.js';
+import { RentalReturnDetail } from '../../models/sale&rental/RentalReturnDetail.js';
 import { OrderShipment } from '../../models/sale&rental/OrderShipment.js';
+import { getRentalReturnProgress } from '../sale&rental/rentalReturnService.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { Shop } from '../../models/shop/Shop.js';
 import User from '../../models/system/User.js';
@@ -16,20 +20,98 @@ import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
 import { readBalances } from '../walletService.js';
 import { encryptValue } from '../../utils/walletSecurity.js';
 import { syncSingleShipmentFromGHN } from '../shipping/shipmentSyncService.js';
+import { createNotification, notifyRoles } from '../system/notificationService.js';
 
-const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+import { appError as fail } from '../warehouse/shared/errors.js';
+
+/**
+ * Gắn tiến độ trả từng món (returnedQuantity / remainingQuantity) và cờ settled
+ * cho danh sách đơn thuê, dùng chung cho monitoring & rentalOrderService.
+ */
+export const enrichRentalOrdersPartialProgress = async (orders = [], details = [], shipments = []) => {
+  const orderIds = orders.map((o) => o._id);
+  const completedReturns = orderIds.length
+    ? await RentalReturn.find({ rentalOrderId: { $in: orderIds }, returnStatus: 'completed' })
+        .select('_id rentalOrderId shipmentId')
+        .lean()
+    : [];
+
+  const completedReturnIds = completedReturns.map((r) => r._id);
+  const settledShipmentIds = new Set(completedReturns.map((r) => String(r.shipmentId)).filter(Boolean));
+  const returnDetails = completedReturnIds.length
+    ? await RentalReturnDetail.find({ rentalReturnId: { $in: completedReturnIds } }).lean()
+    : [];
+
+  const returnedByDetail = new Map();
+  for (const rd of returnDetails) {
+    if (rd.rentalOrderDetailId) {
+      const k = String(rd.rentalOrderDetailId);
+      returnedByDetail.set(k, (returnedByDetail.get(k) || 0) + Number(rd.quantityReturned || 1));
+    }
+  }
+
+  const detailsByOrderId = new Map();
+  for (const d of details) {
+    const k = String(d.rentalOrderId);
+    if (!detailsByOrderId.has(k)) detailsByOrderId.set(k, []);
+    const qty = Number(d.quantity || 1);
+    const returnedQuantity = Math.min(qty, returnedByDetail.get(String(d._id)) || 0);
+    detailsByOrderId.get(k).push({
+      ...d,
+      returnedQuantity,
+      remainingQuantity: Math.max(0, qty - returnedQuantity),
+    });
+  }
+
+  const shipmentsByOrderId = new Map();
+  for (const s of shipments) {
+    const plain = s.toObject ? s.toObject() : s;
+    const k = String(plain.orderId);
+    if (!shipmentsByOrderId.has(k)) shipmentsByOrderId.set(k, []);
+    const isSettled = plain.shipmentType === 'return'
+      && plain.shipmentStatus === 'delivered'
+      && settledShipmentIds.has(String(plain._id));
+    shipmentsByOrderId.get(k).push(isSettled ? { ...plain, settled: true } : plain);
+  }
+
+  return { detailsByOrderId, shipmentsByOrderId };
+};
 
 /**
  * Chọn ra vận đơn đại diện đang hoạt động cho đơn hàng
  * Chỉ lấy vận đơn chưa hủy (preparing, shipped, delivered)
  * Nếu tất cả vận đơn đều đã hủy -> trả về null để đơn hàng hiển thị đúng trạng thái vòng đời của đơn
  */
+export const mapSalesReturnItems = (returnDetails = [], orderItems = []) => {
+  const itemMap = new Map((orderItems || []).map((it) => [String(it._id), it]));
+  return (returnDetails || []).map((rd) => {
+    const od = itemMap.get(String(rd.salesOrderDetailId));
+    return {
+      salesOrderDetailId: rd.salesOrderDetailId,
+      name: od?.variantId?.variantName || od?.variantId?.productId?.name || 'Sản phẩm Vestora',
+      sku: od?.variantId?.sku || od?.variantId?.productId?.productCode || '',
+      size: od?.variantId?.size || '',
+      color: od?.variantId?.color || '',
+      quantity: rd.quantityReturned || 1,
+      price: rd.unitRefundAmount || 0,
+    };
+  });
+};
+
 export const resolvePrimaryShipment = (list = []) => {
   if (!Array.isArray(list) || !list.length) return null;
   const active = list.filter((s) => s && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus));
   if (active.length > 0) {
-    const withCode = active.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
-    return withCode || active[0];
+    // Ưu tiên vận đơn thu hồi (return) đang active
+    const activeReturn = active.find((s) => s.shipmentType === 'return');
+    if (activeReturn) {
+      return activeReturn;
+    }
+
+    // Sắp xếp theo ngày tạo mới nhất lên đầu
+    const sorted = [...active].sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+    const withCode = sorted.find((s) => Boolean(s.trackingCode && !s.trackingCode.startsWith('TRK-') && !s.trackingCode.startsWith('SHP-')));
+    return withCode || sorted[0];
   }
   return null;
 };
@@ -79,8 +161,7 @@ const normalizeRole = (r) =>
   String(r || '')
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, '')
-    .replace('brandmanager', 'branchmanager');
+    .replace(/[\s_-]/g, '');
 
 const isLocationAllowed = (scope, orderLocationId) => {
   if (!scope || !scope.locationFilter) return true;
@@ -105,7 +186,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
         managerId: user._id,
         isDeleted: { $ne: true },
       })
-        .select('_id name code managerId address phone status isHQ')
+        .select('_id name code managerId address phone status')
         .lean();
 
       if (!shop) {
@@ -122,7 +203,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
         isDeleted: { $ne: true },
       });
       if (typeof q1.sort === 'function') q1.sort({ createdAt: 1, _id: 1 });
-      shop = await q1.select('_id name code managerId address phone status isHQ').lean();
+      shop = await q1.select('_id name code managerId address phone status').lean();
 
       if (!shop) {
         const q2 = Shop.findOne({
@@ -130,7 +211,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
           isDeleted: { $ne: true },
         });
         if (typeof q2.sort === 'function') q2.sort({ createdAt: 1, _id: 1 });
-        shop = await q2.select('_id name code managerId address phone status isHQ').lean();
+        shop = await q2.select('_id name code managerId address phone status').lean();
       }
 
       if (!shop) {
@@ -184,7 +265,7 @@ export const resolveLocationScope = async (user, requestedBranchId = '') => {
       }
 
       const shop = await Shop.findById(requestedBranchId)
-        .select('_id name code address phone isHQ')
+        .select('_id name code address phone')
         .lean();
 
       let storeLocations = [];
@@ -315,7 +396,7 @@ export const getRentalOrders = async (user, query = {}) => {
         select: 'name code address type shopId',
         populate: {
           path: 'shopId',
-          select: 'name code address phone isHQ',
+          select: 'name code address phone',
         },
       })
       .lean(),
@@ -362,29 +443,19 @@ export const getRentalOrders = async (user, query = {}) => {
 
   await attachProductImages(details);
 
-  const detailsByOrderId = new Map();
-  details.forEach((item) => {
-    const key = String(item.rentalOrderId);
-    if (!detailsByOrderId.has(key)) detailsByOrderId.set(key, []);
-    detailsByOrderId.get(key).push(item);
-  });
-
-  const shipmentsByOrderId = new Map();
-  shipments.forEach((s) => {
-    const key = String(s.orderId);
-    if (!shipmentsByOrderId.has(key)) shipmentsByOrderId.set(key, []);
-    shipmentsByOrderId.get(key).push(s);
-  });
+  const { detailsByOrderId, shipmentsByOrderId } = await enrichRentalOrdersPartialProgress(
+    orders,
+    details,
+    shipments
+  );
 
   const enrichedOrders = orders.map((ord) => {
     const ordShipments = shipmentsByOrderId.get(String(ord._id)) || [];
+    const ordItems = detailsByOrderId.get(String(ord._id)) || [];
     return {
       ...ord,
-      items: detailsByOrderId.get(String(ord._id)) || [],
-      itemCount: (detailsByOrderId.get(String(ord._id)) || []).reduce(
-        (sum, item) => sum + (item.quantity || 1),
-        0
-      ),
+      items: ordItems,
+      itemCount: ordItems.reduce((sum, item) => sum + (item.quantity || 1), 0),
       shipments: ordShipments,
       shipment: resolvePrimaryShipment(ordShipments),
     };
@@ -428,7 +499,7 @@ export const getRentalOrderById = async (user, id) => {
       select: 'name code address type shopId',
       populate: {
         path: 'shopId',
-        select: 'name code address phone managerId isHQ',
+        select: 'name code address phone managerId',
       },
     })
     .lean();
@@ -458,6 +529,7 @@ export const getRentalOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'rental', orderId: order._id })
+      .sort({ createdAt: -1 })
       .populate({ path: 'createdBy', select: 'FullName Email' }),
   ]);
 
@@ -478,19 +550,35 @@ export const getRentalOrderById = async (user, id) => {
       .populate({
         path: 'locationId',
         select: 'name code address type shopId',
-        populate: { path: 'shopId', select: 'name code address phone isHQ' },
+        populate: { path: 'shopId', select: 'name code address phone' },
       })
       .lean();
     if (freshOrder) order = freshOrder;
   }
 
-  const resolvedShipments = shipments.map((s) => (s.toObject ? s.toObject() : s));
+  const [progress, settledReturns] = await Promise.all([
+    getRentalReturnProgress(order._id),
+    RentalReturn.find({ rentalOrderId: order._id, returnStatus: 'completed' }).select('_id shipmentId').lean(),
+  ]);
+  const settledShipmentIds = new Set(settledReturns.map((r) => String(r.shipmentId)).filter(Boolean));
+  const enrichedItems = items.map((it) => {
+    const p = progress.progressByDetailId.get(String(it._id));
+    return p
+      ? { ...it, returnedQuantity: p.returnedQuantity, remainingQuantity: p.remainingQuantity }
+      : { ...it, returnedQuantity: 0, remainingQuantity: Number(it.quantity || 1) };
+  });
+
+  const resolvedShipments = shipments.map((s) => {
+    const plain = s.toObject ? s.toObject() : s;
+    const isSettled = plain.shipmentType === 'return' && plain.shipmentStatus === 'delivered' && settledShipmentIds.has(String(plain._id));
+    return isSettled ? { ...plain, settled: true } : plain;
+  });
   const primaryShipment = resolvePrimaryShipment(resolvedShipments);
   order.shipments = resolvedShipments;
   order.shipment = primaryShipment;
-  await attachProductImages(items);
+  await attachProductImages(enrichedItems);
 
-  return { order, items, shipments: resolvedShipments, shipment: primaryShipment };
+  return { order, items: enrichedItems, shipments: resolvedShipments, shipment: primaryShipment };
 };
 
 /**
@@ -566,7 +654,7 @@ export const getSalesOrders = async (user, query = {}) => {
         select: 'name code address type shopId',
         populate: {
           path: 'shopId',
-          select: 'name code address phone isHQ',
+          select: 'name code address phone',
         },
       })
       .lean(),
@@ -679,8 +767,12 @@ export const getSalesOrderById = async (user, id) => {
       select: 'name code address type shopId',
       populate: {
         path: 'shopId',
-        select: 'name code address phone managerId isHQ',
+        select: 'name code address phone managerId',
       },
+    })
+    .populate({
+      path: 'returnId',
+      select: 'returnCode returnStatus returnReason refundAmount requestedAt completedAt',
     })
     .lean();
 
@@ -697,7 +789,8 @@ export const getSalesOrderById = async (user, id) => {
     throw fail('Bạn không có quyền truy cập đơn hàng của chi nhánh khác.', 403);
   }
 
-  const [items, shipments] = await Promise.all([
+  const returnIdRef = order.returnId?._id || order.returnId;
+  const [items, shipments, returnDetails] = await Promise.all([
     SalesOrderDetail.find({ salesOrderId: order._id })
       .populate({
         path: 'variantId',
@@ -709,7 +802,11 @@ export const getSalesOrderById = async (user, id) => {
       })
       .lean(),
     OrderShipment.find({ orderType: 'sale', orderId: order._id })
+      .sort({ createdAt: -1 })
       .populate({ path: 'createdBy', select: 'FullName Email' }),
+    returnIdRef
+      ? SalesReturnDetail.find({ salesReturnId: returnIdRef }).lean()
+      : Promise.resolve([]),
   ]);
 
   const activeShipments = shipments.filter((s) => s.trackingCode && ['preparing', 'shipped'].includes(s.shipmentStatus));
@@ -729,14 +826,26 @@ export const getSalesOrderById = async (user, id) => {
       .populate({
         path: 'locationId',
         select: 'name code address type shopId',
-        populate: { path: 'shopId', select: 'name code address phone managerId isHQ' },
+        populate: { path: 'shopId', select: 'name code address phone managerId' },
+      })
+      .populate({
+        path: 'returnId',
+        select: 'returnCode returnStatus returnReason refundAmount requestedAt completedAt',
       })
       .lean();
     if (freshOrder) order = freshOrder;
   }
 
-  const resolvedShipments = shipments.map((s) => (s.toObject ? s.toObject() : s));
+  const returnItems = mapSalesReturnItems(returnDetails, items);
+  const resolvedShipments = shipments.map((s) => {
+    const plain = s.toObject ? s.toObject() : s;
+    if (plain.shipmentType === 'return' && (!Array.isArray(plain.items) || !plain.items.length) && returnItems.length) {
+      return { ...plain, items: returnItems };
+    }
+    return plain;
+  });
   const primaryShipment = resolvePrimaryShipment(resolvedShipments);
+  order.returnItems = returnItems;
   order.shipments = resolvedShipments;
   order.shipment = primaryShipment;
 
@@ -770,8 +879,35 @@ export const getOrderMetrics = async (user, { branchId = '' } = {}) => {
             },
           ],
           escrowHeld: [
-            { $match: { depositStatus: 'held' } },
-            { $group: { _id: null, totalEscrowHeld: { $sum: '$depositAmount' } } },
+            {
+              $match: {
+                depositStatus: { $in: ['held', 'partially_refunded', 'partially_deducted'] },
+                rentalStatus: { $ne: 'returned' },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalEscrowHeld: {
+                  $sum: {
+                    $max: [
+                      0,
+                      {
+                        $subtract: [
+                          '$depositAmount',
+                          {
+                            $add: [
+                              { $ifNull: ['$refundedDepositAmount', 0] },
+                              { $ifNull: ['$deductedDepositAmount', 0] },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
           ],
         },
       },
@@ -911,25 +1047,17 @@ export const getCustomerRentalOrders = async (user, query = {}) => {
     });
   }
 
-  const detailsByOrder = {};
-  for (const d of details) {
-    const oid = String(d.rentalOrderId);
-    if (!detailsByOrder[oid]) detailsByOrder[oid] = [];
-    detailsByOrder[oid].push(d);
-  }
-
-  const shipmentsByOrder = {};
-  for (const s of shipments) {
-    const oid = String(s.orderId);
-    if (!shipmentsByOrder[oid]) shipmentsByOrder[oid] = [];
-    shipmentsByOrder[oid].push(s);
-  }
+  const { detailsByOrderId, shipmentsByOrderId } = await enrichRentalOrdersPartialProgress(
+    orders,
+    details,
+    shipments
+  );
 
   return orders.map((o) => {
-    const ordShipments = shipmentsByOrder[String(o._id)] || [];
+    const ordShipments = shipmentsByOrderId.get(String(o._id)) || [];
     return {
       ...o,
-      items: detailsByOrder[String(o._id)] || [],
+      items: detailsByOrderId.get(String(o._id)) || [],
       shipments: ordShipments,
       shipment: resolvePrimaryShipment(ordShipments),
     };
@@ -1300,6 +1428,41 @@ export const createCustomerCheckoutOrder = async (user, data = {}) => {
     } catch (walletErr) {
       console.error('[Checkout] Lỗi trừ tiền ví hoặc tạo WalletTransaction:', walletErr);
     }
+  }
+
+  // Tự động phát thông báo tới Khách hàng và Quản trị viên / Chủ shop
+  try {
+    const targetOrder = createdRentalOrder || createdSalesOrder;
+    const isRental = Boolean(createdRentalOrder);
+    const orderTitle = isRental ? 'Đặt đơn thuê thành công' : 'Đặt mua trang phục thành công';
+
+    // 1. Thông báo cho Khách hàng
+    createNotification({
+      userId: user._id,
+      type: 'order_created',
+      title: orderTitle,
+      message: 'Đơn hàng của bạn đã được khởi tạo thành công. VESTORA sẽ sớm chuẩn bị và giao hàng cho bạn!',
+      link: isRental ? '/rental-orders' : '/customer/orders',
+      referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
+      referenceId: targetOrder?._id
+    }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho khách hàng:', err.message));
+
+    // 2. Thông báo cho Admin, Shop Owner và Quản lý chi nhánh
+    notifyRoles(['shopOwner', 'branch_manager'], {
+      type: 'order_created',
+      title: 'Đơn hàng mới từ khách',
+      message: `Khách hàng ${user.FullName || user.email || 'Khách'} vừa đặt ${isRental ? 'đơn thuê' : 'đơn mua'}. Vui lòng kiểm tra và xử lý.`,
+      link: isRental ? '/owner/rental-orders' : '/owner/orders',
+      linkByRole: {
+        branch_manager: isRental ? '/branch/rental-orders' : '/branch/sale-orders',
+        shopOwner: isRental ? '/owner/rental-orders' : '/owner/orders',
+        owner: isRental ? '/owner/rental-orders' : '/owner/orders',
+      },
+      referenceType: isRental ? 'RentalOrder' : 'SalesOrder',
+      referenceId: targetOrder?._id
+    }).catch(err => console.error('[Notification] Lỗi gửi thông báo cho quản trị:', err.message));
+  } catch (notifErr) {
+    console.error('[Notification] Lỗi trong checkout:', notifErr.message);
   }
 
   return {

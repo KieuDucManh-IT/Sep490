@@ -34,8 +34,8 @@ const FEATURED_PRODUCTS = [
     type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Đầm dạ hội ánh tím',
-    rating: '4.9',
-    reviews: '128',
+    rating: '0',
+    reviews: '0',
     inStock: true,
     price: 350000,
     priceUnit: '/ 3 ngày',
@@ -47,8 +47,8 @@ const FEATURED_PRODUCTS = [
     type: 'Mua sản phẩm',
     typeBadge: 'sale',
     title: 'Blazer thanh lịch',
-    rating: '4.8',
-    reviews: '96',
+    rating: '0',
+    reviews: '0',
     inStock: true,
     price: 180000,
     priceUnit: '',
@@ -61,8 +61,8 @@ const FEATURED_PRODUCTS = [
     type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Áo dài cách tân',
-    rating: '4.9',
-    reviews: '74',
+    rating: '0',
+    reviews: '0',
     inStock: true,
     price: 250000,
     priceUnit: '/ 3 ngày',
@@ -74,8 +74,8 @@ const FEATURED_PRODUCTS = [
     type: 'Mua sản phẩm',
     typeBadge: 'sale',
     title: 'Túi dây tiệc mini',
-    rating: '4.7',
-    reviews: '52',
+    rating: '0',
+    reviews: '0',
     inStock: true,
     price: 120000,
     priceUnit: '',
@@ -88,8 +88,8 @@ const FEATURED_PRODUCTS = [
     type: 'Cho thuê',
     typeBadge: 'rental',
     title: 'Đầm body đen',
-    rating: '4.8',
-    reviews: '110',
+    rating: '0',
+    reviews: '0',
     inStock: true,
     price: 300000,
     priceUnit: '/ 3 ngày',
@@ -99,34 +99,6 @@ const FEATURED_PRODUCTS = [
 ];
 
 
-
-// Style suggestion categories
-const STYLE_CATEGORIES = [
-  {
-    id: 'thanh-lich',
-    title: 'Thanh lịch',
-    desc: 'Tối giản, tinh tế, sang trọng',
-    image: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'du-tiec',
-    title: 'Dự tiệc',
-    desc: 'Tỏa sáng trong mọi khoảnh khắc',
-    image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'nang-dong',
-    title: 'Năng động',
-    desc: 'Thoải mái, cá tính, trẻ trung',
-    image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'cong-so',
-    title: 'Công sở',
-    desc: 'Thanh lịch, chuyên nghiệp',
-    image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=600&q=80',
-  },
-];
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -230,8 +202,10 @@ export default function HomePage() {
               type: type,
               typeBadge: typeBadge,
               title: p.name,
-              rating: typeof p.rating === 'number' ? Number(p.rating).toFixed(1) : '4.9',
-              reviews: typeof p.reviewsCount === 'number' ? p.reviewsCount : 95,
+              rating: (typeof p.reviewsCount === 'number' && p.reviewsCount > 0 && typeof p.rating === 'number')
+                ? Number(p.rating).toFixed(1)
+                : '0',
+              reviews: (typeof p.reviewsCount === 'number' && p.reviewsCount > 0) ? p.reviewsCount : 0,
               // TASK-011: số khả dụng từ API (InventoryBalance, chỉ chi nhánh); không tự suy ra khi thiếu.
               inStock: p.inStock !== false && Number(p.quantityAvailable ?? p.quantity ?? 0) > 0,
               quantity: p.quantityAvailable ?? p.quantity,
@@ -545,9 +519,14 @@ export default function HomePage() {
                   <div className="card-info-box">
                     <h3 className="card-product-name" title={product.title}>{product.title}</h3>
                     <div className="card-meta-line" style={{ display: 'flex', alignItems: 'center' }}>
-                      <Star size={13} fill="#C5A880" color="#C5A880" className="rating-star" />
-                      <span className="rating-score">{product.rating}</span>
-                      <span className="rating-count">({product.reviews})</span>
+                      <Star
+                        size={13}
+                        fill={Number(product.reviews) > 0 && Number(product.rating) > 0 ? "#C5A880" : "transparent"}
+                        color="#C5A880"
+                        className="rating-star"
+                      />
+                      <span className="rating-score">{Number(product.reviews) > 0 ? product.rating : 0}</span>
+                      <span className="rating-count">({product.reviews || 0})</span>
                       <span className="meta-separator">•</span>
                       <span className="stock-indicator">
                         <span className={`stock-dot ${product.inStock === false ? 'out-of-stock' : ''}`}></span> {product.inStock !== false ? `Còn hàng${product.quantity != null ? ` (${product.quantity})` : ''}` : 'Hết hàng'}
@@ -759,40 +738,7 @@ export default function HomePage() {
         </section>
 
         {/* ====================================================
-            5. GỢI Ý PHONG CÁCH THEO NHU CẦU
-            ==================================================== */}
-        <section className="style-suggestions-section">
-          <div className="section-header-row">
-            <h2 className="section-title-with-star" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Sparkles size={20} color="#C5A880" className="sparkle-heading-icon" /> Gợi ý phong cách theo nhu cầu
-            </h2>
-            <Link to="/catalog?category=suggest" className="view-all-link" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              Xem tất cả <ArrowRight size={14} />
-            </Link>
-          </div>
-
-          <div className="style-cards-grid">
-            {STYLE_CATEGORIES.map((cat) => (
-              <div
-                key={cat.id}
-                className="style-visual-card"
-                onClick={() => navigate(`/catalog?category=${cat.id}`)}
-              >
-                <img src={cat.image} alt={cat.title} className="style-card-bg" />
-                <div className="style-card-overlay">
-                  <div className="style-text-group">
-                    <h3 className="style-title">{cat.title}</h3>
-                    <p className="style-subtitle">{cat.desc}</p>
-                  </div>
-                  <ChevronRight size={16} className="style-arrow-icon" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ====================================================
-            6. BANNER: MUA ĐỒ CŨ - THỜI TRANG BỀN VỮNG
+            5. BANNER: MUA ĐỒ CŨ - THỜI TRANG BỀN VỮNG
             ==================================================== */}
         <section className="sustainability-banner-section">
           <div className="sustainability-card-container">

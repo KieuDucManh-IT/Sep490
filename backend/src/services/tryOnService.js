@@ -3,6 +3,9 @@ import cloudinary from '../config/cloudinary.js';
 
 let replicateClient = null;
 
+// Bộ nhớ đệm lưu ảnh trang phục đã bóc tách để tránh gọi lại Replicate nhiều lần
+const garmentIsolationCache = new Map();
+
 function getReplicateClient() {
   if (!replicateClient) {
     const token = process.env.REPLICATE_API_TOKEN;
@@ -12,6 +15,51 @@ function getReplicateClient() {
     replicateClient = new Replicate({ auth: token, useFileOutput: false });
   }
   return replicateClient;
+}
+
+/**
+ * Wrapper gọi Replicate có cơ chế tự động chờ và thử lại (Auto-retry & Backoff)
+ * khi gặp mã lỗi 429 Too Many Requests (Rate limit / Throttled).
+ */
+async function safeReplicateRun(modelVersion, options, maxRetries = 2) {
+  const replicate = getReplicateClient();
+  let attempt = 0;
+
+  while (attempt <= maxRetries) {
+    try {
+      return await replicate.run(modelVersion, options);
+    } catch (err) {
+      const errText = String(err?.message || err || '');
+      const isRateLimit =
+        err?.status === 429 ||
+        /429|throttled|rate limit|too many requests/i.test(errText);
+
+      if (isRateLimit && attempt < maxRetries) {
+        attempt++;
+        let waitSeconds = 9;
+        const retryMatch =
+          errText.match(/retry_after["':\s]*(\d+)/i) ||
+          errText.match(/resets in ~?(\d+)s/i);
+        if (retryMatch && retryMatch[1]) {
+          waitSeconds = Math.min(Math.max(parseInt(retryMatch[1], 10), 3), 15);
+        }
+
+        console.warn(
+          `[TryOnService] Replicate bị 429 Rate Limit (Lần ${attempt}/${maxRetries}). Đang tự động đợi ${waitSeconds}s rồi thử lại...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000 + 800));
+        continue;
+      }
+
+      if (isRateLimit) {
+        throw new Error(
+          'Hệ thống AI đang tạm thời đạt giới hạn (Rate limit 6 lượt/phút do tài khoản Replicate dưới $5 credit). Vui lòng đợi khoảng 10 giây và thử lại, hoặc nạp thêm credit Replicate để mở khóa tốc độ cao.'
+        );
+      }
+
+      throw err;
+    }
+  }
 }
 
 /**
@@ -136,6 +184,93 @@ export function detectGarmentCategory(name = '', categoryStr = '') {
 }
 
 /**
+ * Tách trang phục ra khỏi ảnh người mẫu cũ bằng AI BiRefNet (High-resolution background/subject matting)
+ * Sau đó đưa trang phục lên nền trắng chuẩn (RGB 255, 255, 255) qua Cloudinary
+ * để mô hình IDM-VTON nhận diện ve áo, cổ áo và nếp gấp hoàn hảo nhất.
+ *
+ * @param {string} imageUrl - URL ảnh trang phục (ảnh mẫu hoặc ảnh sản phẩm)
+ * @param {string} category - Danh mục trang phục ('upper_body', 'lower_body', 'dresses')
+ * @returns {Promise<string>} URL ảnh trang phục trên nền trắng
+ */
+export async function isolateGarmentImage(imageUrl, category = 'upper_body') {
+  if (process.env.ENABLE_GARMENT_EXTRACTION === 'false') {
+    return imageUrl;
+  }
+  if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
+    return imageUrl;
+  }
+
+  // 1. Kiểm tra cache: nếu ảnh sản phẩm này đã được tách trước đó, lấy luôn từ cache
+  // Giúp tiết kiệm 100% quota Replicate và không bị dính giới hạn burst of 1 request
+  if (garmentIsolationCache.has(imageUrl)) {
+    console.log('[TryOnService] [isolateGarmentImage] Lấy ảnh đã tách từ Cache (tiết kiệm quota):', imageUrl);
+    return garmentIsolationCache.get(imageUrl);
+  }
+
+  const replicate = getReplicateClient();
+  try {
+    console.log('[TryOnService] [isolateGarmentImage] Bóc tách trang phục bằng AI BiRefNet:', imageUrl);
+    const birefnetVersion =
+      'lucataco/birefnet:959550b07e5c544b82d029580e0c804f86d84a3c1032cf05d3cf55ff1153cfb5';
+
+    const output = await replicate.run(birefnetVersion, {
+      input: {
+        image: imageUrl,
+      },
+    });
+
+    let extractedUrl = '';
+    if (typeof output === 'string') {
+      extractedUrl = output;
+    } else if (output && typeof output.url === 'function') {
+      const resolvedUrl = output.url();
+      extractedUrl = typeof resolvedUrl === 'string' ? resolvedUrl : resolvedUrl?.href || String(resolvedUrl);
+    } else if (Array.isArray(output) && output.length > 0) {
+      const item = output[0];
+      extractedUrl = typeof item === 'string' ? item : item?.url ? String(item.url()) : String(item);
+    } else if (output && typeof output.toString === 'function') {
+      extractedUrl = output.toString();
+    }
+
+    if (!extractedUrl || !extractedUrl.startsWith('http')) {
+      console.warn('[TryOnService] Không lấy được URL sau khi tách trang phục, dùng lại ảnh gốc');
+      return imageUrl;
+    }
+
+    // Đặt trang phục đã tách lên nền trắng chuẩn để IDM-VTON nhận diện phom dáng chuẩn nhất
+    let whiteBgUrl = extractedUrl;
+    try {
+      const uploadRes = await cloudinary.uploader.upload(extractedUrl, {
+        folder: 'vestora/tryon/isolated_garments',
+        resource_type: 'image',
+        background: 'white',
+        format: 'jpg',
+      });
+      if (uploadRes?.secure_url) {
+        whiteBgUrl = uploadRes.secure_url;
+      }
+    } catch (cloudErr) {
+      console.warn('[TryOnService] Lỗi khi upload ảnh tách nền sang Cloudinary:', cloudErr.message);
+      if (extractedUrl.includes('cloudinary.com')) {
+        whiteBgUrl = extractedUrl.replace('/upload/', '/upload/b_white,c_pad,w_768,h_1024/');
+      }
+    }
+
+    // Lưu vào cache để những lần thử đồ sau (đổi size/đổi mẫu/combo) không phải tách lại
+    garmentIsolationCache.set(imageUrl, whiteBgUrl);
+
+    console.log('[TryOnService] Tách trang phục thành công ->', whiteBgUrl);
+    return whiteBgUrl;
+  } catch (err) {
+    console.warn(
+      '[TryOnService] Tách trang phục gặp sự cố hoặc đạt giới hạn gọi Replicate, tự động fallback dùng ảnh gốc:',
+      err.message
+    );
+    return imageUrl;
+  }
+}
+
+/**
  * Gọi Replicate AI IDM-VTON để ghép trang phục lên người mẫu/khách hàng
  *
  * @param {Object} params
@@ -145,6 +280,7 @@ export function detectGarmentCategory(name = '', categoryStr = '') {
  * @param {string} [params.garmentDescription] - Mô tả trang phục
  * @param {boolean} [params.crop=false] - Cắt tự động theo tỷ lệ 3:4 nếu ảnh không chuẩn
  * @param {number} [params.steps=30] - Số bước inference (20 - 40)
+ * @param {boolean} [params.autoIsolate=true] - Tự động tách trang phục ra khỏi ảnh mẫu nếu bật
  * @returns {Promise<Object>}
  */
 export async function generateTryOn({
@@ -154,6 +290,7 @@ export async function generateTryOn({
   garmentDescription = 'garment clothing',
   crop = false,
   steps = 30,
+  autoIsolate = true,
 }) {
   const replicate = getReplicateClient();
   const startTime = Date.now();
@@ -170,6 +307,12 @@ export async function generateTryOn({
     }
   }
 
+  // Tiền xử lý: Tách trang phục ra khỏi ảnh người mẫu cũ để tránh lem da/mặt/nền cũ
+  let processedGarmentUrl = garmentImageUrl;
+  if (autoIsolate && process.env.ENABLE_GARMENT_EXTRACTION !== 'false') {
+    processedGarmentUrl = await isolateGarmentImage(garmentImageUrl, normalizedCategory);
+  }
+
   // Làm giàu prompt mô tả bằng tiếng Anh chuẩn thời trang để định hướng U-Net diffusion
   const promptDescription = enhanceGarmentDescription(garmentDescription, normalizedCategory);
 
@@ -179,7 +322,7 @@ export async function generateTryOn({
 
   const input = {
     human_img: humanImageUrl,
-    garm_img: garmentImageUrl,
+    garm_img: processedGarmentUrl,
     garment_des: promptDescription,
     category: normalizedCategory,
     crop: crop === false ? false : true, // Mặc định auto-crop 3:4 để tránh méo xệch thân người
@@ -195,12 +338,40 @@ export async function generateTryOn({
     steps: input.steps,
     human_img: input.human_img,
     garm_img: input.garm_img,
+    original_garm_img: garmentImageUrl,
   });
 
   const modelVersion =
     'cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985';
 
-  const rawOutput = await replicate.run(modelVersion, { input });
+  let rawOutput;
+  try {
+    rawOutput = await safeReplicateRun(modelVersion, { input });
+  } catch (runErr) {
+    const errText = String(runErr?.message || runErr || '');
+    console.warn('[TryOnService] Replicate run lần 1 gặp lỗi:', errText);
+
+    // Nếu lỗi "list index out of range", thường do tính năng crop=true cắt sai khung người
+    // hoặc OpenPose không nhận diện được. Thử tự động retry 1 lần với crop = false
+    if (/list index out of range/i.test(errText) && input.crop) {
+      console.log('[TryOnService] Thử lại tự động với crop = false...');
+      try {
+        rawOutput = await safeReplicateRun(modelVersion, {
+          input: { ...input, crop: false },
+        });
+      } catch (retryErr) {
+        throw new Error(
+          'Mô hình AI không nhận diện được vóc dáng người mẫu trong ảnh (OpenPose pose detection failed). Vui lòng chọn hoặc tải ảnh chụp đứng thẳng người, rõ toàn thân, không bị che khuất ngực/eo.'
+        );
+      }
+    } else if (/list index out of range/i.test(errText)) {
+      throw new Error(
+        'Mô hình AI không nhận diện được vóc dáng người mẫu trong ảnh (OpenPose pose detection failed). Vui lòng chọn hoặc tải ảnh chụp đứng thẳng người, rõ toàn thân, không bị che khuất ngực/eo.'
+      );
+    } else {
+      throw runErr;
+    }
+  }
 
   let rawUrl = '';
   if (typeof rawOutput === 'string') {
@@ -244,6 +415,7 @@ export async function generateTryOn({
     replicateUrl: rawUrl,
     humanImageUrl,
     garmentImageUrl,
+    isolatedGarmentUrl: processedGarmentUrl,
     category: normalizedCategory,
     processingTimeMs: durationMs,
   };

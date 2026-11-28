@@ -1,20 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Form, Modal, Nav } from 'react-bootstrap';
 import WarehouseSidebar from '../../components/WarehouseSidebar';
+import {
+  DISPOSAL_METHOD_LABELS as METHOD_LABELS,
+  DISPOSAL_STATUS_LABELS,
+  ITEM_STATUS_LABELS,
+  MAINTENANCE_RESULT_LABELS as RESULT_LABELS,
+  MAINTENANCE_STATUS_LABELS as RECORD_STATUS_LABELS,
+  MAINTENANCE_TYPE_LABELS as TYPE_LABELS,
+} from '../../constants/warehouseLabels';
 import maintenanceService from '../../services/warehouse/maintenanceService';
 import inventoryLocationService from '../../services/warehouse/inventoryLocationService';
 import storageLocationService from '../../services/warehouse/storageLocationService';
+import '../../styles/ShopDashboard.css';
 import '../../styles/WarehouseManager.css';
+import '../../styles/WarehouseShared.css';
 import '../../styles/WarehouseUx.css';
 
-const TYPE_LABELS = { cleaning: 'Giặt/vệ sinh', repair: 'Sửa chữa', inspection: 'Kiểm tra', replacement_part: 'Thay phụ kiện', other: 'Khác' };
-const METHOD_LABELS = { discard: 'Hủy bỏ', sell_as_is: 'Bán thanh lý nguyên trạng', recycle: 'Tái chế', donate: 'Quyên góp', other: 'Khác' };
-const CONDITION_LABELS = { new: 'Mới', good: 'Tốt', worn: 'Đã qua sử dụng', damaged: 'Hỏng', unrepairable: 'Không thể sửa', missing: 'Thất lạc' };
-const ITEM_STATUS_LABELS = { available: 'Sẵn sàng', unavailable: 'Không khả dụng', maintenance: 'Đang xử lý', reserved: 'Đang giữ chỗ', renting: 'Đang cho thuê', in_transit: 'Đang điều chuyển', disposed: 'Đã thanh lý', sold: 'Đã bán' };
-const RECORD_STATUS_LABELS = { pending: 'Chờ làm', in_progress: 'Đang làm', completed: 'Hoàn tất', cancelled: 'Đã hủy' };
-const RESULT_LABELS = { success: 'Đạt', failed: 'Không đạt', unrepairable: 'Không thể sửa' };
-const DISPOSAL_STATUS_LABELS = { requested: 'Chờ duyệt', approved: 'Đã duyệt', completed: 'Đã thanh lý', rejected: 'Đã từ chối' };
-const RESTORED_CONDITIONS = ['new', 'good', 'worn'];
 
 const idOf = (value) => String(value?._id || value || '');
 const label = (map, key) => map[key] || 'Không xác định';
@@ -144,12 +146,12 @@ function CreateDisposalModal({ item, onHide, onDone }) {
 
 /* --------- Modal hoàn tất phiếu (WS) --------- */
 function CompleteMaintenanceModal({ record, shelves, onHide, onDone }) {
-  const [form, setForm] = useState({ repairResult: '', afterCondition: '', targetStorageId: '', disposalMethod: '', repairDescription: '', cost: '' });
+  const [form, setForm] = useState({ repairResult: '', targetStorageId: '', disposalMethod: '', repairDescription: '', cost: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const costValid = form.cost === '' || (Number.isFinite(Number(form.cost)) && Number(form.cost) >= 0);
   const valid = Boolean(form.repairResult) && costValid
-    && (form.repairResult !== 'success' || (form.afterCondition && form.targetStorageId))
+    && (form.repairResult !== 'success' || form.targetStorageId)
     && (form.repairResult !== 'unrepairable' || (form.disposalMethod && form.repairDescription.trim()));
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
   const submit = async (event) => {
@@ -159,7 +161,6 @@ function CompleteMaintenanceModal({ record, shelves, onHide, onDone }) {
     try {
       await maintenanceService.complete(record._id, {
         repairResult: form.repairResult,
-        afterCondition: form.repairResult === 'success' ? form.afterCondition : null,
         targetStorageId: form.repairResult === 'success' ? form.targetStorageId : null,
         disposalMethod: form.repairResult === 'unrepairable' ? form.disposalMethod : null,
         repairDescription: form.repairDescription.trim(),
@@ -182,13 +183,6 @@ function CompleteMaintenanceModal({ record, shelves, onHide, onDone }) {
           </div>
         </Form.Group>
         {form.repairResult === 'success' && <>
-          <Form.Group className="mt-3">
-            <Form.Label>Tình trạng sau xử lý <span className="text-danger">*</span></Form.Label>
-            <Form.Select value={form.afterCondition} disabled={submitting} onChange={set('afterCondition')}>
-              <option value="">Chọn tình trạng</option>
-              {RESTORED_CONDITIONS.map((value) => <option key={value} value={value}>{CONDITION_LABELS[value]}</option>)}
-            </Form.Select>
-          </Form.Group>
           <Form.Group className="mt-3">
             <Form.Label>Kệ xếp lại <span className="text-danger">*</span></Form.Label>
             <Form.Select value={form.targetStorageId} disabled={submitting} onChange={set('targetStorageId')}>
@@ -315,13 +309,11 @@ function DetailModal({ record, onHide }) {
     ['Loại xử lý', label(TYPE_LABELS, record.maintenanceType)],
     ['Trạng thái', label(RECORD_STATUS_LABELS, record.status)],
     ['Vấn đề', record.issueDescription],
-    ['Tình trạng trước', record.beforeCondition ? label(CONDITION_LABELS, record.beforeCondition) : '—'],
     ['Người tạo', record.reportedBy?.FullName || record.reportedBy?.Email || '—'],
     ['Người làm', record.assignedTo?.FullName || record.assignedTo?.Email || '—'],
     ['Tạo lúc', dateTime(record.reportedAt || record.createdAt)],
     ['Bắt đầu', dateTime(record.startedAt) || '—'],
     ['Kết quả', record.repairResult ? label(RESULT_LABELS, record.repairResult) : '—'],
-    ['Tình trạng sau', record.afterCondition ? label(CONDITION_LABELS, record.afterCondition) : '—'],
     ['Kệ xếp lại', record.targetStorageId?.code || '—'],
     ['Mô tả công việc', record.repairDescription || '—'],
     ['Chi phí', record.status === 'completed' ? money(record.cost) : '—'],
@@ -353,7 +345,6 @@ export default function WarehouseMaintenancePage({ mode = 'manager' }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
-  const [conditionFilter, setConditionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dialog, setDialog] = useState(null);
 
@@ -395,12 +386,11 @@ export default function WarehouseMaintenancePage({ mode = 'manager' }) {
   const filteredCandidates = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return candidates.filter((row) => {
-      if (conditionFilter && row.condition !== conditionFilter) return false;
       if (!keyword) return true;
       const variant = row.variantId; const product = variant?.productId;
       return [row.itemCode, row.serialNumber, variant?.sku, product?.name, product?.productCode].join(' ').toLowerCase().includes(keyword);
     });
-  }, [candidates, query, conditionFilter]);
+  }, [candidates, query]);
 
   const filteredRecords = useMemo(() => (statusFilter ? records.filter((row) => row.status === statusFilter) : records), [records, statusFilter]);
 
@@ -421,27 +411,19 @@ export default function WarehouseMaintenancePage({ mode = 'manager' }) {
       <label>Tìm kiếm
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Mã món, serial, SKU, tên sản phẩm" />
       </label>
-      <label>Tình trạng
-        <select value={conditionFilter} onChange={(e) => setConditionFilter(e.target.value)}>
-          <option value="">Tất cả</option>
-          <option value="damaged">Hỏng</option>
-          <option value="worn">Đã qua sử dụng</option>
-        </select>
-      </label>
     </div>
     <div className="wm-table-wrap"><table>
-      <thead><tr><th>Món hàng</th><th>Tình trạng</th><th>Trạng thái</th><th>Vị trí</th><th /></tr></thead>
+      <thead><tr><th>Món hàng</th><th>Trạng thái</th><th>Vị trí</th><th /></tr></thead>
       <tbody>
-        {loading ? loadingRow(5) : filteredCandidates.length ? filteredCandidates.map((row) => <tr key={row._id}>
+        {loading ? loadingRow(4) : filteredCandidates.length ? filteredCandidates.map((row) => <tr key={row._id}>
           <td><ItemCell item={row} /></td>
-          <td>{label(CONDITION_LABELS, row.condition)}</td>
           <td>{label(ITEM_STATUS_LABELS, row.status)}</td>
           <td>{row.storageId?.code || 'Chưa xếp kệ'}</td>
           <td><div className="wm-actions">
             <button type="button" onClick={() => { setNotice(''); setDialog({ kind: 'create', row }); }}>Tạo phiếu giặt/sửa</button>
             <button type="button" className="danger" onClick={() => { setNotice(''); setDialog({ kind: 'dispose', row }); }}>Đề xuất thanh lý</button>
           </div></td>
-        </tr>) : emptyRow(5, 'Không có món cần xử lý.')}
+        </tr>) : emptyRow(4, 'Không có món cần xử lý.')}
       </tbody>
     </table></div>
   </>;
@@ -495,9 +477,9 @@ export default function WarehouseMaintenancePage({ mode = 'manager' }) {
 
   const close = () => setDialog(null);
 
-  return <div className="wm-layout">
+  return <div className="shop-dashboard-layout wh-layout">
     <WarehouseSidebar mode={mode} />
-    <main className="wm-main">
+    <main className="shop-main-content wh-main">
       <header className="wm-header">
         <div>
           <span>KHO TỔNG</span>

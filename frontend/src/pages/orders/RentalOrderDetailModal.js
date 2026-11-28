@@ -19,8 +19,11 @@ import { getRentalOrderDetailApi } from '../../services/orderApi';
 import {
   formatCurrency,
   formatDate,
+  formatDateOnly,
   DEPOSIT_STATUS_MAP,
+  PAYMENT_STATUS_MAP,
   resolveOrderDisplayStatus,
+  extractOrderCancelReason,
 } from './orderUtils';
 import {
   ShipmentTrackingTimeline,
@@ -30,6 +33,10 @@ import {
 import { cancelShipmentApi } from '../../services/shippingApi';
 import '../../styles/ShopBranches.css';
 import '../../styles/OrderMonitoring.css';
+import {
+  RentalReturnWorkflow,
+  RentalDeliveryVideos,
+} from '../shipping/ShipmentReturnModal';
 
 export default function RentalOrderDetailModal({
   isOpen,
@@ -37,13 +44,15 @@ export default function RentalOrderDetailModal({
   orderId,
   initialOrder = null,
   isReadOnly = false,
-  onAction = () => {},
+  onAction = () => { },
 }) {
   const [loading, setLoading] = useState(false);
   const [detailData, setDetailData] = useState(null);
   const [error, setError] = useState('');
   const [isCreateShipmentOpen, setIsCreateShipmentOpen] = useState(false);
   const [isReturnShipmentOpen, setIsReturnShipmentOpen] = useState(false);
+  const [retryShipment, setRetryShipment] = useState(null);
+  const [returnFlowOpen, setReturnFlowOpen] = useState(false);
 
   const refetchOrder = () => {
     if (orderId) {
@@ -53,7 +62,7 @@ export default function RentalOrderDetailModal({
             setDetailData(res.data);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   };
 
@@ -111,16 +120,24 @@ export default function RentalOrderDetailModal({
   const customerName = order.shippingAddress?.receiverName || customer.FullName || customer.fullName || customer.name || 'Khách vãng lai';
   const customerPhone = order.shippingAddress?.phone || customerInfo?.Phone || customer.phone || 'Chưa cập nhật';
   const customerEmail = customer.Email || customer.email || '';
-  let noteDeliveryAddress = '';
-  if (order.note) {
-    const match = order.note.match(/\[Giao tận nơi:\s*([^-]+?)\s*-\s*([^-]+?)\s*-\s*([^\]]+)\]/);
-    if (match) noteDeliveryAddress = match[3].trim();
-  }
-  const customerAddress = order.shippingAddress?.street 
-    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.city].filter(Boolean).join(', ')
-    : (noteDeliveryAddress || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
+  const customerAddress = order.shippingAddress?.street
+    ? [order.shippingAddress.street, order.shippingAddress.ward, order.shippingAddress.district, order.shippingAddress.city].filter(Boolean).join(', ')
+    : (order.shippingAddress?.address || customerInfo?.Address || customerInfo?.AddressDetail || customer.address || 'Nhận tại cửa hàng');
   const items = detailData?.items || order.items || initialOrder?.items || [];
-  const shipments = detailData?.shipments || order.shipments || [];
+  const rawShipments = detailData?.shipments || order.shipments || [];
+  const shipments = Array.isArray(rawShipments)
+    ? [...rawShipments].sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+      const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+      return timeB - timeA; // Vận đơn mới nhất lên trên đầu
+    })
+    : [];
+
+  const rentalStart = order.startDate || order.rentalStartDate;
+  const rentalDue = order.dueDate || order.rentalEndDate;
+  const actualReturned = order.actualReturnedAt || order.actualReturnDate;
+  const isReturned = order.rentalStatus === 'returned';
+  const isDepositRefunded = order.depositStatus === 'refunded';
 
   const statusDef = resolveOrderDisplayStatus(
     { ...order, shipments, shipment: detailData?.shipment || order.shipment },
@@ -133,6 +150,11 @@ export default function RentalOrderDetailModal({
     chipClass: 'pending',
   };
 
+  const paymentDef = PAYMENT_STATUS_MAP[order.paymentStatus] || {
+    text: order.paymentStatus || 'Chưa thanh toán',
+    chipClass: 'cancelled',
+  };
+
   const branchName =
     order.locationId?.shopId?.name ||
     order.locationId?.name ||
@@ -141,13 +163,18 @@ export default function RentalOrderDetailModal({
     order.branchName ||
     'Chi nhánh hệ thống';
 
-  const isHQ = Boolean(
-    order.locationId?.shopId?.isHQ ||
-    order.locationId?.isHQ ||
-    order.shopId?.isHQ ||
-    order.isHQ ||
-    order.branchId?.isHQ
-  );
+  if (returnFlowOpen) {
+    return (
+      <RentalReturnWorkflow
+        show
+        orderId={orderId}
+        onClose={() => {
+          setReturnFlowOpen(false);
+          refetchOrder();
+        }}
+      />
+    );
+  }
 
   return (
     <Modal
@@ -174,20 +201,23 @@ export default function RentalOrderDetailModal({
                 <span className="order-badge-dot" />
                 {statusDef.text}
               </span>
+              <span className={`order-badge ${depositDef.chipClass}`}>
+                <ShieldCheck size={12} className="me-1" />
+                {depositDef.text}
+              </span>
               {isReadOnly ? (
                 <span className="order-readonly-badge">
+                  <ShieldCheck size={12} />
                 </span>
               ) : (
                 <span className="order-active-branch-badge">
                   <MapPin size={12} />
                   <span>{branchName}</span>
-                  {isHQ && <span className="branch-tag-hq ms-1">Trụ sở chính</span>}
                 </span>
               )}
             </div>
             <p className="modal-subtitle-text">
               Ngày tạo: {formatDate(order.createdAt)} • Chi nhánh phục vụ: {branchName}
-              {isHQ && <span className="branch-tag-hq ms-2">Trụ sở chính</span>}
             </p>
           </div>
         </div>
@@ -214,6 +244,22 @@ export default function RentalOrderDetailModal({
           </div>
         ) : (
           <>
+            {(order.rentalStatus === 'cancelled' || order.status === 'cancelled') && (
+              <div role="alert" className="alert alert-danger d-flex align-items-start gap-2 mb-3">
+                <AlertCircle size={18} className="flex-shrink-0 mt-1" />
+                <div>
+                  <div className="fw-bold">
+                    Đơn thuê đã bị hủy
+                    {order.cancelledAt ? ` (${formatDate(order.cancelledAt)})` : ''}
+                  </div>
+                  <div className="small mt-1">
+                    <strong>Lý do hủy:</strong>{' '}
+                    {extractOrderCancelReason(order, shipments) || 'Chưa ghi nhận lý do cụ thể.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Section 1: Khách hàng & Lịch trình thuê */}
             <div className="modal-section-card">
               <div className="modal-section-header">
@@ -228,7 +274,7 @@ export default function RentalOrderDetailModal({
 
               <div className="row g-3">
                 <div className="col-12 col-md-6 border-end">
-                  <div className="small text-muted mb-1">Thông tin liên hệ</div>
+                  <div className="small text-muted mb-1">Người nhận</div>
                   <div className="fw-semibold text-dark fs-6">
                     {customerName}
                   </div>
@@ -242,37 +288,38 @@ export default function RentalOrderDetailModal({
                       <span>{customerEmail}</span>
                     </div>
                   )}
-                  {customerAddress && (
-                    <div className="small text-muted d-flex align-items-center gap-1 mt-1">
-                      <MapPin size={13} />
-                      <span className="text-truncate">{customerAddress}</span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="col-12 col-md-6 ps-md-3">
-                  <div className="small text-muted mb-1">Thời gian thuê trang phục</div>
-                  <div className="d-flex align-items-center gap-2">
-                    <Clock size={16} className="text-primary" />
+                  <div className="small text-muted mb-1">Địa chỉ giao nhận</div>
+                  <div className="d-flex align-items-start gap-2 mb-2">
+                    <MapPin size={16} className="text-primary mt-1 flex-shrink-0" />
+                    <div className="text-dark fw-medium small">
+                      {customerAddress}
+                    </div>
+                  </div>
+
+                  <div className="d-flex align-items-start gap-2 pt-2 border-top">
+                    <Clock size={15} className="text-primary mt-1 flex-shrink-0" />
                     <div>
                       <div className="small">
                         Bắt đầu:{' '}
                         <strong>
-                          {order.rentalStartDate ? formatDate(order.rentalStartDate) : 'Chưa giao đồ'}
+                          {rentalStart ? formatDateOnly(rentalStart) : 'Chưa giao đồ'}
                         </strong>
                       </div>
                       <div className="small mt-1">
                         Hạn trả:{' '}
                         <strong className="text-danger">
-                          {order.rentalEndDate ? formatDate(order.rentalEndDate) : 'Chưa ấn định'}
+                          {rentalDue ? formatDateOnly(rentalDue) : 'Chưa ấn định'}
                         </strong>
                       </div>
                     </div>
                   </div>
 
-                  {order.actualReturnDate && (
+                  {actualReturned && (
                     <div className="small text-success mt-2 pt-2 border-top">
-                      Đã trả ngày: {formatDate(order.actualReturnDate)}
+                      Đã trả ngày: {formatDate(actualReturned)}
                     </div>
                   )}
                 </div>
@@ -315,6 +362,13 @@ export default function RentalOrderDetailModal({
                             </div>
                             <div className="order-product-variant">
                               SKU: {it.variantId?.sku || it.sku || it.productSku || '—'}
+                              {Number(it.returnedQuantity || 0) > 0 && (
+                                <span className="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-2">
+                                  {Number(it.remainingQuantity || 0) === 0
+                                    ? 'Đã trả đủ'
+                                    : `Đã trả: ${it.returnedQuantity}/${it.quantity || 1}`}
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td>
@@ -326,10 +380,20 @@ export default function RentalOrderDetailModal({
                             {it.quantity || 1}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                            {formatCurrency(it.rentalPrice || it.price || it.variantId?.productId?.rentalPricePerDay)}
+                            {formatCurrency(
+                              it.unitRentalFee ??
+                              it.rentalPrice ??
+                              it.price ??
+                              it.variantId?.productId?.rentalPricePerDay
+                            )}
                           </td>
                           <td style={{ textAlign: 'right', color: '#D97706', fontWeight: 600 }}>
-                            {formatCurrency(it.depositAmount || it.deposit || it.variantId?.productId?.deposit)}
+                            {formatCurrency(
+                              it.depositPerUnit ??
+                              it.depositAmount ??
+                              it.deposit ??
+                              it.variantId?.productId?.deposit
+                            )}
                           </td>
                         </tr>
                       ))
@@ -355,6 +419,20 @@ export default function RentalOrderDetailModal({
               <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
                   <div className="small text-muted">
+                    Phương thức thanh toán:{' '}
+                    <strong>
+                      {order.paymentMethod === 'wallet'
+                        ? 'Ví Vestora'
+                        : order.paymentMethod === 'bank_transfer'
+                          ? 'Chuyển khoản / PayOS'
+                          : order.paymentMethod || 'Ví Vestora'}
+                    </strong>
+                  </div>
+                  <div className="small text-muted mt-1">
+                    Trạng thái thanh toán:{' '}
+                    <strong className="text-dark">{paymentDef.text}</strong>
+                  </div>
+                  <div className="small text-muted mt-1">
                     Trạng thái tiền cọc: <strong>{depositDef.text}</strong>
                   </div>
                   {order.note && (
@@ -372,10 +450,17 @@ export default function RentalOrderDetailModal({
                     </strong>
                   </div>
                   <div className="small text-muted mt-1">
-                    Tiền cọc giữ đồ:{' '}
+                    {isDepositRefunded ? 'Tiền cọc đã hoàn:' : 'Tiền cọc giữ đồ:'}{' '}
                     <strong style={{ color: '#D97706', fontFeatureSettings: 'tnum' }}>
                       {formatCurrency(order.depositAmount)}
                     </strong>
+                    {(Number(order.refundedDepositAmount || 0) > 0 || Number(order.deductedDepositAmount || 0) > 0) && (
+                      <div className="text-muted" style={{ fontSize: '12px' }}>
+                        Đã hoàn: {formatCurrency(order.refundedDepositAmount || 0)}
+                        {' · '}
+                        Còn giữ: {formatCurrency(Math.max(0, Number(order.depositAmount || 0) - Number(order.refundedDepositAmount || 0) - Number(order.deductedDepositAmount || 0)))}
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2 pt-2 border-top">
                     <span className="small text-muted me-2">Tổng thanh toán ban đầu:</span>
@@ -391,13 +476,17 @@ export default function RentalOrderDetailModal({
             {(() => {
               const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
               const hasActiveOutbound = shipments.some(
-                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped'].includes(s.shipmentStatus) && s.trackingCode && !s.trackingCode.startsWith('SHP-') && !s.trackingCode.startsWith('TRK-')
+                (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)
               );
               const hasActiveReturn = shipments.some(
-                (s) => s.shipmentType === 'return' && ['preparing', 'shipped'].includes(s.shipmentStatus) && s.trackingCode && !s.trackingCode.startsWith('SHP-') && !s.trackingCode.startsWith('TRK-')
+                (s) =>
+                  s.shipmentType === 'return' &&
+                  (['preparing', 'shipped'].includes(s.shipmentStatus) ||
+                    (s.shipmentStatus === 'delivered' && !s.settled))
               );
-              const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
-              const canCreateReturn = !isReadOnly && !hasActiveReturn && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);
+              const isFinished = ['returned', 'cancelled'].includes(order.rentalStatus || order.status);
+              const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && !isFinished && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
+              const canCreateReturn = !isReadOnly && !hasActiveReturn && !isFinished && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);
 
               return (
                 <div className="modal-section-card">
@@ -417,7 +506,10 @@ export default function RentalOrderDetailModal({
                         <button
                           type="button"
                           className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                          onClick={() => setIsCreateShipmentOpen(true)}
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsCreateShipmentOpen(true);
+                          }}
                         >
                           <Truck size={14} />
                           <span>+ Tạo vận đơn GHN</span>
@@ -427,7 +519,10 @@ export default function RentalOrderDetailModal({
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
-                          onClick={() => setIsReturnShipmentOpen(true)}
+                          onClick={() => {
+                            setRetryShipment(null);
+                            setIsReturnShipmentOpen(true);
+                          }}
                         >
                           <Truck size={14} />
                           <span>+ Thu hồi đồ thuê</span>
@@ -436,23 +531,66 @@ export default function RentalOrderDetailModal({
                     </div>
                   </div>
 
+                  {isReturned && (
+                    <div
+                      role="status"
+                      className={`alert ${isDepositRefunded ? 'alert-success' : 'alert-warning'
+                        } mt-3 mb-0`}
+                    >
+                      <div className="fw-semibold">Đã trả đồ hoàn tất</div>
+
+                      {isDepositRefunded ? (
+                        <div>
+                          Đã hoàn {formatCurrency(order.refundedDepositAmount || order.depositAmount)} tiền cọc
+                          vào Ví Vestora của khách hàng.
+                        </div>
+                      ) : (
+                        <div>
+                          Trạng thái tiền cọc: {depositDef.text}.
+                          {Number(order.refundedDepositAmount || 0) > 0 && (
+                            <span> Đã hoàn: {formatCurrency(order.refundedDepositAmount)}.</span>
+                          )}
+                        </div>
+                      )}
+
+                      {actualReturned && (
+                        <div className="small mt-1">
+                          Hoàn tất lúc: {formatDate(actualReturned)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {shipments.length > 0 ? (
                     <div className="mt-3">
-                      {shipments.map((s) => (
-                        <ShipmentTrackingTimeline
-                          key={s._id}
-                          shipment={s}
-                          onCancel={handleCancelShipment}
-                          onRetry={(targetShipment) => {
-                            if ((targetShipment || s)?.shipmentType === 'return') {
-                              setIsReturnShipmentOpen(true);
-                            } else {
-                              setIsCreateShipmentOpen(true);
+                      {shipments.map((s, idx) => {
+                        const canRetryThis = s.shipmentType === 'return' ? !hasActiveReturn : !hasActiveOutbound;
+                        return (
+                          <ShipmentTrackingTimeline
+                            key={s._id}
+                            shipment={s}
+                            isLatest={idx === 0}
+                            onCancel={handleCancelShipment}
+                            onStatusUpdated={refetchOrder}
+                            rentalStatus={order.rentalStatus}
+                            orderItems={items}
+                            onRetry={
+                              canRetryThis
+                                ? (targetShipment) => {
+                                  const target = targetShipment || s;
+                                  setRetryShipment(target);
+                                  if (target?.shipmentType === 'return') {
+                                    setIsReturnShipmentOpen(true);
+                                  } else {
+                                    setIsCreateShipmentOpen(true);
+                                  }
+                                }
+                                : null
                             }
-                          }}
-                          isBranchManager={!isReadOnly}
-                        />
-                      ))}
+                            isBranchManager={!isReadOnly}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="small text-muted py-2 fst-italic">
@@ -462,6 +600,10 @@ export default function RentalOrderDetailModal({
                 </div>
               );
             })()}
+            <RentalDeliveryVideos
+              orderId={orderId}
+              readOnly={isReadOnly}
+            />
           </>
         )}
       </div>
@@ -509,15 +651,22 @@ export default function RentalOrderDetailModal({
                 </button>
               )}
 
-              {(order.rentalStatus === 'renting' || order.rentalStatus === 'confirmed') && (
+              {order.rentalStatus !== 'cancelled' && (
                 <button
                   type="button"
                   className="btn-modal-primary d-flex align-items-center gap-1"
-                  style={{ background: '#059669', borderColor: '#059669' }}
-                  onClick={() => onAction('inspect_return', order)}
+                  style={{
+                    background: '#059669',
+                    borderColor: '#059669',
+                  }}
+                  onClick={() => setReturnFlowOpen(true)}
                 >
                   <Search size={15} />
-                  <span>Nghiệm Thu Trả Đồ</span>
+                  <span>
+                    {isReturned
+                      ? 'Xem video / Kết quả trả đồ'
+                      : 'Video bàn giao / Nghiệm thu trả đồ'}
+                  </span>
                 </button>
               )}
             </div>
@@ -528,8 +677,12 @@ export default function RentalOrderDetailModal({
       {/* Shipment Create Modal */}
       <ShipmentCreateModal
         show={isCreateShipmentOpen}
-        onClose={() => setIsCreateShipmentOpen(false)}
+        onClose={() => {
+          setIsCreateShipmentOpen(false);
+          setRetryShipment(null);
+        }}
         order={order}
+        initialShipment={retryShipment}
         orderType="rental"
         onSuccess={() => refetchOrder()}
       />
@@ -537,8 +690,14 @@ export default function RentalOrderDetailModal({
       {/* Shipment Return Modal */}
       <ShipmentReturnModal
         show={isReturnShipmentOpen}
-        onClose={() => setIsReturnShipmentOpen(false)}
+        onClose={() => {
+          setIsReturnShipmentOpen(false);
+          setRetryShipment(null);
+        }}
         order={order}
+        orderType="rental"
+        orderItemsProp={items}
+        initialShipment={retryShipment}
         onSuccess={() => refetchOrder()}
       />
     </Modal>

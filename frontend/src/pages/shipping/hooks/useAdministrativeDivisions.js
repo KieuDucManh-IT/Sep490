@@ -1,15 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  getGHNProvincesApi,
-  getGHNDistrictsApi,
-  getGHNWardsApi,
-  getGHNWardsByProvinceApi,
+  getGHNNewProvincesApi,
+  getGHNNewWardsApi,
 } from '../../../services/shippingApi';
 import { autoMatchWard } from '../shippingUtils';
 
 /**
- * Custom hook quản lý danh mục địa giới hành chính GHN
- * Gom chung logic tải Tỉnh/Thành -> tải gộp Phường/Xã trực thuộc -> auto-match địa chỉ
+ * Custom hook quản lý danh mục địa giới hành chính GHN phiên bản V3 (Mô hình địa chỉ 2 cấp Tỉnh/Thành -> Phường/Xã)
+ * Tuân thủ quy chuẩn dùng 100% API V3 cho danh mục và tạo đơn; bản V2 chỉ dùng duy nhất để tính phí COD/cước.
  */
 export function useAdministrativeDivisions(enabled = true) {
   const [provinces, setProvinces] = useState([]);
@@ -19,19 +17,32 @@ export function useAdministrativeDivisions(enabled = true) {
   const [districtId, setDistrictId] = useState('');
   const [wardCode, setWardCode] = useState('');
 
-  // 1. Tải danh mục Tỉnh/Thành
+  // 1. Tải danh mục Tỉnh/Thành hoàn toàn bằng API GHN V3
   useEffect(() => {
     if (!enabled) return;
-    getGHNProvincesApi()
+    let isMounted = true;
+
+    getGHNNewProvincesApi()
       .then((res) => {
-        if (res?.success && Array.isArray(res.data)) {
-          setProvinces(res.data);
-        }
+        if (!isMounted) return;
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const normalized = list.map((p) => ({
+          ...p,
+          _id: p._id,
+          ProvinceID: p._id,
+          name: p.name,
+          ProvinceName: p.name,
+        }));
+        setProvinces(normalized);
       })
-      .catch((err) => console.error('Lỗi tải danh mục Tỉnh/Thành:', err));
+      .catch((err) => console.error('Lỗi tải danh mục Tỉnh/Thành GHN v3:', err));
+
+    return () => {
+      isMounted = false;
+    };
   }, [enabled]);
 
-  // 2. Đổi Tỉnh -> Tải gộp danh sách Phường/Xã thuộc mọi Quận/Huyện của Tỉnh
+  // 2. Chọn Tỉnh/Thành -> Tải trực tiếp danh sách Phường/Xã GHN V3 theo provinceId
   const handleProvinceChange = useCallback(
     async (
       provIdVal,
@@ -49,57 +60,36 @@ export function useAdministrativeDivisions(enabled = true) {
 
       setLoadingWards(true);
       try {
-        let flattenedWards = [];
-        try {
-          // Tải gộp toàn bộ Phường/Xã trong 1 request duy nhất có server cache 24h
-          const res = await getGHNWardsByProvinceApi(pId);
-          if (res?.success && Array.isArray(res.data)) {
-            flattenedWards = res.data;
-          }
-        } catch {
-          // Fallback an toàn nếu cần
-          const distRes = await getGHNDistrictsApi(pId);
-          if (distRes?.success && Array.isArray(distRes.data)) {
-            for (const d of distRes.data) {
-              try {
-                const wRes = await getGHNWardsApi(d.DistrictID);
-                if (wRes?.success && Array.isArray(wRes.data)) {
-                  wRes.data.forEach((w) => {
-                    flattenedWards.push({
-                      WardCode: String(w.WardCode),
-                      WardName: w.WardName,
-                      DistrictID: d.DistrictID,
-                      GovernmentCode: w.GovernmentCode ? String(w.GovernmentCode) : '',
-                      NameExtension: Array.isArray(w.NameExtension) ? w.NameExtension : [],
-                      label: `${w.WardName} (${d.DistrictName || ''})`,
-                    });
-                  });
-                }
-              } catch {}
-            }
-          }
-        }
+        const res = await getGHNNewWardsApi(pId);
+        const rawList = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const normalizedWards = rawList.map((w) => ({
+          ...w,
+          _id: w._id,
+          name: w.name,
+          WardCode: String(w._id),
+          WardName: w.name,
+          DistrictID: '',
+          label: w.name,
+          isNewAddress: true,
+        }));
 
-        flattenedWards.sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
-        setWards(flattenedWards);
+        normalizedWards.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
+        setWards(normalizedWards);
 
-        // Khớp tự động Phường/Xã nếu có gợi ý
+        // Tự động nhận diện và chọn Phường/Xã V3 từ địa chỉ khách hàng
         if (wardHintToMatch || wardCodeHintToMatch || fullAddrToMatch) {
           const matchedWard = autoMatchWard(
             wardHintToMatch,
             wardCodeHintToMatch,
             fullAddrToMatch,
-            flattenedWards
+            normalizedWards
           );
           if (matchedWard) {
-            setWardCode(String(matchedWard.WardCode));
-            if (matchedWard.DistrictID) {
-              setDistrictId(String(matchedWard.DistrictID));
-            }
+            setWardCode(String(matchedWard.WardCode || matchedWard._id));
           }
         }
       } catch (err) {
-        console.error('Lỗi tải danh mục Phường/Xã:', err);
+        console.error('Lỗi tải danh mục Phường/Xã GHN v3:', err);
       } finally {
         setLoadingWards(false);
       }
@@ -112,12 +102,9 @@ export function useAdministrativeDivisions(enabled = true) {
     (wardCodeVal) => {
       const wCode = typeof wardCodeVal === 'object' && wardCodeVal?.target ? wardCodeVal.target.value : wardCodeVal;
       setWardCode(wCode ? String(wCode) : '');
-      const selected = wards.find((w) => String(w.WardCode) === String(wCode));
-      if (selected?.DistrictID) {
-        setDistrictId(String(selected.DistrictID));
-      }
+      setDistrictId('');
     },
-    [wards]
+    []
   );
 
   // 4. Reset trạng thái
@@ -143,4 +130,3 @@ export function useAdministrativeDivisions(enabled = true) {
     resetDivisions,
   };
 }
-

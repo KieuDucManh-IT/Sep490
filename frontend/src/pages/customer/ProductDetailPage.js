@@ -1,6 +1,6 @@
 import { activeVariants, matchVariant, variantStock, variantPricing, selectionImages, variantSelectable } from '../../services/cart/productSelection';
 import { formatLocalDate, parseDateOnly, calculateRentalDays } from '../../services/cart/cartCalculations';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Loader2,
@@ -11,7 +11,6 @@ import {
   Home,
   Heart,
   Star,
-  MessageSquare,
   ShieldCheck,
   Info,
   Award,
@@ -43,6 +42,8 @@ import { ORDER_TYPES } from '../../services/cart/cartTypes';
 import { getUserLocation } from '../../utils/userLocation';
 import { calculateHaversineDistanceKm, formatDistanceLabel } from '../../utils/geoUtils';
 import { PROVINCE_DEFAULT_COORDS } from '../owner/branches/utils/branchConstants';
+import { getProductReviews, checkReviewEligibility } from '../../services/reviewApi';
+import ProductReviewModal from '../../components/customer/ProductReviewModal';
 import '../../styles/ProductDetail.css';
 
 export default function ProductDetailPage() {
@@ -91,6 +92,48 @@ export default function ProductDetailPage() {
   const [aiSuggestedSize, setAiSuggestedSize] = useState(null);
 
   // Favorites state
+  const [reviewsList, setReviewsList] = useState([]);
+  const [reviewStats, setReviewStats] = useState({ averageRating: 0, totalReviews: 0, starCounts: {} });
+  const [selectedStarFilter, setSelectedStarFilter] = useState(0);
+  const [isReviewsLoading, setIsReviewsLoading] = useState(false);
+  const [eligibleReviewOrders, setEligibleReviewOrders] = useState([]);
+  const [isDetailReviewModalOpen, setIsDetailReviewModalOpen] = useState(false);
+
+  const fetchReviewsData = useCallback(async () => {
+    if (!id) return;
+    setIsReviewsLoading(true);
+    try {
+      const res = await getProductReviews(id, selectedStarFilter ? { star: selectedStarFilter } : {});
+      if (res?.data) {
+        setReviewsList(res.data);
+      }
+      if (res?.stats) {
+        setReviewStats(res.stats);
+      }
+    } catch (err) {
+      console.error('Failed to load reviews:', err);
+    } finally {
+      setIsReviewsLoading(false);
+    }
+  }, [id, selectedStarFilter]);
+
+  useEffect(() => {
+    fetchReviewsData();
+  }, [fetchReviewsData]);
+
+  useEffect(() => {
+    if (user && id) {
+      checkReviewEligibility(id)
+        .then((res) => {
+          if (res?.canReview && res?.eligibleOrders?.length > 0) {
+            setEligibleReviewOrders(res.eligibleOrders);
+          } else {
+            setEligibleReviewOrders([]);
+          }
+        })
+        .catch(() => setEligibleReviewOrders([]));
+    }
+  }, [user, id]);
   const [favorites, setFavorites] = useState(() => {
     try {
       const saved = localStorage.getItem('vestora_favorites');
@@ -770,17 +813,16 @@ export default function ProductDetailPage() {
             <span>SKU: {product.sku || product.productCode || 'VST-DH-001'}</span>
             <span className="pdetail-meta-divider">|</span>
             <div className="pdetail-meta-rating">
-              <Star size={14} fill="#F59E0B" color="#F59E0B" />
-              <span>{product.rating || '4.9'}</span>
+              <Star
+                size={14}
+                fill={(reviewStats.totalReviews > 0 ? reviewStats.averageRating : 0) > 0 ? '#F59E0B' : 'transparent'}
+                color="#F59E0B"
+              />
+              <span>{reviewStats.totalReviews > 0 ? reviewStats.averageRating : 0}</span>
               <span style={{ color: '#71717a', fontWeight: 400 }}>
-                ({product.reviewsCount || 128} đánh giá)
+                ({reviewStats.totalReviews || 0} đánh giá)
               </span>
             </div>
-            <span className="pdetail-meta-divider">|</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <MessageSquare size={13} />
-              {isRental ? 'Đã cho thuê 2.5k+ lần' : 'Đã bán 860+ lượt'}
-            </span>
           </div>
 
           {/* Transaction Mode Switcher when product supports both Renting & Buying */}
@@ -1421,42 +1463,44 @@ export default function ProductDetailPage() {
             ) : null}
           </div>
 
-          {/* AI Virtual Try-On Dual Buttons: Ảnh & Video */}
-          <div className="pdetail-tryon-dual-row">
-            <button
-              type="button"
-              className="pdetail-btn-tryon-photo"
-              onClick={() =>
-                navigate(
-                  `/try-on/photo?productId=${encodeURIComponent(
-                    product._id || product.productCode
-                  )}`
-                )
-              }
-              title="Ướm thử trang phục lên ảnh cá nhân hoặc người mẫu chuẩn"
-            >
-              <ImageIcon size={16} />
-              <span>Thử đồ bằng ảnh (AI)</span>
-            </button>
+          {/* AI Virtual Try-On Dual Buttons: Ảnh & Video - Chỉ hiển thị khi sản phẩm hỗ trợ thử đồ AI */}
+          {product.aiTryOn !== false && (
+            <div className="pdetail-tryon-dual-row">
+              <button
+                type="button"
+                className="pdetail-btn-tryon-photo"
+                onClick={() =>
+                  navigate(
+                    `/try-on/photo?productId=${encodeURIComponent(
+                      product._id || product.productCode
+                    )}`
+                  )
+                }
+                title="Ướm thử trang phục lên ảnh cá nhân hoặc người mẫu chuẩn"
+              >
+                <ImageIcon size={16} />
+                <span>Thử đồ bằng ảnh (AI)</span>
+              </button>
 
-            <button
-              type="button"
-              className="pdetail-btn-tryon-video"
-              onClick={() =>
-                navigate(
-                  `/try-on/webcam?${new URLSearchParams({
-                    product: product._id || product.productCode,
-                    image: images[selectedImgIndex] || images[0] || '',
-                    color: selectedColor,
-                  }).toString()}`
-                )
-              }
-              title="Thử đồ thời gian thực trực tiếp qua Webcam"
-            >
-              <Camera size={16} />
-              <span>Thử đồ qua video</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                className="pdetail-btn-tryon-video"
+                onClick={() =>
+                  navigate(
+                    `/try-on/webcam?${new URLSearchParams({
+                      product: product._id || product.productCode,
+                      image: images[selectedImgIndex] || images[0] || '',
+                      color: selectedColor,
+                    }).toString()}`
+                  )
+                }
+                title="Thử đồ thời gian thực trực tiếp qua Webcam"
+              >
+                <Camera size={16} />
+                <span>Thử đồ qua video</span>
+              </button>
+            </div>
+          )}
 
           {/* Commercial Action Buttons Row: Thuê ngay & Giỏ hàng */}
           <div className="pdetail-actions-row-dual">
@@ -1754,58 +1798,178 @@ export default function ProductDetailPage() {
           </div>
         )}
 
-        {/* Tab 4: Reviews */}
+        {/* Tab 4: Reviews (Đánh giá thực tế từ khách hàng đã thuê/mua) */}
         {activeTab === 'reviews' && (
           <div style={{ background: '#faf9f7', borderRadius: '14px', padding: '24px', border: '1px solid #ebe8e1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <div style={{ fontSize: '36px', fontWeight: 700, color: '#18181b' }}>4.9</div>
-              <div>
-                <div style={{ color: '#f59e0b', fontSize: '16px', display: 'flex', gap: '2px' }}>
-                  <Star size={16} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={16} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={16} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={16} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={16} fill="#f59e0b" color="#f59e0b" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ fontSize: '36px', fontWeight: 700, color: '#18181b' }}>
+                  {reviewStats.totalReviews > 0 ? reviewStats.averageRating : 0}
                 </div>
-                <div style={{ fontSize: '12.5px', color: '#71717a' }}>Dựa trên 128 lượt đánh giá thực tế</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '13.5px' }}>Nguyễn Khánh Linh</span>
-                  <span style={{ fontSize: '12px', color: '#a1a1aa' }}>2 ngày trước</span>
+                <div>
+                  <div style={{ color: '#f59e0b', fontSize: '16px', display: 'flex', gap: '2px' }}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        size={16}
+                        fill={reviewStats.totalReviews > 0 && Math.round(reviewStats.averageRating) >= s ? '#f59e0b' : 'transparent'}
+                        color="#f59e0b"
+                      />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '12.5px', color: '#71717a', marginTop: '2px' }}>
+                    Dựa trên {reviewStats.totalReviews || 0} lượt đánh giá thực tế
+                  </div>
                 </div>
-                <div style={{ color: '#f59e0b', fontSize: '12px', marginBottom: '4px', display: 'flex', gap: '2px' }}>
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                </div>
-                <p style={{ fontSize: '13.5px', color: '#52525b', margin: 0 }}>
-                  Váy mặc đi tiệc gala rất nổi bật, chất lụa satin rủ đẹp và thơm tho như mới. Giao nhận rất đúng hẹn!
-                </p>
               </div>
 
-              <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '13.5px' }}>Trần Thu Thảo</span>
-                  <span style={{ fontSize: '12px', color: '#a1a1aa' }}>1 tuần trước</span>
-                </div>
-                <div style={{ color: '#f59e0b', fontSize: '12px', marginBottom: '4px', display: 'flex', gap: '2px' }}>
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                  <Star size={13} fill="#f59e0b" color="#f59e0b" />
-                </div>
-                <p style={{ fontSize: '13.5px', color: '#52525b', margin: 0 }}>
-                  Size M vừa như in theo gợi ý số đo của AI. Thủ tục hoàn cọc chỉ mất 15 phút sau khi shipper lấy hàng. Rất hài lòng!
-                </p>
-              </div>
+              {/* Nút viết đánh giá nếu khách hàng đã từng mua hoặc thuê sản phẩm này */}
+              {eligibleReviewOrders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsDetailReviewModalOpen(true)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Star size={14} fill="#f59e0b" color="#f59e0b" />
+                  <span>Đánh giá từ đơn hàng của bạn</span>
+                </button>
+              )}
             </div>
+
+            {/* Bộ lọc theo số sao */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '18px' }}>
+              {[0, 5, 4, 3, 2, 1].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSelectedStarFilter(s)}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: selectedStarFilter === s ? '1px solid #0f172a' : '1px solid #e4e4e7',
+                    background: selectedStarFilter === s ? '#0f172a' : '#ffffff',
+                    color: selectedStarFilter === s ? '#ffffff' : '#3f3f46',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {s === 0 ? 'Tất cả' : `${s} sao (${reviewStats.starCounts?.[s] || 0})`}
+                </button>
+              ))}
+            </div>
+
+            {/* Danh sách Đánh giá */}
+            {isReviewsLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: '#71717a', fontSize: '13px' }}>
+                <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+                Đang tải đánh giá sản phẩm...
+              </div>
+            ) : reviewsList.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {reviewsList.map((rev) => {
+                  const custName = rev.customerId?.fullName || rev.customerId?.name || 'Khách hàng VESTORA';
+                  const dateStr = rev.createdAt ? new Date(rev.createdAt).toLocaleDateString('vi-VN') : '';
+
+                  return (
+                    <div key={rev._id} style={{ borderTop: '1px solid #e4e4e7', paddingTop: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '13.5px', color: '#18181b' }}>{custName}</span>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: '#059669',
+                              background: '#ecfdf5',
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            ✓ {rev.orderType === 'rental' ? 'Đã thuê trang phục' : 'Đã mua hàng'}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '12px', color: '#a1a1aa' }}>{dateStr}</span>
+                      </div>
+
+                      <div style={{ color: '#f59e0b', fontSize: '12px', marginBottom: '6px', display: 'flex', gap: '2px' }}>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            size={13}
+                            fill={rev.rating >= s ? '#f59e0b' : 'transparent'}
+                            color="#f59e0b"
+                          />
+                        ))}
+                      </div>
+
+                      <p style={{ fontSize: '13.5px', color: '#3f3f46', margin: 0, lineHeight: 1.5 }}>
+                        {rev.comment}
+                      </p>
+
+                      {/* Phản hồi từ Showroom */}
+                      {rev.reply?.content && (
+                        <div
+                          style={{
+                            marginTop: '10px',
+                            padding: '10px 14px',
+                            background: '#f4f4f5',
+                            borderRadius: '8px',
+                            borderLeft: '3px solid #c59b27',
+                            fontSize: '12.5px',
+                            color: '#27272a',
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, marginBottom: '2px', color: '#96723d' }}>
+                            Phản hồi từ VESTORA:
+                          </div>
+                          <div>{rev.reply.content}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '30px 20px', color: '#71717a' }}>
+                <Package size={28} color="#a1a1aa" style={{ margin: '0 auto 8px', display: 'block' }} />
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#27272a', marginBottom: '4px' }}>
+                  Chưa có đánh giá nào cho sản phẩm này
+                </div>
+                <div style={{ fontSize: '12.5px' }}>
+                  Chỉ những khách hàng đã thuê hoặc mua sản phẩm thành công mới có thể gửi đánh giá.
+                </div>
+              </div>
+            )}
+
+            {/* Modal đánh giá tại trang chi tiết sản phẩm nếu khách có đơn đủ điều kiện */}
+            {isDetailReviewModalOpen && eligibleReviewOrders.length > 0 && (
+              <ProductReviewModal
+                isOpen={isDetailReviewModalOpen}
+                onClose={() => setIsDetailReviewModalOpen(false)}
+                order={{ _id: eligibleReviewOrders[0].orderId, orderCode: eligibleReviewOrders[0].orderCode }}
+                orderType={eligibleReviewOrders[0].orderType}
+                initialProduct={product}
+                allProducts={[product]}
+                onSuccess={() => {
+                  fetchReviewsData();
+                  setEligibleReviewOrders((prev) => prev.slice(1));
+                }}
+              />
+            )}
           </div>
         )}
       </div>

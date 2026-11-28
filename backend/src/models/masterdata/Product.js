@@ -14,8 +14,8 @@ const productSchema = new mongoose.Schema({
   // `migrateQuantityToItems.js --unset-field --apply`.
   brand: { type: String, trim: true },
   material: { type: String, trim: true },
-  rating: { type: Number, default: 5.0, min: 0, max: 5 },
-  reviewsCount: { type: Number, default: 50 },
+  rating: { type: Number, default: 0, min: 0, max: 5 },
+  reviewsCount: { type: Number, default: 0 },
   rentalPricePerDay: { type: Number, default: 0 },
   salePrice: { type: Number, default: 0 },
   deposit: { type: Number, default: 0 },

@@ -37,14 +37,16 @@ export default function StylistWidgetProductCard({ product, onClose }) {
           {currency.format(product.rentalPricePerDayVnd || product.rentalPricePerDay || 0)}đ/ngày
         </span>
         <div className="stylist-wrec-actions">
-          <Link
-            to={`/try-on/photo?productId=${product.id}`}
-            className="stylist-wrec-btn-tryon"
-            onClick={onClose}
-            title="Thử đồ bằng AI IDM-VTON"
-          >
-            <Sparkles size={11} /> Thử đồ AI
-          </Link>
+          {product.aiTryOn !== false && (
+            <Link
+              to={`/try-on/photo?productId=${product.id}`}
+              className="stylist-wrec-btn-tryon"
+              onClick={onClose}
+              title="Thử đồ bằng AI IDM-VTON"
+            >
+              <Sparkles size={11} /> Thử đồ AI
+            </Link>
+          )}
           <Link
             to={`/product/${product.id}`}
             className="stylist-wrec-btn-view"

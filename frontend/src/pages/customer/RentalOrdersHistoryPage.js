@@ -24,7 +24,9 @@ import {
   Truck,
   Wallet,
   Banknote,
+  Star,
 } from 'lucide-react';
+import ProductReviewModal from '../../components/customer/ProductReviewModal';
 import '../../styles/RentalOrdersHistory.css';
 
 const RENTAL_TABS = [
@@ -109,6 +111,20 @@ export default function RentalOrdersHistoryPage() {
   const [isSaleLoading, setIsSaleLoading] = useState(false);
   const [saleError, setSaleError] = useState('');
   const [selectedSaleOrder, setSelectedSaleOrder] = useState(null);
+
+  // UC-41: State modal đánh giá sản phẩm sau khi thuê/mua hoàn thành
+  const [reviewOrder, setReviewOrder] = useState(null);
+  const [reviewOrderType, setReviewOrderType] = useState('rental');
+  const [reviewInitialProduct, setReviewInitialProduct] = useState(null);
+  const [reviewAllProducts, setReviewAllProducts] = useState([]);
+
+  const openReviewModal = (order, orderType, specificProduct = null) => {
+    setReviewOrder(order);
+    setReviewOrderType(orderType);
+    const items = order.items || order.orderDetails || [];
+    setReviewAllProducts(items);
+    setReviewInitialProduct(specificProduct || (items.length > 0 ? items[0] : null));
+  };
 
   // Đổi category tab
   const handleCategoryChange = (newCat) => {
@@ -477,6 +493,34 @@ export default function RentalOrdersHistoryPage() {
                           <ChevronRight size={15} />
                         </button>
 
+                        {/* UC-41: Đánh giá trang phục đơn thuê — chỉ khi đang trải nghiệm (renting) hoặc đã hoàn tất (returned) */}
+                        {['renting', 'returned', 'partially_returned'].includes(o.rentalStatus) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openReviewModal(o, 'rental');
+                            }}
+                            style={{
+                              padding: '7px 12px',
+                              borderRadius: '7px',
+                              border: '1px solid #c59b27',
+                              background: '#fffdf5',
+                              color: '#b45309',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                            title="Đánh giá chất lượng trang phục sau khi nhận hoặc trả đồ"
+                          >
+                            <Star size={12} fill="#f59e0b" color="#f59e0b" />
+                            <span>Đánh giá</span>
+                          </button>
+                        )}
+
                         {/* UC-41: Nút khiếu nại — chỉ hiển thị khi đơn đang ở trạng thái renting */}
                         {o.rentalStatus === 'renting' && (
                           <button
@@ -688,6 +732,34 @@ export default function RentalOrdersHistoryPage() {
                           <span>Xem Chi Tiết</span>
                           <ChevronRight size={15} />
                         </button>
+
+                        {/* UC-41: Đánh giá sản phẩm đơn mua — chỉ sau khi đơn đã giao thành công (completed) */}
+                        {o.orderStatus === 'completed' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openReviewModal(o, 'sale');
+                            }}
+                            style={{
+                              padding: '7px 12px',
+                              borderRadius: '7px',
+                              border: '1px solid #c59b27',
+                              background: '#fffdf5',
+                              color: '#b45309',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                            title="Đánh giá sản phẩm sau khi nhận hàng thành công"
+                          >
+                            <Star size={12} fill="#f59e0b" color="#f59e0b" />
+                            <span>Đánh giá</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -825,6 +897,24 @@ export default function RentalOrdersHistoryPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* UC-41: Modal đánh giá sản phẩm sau khi đơn thuê hoặc đơn mua hoàn thành */}
+      {reviewOrder && (
+        <ProductReviewModal
+          isOpen={Boolean(reviewOrder)}
+          onClose={() => setReviewOrder(null)}
+          order={reviewOrder}
+          orderType={reviewOrderType}
+          initialProduct={reviewInitialProduct}
+          allProducts={reviewAllProducts}
+          onSuccess={() => {
+            if (reviewOrderType === 'rental') {
+              fetchRentalOrders();
+            } else {
+              fetchSaleOrders();
+            }
+          }}
+        />
       )}
     </div>
   );

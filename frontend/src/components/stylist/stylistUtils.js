@@ -81,6 +81,9 @@ export const isWearableComboSet = (products) => {
   const valid = products.filter((p) => p && !isJewelry(p) && getProductGarmentRole(p) !== 'accessory');
   if (valid.length < 2) return false;
 
+  // Nếu bất kỳ món đồ nào trong set không hỗ trợ thử đồ AI -> không tạo nút chuyển cả set vào thử đồ
+  if (valid.some((p) => p.aiTryOn === false)) return false;
+
   const roleCounts = {
     dress: 0,
     top: 0,
@@ -125,8 +128,8 @@ export const isWearableComboSet = (products) => {
 export const buildTryOnUrl = (products) => {
   if (!Array.isArray(products) || products.length === 0) return '/try-on/photo';
 
-  // Lọc bỏ trang sức và phụ kiện (chỉ thử đồ quần áo)
-  const validProducts = products.filter((p) => p && !isJewelry(p) && getProductGarmentRole(p) !== 'accessory');
+  // Lọc bỏ trang sức và phụ kiện, và chỉ nhận sản phẩm hỗ trợ thử đồ AI
+  const validProducts = products.filter((p) => p && !isJewelry(p) && getProductGarmentRole(p) !== 'accessory' && p.aiTryOn !== false);
   if (validProducts.length === 0) return '/try-on/photo';
 
   // Nếu chỉ có 1 món hoặc KHÔNG PHẢI là 1 set phối hợp lệ

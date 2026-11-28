@@ -25,7 +25,9 @@ import {
   RotateCcw,
   Loader2,
   AlertCircle,
+  Star,
 } from 'lucide-react';
+import ProductReviewModal from './ProductReviewModal';
 import {
   sanitizeTimelineText,
   normalizeShipmentDisplayItems,
@@ -478,7 +480,11 @@ function TrackingTimeline({ statusHistory, onImageClick }) {
 }
 
 /** 7. Danh sách trang phục trong đơn */
-function OrderProductsList({ orderItems }) {
+function OrderProductsList({ orderItems, order, isRental, onReviewItem }) {
+  const isEligibleForReview = isRental
+    ? ['renting', 'returned', 'partially_returned'].includes(order?.rentalStatus)
+    : order?.orderStatus === 'completed';
+
   return (
     <div
       style={{
@@ -488,22 +494,54 @@ function OrderProductsList({ orderItems }) {
         border: '1px solid #E5E0D8',
       }}
     >
-      <h4
+      <div
         style={{
-          fontSize: '14px',
-          fontWeight: 600,
-          color: '#171717',
-          margin: '0 0 12px 0',
           display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          gap: '8px',
+          margin: '0 0 12px 0',
         }}
       >
-        <Package size={16} color="#96723D" />
-        <span>
-          Danh Sách Trang Phục ({orderItems.length} món)
-        </span>
-      </h4>
+        <h4
+          style={{
+            fontSize: '14px',
+            fontWeight: 600,
+            color: '#171717',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <Package size={16} color="#96723D" />
+          <span>
+            Danh Sách Trang Phục ({orderItems.length} món)
+          </span>
+        </h4>
+
+        {isEligibleForReview && orderItems.length > 1 && onReviewItem && (
+          <button
+            type="button"
+            onClick={() => onReviewItem(null)}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: '1px solid #c59b27',
+              background: '#fffdf5',
+              color: '#b45309',
+              fontSize: '11.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <Star size={12} fill="#f59e0b" color="#f59e0b" />
+            <span>Đánh giá tất cả ({orderItems.length} món)</span>
+          </button>
+        )}
+      </div>
 
       <div
         style={{
@@ -566,14 +604,41 @@ function OrderProductsList({ orderItems }) {
                 </div>
               </div>
 
-              <strong
-                style={{
-                  fontSize: '13px',
-                  color: '#96723D',
-                }}
-              >
-                {formatCurrencyVND(totalLinePrice)}
-              </strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <strong
+                  style={{
+                    fontSize: '13px',
+                    color: '#96723D',
+                  }}
+                >
+                  {formatCurrencyVND(totalLinePrice)}
+                </strong>
+
+                {isEligibleForReview && onReviewItem && (
+                  <button
+                    type="button"
+                    onClick={() => onReviewItem(item)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #c59b27',
+                      background: '#fffdf5',
+                      color: '#b45309',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s',
+                    }}
+                    title="Đánh giá trang phục này"
+                  >
+                    <Star size={11} fill="#f59e0b" color="#f59e0b" />
+                    <span>Đánh giá</span>
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -1155,6 +1220,15 @@ export default function OrderTrackingDetailModal({
   const [actionSuccess, setActionSuccess] = useState('');
   const [selectedEvidenceImage, setSelectedEvidenceImage] =
     useState(null);
+
+  // UC-41: State modal đánh giá sản phẩm từ chi tiết đơn hàng
+  const [reviewModalProduct, setReviewModalProduct] = useState(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  const handleOpenReview = (item = null) => {
+    setReviewModalProduct(item);
+    setIsReviewModalOpen(true);
+  };
 
   // Giữ cơ chế xử lý hủy đơn từ main2.
   const cancellationInFlight = useRef(false);
@@ -1853,8 +1927,13 @@ export default function OrderTrackingDetailModal({
             );
           })()}
 
-          {/* KHỐI 2: DANH SÁCH SẢN PHẨM TRONG ĐƠN */}
-          <OrderProductsList orderItems={orderItems} />
+          {/* KHỐI 2: DANH SÁCH SẢN PHẨM TRONG ĐƠN (KÈM NÚT ĐÁNH GIÁ SẢN PHẨM) */}
+          <OrderProductsList
+            orderItems={orderItems}
+            order={order}
+            isRental={isRental}
+            onReviewItem={handleOpenReview}
+          />
 
           {/* KHỐI 3: CHI TIẾT TÀI CHÍNH & THANH TOÁN */}
           <OrderFinancialSummary
@@ -1989,6 +2068,21 @@ export default function OrderTrackingDetailModal({
         imageSrc={selectedEvidenceImage}
         onClose={() => setSelectedEvidenceImage(null)}
       />
+
+      {/* UC-41: Modal Đánh giá sản phẩm */}
+      {isReviewModalOpen && (
+        <ProductReviewModal
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          order={order}
+          orderType={isRental ? 'rental' : 'sale'}
+          initialProduct={reviewModalProduct}
+          allProducts={orderItems}
+          onSuccess={() => {
+            if (onOrderUpdated) onOrderUpdated();
+          }}
+        />
+      )}
     </HauteCoutureModal>
   );
 }

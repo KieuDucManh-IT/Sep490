@@ -15,6 +15,9 @@ import { inTransaction } from '../walletService.js';
 import { recordSalesDelivery, prepareSalesReturnRequest } from '../sale&rental/salesOrderService.js';
 import { prepareRentalReturnRequest } from '../sale&rental/rentalReturnService.js';
 import {
+  ensureRentalInventory,
+} from '../sale&rental/rentalOrderService.js';
+import {
   fail,
   formatPartyInfo,
   fetchOrderAndValidateScope,
@@ -101,7 +104,7 @@ export const calculateOrderShippingFee = async (user, params = {}) => {
       const branchInfo = await resolveBranchShippingInfo(null);
       fromDistrictId = branchInfo?.districtId;
       fromWardCode = branchInfo?.wardCode;
-    } catch {}
+    } catch { }
   }
 
   // Fallback chi nhánh chính nếu chưa xác định được từ DB
@@ -165,14 +168,26 @@ export const createOutboundShipment = async (user, payload = {}) => {
   }
 
   // Kiểm tra trạng thái đơn hợp lệ
+  // Kiểm tra trạng thái đơn hợp lệ.
   if (orderType === 'rental') {
-    if (['renting', 'returned'].includes(order.rentalStatus)) {
-      throw fail(`Không thể tạo vận đơn giao cho đơn thuê đang ở trạng thái "${order.rentalStatus}".`, 400);
+    if (!['draft', 'confirmed'].includes(order.rentalStatus)) {
+      throw fail(
+        `Không thể tạo vận đơn giao cho đơn thuê đang ở trạng thái "${order.rentalStatus}".`,
+        400
+      );
     }
   }
+
+  if (orderType === 'rental') {
+    await ensureRentalInventory(orderId);
+  }
+
   if (orderType === 'sale') {
     if (['completed'].includes(order.orderStatus)) {
-      throw fail(`Không thể tạo vận đơn giao cho đơn bán đang ở trạng thái "${order.orderStatus}".`, 400);
+      throw fail(
+        `Không thể tạo vận đơn giao cho đơn bán đang ở trạng thái "${order.orderStatus}".`,
+        400
+      );
     }
   }
 
@@ -217,14 +232,14 @@ export const createOutboundShipment = async (user, payload = {}) => {
         const provs = await ghnService.getNewProvinces();
         const pObj = provs.find((p) => Number(p._id) === Number(effectiveProvinceId));
         if (pObj) effectiveProvinceName = pObj.name;
-      } catch {}
+      } catch { }
     }
     if ((!effectiveWardName || effectiveWardName === effectiveWardCode) && effectiveProvinceId && effectiveWardCode) {
       try {
         const wards = await ghnService.getNewWards(effectiveProvinceId);
         const wObj = wards.find((w) => String(w._id) === String(effectiveWardCode));
         if (wObj) effectiveWardName = wObj.name;
-      } catch {}
+      } catch { }
     }
   }
 
@@ -440,10 +455,10 @@ export const createReturnShipment = async (user, payload = {}) => {
     if (activeReturnShipment.shipmentStatus === 'delivered') {
       const settledRentalBatch = !isSale
         ? await RentalReturn.exists({
-            rentalOrderId: order._id,
-            shipmentId: activeReturnShipment._id,
-            returnStatus: 'completed',
-          })
+          rentalOrderId: order._id,
+          shipmentId: activeReturnShipment._id,
+          returnStatus: 'completed',
+        })
         : false;
       if (!settledRentalBatch) {
         throw fail(`Hàng đã được giao về cửa hàng (Mã vận đơn GHN: ${activeReturnShipment.trackingCode || 'LY...'}), vui lòng tiến hành nghiệm thu để hoàn tất đợt trả này.`, 400);
@@ -474,14 +489,14 @@ export const createReturnShipment = async (user, payload = {}) => {
         const provs = await ghnService.getNewProvinces();
         const pObj = provs.find((p) => Number(p._id) === Number(effectiveFromProvinceId));
         if (pObj) effectiveFromProvinceName = pObj.name;
-      } catch {}
+      } catch { }
     }
     if ((!effectiveFromWardName || effectiveFromWardName === effectiveFromWardCode) && effectiveFromProvinceId && effectiveFromWardCode) {
       try {
         const wards = await ghnService.getNewWards(effectiveFromProvinceId);
         const wObj = wards.find((w) => String(w._id) === String(effectiveFromWardCode));
         if (wObj) effectiveFromWardName = wObj.name;
-      } catch {}
+      } catch { }
     }
   }
 
@@ -806,31 +821,21 @@ const syncSalesReturnShipmentStatus = async (shipment, internalStatus) => {
 /**
  * Tự động cập nhật trạng thái đơn thuê / đơn bán khi bưu tá giao hàng thành công
  */
-const updateOrderStatusOnDelivered = async (shipment, actionTime) => {
-  if (shipment.orderType === 'sale') {
-    if (shipment.shipmentType === 'return') {
-      await syncSalesReturnShipmentStatus(shipment, 'delivered');
-    } else {
-      await recordSalesDelivery(shipment, actionTime);
-    }
-  } else if (shipment.orderType === 'rental') {
-    if (shipment.shipmentType === 'outbound') {
-      const rental = await RentalOrder.findOne({ _id: shipment.orderId });
-      // Chỉ kích hoạt chu kỳ thuê một lần khi bưu tá giao thành công thực tế
-      if (rental && !rental.actualDeliveryDate && rental.rentalStatus !== 'renting') {
-        const durationMs = rental.dueDate && rental.startDate
-          ? Math.max(86400000, new Date(rental.dueDate).getTime() - new Date(rental.startDate).getTime())
-          : 3 * 86400000;
-        rental.rentalStatus = 'renting';
-        rental.actualDeliveryDate = actionTime;
-        rental.actualPickupDate = actionTime;
-        rental.startDate = actionTime;
-        rental.dueDate = new Date(actionTime.getTime() + durationMs);
-        await rental.save();
-      }
-    } else if (shipment.shipmentType === 'return') {
-      // Vận đơn thu hồi đã giao về Showroom; giữ nguyên tiền cọc chờ Shop KCS.
-    }
+const updateOrderStatusOnDelivered = async (
+  shipment,
+  actionTime
+) => {
+  // Đơn thuê đã được cập nhật hiện vật và ngày thuê
+  // trước khi lưu trạng thái delivered.
+  if (shipment.orderType !== 'sale') return;
+
+  if (shipment.shipmentType === 'return') {
+    await syncSalesReturnShipmentStatus(
+      shipment,
+      'delivered'
+    );
+  } else {
+    await recordSalesDelivery(shipment, actionTime);
   }
 };
 
@@ -962,6 +967,16 @@ export const processGHNWebhook = async (payload = {}, secretKey = '', options = 
     return { success: true, message: 'Sự kiện trùng lặp đã được ghi nhận trước đó' };
   }
 
+  if (
+    shipment.orderType === 'rental' &&
+    shipment.shipmentType === 'outbound' &&
+    mapped.internalStatus === 'delivered'
+  ) {
+    await ensureRentalInventory(shipment.orderId, {
+      dispatch: true,
+      deliveredAt: actionTime,
+    });
+  }
   // Cập nhật bản ghi vận đơn
   shipment.shipmentStatus = mapped.internalStatus;
   if (fee && typeof fee.total === 'number') {
@@ -1073,6 +1088,19 @@ export const updateManualShipmentStatus = async (user, shipmentId, newStatus, re
   }
 
   const actionTime = new Date();
+
+  if (
+    shipment.orderType === 'rental' &&
+    shipment.shipmentType === 'outbound' &&
+    newStatus === 'delivered'
+  ) {
+    await ensureRentalInventory(shipment.orderId, {
+      dispatch: true,
+      deliveredAt: actionTime,
+      operatorId: user._id,
+    });
+  }
+
   shipment.shipmentStatus = newStatus;
   if (newStatus === 'shipped' && !shipment.shippedAt) {
     shipment.shippedAt = actionTime;

@@ -6,6 +6,13 @@ const rentalOrderDetailSchema = new mongoose.Schema({
   quantity: { type: Number, required: true, min: 1 },
   unitRentalFee: { type: Number, required: true, min: 0 },
   lineTotal: { type: Number, required: true, min: 0 },
+  compensationValuePerUnit: {
+    type: Number,
+    default: null,
+    min: 0,
+    validate: value =>
+      value == null || Number.isSafeInteger(value),
+  },
   depositPerUnit: { type: Number, min: 0, default: 0 },
   startDate: { type: Date },
   dueDate: { type: Date },

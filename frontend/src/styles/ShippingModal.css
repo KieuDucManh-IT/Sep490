@@ -158,3 +158,280 @@
   font-size: 0.78rem;
   color: #6c757d;
 }
+
+/* Modal nghiệm thu trả đồ thuê */
+.rental-return-modal {
+  --rr-text: #26372f;
+  --rr-muted: #637269;
+  --rr-line: #e1e7e3;
+  --rr-accent: #36594b;
+
+  color: var(--rr-text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.rental-return-modal .modal-dialog {
+  width: calc(100% - 24px);
+  max-width: 980px;
+  margin: 20px auto;
+}
+
+.rental-return-modal .modal-content {
+  border: 1px solid var(--rr-line);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgb(27 45 35 / 16%);
+}
+
+.rental-return-modal .modal-header,
+.rental-return-modal .modal-footer {
+  background: #fff;
+  border-color: var(--rr-line);
+  padding: 16px 24px;
+}
+
+.rental-return-modal .modal-title {
+  color: var(--rr-text);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.rental-return-modal .modal-body {
+  padding: 22px;
+  background: #f5f7f6;
+  max-height: calc(100dvh - 180px) !important;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #c5cec8 transparent;
+}
+
+.rental-return-modal .border.rounded {
+  background: #fff;
+  border-color: var(--rr-line) !important;
+  border-radius: 12px !important;
+}
+
+.rental-return-modal h6 {
+  color: var(--rr-text);
+  font-size: 15px;
+  font-weight: 650;
+  margin-bottom: 12px;
+}
+
+.rental-return-modal p {
+  margin-bottom: 10px;
+}
+
+.rental-return-modal hr {
+  margin: 16px 0;
+  opacity: 0.12;
+}
+
+.rental-return-modal .text-muted {
+  color: var(--rr-muted) !important;
+}
+
+/* Bảng sản phẩm */
+.rental-return-modal .rr-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--rr-line);
+  border-radius: 10px;
+}
+
+.rental-return-modal .table {
+  min-width: 520px;
+  color: var(--rr-text);
+  --bs-table-color: var(--rr-text);
+  --bs-table-bg: transparent;
+  --bs-table-border-color: var(--rr-line);
+}
+
+.rental-return-modal .table> :not(caption)>*>* {
+  padding: 13px 14px;
+}
+
+.rental-return-modal .table thead th {
+  background: #f6f8f7;
+  color: #53655a;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.rental-return-modal .table th:first-child {
+  width: 64%;
+}
+
+.rental-return-modal .table th:last-child,
+.rental-return-modal .table td:last-child {
+  text-align: center;
+  width: 90px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rental-return-modal .table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.rental-return-modal .table img {
+  border-radius: 6px;
+}
+
+/* Ô nhập và phần nghiệm thu */
+.rental-return-modal .form-control,
+.rental-return-modal .form-select {
+  min-height: 42px;
+  font-size: 14px;
+  color: var(--rr-text);
+  background-color: #fff;
+  border-color: #cdd7d0;
+  border-radius: 8px;
+}
+
+.rental-return-modal .form-control:focus,
+.rental-return-modal .form-select:focus {
+  border-color: #6b8c79;
+  box-shadow: 0 0 0 3px rgb(54 89 75 / 12%);
+}
+
+.rental-return-modal .form-control:disabled,
+.rental-return-modal .form-select:disabled {
+  background-color: #eef2ef;
+}
+
+.rental-return-modal textarea.form-control {
+  min-height: 80px;
+}
+
+.rental-return-modal .border.rounded.rr-inspection-item {
+  background: #f8faf9;
+}
+
+.rental-return-modal .rr-amount-input {
+  display: flex;
+}
+
+.rental-return-modal .rr-amount-input input {
+  min-width: 0;
+  border-radius: 8px 0 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rental-return-modal .rr-amount-input>span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  background: #f5f7f6;
+  border: 1px solid #cdd7d0;
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  color: var(--rr-muted);
+}
+
+.rental-return-modal .rr-field-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--rr-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.rental-return-modal input[type="checkbox"] {
+  accent-color: var(--rr-accent);
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* Nút thao tác */
+.rental-return-modal .btn {
+  min-height: 40px;
+  border-radius: 8px;
+  padding: 9px 17px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rental-return-modal .btn-success,
+.rental-return-modal .btn-primary {
+  color: #fff;
+  background-color: var(--rr-accent);
+  border-color: var(--rr-accent);
+}
+
+.rental-return-modal .btn-success:hover,
+.rental-return-modal .btn-primary:hover {
+  background-color: #294638;
+  border-color: #294638;
+}
+
+.rental-return-modal .btn-secondary,
+.rental-return-modal .btn-outline-primary {
+  background: #fff;
+  color: var(--rr-accent);
+  border-color: #cdd7d0;
+}
+
+.rental-return-modal .btn-secondary:hover,
+.rental-return-modal .btn-outline-primary:hover {
+  background: #eef3ef;
+}
+
+.rental-return-modal .btn:focus-visible {
+  outline: 3px solid #88a594;
+  outline-offset: 2px;
+}
+
+.rental-return-modal .btn:disabled {
+  opacity: 0.5;
+}
+
+/* Thông báo màu nhẹ */
+.rental-return-modal .alert {
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.rental-return-modal .alert-warning {
+  color: #725b32;
+  background: #faf7f0;
+  border-color: #e8ddc9;
+}
+
+.rental-return-modal .alert-success,
+.rental-return-modal .alert-info {
+  color: #36594b;
+  background: #eef4f0;
+  border-color: #d4e2d8;
+}
+
+.rental-return-modal .alert-danger {
+  color: #8b3c37;
+  background: #fbefed;
+  border-color: #ecd3cf;
+}
+
+@media (max-width: 575px) {
+  .rental-return-modal .modal-dialog {
+    margin: 12px auto;
+  }
+
+  .rental-return-modal .modal-header,
+  .rental-return-modal .modal-footer {
+    padding: 13px 16px;
+  }
+
+  .rental-return-modal .modal-body {
+    padding: 12px;
+  }
+
+  .rental-return-modal .modal-title {
+    font-size: 17px;
+  }
+}

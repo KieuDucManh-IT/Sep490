@@ -87,6 +87,20 @@ router.get(
 );
 
 router.post(
+  '/orders/:id/physical-items',
+  handle(async (req, res) => {
+    res.json({
+      success: true,
+      data: await returnFlow.linkRentalInventory(
+        req.user,
+        req.params.id,
+        req.body.assignments
+      ),
+    });
+  })
+);
+
+router.post(
   '/orders/:id/request',
   handle(async (req, res) => {
     res.json({
@@ -119,7 +133,7 @@ router.post(
     if (req.body.confirmed !== true) {
       return res.status(400).json({
         message:
-          'Cần xác nhận đã nhận đủ đồ nguyên vẹn.',
+          'Cần xác nhận đã kiểm tra và ghi nhận tình trạng đồ trả.',
       });
     }
 
@@ -129,7 +143,8 @@ router.post(
         req.user,
         req.params.id,
         {
-          damageFee: req.body.damageFee,
+          shipmentId: req.body.shipmentId,
+          inspections: req.body.inspections,
           note: req.body.note,
         }
       ),
@@ -258,7 +273,7 @@ export function createEvidenceUploadHandlers({
             await OrderShipment.updateOne(
               { _id: savedToShipment._id, [`${field}.publicId`]: publicId },
               { $set: { [field]: null } }
-            ).catch(() => {});
+            ).catch(() => { });
           }
           throw Object.assign(
             new Error('Đơn vừa thay đổi hoặc đã có video.'),
@@ -276,11 +291,11 @@ export function createEvidenceUploadHandlers({
             });
             const linkedShip = folder === 'rental-evidence'
               ? await OrderShipment.exists({
-                  orderId: id,
-                  orderType: 'rental',
-                  shipmentType: 'return',
-                  [`${field}.publicId`]: publicId,
-                })
+                orderId: id,
+                orderType: 'rental',
+                shipmentType: 'return',
+                [`${field}.publicId`]: publicId,
+              })
               : false;
 
             if (!linkedOrder && !linkedShip) {

@@ -24,6 +24,7 @@ import {
   aggregateLines,
   withStatus,
 } from '../warehouse/orderStockService.js';
+
 import { refreshOutOfStockStatus } from '../warehouse/productStockStatusService.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
@@ -43,14 +44,20 @@ import cloudinary from '../../config/cloudinary.js';
 import {
   createRentalReturnSchema,
 } from '../../validations/sale&rental/rentalReturnValidation.js';
-import { ServiceError, generateWalletTxCode } from './rentalOrderService.js';
+import {
+  ServiceError,
+  generateWalletTxCode,
+  ensureRentalInventory,
+} from './rentalOrderService.js';
 import { createNotification, notifyRoles } from '../system/notificationService.js';
 import { InventoryLocation } from '../../models/warehouse/location/InventoryLocation.js';
 import { Shop } from '../../models/shop/Shop.js';
+import { resolveProductPricing } from '../masterdata/productPricing.js';
 
 export const generateReturnCode = () => {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const rand = crypto.randomBytes(2).toString('hex').toUpperCase();
+
   return `RET-${dateStr}-${rand}`;
 };
 
@@ -59,7 +66,11 @@ export const generateReturnCode = () => {
  * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-014
  * lateFee = lateDays * (basisRentalFee / rentalDays) * 1.5
  */
-export const calculateLateFee = (order, returnDate = new Date(), basisRentalFee = null) => {
+export const calculateLateFee = (
+  order,
+  returnDate = new Date(),
+  basisRentalFee = null
+) => {
   const dueTime = new Date(order.dueDate).getTime();
   const returnTime = new Date(returnDate).getTime();
 
@@ -67,23 +78,35 @@ export const calculateLateFee = (order, returnDate = new Date(), basisRentalFee 
     return { lateDays: 0, lateFee: 0 };
   }
 
-  // Quá hạn: tính số ngày trễ theo mốc 24h
+  // Quá hạn: tính số ngày trễ theo mốc 24h.
   const diffMs = returnTime - dueTime;
-  const lateDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+  const lateDays = Math.max(
+    1,
+    Math.round(diffMs / (1000 * 60 * 60 * 24))
+  );
 
   const startTime = new Date(order.startDate).getTime();
-  const rentalDays = Math.max(1, Math.round((dueTime - startTime) / (1000 * 60 * 60 * 24)));
-  const effectiveFee = basisRentalFee != null ? Number(basisRentalFee) : Number(order.rentalFee || 0);
+  const rentalDays = Math.max(
+    1,
+    Math.round((dueTime - startTime) / (1000 * 60 * 60 * 24))
+  );
+
+  const effectiveFee =
+    basisRentalFee != null
+      ? Number(basisRentalFee)
+      : Number(order.rentalFee || 0);
+
   const dailyRate = effectiveFee / rentalDays;
 
-  // Phạt trễ hạn 150% đơn giá ngày
+  // Phạt trễ hạn 150% đơn giá ngày.
   const lateFee = Math.round(lateDays * dailyRate * 1.5);
 
   return { lateDays, lateFee };
 };
 
 /**
- * Lập biên bản trả hàng KCS & Quyết toán hoàn tiền cọc vào Ví trong 1 ACID Session
+ * Lập biên bản trả hàng KCS & Quyết toán hoàn tiền cọc vào Ví
+ * trong 1 ACID Session.
  * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-013
  * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-014
  * @ears .sdd/features/rental-orders/SPEC.md#REQ-RENT-015
@@ -109,15 +132,24 @@ export const createReturnReceiptAndSettle = async ({
     const errorMsg = validation.error.issues
       .map((i) => `${i.path.join('.')}: ${i.message}`)
       .join('; ');
-    throw new ServiceError(400, `Dữ liệu biên bản trả đồ không hợp lệ: ${errorMsg}`);
+
+    throw new ServiceError(
+      400,
+      `Dữ liệu biên bản trả đồ không hợp lệ: ${errorMsg}`
+    );
   }
 
   const order = await RentalOrder.findById(rentalOrderId);
+
   if (!order) {
     throw new ServiceError(404, 'Không tìm thấy đơn thuê');
   }
 
-  if (!['renting', 'overdue', 'partially_returned'].includes(order.rentalStatus)) {
+  if (
+    !['renting', 'overdue', 'partially_returned'].includes(
+      order.rentalStatus
+    )
+  ) {
     throw new ServiceError(
       422,
       `Không thể lập biên bản trả đồ khi đơn đang ở trạng thái [${order.rentalStatus}]`
@@ -125,7 +157,8 @@ export const createReturnReceiptAndSettle = async ({
   }
 
   const now = new Date();
-  // Tìm vận đơn thu hồi để lấy mốc bưu tá nhận hàng từ khách (shippedAt), tính phạt trễ hạn công bằng
+
+  // Lấy mốc bưu tá nhận hàng từ khách để tính phí trễ hạn.
   const returnShipment = await OrderShipment.findOne({
     orderId: order._id,
     orderType: 'rental',
@@ -133,24 +166,49 @@ export const createReturnReceiptAndSettle = async ({
     shipmentStatus: { $in: ['shipped', 'delivered'] },
   }).sort({ createdAt: -1 });
 
-  const effectiveReturnDate = returnShipment?.shippedAt || returnShipment?.deliveredAt || now;
-  const { lateDays, lateFee } = calculateLateFee(order, effectiveReturnDate);
+  const effectiveReturnDate =
+    returnShipment?.shippedAt ||
+    returnShipment?.deliveredAt ||
+    now;
 
-  // Tổng hợp phí hư hại từ KCS các hiện vật
+  const { lateDays, lateFee } = calculateLateFee(
+    order,
+    effectiveReturnDate
+  );
+
+  // Tổng hợp phí hư hại từ KCS các hiện vật.
   let totalDamageFee = 0;
+
   for (const item of items) {
     totalDamageFee += Number(item.damageFee || 0);
   }
 
   const lockedAvailable = remainingLockedDepositOf(order);
   const totalDeductions = lateFee + totalDamageFee;
-  const refundDeposit = Math.max(0, lockedAvailable - totalDeductions);
-  const deductFromLocked = Math.min(lockedAvailable, totalDeductions);
-  const excessDebt = Math.max(0, totalDeductions - lockedAvailable);
+  const refundDeposit = Math.max(
+    0,
+    lockedAvailable - totalDeductions
+  );
 
-  const session = externalSession || (await mongoose.startSession());
+  const deductFromLocked = Math.min(
+    lockedAvailable,
+    totalDeductions
+  );
+
+  // Khoản vượt cọc không thu thêm từ khách, không ghi nhận dư nợ.
+  const uncollectedAmount = Math.max(
+    0,
+    totalDeductions - lockedAvailable
+  );
+
+  const session =
+    externalSession || (await mongoose.startSession());
+
   const isInternal = !externalSession;
-  if (isInternal) session.startTransaction();
+
+  if (isInternal) {
+    session.startTransaction();
+  }
 
   try {
     const claimed = await RentalOrder.updateOne(
@@ -160,7 +218,15 @@ export const createReturnReceiptAndSettle = async ({
           $in: ['renting', 'overdue', 'partially_returned'],
         },
         ...(lockedAvailable > 0
-          ? { depositStatus: { $in: ['held', 'partially_refunded', 'partially_deducted'] } }
+          ? {
+            depositStatus: {
+              $in: [
+                'held',
+                'partially_refunded',
+                'partially_deducted',
+              ],
+            },
+          }
           : {}),
       },
       {
@@ -175,29 +241,68 @@ export const createReturnReceiptAndSettle = async ({
         'Đơn đã được quyết toán hoặc vừa thay đổi.'
       );
     }
-    const orderDetails = await RentalOrderDetail.find({ rentalOrderId: order._id }).select('_id').session(session);
+
+    const orderDetails = await RentalOrderDetail.find({
+      rentalOrderId: order._id,
+    })
+      .select('_id')
+      .session(session);
+
     const handedOver = await RentalOrderItem.find({
-      rentalOrderDetailId: { $in: orderDetails.map((d) => d._id) },
-      itemId: { $in: items.map((it) => it.itemId) },
+      rentalOrderDetailId: {
+        $in: orderDetails.map((d) => d._id),
+      },
+      itemId: {
+        $in: items.map((it) => it.itemId),
+      },
       status: 'handed_over',
     }).session(session);
-    const handedOverIds = new Set(handedOver.map((row) => String(row.itemId)));
-    const uniqueReturnIds = new Set(items.map((it) => String(it.itemId)));
+
+    const handedOverIds = new Set(
+      handedOver.map((row) => String(row.itemId))
+    );
+
+    const uniqueReturnIds = new Set(
+      items.map((it) => String(it.itemId))
+    );
+
     if (uniqueReturnIds.size !== items.length) {
-      throw new ServiceError(422, 'Biên bản trả đồ có hiện vật bị trùng');
+      throw new ServiceError(
+        422,
+        'Biên bản trả đồ có hiện vật bị trùng'
+      );
     }
-    const invItems = await InventoryItem.find({ _id: { $in: [...uniqueReturnIds] } }).session(session);
-    const invById = new Map(invItems.map((item) => [String(item._id), item]));
+
+    const invItems = await InventoryItem.find({
+      _id: { $in: [...uniqueReturnIds] },
+    }).session(session);
+
+    const invById = new Map(
+      invItems.map((item) => [String(item._id), item])
+    );
+
     const entries = items.map((it) => {
       const invItem = invById.get(String(it.itemId));
-      if (!invItem || !handedOverIds.has(String(it.itemId))) {
-        throw new ServiceError(422, `Hiện vật ${invItem?.itemCode || it.itemId} không thuộc đơn thuê này hoặc chưa được bàn giao`);
+
+      if (
+        !invItem ||
+        !handedOverIds.has(String(it.itemId))
+      ) {
+        throw new ServiceError(
+          422,
+          `Hiện vật ${invItem?.itemCode || it.itemId} không thuộc đơn thuê này hoặc chưa được bàn giao`
+        );
       }
-      return { item: invItem, inspectionResult: it.inspectionResult };
+
+      return {
+        item: invItem,
+        inspectionResult: it.inspectionResult,
+      };
     });
 
-    // 1. Tạo bản ghi RentalReturn
+    // 1. Tạo bản ghi RentalReturn.
     const returnCode = generateReturnCode();
+
     const [rentalReturn] = await RentalReturn.create(
       [
         {
@@ -209,6 +314,7 @@ export const createReturnReceiptAndSettle = async ({
           returnedAt: now,
           lateFee,
           damageFee: totalDamageFee,
+          uncollectedAmount,
           depositRefunded: refundDeposit,
           note: note
             ? `${note}; Trễ ${lateDays} ngày (phạt ${lateFee}đ)`
@@ -218,67 +324,135 @@ export const createReturnReceiptAndSettle = async ({
       { session }
     );
 
-    const handedOverByItemId = new Map(handedOver.map((row) => [String(row.itemId), row]));
+    const handedOverByItemId = new Map(
+      handedOver.map((row) => [String(row.itemId), row])
+    );
+
     const returnDetails = items.map((it) => ({
       rentalReturnId: rentalReturn._id,
-      rentalOrderDetailId: handedOverByItemId.get(String(it.itemId))?.rentalOrderDetailId || null,
+      rentalOrderDetailId:
+        handedOverByItemId.get(String(it.itemId))
+          ?.rentalOrderDetailId || null,
       quantityReturned: 1,
       itemId: it.itemId,
       inspectionResult: it.inspectionResult,
       damageFee: Number(it.damageFee || 0),
       note: it.note || '',
     }));
-    await RentalReturnDetail.insertMany(returnDetails, { session });
 
-    // 3. TASK-016 A3: cập nhật hiện vật qua itemStateService theo kết quả kiểm:
-    //    ok → available; needs_service → unavailable; missing → lost (không tính vào tồn, RentalOrderItem → missing).
-    //    Không dùng `maintenance` ở chi nhánh (bảo trì chỉ ở kho tổng).
+    await RentalReturnDetail.insertMany(
+      returnDetails,
+      { session }
+    );
+
+    // Cập nhật hiện vật theo kết quả kiểm:
+    // ok -> available.
+    // needs_service -> unavailable.
+    // missing -> lost, không tính vào tồn.
     await returnItems(entries, session);
 
-    // Món mất không quay lại kho → không ghi +1.
-    const backInStock = entries.filter(({ inspectionResult }) => inspectionResult !== 'missing');
-    await StockMovement.insertMany(backInStock.map(({ item }) => ({
-      variantId: item.variantId,
-      itemId: item._id,
-      locationId: item.locationId,
-      storageId: null,
-      movementType: 'rental_return',
-      quantityChange: 1,
-      referenceType: 'rental_return',
-      referenceId: rentalReturn._id,
-      createdBy: receivedBy || order.createdBy,
-    })), { session });
+    // Món mất không quay lại kho, không ghi +1.
+    const backInStock = entries.filter(
+      ({ inspectionResult }) =>
+        inspectionResult !== 'missing'
+    );
 
-    const missingIds = new Set(entries.filter(({ inspectionResult }) => inspectionResult === 'missing').map(({ item }) => String(item._id)));
-    const rowsWith = (missing) => handedOver.filter((row) => missingIds.has(String(row.itemId)) === missing).map((row) => row._id);
-    await RentalOrderItem.updateMany({ _id: { $in: rowsWith(false) } }, { $set: { status: 'returned' } }, { session });
+    await StockMovement.insertMany(
+      backInStock.map(({ item }) => ({
+        variantId: item.variantId,
+        itemId: item._id,
+        locationId: item.locationId,
+        storageId: null,
+        movementType: 'rental_return',
+        quantityChange: 1,
+        referenceType: 'rental_return',
+        referenceId: rentalReturn._id,
+        createdBy: receivedBy || order.createdBy,
+      })),
+      { session }
+    );
+
+    const missingIds = new Set(
+      entries
+        .filter(
+          ({ inspectionResult }) =>
+            inspectionResult === 'missing'
+        )
+        .map(({ item }) => String(item._id))
+    );
+
+    const rowsWith = (missing) =>
+      handedOver
+        .filter(
+          (row) =>
+            missingIds.has(String(row.itemId)) === missing
+        )
+        .map((row) => row._id);
+
+    await RentalOrderItem.updateMany(
+      {
+        _id: { $in: rowsWith(false) },
+      },
+      {
+        $set: { status: 'returned' },
+      },
+      { session }
+    );
+
     if (missingIds.size) {
-      await RentalOrderItem.updateMany({ _id: { $in: rowsWith(true) } }, { $set: { status: 'missing' } }, { session });
+      await RentalOrderItem.updateMany(
+        {
+          _id: { $in: rowsWith(true) },
+        },
+        {
+          $set: { status: 'missing' },
+        },
+        { session }
+      );
     }
 
-    const remainingHandedOverCount = await RentalOrderItem.countDocuments({
-      rentalOrderDetailId: { $in: orderDetails.map((d) => d._id) },
-      status: 'handed_over',
-    }).session(session);
+    const remainingHandedOverCount =
+      await RentalOrderItem.countDocuments({
+        rentalOrderDetailId: {
+          $in: orderDetails.map((d) => d._id),
+        },
+        status: 'handed_over',
+      }).session(session);
+
     const isFinalReceipt = remainingHandedOverCount === 0;
 
-    // 4. Quyết toán Tiền cọc trong Ví nội bộ (ACID)
-    if (lockedAvailable > 0 && ['held', 'partially_refunded', 'partially_deducted'].includes(order.depositStatus)) {
+    // 4. Quyết toán tiền cọc trong Ví nội bộ.
+    if (
+      lockedAvailable > 0 &&
+      [
+        'held',
+        'partially_refunded',
+        'partially_deducted',
+      ].includes(order.depositStatus)
+    ) {
       const getWallet = deps.readyWallet || readyWallet;
       const modifyFunds = deps.changeFunds || changeFunds;
 
       const wallet = await getWallet(order.customerId);
-      const isZeroRefund = refundDeposit === 0 && deductFromLocked > 0;
+
+      const isZeroRefund =
+        refundDeposit === 0 && deductFromLocked > 0;
 
       const [settlementTx] = await WalletTransaction.create(
         [
           {
             walletId: wallet._id,
             userId: order.customerId,
-            code: generateWalletTxCode(isZeroRefund ? 'ADJ-RNT' : 'SET-RNT'),
-            transactionType: isZeroRefund ? 'adjustment' : 'deposit_refund',
+            code: generateWalletTxCode(
+              isZeroRefund ? 'ADJ-RNT' : 'SET-RNT'
+            ),
+            transactionType: isZeroRefund
+              ? 'adjustment'
+              : 'deposit_refund',
             direction: isZeroRefund ? 'debit' : 'credit',
-            amount: isZeroRefund ? deductFromLocked : refundDeposit,
+            amount: isZeroRefund
+              ? deductFromLocked
+              : refundDeposit,
             currency: 'VND',
             status: 'success',
             referenceType: 'RentalOrder',
@@ -288,7 +462,9 @@ export const createReturnReceiptAndSettle = async ({
         { session }
       );
 
-      const balanceDelta = deductFromLocked > 0 ? -deductFromLocked : 0;
+      const balanceDelta =
+        deductFromLocked > 0 ? -deductFromLocked : 0;
+
       await modifyFunds(
         wallet,
         settlementTx,
@@ -299,12 +475,21 @@ export const createReturnReceiptAndSettle = async ({
       );
     }
 
-    // 5. Cập nhật trạng thái RentalOrder
-    const totalRefunded = Number(order.refundedDepositAmount || 0) + refundDeposit;
-    const totalDeducted = Number(order.deductedDepositAmount || 0) + deductFromLocked;
+    // 5. Cập nhật trạng thái RentalOrder.
+    const totalRefunded =
+      Number(order.refundedDepositAmount || 0) +
+      refundDeposit;
+
+    const totalDeducted =
+      Number(order.deductedDepositAmount || 0) +
+      deductFromLocked;
+
     order.refundedDepositAmount = totalRefunded;
     order.deductedDepositAmount = totalDeducted;
-    order.rentalStatus = isFinalReceipt ? 'returned' : 'partially_returned';
+    order.rentalStatus = isFinalReceipt
+      ? 'returned'
+      : 'partially_returned';
+
     if (isFinalReceipt) {
       order.actualReturnedAt = now;
     } else {
@@ -320,16 +505,13 @@ export const createReturnReceiptAndSettle = async ({
       order.depositStatus = 'forfeited';
     }
 
-    if (excessDebt > 0) {
-      order.note = order.note
-        ? `${order.note}; Dư nợ đền bù vượt cọc: ${excessDebt.toLocaleString('vi-VN')} đ`
-        : `Dư nợ đền bù vượt cọc: ${excessDebt.toLocaleString('vi-VN')} đ`;
-    }
     await order.save({ session });
 
-    if (isInternal) await session.commitTransaction();
+    if (isInternal) {
+      await session.commitTransaction();
+    }
 
-    // Thông báo cho khách hàng về kết quả nghiệm thu và hoàn cọc
+    // Thông báo cho khách hàng về kết quả nghiệm thu và hoàn cọc.
     if (isInternal && order.customerId) {
       createNotification({
         userId: order.customerId,
@@ -339,23 +521,50 @@ export const createReturnReceiptAndSettle = async ({
         link: '/rental-orders',
         referenceType: 'RentalOrder',
         referenceId: order._id,
-        metadata: { orderCode: order.orderCode, refundDeposit, excessDebt },
-      }).catch((err) => console.error('[Notification] Lỗi gửi thông báo nghiệm thu hoàn cọc:', err.message));
+        metadata: {
+          orderCode: order.orderCode,
+          refundDeposit,
+          uncollectedAmount,
+        },
+      }).catch((err) =>
+        console.error(
+          '[Notification] Lỗi gửi thông báo nghiệm thu hoàn cọc:',
+          err.message
+        )
+      );
     }
 
-    // Thông báo cho Quản lý chi nhánh & Chủ shop
+    // Thông báo cho Quản lý chi nhánh & Chủ shop.
     if (isInternal) {
       (async () => {
         try {
-          const location = await InventoryLocation.findById(order.locationId).select('managerId shopId name').lean().catch(() => null);
+          const location = await InventoryLocation.findById(
+            order.locationId
+          )
+            .select('managerId shopId name')
+            .lean()
+            .catch(() => null);
+
           let shop = null;
+
           if (location?.shopId) {
-            shop = await Shop.findById(location.shopId).select('managerId ownerId name').lean().catch(() => null);
+            shop = await Shop.findById(location.shopId)
+              .select('managerId ownerId name')
+              .lean()
+              .catch(() => null);
           } else if (order.locationId) {
-            shop = await Shop.findById(order.locationId).select('managerId ownerId name').lean().catch(() => null);
+            shop = await Shop.findById(order.locationId)
+              .select('managerId ownerId name')
+              .lean()
+              .catch(() => null);
           }
-          const branchName = shop?.name || location?.name || 'Chi nhánh';
-          const branchManagerId = shop?.managerId || location?.managerId;
+
+          const branchName =
+            shop?.name || location?.name || 'Chi nhánh';
+
+          const branchManagerId =
+            shop?.managerId || location?.managerId;
+
           const mgrMsg = `Đơn thuê #${order.orderCode} tại ${branchName} đã hoàn tất nghiệm thu và quyết toán cọc (Hoàn cọc: ${refundDeposit.toLocaleString('vi-VN')} đ).`;
 
           if (branchManagerId) {
@@ -367,8 +576,13 @@ export const createReturnReceiptAndSettle = async ({
               link: '/branch/rental-orders',
               referenceType: 'RentalOrder',
               referenceId: order._id,
-              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
-            }).catch(() => {});
+              metadata: {
+                orderCode: order.orderCode,
+                refundDeposit,
+                uncollectedAmount,
+                locationId: order.locationId,
+              },
+            }).catch(() => { });
           } else {
             notifyRoles(['branch_manager'], {
               type: 'order_status',
@@ -377,11 +591,19 @@ export const createReturnReceiptAndSettle = async ({
               link: '/branch/rental-orders',
               referenceType: 'RentalOrder',
               referenceId: order._id,
-              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
-            }).catch(() => {});
+              metadata: {
+                orderCode: order.orderCode,
+                refundDeposit,
+                uncollectedAmount,
+                locationId: order.locationId,
+              },
+            }).catch(() => { });
           }
 
-          if (shop?.ownerId && String(shop.ownerId) !== String(branchManagerId)) {
+          if (
+            shop?.ownerId &&
+            String(shop.ownerId) !== String(branchManagerId)
+          ) {
             createNotification({
               userId: shop.ownerId,
               type: 'order_status',
@@ -390,8 +612,13 @@ export const createReturnReceiptAndSettle = async ({
               link: '/owner/rental-orders',
               referenceType: 'RentalOrder',
               referenceId: order._id,
-              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
-            }).catch(() => {});
+              metadata: {
+                orderCode: order.orderCode,
+                refundDeposit,
+                uncollectedAmount,
+                locationId: order.locationId,
+              },
+            }).catch(() => { });
           } else if (!shop?.ownerId) {
             notifyRoles(['shopOwner', 'owner'], {
               type: 'order_status',
@@ -400,32 +627,65 @@ export const createReturnReceiptAndSettle = async ({
               link: '/owner/rental-orders',
               referenceType: 'RentalOrder',
               referenceId: order._id,
-              metadata: { orderCode: order.orderCode, refundDeposit, excessDebt, locationId: order.locationId },
-            }).catch(() => {});
+              metadata: {
+                orderCode: order.orderCode,
+                refundDeposit,
+                uncollectedAmount,
+                locationId: order.locationId,
+              },
+            }).catch(() => { });
           }
         } catch (err) {
-          console.error('[Notification] Lỗi gửi thông báo nghiệm thu cho quản lý:', err.message);
+          console.error(
+            '[Notification] Lỗi gửi thông báo nghiệm thu cho quản lý:',
+            err.message
+          );
         }
       })();
     }
 
-    // TASK-012: Trả hàng → tồn kho thay đổi → kiểm tra lại hết hàng
-    // - Món đạt: available tăng → isOutOfStock có thể thành false
-    // - Món cần xử lý / mất: không ảnh hưởng available, nhưng vẫn refresh để chắc chắn
+    // Trả hàng làm thay đổi tồn kho: kiểm tra lại trạng thái hết hàng.
     if (isInternal) {
       try {
-        const variantIds = [...new Set(entries.map((e) => String(e.item.variantId)).filter(Boolean))];
+        const variantIds = [
+          ...new Set(
+            entries
+              .map((e) => String(e.item.variantId))
+              .filter(Boolean)
+          ),
+        ];
+
         if (variantIds.length) {
-          const { ProductVariant: PV } = await import('../../models/masterdata/ProductVariant.js');
-          const variants = await PV.find({ _id: { $in: variantIds } }).select('productId').lean();
-          const productIds = [...new Set(variants.map((v) => String(v.productId)).filter(Boolean))];
+          const { ProductVariant: PV } = await import(
+            '../../models/masterdata/ProductVariant.js'
+          );
+
+          const variants = await PV.find({
+            _id: { $in: variantIds },
+          })
+            .select('productId')
+            .lean();
+
+          const productIds = [
+            ...new Set(
+              variants
+                .map((v) => String(v.productId))
+                .filter(Boolean)
+            ),
+          ];
+
           if (productIds.length) {
             refreshOutOfStockStatus(productIds).catch((err) =>
-              console.error('[TASK-012] rental return refresh lỗi:', err.message)
+              console.error(
+                '[TASK-012] rental return refresh lỗi:',
+                err.message
+              )
             );
           }
         }
-      } catch (_) { /* non-blocking */ }
+      } catch (_) {
+        // Không chặn kết quả quyết toán khi cập nhật trạng thái sản phẩm lỗi.
+      }
     }
 
     return {
@@ -439,110 +699,171 @@ export const createReturnReceiptAndSettle = async ({
         totalDamageFee,
         totalDeductions,
         refundDeposit,
-        excessDebt,
+        uncollectedAmount,
         depositStatus: order.depositStatus,
       },
     };
   } catch (err) {
-    if (isInternal) await session.abortTransaction();
+    if (isInternal) {
+      await session.abortTransaction();
+    }
+
     throw withStatus(err);
   } finally {
-    if (isInternal) session.endSession();
+    if (isInternal) {
+      session.endSession();
+    }
   }
 };
+
 export const returnSimulatorEnabled = () =>
   process.env.NODE_ENV !== 'production' &&
   process.env.ENABLE_GHN_SIMULATOR === 'true';
 
 const returnable = order =>
-  ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus);
+  ['renting', 'partially_returned', 'overdue'].includes(
+    order.rentalStatus
+  );
 
 const remainingLockedDepositOf = order =>
   Math.max(
     0,
     Number(order.depositAmount || 0) -
-      Number(order.refundedDepositAmount || 0) -
-      Number(order.deductedDepositAmount || 0)
+    Number(order.refundedDepositAmount || 0) -
+    Number(order.deductedDepositAmount || 0)
   );
 
 /**
- * Tổng hợp tiến độ đã trả / còn lại trên từng dòng RentalOrderDetail
+ * Tổng hợp tiến độ đã trả / còn lại trên từng dòng RentalOrderDetail.
  */
-export async function getRentalReturnProgress(orderId, session = null) {
-  const rawDetails = await RentalOrderDetail.find({ rentalOrderId: orderId })
+export async function getRentalReturnProgress(
+  orderId,
+  session = null
+) {
+  const rawDetails = await RentalOrderDetail.find({
+    rentalOrderId: orderId,
+  })
     .sort({ _id: 1 })
     .session(session)
     .lean();
 
-  const variantIds = [...new Set(rawDetails.map((d) => d.variantId).filter(Boolean))];
-  const variants = variantIds.length
-    ? await ProductVariant.find({ _id: { $in: variantIds } })
-        .select('variantName sku size color productId')
-        .populate({ path: 'productId', select: 'name productCode images image' })
-        .session(session)
-        .lean()
-    : [];
-  const variantById = new Map(variants.map((v) => [String(v._id), v]));
+  const variantIds = [
+    ...new Set(
+      rawDetails.map((d) => d.variantId).filter(Boolean)
+    ),
+  ];
 
-  // Giữ nguyên ObjectId gốc nếu ProductVariant không tồn tại để không mất variantId khi nhả giữ chỗ
+  const variants = variantIds.length
+    ? await ProductVariant.find({
+      _id: { $in: variantIds },
+    })
+      .select('variantName sku size color productId attributes')
+      .populate({
+        path: 'productId',
+        select: 'name productCode images image salePrice',
+      })
+      .session(session)
+      .lean()
+    : [];
+
+  const variantById = new Map(
+    variants.map((v) => [String(v._id), v])
+  );
+
+  // Giữ ObjectId gốc nếu ProductVariant không tồn tại.
   const details = rawDetails.map((d) => ({
     ...d,
     rawVariantId: d.variantId,
-    variantId: variantById.get(String(d.variantId)) || d.variantId,
+    variantId:
+      variantById.get(String(d.variantId)) || d.variantId,
   }));
 
   const detailIds = details.map((d) => d._id);
+
   const [completedReturns, orderItems] = await Promise.all([
-    RentalReturn.find({ rentalOrderId: orderId, returnStatus: 'completed' })
+    RentalReturn.find({
+      rentalOrderId: orderId,
+      returnStatus: 'completed',
+    })
       .select('_id')
       .session(session)
       .lean(),
+
     detailIds.length
-      ? RentalOrderItem.find({ rentalOrderDetailId: { $in: detailIds } })
-          .session(session)
-          .lean()
+      ? RentalOrderItem.find({
+        rentalOrderDetailId: { $in: detailIds },
+      })
+        .session(session)
+        .lean()
       : Promise.resolve([]),
   ]);
 
   const returnIds = completedReturns.map((r) => r._id);
+
   const returnDetails = returnIds.length
-    ? await RentalReturnDetail.find({ rentalReturnId: { $in: returnIds } })
-        .session(session)
-        .lean()
+    ? await RentalReturnDetail.find({
+      rentalReturnId: { $in: returnIds },
+    })
+      .session(session)
+      .lean()
     : [];
 
   const returnedByDetail = new Map();
+
   for (const rd of returnDetails) {
     if (rd.rentalOrderDetailId) {
       const k = String(rd.rentalOrderDetailId);
-      returnedByDetail.set(k, (returnedByDetail.get(k) || 0) + Number(rd.quantityReturned || 1));
+
+      returnedByDetail.set(
+        k,
+        (returnedByDetail.get(k) || 0) +
+        Number(rd.quantityReturned || 1)
+      );
     }
   }
 
   const orderItemsByDetail = new Map();
+
   for (const oi of orderItems) {
     const k = String(oi.rentalOrderDetailId);
-    if (!orderItemsByDetail.has(k)) orderItemsByDetail.set(k, []);
+
+    if (!orderItemsByDetail.has(k)) {
+      orderItemsByDetail.set(k, []);
+    }
+
     orderItemsByDetail.get(k).push(oi);
   }
 
   const progressByDetailId = new Map();
+
   let totalQuantity = 0;
   let totalReturnedQuantity = 0;
 
   for (const d of details) {
     const k = String(d._id);
     const qty = Number(d.quantity || 1);
+
     let returnedQty = returnedByDetail.get(k);
+
     if (returnedQty == null) {
-      // Fallback dữ liệu cũ chưa ghi rentalOrderDetailId trên RentalReturnDetail
+      // Dữ liệu cũ chưa ghi rentalOrderDetailId trên RentalReturnDetail.
       const rows = orderItemsByDetail.get(k) || [];
-      returnedQty = rows.filter((r) => ['returned', 'missing'].includes(r.status)).length;
+
+      returnedQty = rows.filter((r) =>
+        ['returned', 'missing'].includes(r.status)
+      ).length;
     }
-    returnedQty = Math.min(qty, Math.max(0, returnedQty));
+
+    returnedQty = Math.min(
+      qty,
+      Math.max(0, returnedQty)
+    );
+
     const remainingQty = Math.max(0, qty - returnedQty);
+
     totalQuantity += qty;
     totalReturnedQuantity += returnedQty;
+
     progressByDetailId.set(k, {
       detail: d,
       quantity: qty,
@@ -556,22 +877,45 @@ export async function getRentalReturnProgress(orderId, session = null) {
     progressByDetailId,
     totalQuantity,
     totalReturnedQuantity,
-    totalRemainingQuantity: Math.max(0, totalQuantity - totalReturnedQuantity),
+    totalRemainingQuantity: Math.max(
+      0,
+      totalQuantity - totalReturnedQuantity
+    ),
   };
 }
 
 /**
- * Kiểm tra & chuẩn hóa danh sách món thuê được chọn gửi thu hồi qua GHN
+ * Tính tiền cọc cho một đơn vị trang phục.
  */
-const calcUnitDeposit = (detail, orderDepositAmount, rawTotalRentalFee) => {
-  if (Number(detail.depositPerUnit || 0) > 0) return Number(detail.depositPerUnit);
-  if (rawTotalRentalFee > 0 && Number(detail.quantity || 0) > 0) {
-    return Math.round((Number(orderDepositAmount || 0) * (Number(detail.lineTotal || 0) / rawTotalRentalFee)) / detail.quantity);
+const calcUnitDeposit = (
+  detail,
+  orderDepositAmount,
+  rawTotalRentalFee
+) => {
+  if (Number(detail.depositPerUnit || 0) > 0) {
+    return Number(detail.depositPerUnit);
   }
+
+  if (
+    rawTotalRentalFee > 0 &&
+    Number(detail.quantity || 0) > 0
+  ) {
+    return Math.round(
+      (
+        Number(orderDepositAmount || 0) *
+        (Number(detail.lineTotal || 0) / rawTotalRentalFee)
+      ) / detail.quantity
+    );
+  }
+
   return 0;
 };
 
-export async function findCurrentReturnShipment(orderId, rentalStatus, session = null) {
+export async function findCurrentReturnShipment(
+  orderId,
+  rentalStatus,
+  session = null
+) {
   const rawShipment = await OrderShipment.findOne({
     orderId,
     orderType: 'rental',
@@ -581,22 +925,32 @@ export async function findCurrentReturnShipment(orderId, rentalStatus, session =
     .session(session)
     .lean();
 
-  const settledLatestShipment = rawShipment?.shipmentStatus === 'delivered'
-    ? await RentalReturn.exists({
+  const settledLatestShipment =
+    rawShipment?.shipmentStatus === 'delivered'
+      ? await RentalReturn.exists({
         rentalOrderId: orderId,
         shipmentId: rawShipment._id,
         returnStatus: 'completed',
       }).session(session)
-    : false;
+      : false;
 
-  const shipment = settledLatestShipment && rentalStatus === 'partially_returned'
-    ? null
-    : rawShipment;
+  const shipment =
+    settledLatestShipment &&
+      rentalStatus === 'partially_returned'
+      ? null
+      : rawShipment;
 
-  return { shipment, rawShipment, settledLatestShipment: Boolean(settledLatestShipment) };
+  return {
+    shipment,
+    rawShipment,
+    settledLatestShipment: Boolean(settledLatestShipment),
+  };
 }
 
-export async function prepareRentalReturnRequest(order, { requestedItems = null } = {}) {
+export async function prepareRentalReturnRequest(
+  order,
+  { requestedItems = null } = {}
+) {
   if (!returnable(order)) {
     throw new ServiceError(
       400,
@@ -605,16 +959,25 @@ export async function prepareRentalReturnRequest(order, { requestedItems = null 
   }
 
   const progress = await getRentalReturnProgress(order._id);
+
   if (!progress.details.length) {
-    throw new ServiceError(409, 'Đơn thuê chưa có chi tiết sản phẩm.');
-  }
-  if (progress.totalRemainingQuantity <= 0) {
-    throw new ServiceError(409, 'Đơn thuê đã hoàn trả đủ tất cả trang phục.');
+    throw new ServiceError(
+      409,
+      'Đơn thuê chưa có chi tiết sản phẩm.'
+    );
   }
 
-  const rawSelection = Array.isArray(requestedItems) && requestedItems.length > 0
-    ? requestedItems
-    : [...progress.progressByDetailId.values()]
+  if (progress.totalRemainingQuantity <= 0) {
+    throw new ServiceError(
+      409,
+      'Đơn thuê đã hoàn trả đủ tất cả trang phục.'
+    );
+  }
+
+  const rawSelection =
+    Array.isArray(requestedItems) && requestedItems.length > 0
+      ? requestedItems
+      : [...progress.progressByDetailId.values()]
         .filter((p) => p.remainingQuantity > 0)
         .map((p) => ({
           rentalOrderDetailId: String(p.detail._id),
@@ -622,46 +985,105 @@ export async function prepareRentalReturnRequest(order, { requestedItems = null 
         }));
 
   const mergedQtyByDetail = new Map();
+
   for (const row of rawSelection) {
-    const dId = String(row?.rentalOrderDetailId || row?.detailId || row?.id || '').trim();
+    const dId = String(
+      row?.rentalOrderDetailId ||
+      row?.detailId ||
+      row?.id ||
+      ''
+    ).trim();
+
     const entry = progress.progressByDetailId.get(dId);
+
     if (!entry) {
-      throw new ServiceError(400, 'Trang phục chọn trả không thuộc đơn thuê này.');
+      throw new ServiceError(
+        400,
+        'Trang phục chọn trả không thuộc đơn thuê này.'
+      );
     }
-    const qty = Number(row?.quantityReturned ?? row?.quantity);
+
+    const qty = Number(
+      row?.quantityReturned ?? row?.quantity
+    );
+
     if (!Number.isSafeInteger(qty) || qty < 1) {
-      throw new ServiceError(400, 'Số lượng trả phải là số nguyên dương.');
+      throw new ServiceError(
+        400,
+        'Số lượng trả phải là số nguyên dương.'
+      );
     }
-    const nextQty = (mergedQtyByDetail.get(dId) || 0) + qty;
+
+    const nextQty =
+      (mergedQtyByDetail.get(dId) || 0) + qty;
+
     if (nextQty > entry.remainingQuantity) {
-      throw new ServiceError(400, 'Số lượng hoàn trả vượt quá số lượng còn chưa trả của đơn thuê.');
+      throw new ServiceError(
+        400,
+        'Số lượng hoàn trả vượt quá số lượng còn chưa trả của đơn thuê.'
+      );
     }
+
     mergedQtyByDetail.set(dId, nextQty);
   }
 
   if (!mergedQtyByDetail.size) {
-    throw new ServiceError(400, 'Vui lòng chọn ít nhất 1 trang phục để thu hồi.');
+    throw new ServiceError(
+      400,
+      'Vui lòng chọn ít nhất 1 trang phục để thu hồi.'
+    );
   }
 
-  const remainingLockedDeposit = remainingLockedDepositOf(order);
-  const rawTotalRentalFee = progress.details.reduce((s, d) => s + Number(d.lineTotal || 0), 0);
-  const selectedQtySum = [...mergedQtyByDetail.values()].reduce((s, q) => s + q, 0);
-  const isFinalBatch = selectedQtySum >= progress.totalRemainingQuantity;
+  const remainingLockedDeposit =
+    remainingLockedDepositOf(order);
+
+  const rawTotalRentalFee = progress.details.reduce(
+    (s, d) => s + Number(d.lineTotal || 0),
+    0
+  );
+
+  const selectedQtySum = [
+    ...mergedQtyByDetail.values(),
+  ].reduce((s, q) => s + q, 0);
+
+  const isFinalBatch =
+    selectedQtySum >= progress.totalRemainingQuantity;
 
   const ghnItems = [];
   const snapshotItems = [];
+
   let expectedDepositRefund = 0;
 
   for (const [dId, qty] of mergedQtyByDetail.entries()) {
     const { detail } = progress.progressByDetailId.get(dId);
-    const unitDep = calcUnitDeposit(detail, order.depositAmount, rawTotalRentalFee);
+
+    const unitDep = calcUnitDeposit(
+      detail,
+      order.depositAmount,
+      rawTotalRentalFee
+    );
+
     expectedDepositRefund += unitDep * qty;
 
-    const name = detail.variantId?.variantName || detail.variantId?.productId?.name || 'Trang phục Vestora';
-    const sku = detail.variantId?.sku || detail.variantId?.productId?.productCode || 'SKU-VESTORA';
+    const name =
+      detail.variantId?.variantName ||
+      detail.variantId?.productId?.name ||
+      'Trang phục Vestora';
+
+    const sku =
+      detail.variantId?.sku ||
+      detail.variantId?.productId?.productCode ||
+      'SKU-VESTORA';
+
     const price = Number(detail.unitRentalFee || 0);
 
-    ghnItems.push({ name, sku, quantity: qty, price });
+    ghnItems.push({
+      name,
+      sku,
+      quantity: qty,
+      price,
+    });
+
     snapshotItems.push({
       rentalOrderDetailId: detail._id,
       name,
@@ -675,7 +1097,10 @@ export async function prepareRentalReturnRequest(order, { requestedItems = null 
 
   expectedDepositRefund = isFinalBatch
     ? remainingLockedDeposit
-    : Math.min(remainingLockedDeposit, Math.max(0, Math.round(expectedDepositRefund)));
+    : Math.min(
+      remainingLockedDeposit,
+      Math.max(0, Math.round(expectedDepositRefund))
+    );
 
   return {
     isFinalBatch,
@@ -693,7 +1118,9 @@ const roleKey = (user) =>
     .replace('brandmanager', 'branchmanager');
 
 const staffRole = (user) =>
-  ['admin', 'owner', 'shopowner', 'branchmanager'].includes(roleKey(user));
+  ['admin', 'owner', 'shopowner', 'branchmanager'].includes(
+    roleKey(user)
+  );
 
 export const EVIDENCE_FIELDS = Object.freeze({
   packing: 'packingVideo',
@@ -702,7 +1129,12 @@ export const EVIDENCE_FIELDS = Object.freeze({
   'return-received': 'returnReceivedVideo',
 });
 
-async function evidencePermissions(order, user, manager, shipment) {
+async function evidencePermissions(
+  order,
+  user,
+  manager,
+  shipment
+) {
   const owner =
     String(order.customerId?._id || order.customerId) ===
     String(user._id);
@@ -711,7 +1143,9 @@ async function evidencePermissions(order, user, manager, shipment) {
     orderId: order._id,
     orderType: 'rental',
     shipmentType: 'outbound',
-    shipmentStatus: { $in: ['shipped', 'delivered'] },
+    shipmentStatus: {
+      $in: ['shipped', 'delivered'],
+    },
   });
 
   return {
@@ -734,7 +1168,8 @@ async function evidencePermissions(order, user, manager, shipment) {
   };
 }
 
-// Khách chỉ thao tác đơn của mình; quản lý phải đúng phạm vi chi nhánh.
+// Khách chỉ thao tác đơn của mình;
+// quản lý phải đúng phạm vi chi nhánh.
 export async function accessReturnOrder(
   user,
   id,
@@ -742,7 +1177,10 @@ export async function accessReturnOrder(
   session = null
 ) {
   if (!mongoose.isValidObjectId(id)) {
-    throw new ServiceError(400, 'Mã đơn không hợp lệ.');
+    throw new ServiceError(
+      400,
+      'Mã đơn không hợp lệ.'
+    );
   }
 
   const order = await RentalOrder.findById(id)
@@ -752,7 +1190,10 @@ export async function accessReturnOrder(
     .session(session);
 
   if (!order) {
-    throw new ServiceError(404, 'Không tìm thấy đơn thuê.');
+    throw new ServiceError(
+      404,
+      'Không tìm thấy đơn thuê.'
+    );
   }
 
   const manager = staffRole(user);
@@ -777,9 +1218,12 @@ export async function accessReturnOrder(
 }
 
 function signedEvidence(video) {
-  if (!video) return null;
+  if (!video) {
+    return null;
+  }
 
-  const expiresAt = Math.floor(Date.now() / 1000) + 900;
+  const expiresAt =
+    Math.floor(Date.now() / 1000) + 900;
 
   return {
     uploadedAt: video.uploadedAt,
@@ -797,9 +1241,34 @@ function signedEvidence(video) {
   };
 }
 
-// Dữ liệu cho cửa sổ trả đồ: không có giá trong danh sách sản phẩm.
+export async function linkRentalInventory(user, id, assignments) {
+  if (roleKey(user) !== 'branchmanager') {
+    throw new ServiceError(
+      403,
+      'Chỉ quản lý chi nhánh được xác nhận hiện vật.'
+    );
+  }
+
+  return inTransaction(async session => {
+    await accessReturnOrder(user, id, true, session);
+
+    await ensureRentalInventory(
+      id,
+      { assignments, operatorId: user._id },
+      session
+    );
+
+    return {
+      message: 'Đã liên kết hiện vật với đơn thuê.',
+    };
+  });
+}
+// Dữ liệu cho cửa sổ trả đồ.
 export async function getReturnFlow(user, id) {
-  const { order, manager } = await accessReturnOrder(user, id);
+  const { order, manager } = await accessReturnOrder(
+    user,
+    id
+  );
 
   await order.populate([
     {
@@ -808,7 +1277,9 @@ export async function getReturnFlow(user, id) {
     },
     {
       path: 'locationId',
-      populate: { path: 'shopId' },
+      populate: {
+        path: 'shopId',
+      },
     },
   ]);
 
@@ -825,54 +1296,124 @@ export async function getReturnFlow(user, id) {
   );
 
   const shop =
-    order.locationId?.shopId || order.locationId || {};
+    order.locationId?.shopId ||
+    order.locationId ||
+    {};
 
   const batchQtyByDetail = new Map();
-  if (shipment && ['preparing', 'shipped', 'delivered'].includes(shipment.shipmentStatus) && Array.isArray(shipment.items) && shipment.items.length > 0) {
+
+  if (
+    shipment &&
+    ['preparing', 'shipped', 'delivered'].includes(
+      shipment.shipmentStatus
+    ) &&
+    Array.isArray(shipment.items) &&
+    shipment.items.length > 0
+  ) {
     for (const si of shipment.items) {
       if (si.rentalOrderDetailId) {
         const k = String(si.rentalOrderDetailId);
-        batchQtyByDetail.set(k, (batchQtyByDetail.get(k) || 0) + Number(si.quantity || 1));
+
+        batchQtyByDetail.set(
+          k,
+          (batchQtyByDetail.get(k) || 0) +
+          Number(si.quantity || 1)
+        );
       }
     }
   }
 
   const hasExplicitBatch = batchQtyByDetail.size > 0;
+
   const displayItems = progress.details
     .map((d) => {
-      const p = progress.progressByDetailId.get(String(d._id));
-      const batchQty = hasExplicitBatch ? (batchQtyByDetail.get(String(d._id)) || 0) : p.remainingQuantity;
+      const p = progress.progressByDetailId.get(
+        String(d._id)
+      );
+
+      const batchQty = hasExplicitBatch
+        ? (batchQtyByDetail.get(String(d._id)) || 0)
+        : p.remainingQuantity;
+
       return {
         id: d._id,
         detailId: d._id,
-        name: d.variantId?.productId?.name || 'Trang phục',
+        name:
+          d.variantId?.productId?.name ||
+          'Trang phục',
         sku: d.variantId?.sku || '',
         size: d.variantId?.size || '',
         color: d.variantId?.color || '',
-        quantity: order.rentalStatus === 'returned' ? d.quantity : batchQty,
+        quantity:
+          order.rentalStatus === 'returned'
+            ? d.quantity
+            : batchQty,
         totalQuantity: d.quantity,
         returnedQuantity: p.returnedQuantity,
         remainingQuantity: p.remainingQuantity,
-        depositPerUnit: d.depositPerUnit || 0,
+        depositPerUnit:
+          Number.isSafeInteger(d.depositPerUnit) &&
+            d.depositPerUnit >= 0
+            ? d.depositPerUnit
+            : null,
+        compensationValuePerUnit: rentalCompensationBasis(d).value,
+        compensationValueSource: rentalCompensationBasis(d).source,
         image:
           d.variantId?.productId?.images?.[0] ||
           d.variantId?.productId?.image ||
           '',
       };
     })
-    .filter((it) => order.rentalStatus === 'returned' || it.quantity > 0);
+    .filter(
+      (it) =>
+        order.rentalStatus === 'returned' ||
+        it.quantity > 0
+    );
 
   const isBM = roleKey(user) === 'branchmanager';
+
+  const physicalRows = isBM
+    ? await RentalOrderItem.find({
+      rentalOrderDetailId: {
+        $in: progress.details.map(d => d._id),
+      },
+    })
+      .populate('itemId', 'itemCode status')
+      .lean()
+    : [];
+
+  const physicalItems = physicalRows.map(row => ({
+    detailId: row.rentalOrderDetailId,
+    itemId: row.itemId?._id,
+    itemCode:
+      row.itemId?.itemCode || 'Hiện vật không còn tồn tại',
+    status: row.status,
+  }));
+
+  const physicalDetails = isBM
+    ? progress.details.map(detail => ({
+      detailId: detail._id,
+      sku:
+        detail.variantId?.sku ||
+        String(detail.rawVariantId),
+      quantity: detail.quantity,
+    }))
+    : [];
 
   const readEvidenceField = (field) => {
     if (
       ['returnVideo', 'returnReceivedVideo'].includes(field) &&
       shipment &&
-      ['cancelled', 'failed'].includes(shipment.shipmentStatus)
+      ['cancelled', 'failed'].includes(
+        shipment.shipmentStatus
+      )
     ) {
       return null;
     }
-    return signedEvidence(shipment?.[field] || order[field]);
+
+    return signedEvidence(
+      shipment?.[field] || order[field]
+    );
   };
 
   return {
@@ -880,10 +1421,14 @@ export async function getReturnFlow(user, id) {
     rentalStatus: order.rentalStatus,
     depositStatus: order.depositStatus,
     depositAmount: order.depositAmount,
-    refundedDepositAmount: order.refundedDepositAmount || 0,
-    deductedDepositAmount: order.deductedDepositAmount || 0,
-    remainingDepositAmount: remainingLockedDepositOf(order),
-    isPartialOrder: order.rentalStatus === 'partially_returned',
+    refundedDepositAmount:
+      order.refundedDepositAmount || 0,
+    deductedDepositAmount:
+      order.deductedDepositAmount || 0,
+    remainingDepositAmount:
+      remainingLockedDepositOf(order),
+    isPartialOrder:
+      order.rentalStatus === 'partially_returned',
     startDate: order.startDate,
     dueDate: order.dueDate,
 
@@ -910,7 +1455,10 @@ export async function getReturnFlow(user, id) {
     },
 
     items: displayItems,
-    totalRemainingQuantity: progress.totalRemainingQuantity,
+    physicalItems,
+    physicalDetails,
+    totalRemainingQuantity:
+      progress.totalRemainingQuantity,
 
     ...Object.fromEntries(
       Object.values(EVIDENCE_FIELDS).map(field => [
@@ -918,27 +1466,54 @@ export async function getReturnFlow(user, id) {
         readEvidenceField(field),
       ])
     ),
+
     videoPermissions,
     shipment,
     canManage: isBM,
-    simulatorEnabled: returnSimulatorEnabled() && isBM,
-    canRequest: returnable(order) && progress.totalRemainingQuantity > 0 && (!shipment || ['cancelled', 'failed'].includes(shipment.shipmentStatus)),
+    simulatorEnabled:
+      returnSimulatorEnabled() && isBM,
+    canRequest:
+      returnable(order) &&
+      progress.totalRemainingQuantity > 0 &&
+      (
+        !shipment ||
+        ['cancelled', 'failed'].includes(
+          shipment.shipmentStatus
+        )
+      ),
     completed: order.rentalStatus === 'returned',
     refundedAmount:
       order.depositStatus === 'refunded'
         ? order.depositAmount
-        : (order.refundedDepositAmount > 0 ? order.refundedDepositAmount : null),
+        : (
+          order.refundedDepositAmount > 0
+            ? order.refundedDepositAmount
+            : null
+        ),
   };
 }
 
-export async function checkEvidenceAccess(user, id, kind) {
-  const { order, manager } = await accessReturnOrder(user, id);
+export async function checkEvidenceAccess(
+  user,
+  id,
+  kind
+) {
+  const { order, manager } = await accessReturnOrder(
+    user,
+    id
+  );
 
   if (!Object.hasOwn(EVIDENCE_FIELDS, kind)) {
-    throw new ServiceError(400, 'Loại video không hợp lệ.');
+    throw new ServiceError(
+      400,
+      'Loại video không hợp lệ.'
+    );
   }
 
-  const { shipment } = await findCurrentReturnShipment(id, order.rentalStatus);
+  const { shipment } = await findCurrentReturnShipment(
+    id,
+    order.rentalStatus
+  );
 
   const permissions = await evidencePermissions(
     order,
@@ -956,13 +1531,17 @@ export async function checkEvidenceAccess(user, id, kind) {
 
   const field = EVIDENCE_FIELDS[kind];
 
-  if (['return', 'return-received'].includes(kind) && shipment) {
+  if (
+    ['return', 'return-received'].includes(kind) &&
+    shipment
+  ) {
     if (shipment[field]) {
       throw new ServiceError(
         409,
         'Video đã được lưu cho đợt trả này, không ghi đè bằng chứng.'
       );
     }
+
     return field;
   }
 
@@ -976,7 +1555,10 @@ export async function checkEvidenceAccess(user, id, kind) {
   return field;
 }
 
-export async function requestSimulatedReturn(user, id) {
+export async function requestSimulatedReturn(
+  user,
+  id
+) {
   if (!returnSimulatorEnabled()) {
     throw new ServiceError(
       403,
@@ -986,8 +1568,10 @@ export async function requestSimulatedReturn(user, id) {
 
   await accessReturnOrder(user, id);
 
-  // Tạo vận đơn thu hồi GHN thật
-  return await createReturnShipment(user, { orderId: id });
+  // Tạo vận đơn thu hồi GHN thật.
+  return await createReturnShipment(user, {
+    orderId: id,
+  });
 }
 
 export async function simulateReturnProgress(
@@ -1002,7 +1586,9 @@ export async function simulateReturnProgress(
     );
   }
 
-  const userRole = String(user?.Role || user?.role || '')
+  const userRole = String(
+    user?.Role || user?.role || ''
+  )
     .toLowerCase()
     .replace(/[\s_-]/g, '')
     .replace('brandmanager', 'branchmanager');
@@ -1034,9 +1620,13 @@ export async function simulateReturnProgress(
     );
   }
 
-  if (shipment.shipmentStatus === newStatus) return shipment;
+  if (shipment.shipmentStatus === newStatus) {
+    return shipment;
+  }
 
-  if (transitions[shipment.shipmentStatus] !== newStatus) {
+  if (
+    transitions[shipment.shipmentStatus] !== newStatus
+  ) {
     throw new ServiceError(
       409,
       'Không được bỏ bước hoặc lùi trạng thái.'
@@ -1053,8 +1643,11 @@ export async function simulateReturnProgress(
     {
       $set: {
         shipmentStatus: newStatus,
-        [newStatus === 'shipped' ? 'shippedAt' : 'deliveredAt']:
-          now,
+        [
+          newStatus === 'shipped'
+            ? 'shippedAt'
+            : 'deliveredAt'
+        ]: now,
       },
       $push: {
         statusHistory: {
@@ -1067,7 +1660,10 @@ export async function simulateReturnProgress(
         },
       },
     },
-    { new: true, runValidators: true }
+    {
+      returnDocument: 'after',
+      runValidators: true,
+    }
   );
 
   if (!updated) {
@@ -1099,7 +1695,9 @@ export async function releaseSimulatedReservations(
   // Đã xuất kho thật thì phải xử lý theo nghiệp vụ bàn giao.
   if (
     movements ||
-    reservations.some(row => row.status !== 'active')
+    reservations.some(
+      row => row.status !== 'active'
+    )
   ) {
     throw new ServiceError(
       409,
@@ -1107,7 +1705,9 @@ export async function releaseSimulatedReservations(
     );
   }
 
-  if (!reservations.length) return;
+  if (!reservations.length) {
+    return;
+  }
 
   const expected = new Map(
     aggregateLines(details).map(line => [
@@ -1124,12 +1724,16 @@ export async function releaseSimulatedReservations(
   );
 
   const wrongLocation = reservations.some(
-    row => String(row.locationId) !== String(order.locationId)
+    row =>
+      String(row.locationId) !==
+      String(order.locationId)
   );
 
   const wrongQuantity =
     expected.size !== actual.size ||
-    [...expected].some(([id, qty]) => actual.get(id) !== qty);
+    [...expected].some(
+      ([id, qty]) => actual.get(id) !== qty
+    );
 
   if (wrongLocation || wrongQuantity) {
     throw new ServiceError(
@@ -1155,6 +1759,7 @@ export async function releaseSimulatedReservations(
     session
   );
 }
+
 export async function validateDepositHold(
   order,
   wallet,
@@ -1182,7 +1787,8 @@ export async function validateDepositHold(
 
     const wrongReference =
       order.depositHoldTransactionId &&
-      String(order.depositHoldTransactionId) !== String(hold._id);
+      String(order.depositHoldTransactionId) !==
+      String(hold._id);
 
     if (
       wrongWallet ||
@@ -1199,29 +1805,44 @@ export async function validateDepositHold(
     return;
   }
 
-  // Đơn mới đã ghi thông tin thanh toán phải có chứng từ liên kết.
-  if (order.depositHoldTransactionId || order.paidAmount > 0) {
+  // Đơn mới đã ghi thông tin thanh toán
+  // phải có chứng từ liên kết.
+  if (
+    order.depositHoldTransactionId ||
+    order.paidAmount > 0
+  ) {
     throw new ServiceError(
       409,
       'Thiếu giao dịch giữ cọc đã liên kết với đơn.'
     );
   }
 
-  // Tương thích hàm tạo đơn cũ: đã khóa cọc cùng transaction
-  // nhưng chưa ghi rental_deposit riêng và paidAmount còn bằng 0.
+  // Tương thích hàm tạo đơn cũ:
+  // đã khóa cọc cùng transaction nhưng chưa ghi
+  // rental_deposit riêng và paidAmount còn bằng 0.
   const others = await RentalOrder.find({
     customerId: order.customerId,
     _id: { $ne: order._id },
     paymentMethod: 'wallet',
     rentalStatus: { $ne: 'returned' },
     depositStatus: {
-      $in: ['held', 'partially_refunded', 'partially_deducted'],
+      $in: [
+        'held',
+        'partially_refunded',
+        'partially_deducted',
+      ],
     },
   })
-    .select('depositAmount depositStatus refundedDepositAmount deductedDepositAmount')
+    .select(
+      'depositAmount depositStatus refundedDepositAmount deductedDepositAmount'
+    )
     .session(session);
 
-  if (others.some((row) => !Number.isSafeInteger(row.depositAmount))) {
+  if (
+    others.some(
+      (row) => !Number.isSafeInteger(row.depositAmount)
+    )
+  ) {
     throw new ServiceError(
       409,
       'Ví có khoản cọc đang quyết toán một phần; cần đối soát số tiền còn giữ.'
@@ -1229,7 +1850,8 @@ export async function validateDepositHold(
   }
 
   const totalHeld = others.reduce(
-    (total, row) => total + remainingLockedDepositOf(row),
+    (total, row) =>
+      total + remainingLockedDepositOf(row),
     amount
   );
 
@@ -1244,47 +1866,119 @@ export async function validateDepositHold(
   }
 }
 
-async function releasePartialRentalReservations(order, releaseByVariant, session) {
+async function releasePartialRentalReservations(
+  order,
+  releaseByVariant,
+  session
+) {
   const reservations = await InventoryReservation.find({
     orderId: order._id,
     orderType: 'rental',
     status: 'active',
   }).session(session);
 
-  if (!reservations.length) return;
-
-  const actualByVariant = new Map();
-  for (const r of reservations) {
-    const k = String(r.variantId);
-    actualByVariant.set(k, (actualByVariant.get(k) || 0) + Number(r.quantity || 0));
+  if (!reservations.length) {
+    return;
   }
 
-  for (const [variantId, qtyToRelease] of releaseByVariant.entries()) {
-    if (qtyToRelease <= 0) continue;
-    if ((actualByVariant.get(variantId) || 0) < qtyToRelease) {
-      throw new ServiceError(409, 'Giữ chỗ tồn kho không khớp số lượng trang phục cần trả.');
+  const actualByVariant = new Map();
+
+  for (const r of reservations) {
+    const k = String(r.variantId);
+
+    actualByVariant.set(
+      k,
+      (actualByVariant.get(k) || 0) +
+      Number(r.quantity || 0)
+    );
+  }
+
+  for (
+    const [variantId, qtyToRelease]
+    of releaseByVariant.entries()
+  ) {
+    if (qtyToRelease <= 0) {
+      continue;
     }
+
+    if (
+      (actualByVariant.get(variantId) || 0) <
+      qtyToRelease
+    ) {
+      throw new ServiceError(
+        409,
+        'Giữ chỗ tồn kho không khớp số lượng trang phục cần trả.'
+      );
+    }
+
     let rem = qtyToRelease;
+
     for (const resv of reservations) {
-      if (String(resv.variantId) !== variantId || rem <= 0 || resv.status !== 'active') continue;
-      const take = Math.min(Number(resv.quantity || 0), rem);
-      const nextQty = Number(resv.quantity || 0) - take;
+      if (
+        String(resv.variantId) !== variantId ||
+        rem <= 0 ||
+        resv.status !== 'active'
+      ) {
+        continue;
+      }
+
+      const take = Math.min(
+        Number(resv.quantity || 0),
+        rem
+      );
+
+      const nextQty =
+        Number(resv.quantity || 0) - take;
+
       await InventoryReservation.updateOne(
-        { _id: resv._id },
-        nextQty <= 0 ? { $set: { status: 'released', quantity: 0 } } : { $set: { quantity: nextQty } },
+        {
+          _id: resv._id,
+        },
+        nextQty <= 0
+          ? {
+            $set: {
+              status: 'released',
+              quantity: 0,
+            },
+          }
+          : {
+            $set: {
+              quantity: nextQty,
+            },
+          },
         { session }
       );
+
       resv.quantity = nextQty;
-      if (nextQty <= 0) resv.status = 'released';
+
+      if (nextQty <= 0) {
+        resv.status = 'released';
+      }
+
       rem -= take;
     }
   }
 
-  await releaseReserved({ locationId: order.locationId, reservedByVariant: releaseByVariant }, session);
+  await releaseReserved(
+    {
+      locationId: order.locationId,
+      reservedByVariant: releaseByVariant,
+    },
+    session
+  );
 }
 
-// Nghiệm thu KCS & hoàn cọc (hỗ trợ cả GHN thật và mô phỏng, cả trả từng phần lẫn toàn đơn)
-export async function completeSimulatedReturn(user, id, options = {}) {
+export async function completeSimulatedReturn(
+  user,
+  id,
+  options = {}
+) {
+  if (!mongoose.isValidObjectId(options.shipmentId)) {
+    throw new ServiceError(
+      400,
+      'Thiếu mã đợt trả; tải lại cửa sổ nghiệm thu.'
+    );
+  }
   if (roleKey(user) !== 'branchmanager') {
     throw new ServiceError(
       403,
@@ -1312,12 +2006,16 @@ export async function completeSimulatedReturn(user, id, options = {}) {
         .session(session);
 
       return {
-        refundedAmount: order.refundedDepositAmount || previous?.amount || 0,
+        refundedAmount:
+          order.refundedDepositAmount ||
+          previous?.amount ||
+          0,
         alreadyCompleted: true,
       };
     }
 
     const shipment = await OrderShipment.findOne({
+      _id: options.shipmentId,
       orderId: id,
       orderType: 'rental',
       shipmentType: 'return',
@@ -1333,7 +2031,7 @@ export async function completeSimulatedReturn(user, id, options = {}) {
       );
     }
 
-    // Chống bấm hoàn tất trùng trên cùng 1 vận đơn đợt trả
+    // Chống hoàn tất trùng trên cùng vận đơn trả.
     const existingBatchReceipt = await RentalReturn.findOne({
       rentalOrderId: id,
       shipmentId: shipment._id,
@@ -1342,7 +2040,8 @@ export async function completeSimulatedReturn(user, id, options = {}) {
 
     if (existingBatchReceipt) {
       return {
-        refundedAmount: existingBatchReceipt.depositRefunded || 0,
+        refundedAmount:
+          existingBatchReceipt.depositRefunded || 0,
         alreadyCompleted: true,
       };
     }
@@ -1354,7 +2053,12 @@ export async function completeSimulatedReturn(user, id, options = {}) {
 
     const hasReceiptVideo =
       Boolean(shipment.returnReceivedVideo) ||
-      (!hasPriorCompletedReturn && order.rentalStatus !== 'partially_returned' && Boolean(order.returnReceivedVideo));
+      (
+        !hasPriorCompletedReturn &&
+        order.rentalStatus !== 'partially_returned' &&
+        Boolean(order.returnReceivedVideo)
+      );
+
     if (!hasReceiptVideo) {
       throw new ServiceError(
         422,
@@ -1362,49 +2066,120 @@ export async function completeSimulatedReturn(user, id, options = {}) {
       );
     }
 
-    const progress = await getRentalReturnProgress(id, session);
+    const progress = await getRentalReturnProgress(
+      id,
+      session
+    );
+
     if (!progress.details.length) {
-      throw new ServiceError(409, 'Đơn chưa có chi tiết sản phẩm.');
+      throw new ServiceError(
+        409,
+        'Đơn chưa có chi tiết sản phẩm.'
+      );
     }
 
-    const detailMap = new Map(progress.details.map(d => [String(d._id), d]));
+    const detailMap = new Map(
+      progress.details.map(d => [String(d._id), d])
+    );
+
     const batchLines = [];
 
-    if (Array.isArray(shipment.items) && shipment.items.length > 0) {
+    if (
+      Array.isArray(shipment.items) &&
+      shipment.items.length > 0
+    ) {
       for (const si of shipment.items) {
-        if (!si.rentalOrderDetailId) continue;
+        if (!si.rentalOrderDetailId) {
+          continue;
+        }
+
         const dId = String(si.rentalOrderDetailId);
         const detail = detailMap.get(dId);
         const prog = progress.progressByDetailId.get(dId);
         const qty = Number(si.quantity || 1);
-        if (!detail || !prog || qty < 1 || qty > prog.remainingQuantity) {
-          throw new ServiceError(409, 'Danh sách trang phục trong vận đơn trả không khớp số lượng còn lại của đơn.');
+
+        if (
+          !detail ||
+          !prog ||
+          !Number.isSafeInteger(qty) ||
+          qty < 1 ||
+          qty > prog.remainingQuantity
+        ) {
+          throw new ServiceError(
+            409,
+            'Danh sách trang phục trong vận đơn trả không khớp số lượng còn lại của đơn.'
+          );
         }
-        batchLines.push({ detail, quantity: qty });
+
+        batchLines.push({
+          detail,
+          quantity: qty,
+        });
       }
     }
 
     if (!batchLines.length) {
       for (const p of progress.progressByDetailId.values()) {
         if (p.remainingQuantity > 0) {
-          batchLines.push({ detail: p.detail, quantity: p.remainingQuantity });
+          batchLines.push({
+            detail: p.detail,
+            quantity: p.remainingQuantity,
+          });
         }
       }
     }
 
     if (!batchLines.length) {
-      throw new ServiceError(409, 'Không còn trang phục nào chưa trả trên đơn thuê này.');
+      throw new ServiceError(
+        409,
+        'Không còn trang phục nào chưa trả trên đơn thuê này.'
+      );
     }
 
-    const batchQtySum = batchLines.reduce((s, l) => s + l.quantity, 0);
-    const isFinalBatch = batchQtySum >= progress.totalRemainingQuantity;
-    const remainingLockedDeposit = remainingLockedDepositOf(order);
+    const requestedByDetail = new Map();
+
+    for (const line of batchLines) {
+      const key = String(line.detail._id);
+
+      requestedByDetail.set(
+        key,
+        (requestedByDetail.get(key) || 0) + line.quantity
+      );
+
+      if (
+        requestedByDetail.get(key) >
+        progress.progressByDetailId.get(key).remainingQuantity
+      ) {
+        throw new ServiceError(
+          409,
+          'Vận đơn trả có số lượng trùng hoặc vượt số còn lại.'
+        );
+      }
+    }
+
+    const batchQtySum = batchLines.reduce(
+      (sum, line) => sum + line.quantity,
+      0
+    );
+
+    const isFinalBatch =
+      batchQtySum >= progress.totalRemainingQuantity;
+
+    const remainingLockedDeposit =
+      remainingLockedDepositOf(order);
 
     if (
       !Number.isSafeInteger(remainingLockedDeposit) ||
       remainingLockedDeposit < 0 ||
       order.paymentStatus !== 'paid' ||
-      (remainingLockedDeposit > 0 && !['held', 'partially_refunded', 'partially_deducted'].includes(order.depositStatus))
+      (
+        remainingLockedDeposit > 0 &&
+        ![
+          'held',
+          'partially_refunded',
+          'partially_deducted',
+        ].includes(order.depositStatus)
+      )
     ) {
       throw new ServiceError(
         409,
@@ -1412,53 +2187,145 @@ export async function completeSimulatedReturn(user, id, options = {}) {
       );
     }
 
-    const rawTotalRentalFee = progress.details.reduce((s, d) => s + Number(d.lineTotal || 0), 0);
+    const rawTotalRentalFee = progress.details.reduce(
+      (sum, detail) =>
+        sum + Number(detail.lineTotal || 0),
+      0
+    );
+
     let batchDeposit = 0;
     let batchRentalFee = 0;
 
     for (const line of batchLines) {
       const { detail, quantity } = line;
-      const lineRentalShare = Number(detail.quantity || 1) > 0
-        ? (Number(detail.lineTotal || 0) * quantity) / Number(detail.quantity || 1)
-        : 0;
+      const detailQuantity = Number(detail.quantity || 1);
+
+      const lineRentalShare =
+        detailQuantity > 0
+          ? (
+            Number(detail.lineTotal || 0) *
+            quantity
+          ) / detailQuantity
+          : 0;
+
       batchRentalFee += lineRentalShare;
 
-      const unitDep = calcUnitDeposit(detail, order.depositAmount, rawTotalRentalFee);
+      const unitDep = calcUnitDeposit(
+        detail,
+        order.depositAmount,
+        rawTotalRentalFee
+      );
+
       batchDeposit += unitDep * quantity;
     }
 
     batchDeposit = isFinalBatch
       ? remainingLockedDeposit
-      : Math.min(remainingLockedDeposit, Math.max(0, Math.round(batchDeposit)));
+      : Math.min(
+        remainingLockedDeposit,
+        Math.max(0, Math.round(batchDeposit))
+      );
+
+    const assessment = await assessRentalReturnItems(
+      order,
+      batchLines,
+      options.inspections,
+      session
+    );
+
+    const { entries, totalDamageFee } = assessment;
 
     const now = new Date();
-    const effectiveReturnDate = shipment.shippedAt || shipment.deliveredAt || now;
-    const { lateDays, lateFee } = calculateLateFee(order, effectiveReturnDate, Math.round(batchRentalFee));
-    const rawDamageFee =
-      options.damageFee === undefined || options.damageFee === null || options.damageFee === ''
-        ? 0
-        : Number(options.damageFee);
-    if (!Number.isSafeInteger(rawDamageFee) || rawDamageFee < 0) {
-      throw new ServiceError(400, 'Phí hư hỏng phải là số nguyên không âm hợp lệ.');
+    const effectiveReturnDate =
+      shipment.shippedAt || shipment.deliveredAt || now;
+
+    const overdueMs =
+      new Date(effectiveReturnDate).getTime() -
+      new Date(order.dueDate).getTime();
+
+    if (!Number.isFinite(overdueMs)) {
+      throw new ServiceError(
+        409,
+        'Ngày trả hoặc hạn trả không hợp lệ.'
+      );
     }
-    const totalDamageFee = rawDamageFee;
-    const totalDeductions = lateFee + totalDamageFee;
 
-    const deductFromLocked = Math.min(remainingLockedDeposit, totalDeductions);
-    const refundedFromBatch = isFinalBatch
-      ? Math.max(0, remainingLockedDeposit - totalDeductions)
-      : Math.max(0, batchDeposit - totalDeductions);
-    const lockedToUnlock = isFinalBatch
-      ? remainingLockedDeposit
-      : Math.min(remainingLockedDeposit, refundedFromBatch + deductFromLocked);
-    const excessDebt = isFinalBatch ? Math.max(0, totalDeductions - remainingLockedDeposit) : 0;
+    const lateDays = Math.max(
+      0,
+      Math.ceil(overdueMs / 86400000)
+    );
 
-    const newRefundedTotal = Number(order.refundedDepositAmount || 0) + refundedFromBatch;
-    const newDeductedTotal = Number(order.deductedDepositAmount || 0) + deductFromLocked;
+    const dailyFee = batchLines.reduce(
+      (sum, line) =>
+        sum + Number(line.detail.unitRentalFee) * line.quantity,
+      0
+    );
+
+    const lateFee = Math.round(lateDays * dailyFee * 1.5);
+
+    if (!Number.isSafeInteger(lateFee) || lateFee < 0) {
+      throw new ServiceError(409, 'Phí quá hạn không hợp lệ.');
+    }
+
+    // Giữ chặn trường hợp cần chuyển thuê sang mua.
+    if (lateFee > remainingLockedDeposit) {
+      throw new ServiceError(
+        409,
+        'Phí quá hạn vượt cọc còn lại; cần xử lý chuyển thuê sang mua trước khi đóng đơn.'
+      );
+    }
+
+    // Chỉ quyết toán cọc thuộc đợt trả hiện tại.
+    const lockedToUnlock = batchDeposit;
+
+    // Phí quá hạn được thu trước.
+    const collectedLateFee = Math.min(
+      lockedToUnlock,
+      lateFee
+    );
+
+    const collectedDamageFee = Math.min(
+      lockedToUnlock - collectedLateFee,
+      totalDamageFee
+    );
+
+    const deductFromLocked =
+      collectedLateFee + collectedDamageFee;
+
+    const refundedFromBatch =
+      lockedToUnlock - deductFromLocked;
+
+    // Phần phí vượt giới hạn cọc, không thu thêm và không ghi nợ.
+    const uncollectedAmount =
+      Math.max(0, lateFee - collectedLateFee) +
+      Math.max(0, totalDamageFee - collectedDamageFee);
+
+    const collectedByItem = allocateCollectedDamage(
+      entries,
+      collectedDamageFee
+    );
+
+    const excessDebt = 0;
+
+    const newRefundedTotal =
+      Number(order.refundedDepositAmount || 0) +
+      refundedFromBatch;
+
+    const newDeductedTotal =
+      Number(order.deductedDepositAmount || 0) +
+      deductFromLocked;
 
     let nextDepositStatus;
+
     if (!isFinalBatch) {
-      nextDepositStatus = newRefundedTotal > 0 ? 'partially_refunded' : (newDeductedTotal > 0 ? 'partially_deducted' : order.depositStatus);
+      nextDepositStatus =
+        newRefundedTotal > 0
+          ? 'partially_refunded'
+          : (
+            newDeductedTotal > 0
+              ? 'partially_deducted'
+              : order.depositStatus
+          );
     } else if (newDeductedTotal === 0) {
       nextDepositStatus = 'refunded';
     } else if (newRefundedTotal > 0) {
@@ -1468,18 +2335,37 @@ export async function completeSimulatedReturn(user, id, options = {}) {
     }
 
     const orderUpdateSet = {
-      rentalStatus: isFinalBatch ? 'returned' : 'partially_returned',
+      rentalStatus: isFinalBatch
+        ? 'returned'
+        : 'partially_returned',
+
       depositStatus: nextDepositStatus,
       refundedDepositAmount: newRefundedTotal,
       deductedDepositAmount: newDeductedTotal,
+
       ...(isFinalBatch
-        ? { actualReturnedAt: now }
-        : { returnVideo: null, returnReceivedVideo: null }),
+        ? {
+          actualReturnedAt: now,
+        }
+        : {
+          returnVideo: null,
+          returnReceivedVideo: null,
+        }),
     };
-    if (excessDebt > 0) {
-      orderUpdateSet.note = order.note
-        ? `${order.note}; Dư nợ đền bù vượt cọc: ${excessDebt.toLocaleString('vi-VN')} đ`
-        : `Dư nợ đền bù vượt cọc: ${excessDebt.toLocaleString('vi-VN')} đ`;
+
+    // Ghi chú khoản không thu thêm, không ghi nhận dư nợ.
+    const uncollectedNote =
+      uncollectedAmount > 0
+        ? `Phí vượt giới hạn cọc của đợt trả: ${uncollectedAmount.toLocaleString('vi-VN')} đ; không thu thêm từ khách hàng, không ghi nhận dư nợ.`
+        : '';
+
+    if (uncollectedNote) {
+      orderUpdateSet.note = [
+        order.note,
+        uncollectedNote,
+      ]
+        .filter(Boolean)
+        .join('; ');
     }
 
     const claimed = await RentalOrder.updateOne(
@@ -1490,7 +2376,9 @@ export async function completeSimulatedReturn(user, id, options = {}) {
       },
       {
         $set: orderUpdateSet,
-        $inc: { returnFlowVersion: 1 },
+        $inc: {
+          returnFlowVersion: 1,
+        },
       },
       { session }
     );
@@ -1502,6 +2390,14 @@ export async function completeSimulatedReturn(user, id, options = {}) {
       );
     }
 
+    const receiptNote =
+      options.note ||
+      (
+        isFinalBatch
+          ? 'Shop xác nhận nghiệm thu đợt trả cuối và hoàn tất quyết toán cọc.'
+          : `Shop xác nhận nghiệm thu ${batchQtySum} trang phục đợt trả một phần; hoàn ${refundedFromBatch.toLocaleString('vi-VN')}đ tiền cọc.`
+      );
+
     const [receipt] = await RentalReturn.create(
       [
         {
@@ -1511,110 +2407,89 @@ export async function completeSimulatedReturn(user, id, options = {}) {
           receivedBy: user._id,
           returnStatus: 'completed',
           returnedAt: now,
+
+          // Tổng phí đánh giá của đợt trả.
           lateFee,
           damageFee: totalDamageFee,
+
+          // Cọc quyết toán và số phí thực thu của đợt trả.
+          depositSettled: lockedToUnlock,
+          collectedLateFee,
+          collectedDamageFee,
+          totalDeducted: deductFromLocked,
+          uncollectedAmount,
           depositRefunded: refundedFromBatch,
-          note:
-            options.note ||
-            (isFinalBatch
-              ? 'Shop xác nhận nhận đủ đồ thuê còn lại và hoàn tất quyết toán cọc.'
-              : `Shop xác nhận nhận ${batchQtySum} trang phục đợt trả một phần; hoàn ${refundedFromBatch.toLocaleString('vi-VN')}đ tiền cọc.`),
+
+          note: [
+            receiptNote,
+            uncollectedNote,
+          ]
+            .filter(Boolean)
+            .join('; '),
         },
       ],
       { session }
     );
 
-    const allDetailIds = progress.details.map(d => d._id);
-    const allOrderItems = await RentalOrderItem.find({
-      rentalOrderDetailId: { $in: allDetailIds },
-    }).session(session);
+    // Nghiệm thu từng hiện vật do giao diện gửi lên.
+    await returnItems(
+      entries.map(entry => ({
+        item: entry.item,
+        inspectionResult: entry.inspectionResult,
+      })),
+      session
+    );
 
-    const handedOverByDetail = new Map();
-    for (const row of allOrderItems) {
-      if (row.status === 'handed_over') {
-        const k = String(row.rentalOrderDetailId);
-        if (!handedOverByDetail.has(k)) handedOverByDetail.set(k, []);
-        handedOverByDetail.get(k).push(row);
-      }
-    }
+    await RentalReturnDetail.insertMany(
+      entries.map(entry => ({
+        rentalReturnId: receipt._id,
+        rentalOrderDetailId: entry.detail._id,
+        itemId: entry.item._id,
+        quantityReturned: 1,
+        inspectionResult: entry.inspectionResult,
+        damageMode: entry.damageMode,
+        damageValue: entry.damageValue,
+        damageBaseValue: entry.damageBaseValue,
+        assessedDamageFee: entry.assessedDamageFee,
+        damageFee: collectedByItem.get(String(entry.item._id)),
+        note: entry.note,
+      })),
+      { session }
+    );
 
-    if (allOrderItems.length > 0) {
-      const selectedRows = [];
-      for (const { detail, quantity } of batchLines) {
-        const candidates = handedOverByDetail.get(String(detail._id)) || [];
-        if (candidates.length < quantity) {
-          throw new ServiceError(409, 'Hiện vật đã bàn giao không đủ khớp số lượng hoàn trả.');
-        }
-        selectedRows.push(...candidates.slice(0, quantity).map((row) => ({ row, detail })));
-      }
+    await StockMovement.insertMany(
+      entries.map(entry => ({
+        itemId: entry.item._id,
+        variantId: entry.item.variantId,
+        locationId: entry.item.locationId,
+        storageId: entry.item.storageId || null,
+        movementType: 'rental_return',
+        quantityChange:
+          entry.inspectionResult === 'missing' ? 0 : 1,
+        referenceType: 'rental_return',
+        referenceId: receipt._id,
+        createdBy: user._id,
+        note: `Nghiệm thu: ${entry.inspectionResult}`,
+      })),
+      { session }
+    );
 
-      const inventory = await InventoryItem.find({
-        _id: { $in: selectedRows.map(({ row }) => row.itemId) },
-      }).session(session);
-
-      if (inventory.length !== selectedRows.length) {
-        throw new ServiceError(409, 'Thiếu hiện vật trong kho.');
-      }
-
-      const invById = new Map(inventory.map((it) => [String(it._id), it]));
-      await returnItems(
-        inventory.map(item => ({
-          item,
-          inspectionResult: 'ok',
-        })),
-        session
-      );
-
-      await RentalReturnDetail.insertMany(
-        selectedRows.map(({ row, detail }) => ({
-          rentalReturnId: receipt._id,
-          rentalOrderDetailId: detail._id,
-          quantityReturned: 1,
-          itemId: row.itemId,
-          inspectionResult: 'ok',
-        })),
-        { session }
-      );
-
-      await StockMovement.insertMany(
-        selectedRows.map(({ row }) => {
-          const item = invById.get(String(row.itemId));
-          return {
-            itemId: item._id,
-            variantId: item.variantId,
-            locationId: item.locationId,
-            storageId: null,
-            movementType: 'rental_return',
-            quantityChange: 1,
-            referenceType: 'rental_return',
-            referenceId: receipt._id,
-            createdBy: user._id,
-          };
-        }),
-        { session }
-      );
-
-      await RentalOrderItem.updateMany(
-        { _id: { $in: selectedRows.map(({ row }) => row._id) } },
-        { $set: { status: 'returned' } },
-        { session }
-      );
-    } else {
-      const releaseByVariant = new Map();
-      for (const { detail, quantity } of batchLines) {
-        const vId = String(detail.rawVariantId || detail.variantId?._id || detail.variantId);
-        releaseByVariant.set(vId, (releaseByVariant.get(vId) || 0) + quantity);
-      }
-      await releasePartialRentalReservations(order, releaseByVariant, session);
-
-      await RentalReturnDetail.insertMany(
-        batchLines.map(({ detail, quantity }) => ({
-          rentalReturnId: receipt._id,
-          rentalOrderDetailId: detail._id,
-          quantityReturned: quantity,
-          itemId: null,
-          inspectionResult: 'ok',
-        })),
+    for (const entry of entries) {
+      await RentalOrderItem.updateOne(
+        {
+          _id: entry.row._id,
+          status: 'handed_over',
+        },
+        {
+          $set: {
+            status:
+              entry.inspectionResult === 'missing'
+                ? 'missing'
+                : entry.inspectionResult === 'needs_service'
+                  ? 'damaged'
+                  : 'returned',
+          },
+        },
         { session }
       );
     }
@@ -1623,23 +2498,48 @@ export async function completeSimulatedReturn(user, id, options = {}) {
       const wallet = await Wallet.findOne({
         userId: order.customerId,
       })
-        .select('+balanceEncrypted +lockedBalanceEncrypted')
+        .select(
+          '+balanceEncrypted +lockedBalanceEncrypted'
+        )
         .session(session);
 
-      await validateDepositHold(order, wallet, lockedToUnlock, session);
+      await validateDepositHold(
+        order,
+        wallet,
+        lockedToUnlock,
+        session
+      );
 
-      const businessKey = `rental-return:${id}:${receipt._id}`;
-      const isZeroRefund = refundedFromBatch === 0 && deductFromLocked > 0;
+      const businessKey =
+        `rental-return:${id}:${receipt._id}`;
+
+      const isZeroRefund =
+        refundedFromBatch === 0 &&
+        deductFromLocked > 0;
+
       const [tx] = await WalletTransaction.create(
         [
           {
             walletId: wallet._id,
             userId: order.customerId,
             businessKey,
-            code: generateWalletTxCode(isZeroRefund ? 'ADJ-RNT' : 'REF-RNT'),
-            transactionType: isZeroRefund ? 'adjustment' : 'deposit_refund',
-            direction: isZeroRefund ? 'debit' : 'credit',
-            amount: isZeroRefund ? deductFromLocked : refundedFromBatch,
+
+            code: generateWalletTxCode(
+              isZeroRefund ? 'ADJ-RNT' : 'REF-RNT'
+            ),
+
+            transactionType: isZeroRefund
+              ? 'adjustment'
+              : 'deposit_refund',
+
+            direction: isZeroRefund
+              ? 'debit'
+              : 'credit',
+
+            amount: isZeroRefund
+              ? deductFromLocked
+              : refundedFromBatch,
+
             status: 'success',
             referenceType: 'RentalOrder',
             referenceId: order._id,
@@ -1649,8 +2549,12 @@ export async function completeSimulatedReturn(user, id, options = {}) {
         { session }
       );
 
-      // Mở khóa đúng phần cọc đợt này; nếu có phạt trễ/hỏng thì trừ vào balanceEncrypted
-      const balanceDelta = deductFromLocked > 0 ? -deductFromLocked : 0;
+      // Mở khóa cọc của đợt trả và trừ đúng số phí thực thu.
+      const balanceDelta =
+        deductFromLocked > 0
+          ? -deductFromLocked
+          : 0;
+
       await changeFunds(
         wallet,
         tx,
@@ -1667,8 +2571,325 @@ export async function completeSimulatedReturn(user, id, options = {}) {
       refundedAmount: refundedFromBatch,
       lateDays,
       lateFee,
+      assessedDamageFee: totalDamageFee,
+      collectedLateFee,
+      collectedDamageFee,
+      totalDeducted: deductFromLocked,
+      uncollectedAmount,
       isPartial: !isFinalBatch,
       alreadyCompleted: false,
     };
   });
+}
+
+export function rentalCompensationBasis(detail) {
+  if (detail.compensationValuePerUnit != null) {
+    return {
+      value: detail.compensationValuePerUnit,
+      source: 'order',
+    };
+  }
+
+  const variant = detail.variantId;
+  const value =
+    variant?.productId && typeof variant.productId === 'object'
+      ? resolveProductPricing(variant.productId, variant).salePrice
+      : null;
+
+  return {
+    value: Number.isSafeInteger(value) && value > 0 ? value : null,
+    source: 'catalog',
+  };
+}
+
+export async function assessRentalReturnItems(
+  order,
+  batchLines,
+  inspections,
+  session
+) {
+  const expected = new Map();
+
+  for (const { detail, quantity } of batchLines) {
+    const key = String(detail._id);
+    expected.set(key, (expected.get(key) || 0) + quantity);
+  }
+
+  const count = [...expected.values()].reduce(
+    (sum, value) => sum + value,
+    0
+  );
+
+  if (
+    !Array.isArray(inspections) ||
+    inspections.length !== count ||
+    inspections.some(
+      entry => !entry || !mongoose.isValidObjectId(entry.itemId)
+    ) ||
+    new Set(inspections.map(entry => String(entry.itemId))).size !==
+    inspections.length
+  ) {
+    throw new ServiceError(
+      400,
+      `Đợt này cần chọn đúng ${count} hiện vật, không chọn trùng mã.`
+    );
+  }
+
+  const rows = await RentalOrderItem.find({
+    rentalOrderDetailId: {
+      $in: batchLines.map(line => line.detail._id),
+    },
+    itemId: {
+      $in: inspections.map(entry => entry.itemId),
+    },
+    status: 'handed_over',
+  }).session(session);
+
+  if (
+    rows.length !== count ||
+    [...expected].some(
+      ([key, qty]) =>
+        rows.filter(
+          row => String(row.rentalOrderDetailId) === key
+        ).length !== qty
+    )
+  ) {
+    throw new ServiceError(
+      409,
+      'Mã hiện vật hoặc số lượng từng sản phẩm không khớp đợt trả.'
+    );
+  }
+
+  const inventory = await InventoryItem.find({
+    _id: { $in: rows.map(row => row.itemId) },
+  }).session(session);
+
+  if (inventory.length !== count) {
+    throw new ServiceError(409, 'Thiếu hiện vật trong kho.');
+  }
+
+  const entries = rows.map(row => {
+    const input = inspections.find(
+      entry => String(entry.itemId) === String(row.itemId)
+    );
+
+    const detail = batchLines.find(
+      line =>
+        String(line.detail._id) === String(row.rentalOrderDetailId)
+    ).detail;
+
+    const item = inventory.find(
+      candidate => String(candidate._id) === String(row.itemId)
+    );
+
+    const variantId =
+      detail.rawVariantId || detail.variantId?._id || detail.variantId;
+
+    if (
+      item.status !== 'renting' ||
+      String(item.locationId) !== String(order.locationId) ||
+      String(item.variantId) !== String(variantId)
+    ) {
+      throw new ServiceError(
+        409,
+        `Hiện vật ${item.itemCode} không khớp đơn hoặc không còn đang cho thuê.`
+      );
+    }
+
+    const inspectionResult = input.inspectionResult;
+
+    if (!['ok', 'needs_service', 'missing'].includes(inspectionResult)) {
+      throw new ServiceError(
+        400,
+        `Chưa chọn tình trạng cho ${item.itemCode}.`
+      );
+    }
+
+    if (
+      input.note != null &&
+      (typeof input.note !== 'string' || input.note.length > 500)
+    ) {
+      throw new ServiceError(
+        400,
+        'Ghi chú mỗi hiện vật tối đa 500 ký tự.'
+      );
+    }
+
+    let damageMode = 'fixed';
+    let damageValue = 0;
+    let damageBaseValue = null;
+    let assessedDamageFee = 0;
+
+    // Nguyên vẹn luôn có bồi thường bằng 0.
+    if (inspectionResult !== 'ok') {
+      damageMode = input.damageMode;
+      damageValue = Number(input.damageValue);
+
+      if (
+        !['fixed', 'percentage'].includes(damageMode) ||
+        !['string', 'number'].includes(typeof input.damageValue) ||
+        String(input.damageValue).trim() === '' ||
+        !Number.isFinite(damageValue) ||
+        damageValue < 0
+      ) {
+        throw new ServiceError(
+          400,
+          `Nhập mức bồi thường riêng cho ${item.itemCode}.`
+        );
+      }
+
+      if (damageMode === 'percentage') {
+        damageBaseValue = rentalCompensationBasis(detail).value;
+
+        if (
+          !Number.isSafeInteger(damageBaseValue) ||
+          damageBaseValue <= 0
+        ) {
+          throw new ServiceError(
+            409,
+            `Chưa có giá trị sản phẩm của ${item.itemCode}; dùng số tiền cố định.`
+          );
+        }
+
+        if (input.expectedBaseValue !== damageBaseValue) {
+          throw new ServiceError(
+            409,
+            'Giá trị sản phẩm đã thay đổi. Tải lại và kiểm tra mức bồi thường.'
+          );
+        }
+
+        if (
+          damageValue > 100 ||
+          !/^\d+(\.\d{1,2})?$/.test(String(input.damageValue))
+        ) {
+          throw new ServiceError(
+            400,
+            'Phần trăm phải từ 0 đến 100, tối đa 2 chữ số thập phân.'
+          );
+        }
+
+        assessedDamageFee = Number(
+          (
+            BigInt(damageBaseValue) *
+            BigInt(Math.round(damageValue * 100)) +
+            5000n
+          ) / 10000n
+        );
+      } else {
+        if (!Number.isSafeInteger(damageValue)) {
+          throw new ServiceError(
+            400,
+            'Bồi thường VND phải là số nguyên hợp lệ.'
+          );
+        }
+
+        // Lấy cọc từ dữ liệu đơn thuê trên server.
+        const itemDeposit = detail.depositPerUnit;
+
+        if (
+          !Number.isSafeInteger(itemDeposit) ||
+          itemDeposit < 0
+        ) {
+          throw new ServiceError(
+            409,
+            `Chưa có tiền cọc hợp lệ cho ${item.itemCode}; cần kiểm tra chi tiết đơn thuê.`
+          );
+        }
+
+        if (damageValue > itemDeposit) {
+          throw new ServiceError(
+            400,
+            `Bồi thường bằng tiền cho ${item.itemCode} phải từ 0 đến ${itemDeposit.toLocaleString('vi-VN')}đ (cọc của một hiện vật).`
+          );
+        }
+
+        assessedDamageFee = damageValue;
+      }
+    }
+
+    return {
+      row,
+      detail,
+      item,
+      inspectionResult,
+      damageMode,
+      damageValue,
+      damageBaseValue,
+      assessedDamageFee,
+      note: input.note?.trim() || '',
+    };
+  });
+
+  const total = entries.reduce(
+    (sum, entry) => sum + BigInt(entry.assessedDamageFee),
+    0n
+  );
+
+  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new ServiceError(
+      400,
+      'Tổng bồi thường vượt giới hạn xử lý.'
+    );
+  }
+
+  return {
+    entries,
+    totalDamageFee: Number(total),
+  };
+}
+
+export function allocateCollectedDamage(entries, collected) {
+  const total = entries.reduce(
+    (sum, entry) => sum + BigInt(entry.assessedDamageFee),
+    0n
+  );
+
+  if (
+    !Number.isSafeInteger(collected) ||
+    collected < 0 ||
+    BigInt(collected) > total
+  ) {
+    throw new ServiceError(
+      409,
+      'Số bồi thường thực thu không hợp lệ.'
+    );
+  }
+
+  if (total === 0n) {
+    return new Map(
+      entries.map(entry => [String(entry.item._id), 0])
+    );
+  }
+
+  const shares = entries.map(entry => {
+    const numerator =
+      BigInt(entry.assessedDamageFee) * BigInt(collected);
+
+    return {
+      id: String(entry.item._id),
+      amount: Number(numerator / total),
+      remainder: numerator % total,
+    };
+  });
+
+  let remainder =
+    collected - shares.reduce((sum, share) => sum + share.amount, 0);
+
+  shares.sort((a, b) =>
+    a.remainder === b.remainder
+      ? a.id.localeCompare(b.id)
+      : a.remainder > b.remainder
+        ? -1
+        : 1
+  );
+
+  for (const share of shares) {
+    if (remainder <= 0) break;
+    share.amount += 1;
+    remainder -= 1;
+  }
+
+  return new Map(
+    shares.map(share => [share.id, share.amount])
+  );
 }

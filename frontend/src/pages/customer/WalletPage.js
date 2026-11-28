@@ -91,9 +91,9 @@ const TYPES = {
   withdraw: "Rút tiền",
   payment: "Thanh toán mua hàng",
   rental_payment: "Thanh toán thuê",
-  rental_deposit: "Thanh toán cọc",
+  rental_deposit: "Tạm giữ cọc",
   refund: "Hoàn tiền",
-  deposit_refund: "Hoàn cọc",
+  deposit_refund: "Quyết toán cọc",
   adjustment: "Điều chỉnh",
   reversal: "Đảo giao dịch",
 };
@@ -1021,17 +1021,90 @@ export default function WalletPage() {
 
                         <tbody>
                           {history.items.map((item) => {
-                            const completed = item.status === "success";
-                            const credit = item.direction === "credit";
+                            const completed = item.status === 'success';
+
+                            const settlement = item.rentalSettlement;
+
+                            const hasSettlement =
+                              settlement && !settlement.unavailable;
+
+                            const displayedAmount = hasSettlement
+                              ? settlement.refunded
+                              : item.amount;
+
+                            const credit = hasSettlement
+                              ? true
+                              : item.direction === 'credit';
 
                             return (
                               <tr key={item.id}>
                                 <td>
                                   <strong>
-                                    {TYPES[item.type] || item.type}
+                                    {hasSettlement
+                                      ? 'Quyết toán cọc'
+                                      : TYPES[item.type] || item.type}
                                   </strong>
 
                                   <small>{item.code}</small>
+                                  {hasSettlement && (
+                                    <div
+                                      style={{
+                                        fontSize: 13,
+                                        marginTop: 8,
+                                        lineHeight: 1.8,
+                                      }}
+                                    >
+                                      <div>
+                                        Phiếu nghiệm thu: {settlement.returnCode}
+                                      </div>
+
+                                      <div>
+                                        Cọc quyết toán:{' '}
+                                        <strong>
+                                          {money(settlement.depositSettled)}
+                                        </strong>
+                                      </div>
+
+                                      <div>
+                                        Phí quá hạn trừ từ cọc:{' '}
+                                        <strong>
+                                          {money(settlement.lateFee)}
+                                        </strong>
+                                      </div>
+
+                                      <div>
+                                        Bồi thường hỏng/mất trừ từ cọc:{' '}
+                                        <strong>
+                                          {money(settlement.damageFee)}
+                                        </strong>
+                                      </div>
+
+                                      {(settlement.items || [])
+                                        .filter(row => row.inspectionResult !== 'ok')
+                                        .map((row, index) => (
+                                          <div key={`${row.itemCode}:${index}`}>
+                                            {row.itemCode}: đánh giá{' '}
+                                            {money(row.assessedDamageFee)},{' '}
+                                            thực trừ từ cọc{' '}
+                                            {money(row.collectedDamageFee)}.
+                                            {row.note && ` Ghi chú: ${row.note}`}
+                                          </div>
+                                        ))}
+
+                                      {settlement.note && (
+                                        <div>
+                                          Ghi chú: {settlement.note}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {settlement?.unavailable && (
+                                    <small>
+                                      Chưa đọc được chi tiết quyết toán.
+                                      Cần kiểm tra phiếu nghiệm thu.
+                                    </small>
+                                  )}
 
                                   {item.bankAccount && (
                                     <small>{item.bankAccount}</small>
@@ -1063,16 +1136,21 @@ export default function WalletPage() {
                                 <td
                                   className={
                                     completed && credit
-                                      ? "vw-credit"
-                                      : ""
+                                      ? 'vw-credit'
+                                      : ''
                                   }
                                 >
-                                  {completed
+                                  {completed && displayedAmount > 0
                                     ? credit
-                                      ? "+"
-                                      : "−"
-                                    : ""}
-                                  {money(item.amount)}
+                                      ? '+'
+                                      : '−'
+                                    : ''}
+
+                                  {money(displayedAmount)}
+
+                                  {hasSettlement && (
+                                    <small>Hoàn về ví</small>
+                                  )}
                                 </td>
 
                                 <td>

@@ -30,6 +30,7 @@ import {
   reserveStock, closeReservations, releaseReserved,
   reserveItemsForOrder, releaseItemsFromOrder, handoverItems, withStatus,
 } from '../warehouse/orderStockService.js';
+import { RentalReturnDetail } from '../../models/sale&rental/RentalReturnDetail.js';
 import { StockMovement } from '../../models/warehouse/inventory/StockMovement.js';
 import { Wallet } from '../../models/finance/Wallet.js';
 import { WalletTransaction } from '../../models/finance/WalletTransaction.js';
@@ -37,6 +38,7 @@ import {
   readyWallet,
   readBalances,
   changeFunds,
+  inTransaction,
 } from '../walletService.js';
 import { checkRentalAvailability } from '../warehouse/productInventoryHelper.js';
 import {
@@ -453,6 +455,10 @@ export const calculateRentalPriceAndDeposit = async (items, startDate, dueDate) 
       rentalDays,
       lineRentalFee,
       unitDeposit,
+      compensationValuePerUnit:
+        Number.isSafeInteger(pricing.salePrice) && pricing.salePrice > 0
+          ? pricing.salePrice
+          : null,
       lineDeposit,
       note: item.note || '',
     });
@@ -710,6 +716,7 @@ export const createRentalOrder = async ({
         startDate: order.startDate,
         dueDate: order.dueDate,
         note: it.note,
+        compensationValuePerUnit: it.compensationValuePerUnit,
       });
 
       reservationDocs.push({
@@ -1071,8 +1078,8 @@ export const cancelRentalOrder = async ({
   }
 
   if (order.paymentStatus !== 'paid' || order.depositStatus !== 'held' ||
-      !Number.isSafeInteger(order.rentalFee) || order.rentalFee < 0 ||
-      !Number.isSafeInteger(order.depositAmount) || order.depositAmount < 0) {
+    !Number.isSafeInteger(order.rentalFee) || order.rentalFee < 0 ||
+    !Number.isSafeInteger(order.depositAmount) || order.depositAmount < 0) {
     throw new ServiceError(409, 'Thông tin thanh toán đơn thuê không khớp, vui lòng liên hệ cửa hàng.', 'INVALID_RENTAL_PAYMENT_STATE');
   }
 
@@ -1353,3 +1360,359 @@ export const listRentalOrders = async ({
     },
   };
 };
+
+export async function ensureRentalInventory(
+  id,
+  options = {},
+  externalSession = null
+) {
+  const execute = async session => {
+    const order = await RentalOrder.findById(id).session(session);
+
+    if (!order) {
+      throw new ServiceError(404, 'Không tìm thấy đơn thuê.');
+    }
+
+    if (order.rentalStatus === 'returned' && !options.assignments) {
+      return;
+    }
+
+    if (
+      ![
+        'draft',
+        'confirmed',
+        'renting',
+        'overdue',
+        'partially_returned',
+      ].includes(order.rentalStatus)
+    ) {
+      throw new ServiceError(
+        409,
+        'Trạng thái đơn không cho phép gán hoặc bàn giao hiện vật.'
+      );
+    }
+
+    // Khóa thay đổi của đơn trong transaction.
+    await RentalOrder.updateOne(
+      { _id: id },
+      { $inc: { returnFlowVersion: 1 } },
+      { session }
+    );
+
+    const details = await RentalOrderDetail.find({
+      rentalOrderId: id,
+    }).session(session);
+
+    const detailIds = details.map(d => d._id);
+
+    let rows = await RentalOrderItem.find({
+      rentalOrderDetailId: { $in: detailIds },
+    }).session(session);
+
+    const dispatch =
+      options.dispatch ||
+      ['renting', 'overdue', 'partially_returned'].includes(
+        order.rentalStatus
+      );
+
+    if (options.assignments) {
+      const assignments = options.assignments;
+
+      if (
+        !Array.isArray(assignments) ||
+        assignments.length !== details.length ||
+        assignments.some(a => !a || typeof a !== 'object') ||
+        new Set(assignments.map(a => String(a.detailId))).size !==
+        details.length
+      ) {
+        throw new ServiceError(
+          400,
+          'Cần nhập mã hiện vật cho từng dòng của đơn thuê.'
+        );
+      }
+
+      const anonymousReturns = await RentalReturnDetail.exists({
+        rentalOrderDetailId: { $in: detailIds },
+        itemId: null,
+      }).session(session);
+
+      if (anonymousReturns) {
+        throw new ServiceError(
+          409,
+          'Đơn đã có lần trả thiếu mã hiện vật; cần đối soát lịch sử kho trước.'
+        );
+      }
+
+      const used = new Set();
+
+      for (const detail of details) {
+        const input = assignments.find(
+          a => String(a.detailId) === String(detail._id)
+        );
+
+        const codes = input?.itemCodes;
+
+        if (
+          !Array.isArray(codes) ||
+          codes.length !== detail.quantity ||
+          codes.some(c => typeof c !== 'string' || !c.trim())
+        ) {
+          throw new ServiceError(
+            400,
+            `Cần nhập đúng ${detail.quantity} mã hiện vật cho mỗi dòng tương ứng.`
+          );
+        }
+
+        const items = await InventoryItem.find({
+          itemCode: { $in: codes.map(c => c.trim()) },
+        }).session(session);
+
+        if (items.length !== codes.length) {
+          throw new ServiceError(
+            409,
+            'Mã hiện vật không tồn tại hoặc bị trùng; không dùng SKU sản phẩm.'
+          );
+        }
+
+        const oldRows = rows.filter(
+          r => String(r.rentalOrderDetailId) === String(detail._id)
+        );
+
+        if (
+          oldRows.some(
+            r => !items.some(i => String(i._id) === String(r.itemId))
+          )
+        ) {
+          throw new ServiceError(
+            409,
+            'Không được thay thế hiện vật đã liên kết với đơn.'
+          );
+        }
+
+        for (const item of items) {
+          const key = String(item._id);
+
+          if (
+            used.has(key) ||
+            String(item.variantId) !== String(detail.variantId) ||
+            String(item.locationId) !== String(order.locationId) ||
+            item.storageId
+          ) {
+            throw new ServiceError(
+              409,
+              `Hiện vật ${item.itemCode} bị trùng hoặc không đúng biến thể/chi nhánh.`
+            );
+          }
+
+          used.add(key);
+
+          if (oldRows.some(r => String(r.itemId) === key)) {
+            continue;
+          }
+
+          const occupied = await RentalOrderItem.exists({
+            itemId: item._id,
+            status: { $in: ['assigned', 'handed_over'] },
+          }).session(session);
+
+          if (occupied) {
+            throw new ServiceError(
+              409,
+              `Hiện vật ${item.itemCode} đang thuộc đơn khác.`
+            );
+          }
+
+          const lastMovement =
+            item.status === 'renting'
+              ? await StockMovement.findOne({ itemId: item._id })
+                .sort({ createdAt: -1, _id: -1 })
+                .session(session)
+              : null;
+
+          const ownExport =
+            lastMovement?.movementType === 'rental_out' &&
+            lastMovement.referenceType === 'rental_order' &&
+            String(lastMovement.referenceId) === String(order._id);
+
+          if (item.status !== 'available' && !ownExport) {
+            throw new ServiceError(
+              409,
+              `Không thể gán hiện vật ${item.itemCode} ở trạng thái ${item.status}.`
+            );
+          }
+
+          if (!ownExport) {
+            await reserveItemsForOrder([item], session);
+          }
+
+          await RentalOrderItem.create(
+            [
+              {
+                rentalOrderDetailId: detail._id,
+                itemId: item._id,
+                status: ownExport ? 'handed_over' : 'assigned',
+                handedOverAt: ownExport
+                  ? order.actualDeliveryDate
+                  : null,
+                note: `Xác nhận mã hiện vật bởi ${options.operatorId || order.createdBy
+                  }`,
+              },
+            ],
+            { session }
+          );
+        }
+      }
+
+      rows = await RentalOrderItem.find({
+        rentalOrderDetailId: { $in: detailIds },
+      }).session(session);
+    }
+
+    const incomplete =
+      new Set(rows.map(r => String(r.itemId))).size !== rows.length ||
+      !details.length ||
+      details.some(
+        d =>
+          rows.filter(
+            r => String(r.rentalOrderDetailId) === String(d._id)
+          ).length !== d.quantity
+      );
+
+    if (incomplete) {
+      throw new ServiceError(
+        409,
+        'Chưa liên kết đủ hiện vật. Nhập mã hiện vật tại phần giao/nhận đồ của đơn.'
+      );
+    }
+
+    if (!dispatch) return;
+
+    const assigned = rows.filter(r => r.status === 'assigned');
+
+    const items = await InventoryItem.find({
+      _id: { $in: assigned.map(r => r.itemId) },
+    }).session(session);
+
+    if (
+      items.length !== assigned.length ||
+      items.some(
+        i =>
+          i.status !== 'reserved' ||
+          i.storageId ||
+          String(i.locationId) !== String(order.locationId)
+      )
+    ) {
+      throw new ServiceError(
+        409,
+        'Hiện vật đã gán không còn khớp trạng thái kho.'
+      );
+    }
+
+    const reservations = await closeReservations(
+      { orderId: id, orderType: 'rental' },
+      'consumed',
+      session
+    );
+
+    const expected = new Map();
+
+    for (const item of items) {
+      const key = String(item.variantId);
+      expected.set(key, (expected.get(key) || 0) + 1);
+    }
+
+    const variantKeys = new Set([
+      ...expected.keys(),
+      ...reservations.keys(),
+    ]);
+
+    if (
+      [...variantKeys].some(
+        key =>
+          (expected.get(key) || 0) !==
+          (reservations.get(key) || 0)
+      )
+    ) {
+      throw new ServiceError(
+        409,
+        'Giữ chỗ không khớp hiện vật; cần đối soát kho, không tự cộng/trừ tồn.'
+      );
+    }
+
+    if (items.length) {
+      await handoverItems(
+        {
+          locationId: order.locationId,
+          items,
+          reservedByVariant: reservations,
+        },
+        session
+      );
+
+      await RentalOrderItem.updateMany(
+        { _id: { $in: assigned.map(r => r._id) } },
+        {
+          $set: {
+            status: 'handed_over',
+            handedOverAt:
+              options.deliveredAt ||
+              order.actualDeliveryDate ||
+              new Date(),
+          },
+        },
+        { session }
+      );
+
+      await StockMovement.insertMany(
+        items.map(item => ({
+          itemId: item._id,
+          variantId: item.variantId,
+          locationId: item.locationId,
+          storageId: null,
+          movementType: 'rental_out',
+          quantityChange: -1,
+          referenceType: 'rental_order',
+          referenceId: order._id,
+          createdBy: options.operatorId || order.createdBy,
+          note: 'Bàn giao/đối soát hiện vật đơn thuê',
+        })),
+        { session }
+      );
+    }
+
+    if (
+      options.deliveredAt &&
+      !order.actualDeliveryDate &&
+      ['draft', 'confirmed'].includes(order.rentalStatus)
+    ) {
+      const at = new Date(options.deliveredAt);
+
+      const duration = Math.max(
+        86400000,
+        new Date(order.dueDate) - new Date(order.startDate)
+      );
+
+      await RentalOrder.updateOne(
+        { _id: id },
+        {
+          $set: {
+            actualDeliveryDate: at,
+            actualPickupDate: at,
+            startDate: at,
+            dueDate: new Date(at.getTime() + duration),
+            rentalStatus: 'renting',
+          },
+        },
+        { session }
+      );
+    }
+  };
+
+  try {
+    return externalSession
+      ? await execute(externalSession)
+      : await inTransaction(execute);
+  } catch (error) {
+    throw withStatus(error);
+  }
+}

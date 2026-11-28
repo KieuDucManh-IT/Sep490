@@ -8,6 +8,26 @@ const rentalReturnDetailSchema = new mongoose.Schema({
   // TASK-016: kết quả kiểm thay cho conditionOnReturn/itemReturnStatus (phiếu cũ vẫn còn field cũ trong DB, code mới không đọc).
   // ok → available; needs_service → unavailable; missing → lost (RentalOrderItem.status = missing).
   inspectionResult: { type: String, required: true, enum: ['ok', 'needs_service', 'missing'] },
+  damageMode: {
+    type: String,
+    enum: ['fixed', 'percentage'],
+    default: 'fixed',
+  },
+  damageValue: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
+  damageBaseValue: {
+    type: Number,
+    min: 0,
+    default: null,
+  },
+  assessedDamageFee: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
   damageFee: { type: Number, min: 0, default: 0 },
   note: { type: String, trim: true },
 }, { timestamps: true });

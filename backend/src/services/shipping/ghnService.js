@@ -338,10 +338,7 @@ const normGeoToken = (str) =>
     .trim();
 
 const appendNewAddressSuffix = (rawAddress, wardName, provinceName) => {
-  let addr = String(rawAddress || '').trim();
-  if (/^\d+$/.test(addr) && String(wardName || '').toLowerCase().startsWith('xã')) {
-    addr = `Thôn 1, ${addr}`;
-  }
+  const addr = String(rawAddress || '').trim();
   const cleanAddr = normGeoToken(addr);
   const parts = [addr];
   const cleanWard = normGeoToken(wardName).replace(/^(phuong|xa|thi tran)\s+/i, '');

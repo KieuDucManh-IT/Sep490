@@ -103,6 +103,7 @@ async function loadCatalog() {
       sizes,
       colors,
       imageUrl: primaryImage?.imageUrl || p.image || '',
+      aiTryOn: p.aiTryOn !== false,
     };
   });
 
@@ -116,6 +117,7 @@ async function loadCatalog() {
         `mã:${i.code}`,
         `tên:${i.name}`,
         `loại:${i.category}`,
+        i.aiTryOn === false ? 'thử đồ AI:không hỗ trợ' : 'thử đồ AI:có hỗ trợ',
         i.gender ? `giới tính:${i.gender}` : null,
         i.colors.length ? `màu:${i.colors.join(',')}` : 'màu:chưa rõ',
         i.sizes.length ? `size:${i.sizes.join(',')}` : 'size:chưa rõ',
@@ -211,6 +213,10 @@ Hệ thống cung cấp cho bạn 2 nguồn dữ liệu là nguồn sự thật 
 4. Quy cách nhắc đến sản phẩm: Mỗi khi đề xuất một món đồ cụ thể, phải nêu rõ: [Tên sản phẩm] (Mã: [Mã SP]) - Giá thuê/ngày (hoặc Giá mua).
 5. Chính sách: Chỉ giải thích các chính sách có trong <STORE_POLICY>. Tuyệt đối không tự sáng tác thêm ưu đãi, giảm giá cá nhân hoặc cam kết ngoài chính sách.
 6. Trung thực khi hết đồ: Nếu Catalog không có món đồ đúng hoàn toàn với yêu cầu, hãy thẳng thắn thông báo và đưa ra phương án thay thế gần nhất hiện có kèm lý do khác biệt, không cố gán ghép sản phẩm không liên quan.
+7. Quy tắc thử đồ AI:
+   - Các sản phẩm có ghi "thử đồ AI:không hỗ trợ" là sản phẩm không áp dụng công nghệ thử đồ AI.
+   - Với các sản phẩm này, TUYỆT ĐỐI KHÔNG mời khách thử đồ AI hoặc nói rằng có thể bấm thử đồ AI.
+   - Chỉ khuyến khích khách bấm thử đồ AI đối với sản phẩm có ghi "thử đồ AI:có hỗ trợ".
 
 # PHẠM VI HỖ TRỢ
 

@@ -17,6 +17,8 @@ import conversationRoutes from "./src/routes/conversationRoutes.js";
 import tryOnRoutes from "./src/routes/tryOnRoutes.js";
 import wardrobeRoutes from "./src/routes/wardrobeRoutes.js";
 import notificationRoutes from "./src/routes/notificationRoutes.js";
+import reviewRoutes from "./src/routes/reviewRoutes.js";
+import { syncAllProductRatings } from "./src/controllers/reviewController.js";
 import { wishlistRouter, collectionRouter } from "./src/routes/customer/collectionRoutes.js";
 import { initSocket } from "./src/socket/index.js";
 import http from "http";
@@ -115,6 +117,7 @@ app.use("/api/try-on", tryOnRoutes);
 app.use("/api/wardrobe", wardrobeRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/reviews", reviewRoutes);
 app.use("/api/v1/wishlist", wishlistRouter);
 app.use("/api/wishlist", wishlistRouter);
 app.use("/api/v1/collections", collectionRouter);
@@ -169,6 +172,7 @@ async function startServer() {
 
     startWalletReconcileJob();
     startShipmentSyncJob();
+    syncAllProductRatings().catch(() => {});
     if (process.env.GHN_API_TOKEN) {
       getNewProvinces().catch(() => {});
       getNewWards(1000000).catch(() => {});

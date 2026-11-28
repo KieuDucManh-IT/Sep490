@@ -35,7 +35,13 @@ export const getAdminMetrics = async (req, res) => {
 
     const totalUsers = userFacet?.[0]?.total?.[0]?.count || 0;
     const totalCustomers = userRoles.customer || 0;
-    const totalStaff = (userRoles.shop_owner || 0);
+    const totalStaff =
+      (userRoles.shop_owner || 0) +
+      (userRoles.operation_staff || 0) +
+      (userRoles.branch_manager || 0) +
+      (userRoles.warehouse_manager || 0) +
+      (userRoles.warehouse_staff || 0) +
+      (userRoles.owner || 0);
 
     const totalBranches = branchFacet?.[0]?.total?.[0]?.count || 0;
     const activeBranches = branchStatuses.active || 0;

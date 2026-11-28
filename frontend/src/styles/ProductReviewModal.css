@@ -1,0 +1,362 @@
+/* ==========================================================================
+   PRODUCT REVIEW MODAL - HAUTE COUTURE LUXURY VESTORA THEME
+   ========================================================================== */
+
+.v-review-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: vReviewFadeIn 0.2s ease-out;
+}
+
+.v-review-modal-card {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 600px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: vReviewSlideUp 0.25s ease-out;
+}
+
+@keyframes vReviewFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes vReviewSlideUp {
+  from { transform: translateY(20px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Header */
+.v-review-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: #fafafa;
+}
+
+.v-review-subtitle {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #c59b27;
+  margin-bottom: 4px;
+}
+
+.v-review-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  font-family: inherit;
+}
+
+.v-review-close-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.v-review-close-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Product Tabs for Multi-Item */
+.v-review-product-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  overflow-x: auto;
+}
+
+.v-review-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.v-review-tab-item.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.v-review-tab-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.v-review-tab-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.v-review-done-dot {
+  color: #10b981;
+  font-weight: bold;
+}
+
+/* Selected Product Banner */
+.v-review-product-banner {
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.v-review-product-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid #e2e8f0;
+}
+
+.v-review-product-info {
+  flex: 1;
+}
+
+.v-review-product-heading {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 6px 0;
+  line-height: 1.35;
+}
+
+.v-review-badge-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #059669;
+  background: #ecfdf5;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* Stars Rating */
+.v-review-rating-block {
+  padding: 20px 24px 10px 24px;
+}
+
+.v-review-rating-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 12px;
+}
+
+.v-review-stars-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.v-review-star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  transition: transform 0.15s;
+}
+
+.v-review-star-btn:hover {
+  transform: scale(1.15);
+}
+
+.v-review-star-icon.filled {
+  fill: #f59e0b;
+  color: #f59e0b;
+}
+
+.v-review-star-icon.empty {
+  fill: transparent;
+  color: #cbd5e1;
+}
+
+.v-review-score-text {
+  margin-left: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+/* Comment textarea */
+.v-review-comment-block {
+  padding: 12px 24px 20px 24px;
+}
+
+.v-review-comment-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.v-review-textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  color: #1e293b;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+
+.v-review-textarea:focus {
+  border-color: #c59b27;
+  box-shadow: 0 0 0 3px rgba(197, 155, 39, 0.15);
+}
+
+.v-review-char-count {
+  text-align: right;
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-top: 5px;
+}
+
+/* Alerts */
+.v-review-alert {
+  margin: 0 24px 16px 24px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.v-review-alert.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.v-review-alert.success {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+/* Actions Footer */
+.v-review-modal-actions {
+  padding: 16px 24px;
+  background: #fafafa;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.v-review-btn-secondary {
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.v-review-btn-secondary:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.v-review-btn-batch {
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #c59b27;
+  background: #fffdf5;
+  border: 1px solid #e7ce84;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.v-review-btn-batch:hover:not(:disabled) {
+  background: #fdf5db;
+}
+
+.v-review-btn-primary {
+  padding: 9px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #0f172a;
+  border: 1px solid #0f172a;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.v-review-btn-primary:hover:not(:disabled) {
+  background: #1e293b;
+  border-color: #1e293b;
+}
+
+.v-review-btn-primary:disabled,
+.v-review-btn-secondary:disabled,
+.v-review-btn-batch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
-  Search,
   Heart,
   Bell,
   ShoppingBag,
@@ -164,17 +163,13 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Liên Hệ & Về Chúng Tôi */}
+          {/* Liên Hệ & Chính Sách */}
           <div className="nav-dropdown-item">
-            <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/about") || isActive("/policy")}`}>
+            <Link to="/contact" className={`navbar-link ${isActive("/contact") || isActive("/policy")}`}>
               Liên Hệ <ChevronDown size={12} className="nav-arrow" />
             </Link>
             <div className="nav-dropdown-menu">
               <Link to="/contact" className="nav-sublink">Liên hệ & Hỗ trợ</Link>
-              <div className="nav-dropdown-divider"></div>
-              <Link to="/about" className="nav-sublink">Giới thiệu VESTORA</Link>
-              <Link to="/about#mission" className="nav-sublink">Tầm nhìn & Sứ mệnh</Link>
-              <Link to="/about#commitment" className="nav-sublink">Cam kết dịch vụ</Link>
               <div className="nav-dropdown-divider"></div>
               <Link to="/policy" className="nav-sublink">Chính sách VESTORA</Link>
             </div>

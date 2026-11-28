@@ -1123,72 +1123,7 @@
 }
 
 /* ============================================
-   5. GỢI Ý PHONG CÁCH THEO NHU CẦU
-   ============================================ */
-.style-suggestions-section {
-  margin-bottom: 56px;
-}
-
-.style-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-.style-visual-card {
-  position: relative;
-  height: 150px;
-  border-radius: 14px;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.style-card-bg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.4s ease;
-}
-
-.style-visual-card:hover .style-card-bg {
-  transform: scale(1.05);
-}
-
-.style-card-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.65) 100%);
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding: 14px;
-  color: #ffffff;
-}
-
-.style-title {
-  font-size: 15.5px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.style-subtitle {
-  font-size: 11px;
-  color: #e5e5e5;
-  margin: 0;
-}
-
-.style-arrow-icon {
-  font-size: 16px;
-  color: #ffffff;
-  transition: transform 0.2s;
-}
-
-.style-visual-card:hover .style-arrow-icon {
-  transform: translateX(4px);
-}
-
-/* ============================================
-   6. BANNER: MUA ĐỒ CŨ - THỜI TRANG BỀN VỮNG
+   5. BANNER: MUA ĐỒ CŨ - THỜI TRANG BỀN VỮNG
    ============================================ */
 .sustainability-banner-section {
   margin-bottom: 56px;

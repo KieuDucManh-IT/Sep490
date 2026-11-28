@@ -727,37 +727,6 @@ export default function CatalogPage() {
               </div>
 
 
-              {/* Color Filter */}
-              {/* <div className="catalog-filter-group">
-                <div className="catalog-filter-heading" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Palette size={14} />
-                  Màu sắc
-                </div>
-                <div className="catalog-color-grid">
-                  {COLOR_SWATCHES.map((clr) => {
-                    const isSelected = selectedColors.includes(clr.key);
-                    return (
-                      <div
-                        key={clr.key}
-                        className={`catalog-color-dot ${isSelected ? 'active' : ''} ${clr.border ? 'border-gray' : ''
-                          }`}
-                        style={{ backgroundColor: clr.code }}
-                        title={clr.name}
-                        onClick={() => toggleColor(clr.key)}
-                      >
-                        {isSelected && (
-                          <Check
-                            size={10}
-                            color={clr.code === '#F9FAFB' ? '#111827' : '#ffffff'}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div> */}
-
-
 
 
               {/* Reset Filter Button */}
@@ -939,14 +908,17 @@ export default function CatalogPage() {
 
                       {/* Rating & Stock */}
                       <div className="card-meta-line">
-                        {item.rating > 0 ? (
-                          <>
-                            <Star size={12} fill="#F59E0B" color="#F59E0B" className="rating-star" />
-                            <span className="rating-score">{item.rating}</span>
-                            {item.reviewsCount > 0 && <span>({item.reviewsCount})</span>}
-                            <span className="meta-separator">•</span>
-                          </>
-                        ) : null}
+                        <Star
+                          size={12}
+                          fill={item.reviewsCount > 0 && item.rating > 0 ? '#F59E0B' : 'transparent'}
+                          color="#F59E0B"
+                          className="rating-star"
+                        />
+                        <span className="rating-score">
+                          {item.reviewsCount > 0 ? item.rating : 0}
+                        </span>
+                        <span>({item.reviewsCount || 0})</span>
+                        <span className="meta-separator">•</span>
                         {/* TASK-011 & TASK-012: số khả dụng lấy từ API; hiển thị Sắp có hàng khi có restock request */}
                         {(() => {
                           const availableQty = Math.max(0, Number(item.quantityAvailable ?? 0) || 0);

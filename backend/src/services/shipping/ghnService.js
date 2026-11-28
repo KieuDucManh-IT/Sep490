@@ -1,7 +1,9 @@
 import { ghnRequest, ghnConfig } from './ghnConfig.js';
 import { mapGhnStatus } from './ghnStatusMapper.js';
+import { appError as fail } from '../warehouse/shared/errors.js';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // Bộ nhớ đệm 24 giờ cho dữ liệu địa giới hành chính
+const MAX_CACHE_ENTRIES = 200;
 let cachedProvinces = null;
 let cachedProvincesTime = 0;
 
@@ -11,6 +13,33 @@ const cachedWardsByProvince = new Map(); // provinceId -> { data, timestamp }
 let cachedNewProvinces = null;
 let cachedNewProvincesTime = 0;
 const cachedNewWardsByProvince = new Map(); // provinceId -> { data, timestamp }
+
+const parsePositiveIntId = (raw, label) => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw fail(label, 400);
+  }
+  return id;
+};
+
+const setBoundedCache = (cacheMap, key, data) => {
+  if (!cacheMap.has(key) && cacheMap.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = cacheMap.keys().next().value;
+    if (oldestKey !== undefined) cacheMap.delete(oldestKey);
+  }
+  cacheMap.set(key, { data, timestamp: Date.now() });
+};
+
+export const clearMasterDataCache = () => {
+  cachedProvinces = null;
+  cachedProvincesTime = 0;
+  cachedNewProvinces = null;
+  cachedNewProvincesTime = 0;
+  cachedDistricts.clear();
+  cachedWards.clear();
+  cachedWardsByProvince.clear();
+  cachedNewWardsByProvince.clear();
+};
 
 /**
  * Danh mục GHN v3 theo mô hình địa chỉ 2 cấp (tỉnh/thành -> phường/xã).
@@ -36,24 +65,32 @@ export const getNewProvinces = async () => {
 };
 
 export const getNewWards = async (provinceId) => {
-  const pId = Number(provinceId);
-  if (!pId) throw new Error('Mã Tỉnh/Thành mới không hợp lệ.');
+  const pId = parsePositiveIntId(provinceId, 'Mã Tỉnh/Thành mới không hợp lệ.');
 
   const cached = cachedNewWardsByProvince.get(pId);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
   }
 
-  const data = await ghnRequest('/shiip/public-api/v3/master-data/ward/all-by-province-id', {
-    params: { province_id: pId, offset: 0, limit: 200 },
-  });
-  const list = data?.code === 200 && Array.isArray(data.data)
-    ? data.data
-      .filter((ward) => ward && ward.name && ward.status !== 2 && ward.status !== 10)
-      .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
-    : [];
+  const limit = 200;
+  const maxPages = 10;
+  const allItems = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const data = await ghnRequest('/shiip/public-api/v3/master-data/ward/all-by-province-id', {
+      params: { province_id: pId, offset: page * limit, limit },
+    });
+    if (data?.code !== 200 || !Array.isArray(data.data)) {
+      throw new Error(data?.message || 'Không thể tải danh sách Phường/Xã mới từ GHN');
+    }
+    allItems.push(...data.data);
+    if (data.data.length < limit) break;
+  }
 
-  cachedNewWardsByProvince.set(pId, { data: list, timestamp: Date.now() });
+  const list = allItems
+    .filter((ward) => ward && ward.name && ward.status !== 2 && ward.status !== 10)
+    .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+
+  setBoundedCache(cachedNewWardsByProvince, pId, list);
   return list;
 };
 
@@ -103,8 +140,7 @@ export const getProvinces = async () => {
  * Lấy danh sách Quận/Huyện theo Tỉnh/Thành từ GHN API
  */
 export const getDistricts = async (provinceId) => {
-  const pId = Number(provinceId);
-  if (!pId) throw new Error('Mã Tỉnh/Thành phố không hợp lệ.');
+  const pId = parsePositiveIntId(provinceId, 'Mã Tỉnh/Thành phố không hợp lệ.');
 
   const cached = cachedDistricts.get(pId);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -121,7 +157,7 @@ export const getDistricts = async (provinceId) => {
       .filter((d) => d && d.DistrictName && !d.DistrictName.toLowerCase().includes('test') && d.Status !== 2)
       .sort((a, b) => a.DistrictName.localeCompare(b.DistrictName, 'vi'));
 
-    cachedDistricts.set(pId, { data: list, timestamp: Date.now() });
+    setBoundedCache(cachedDistricts, pId, list);
     return list;
   }
   throw new Error(data?.message || `Không thể tải danh sách Quận/Huyện của tỉnh ${provinceId} từ GHN`);
@@ -131,8 +167,7 @@ export const getDistricts = async (provinceId) => {
  * Lấy danh sách Phường/Xã theo Quận/Huyện từ GHN API
  */
 export const getWards = async (districtId) => {
-  const dId = Number(districtId);
-  if (!dId) throw new Error('Mã Quận/Huyện không hợp lệ.');
+  const dId = parsePositiveIntId(districtId, 'Mã Quận/Huyện không hợp lệ.');
 
   const cached = cachedWards.get(dId);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -149,7 +184,7 @@ export const getWards = async (districtId) => {
       .filter((w) => w && w.WardName && !w.WardName.toLowerCase().includes('test') && w.Status !== 2)
       .sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
 
-    cachedWards.set(dId, { data: list, timestamp: Date.now() });
+    setBoundedCache(cachedWards, dId, list);
     return list;
   }
   throw new Error(data?.message || `Không thể tải danh sách Phường/Xã của quận/huyện ${districtId} từ GHN`);
@@ -160,8 +195,7 @@ export const getWards = async (districtId) => {
  * Sử dụng bộ nhớ đệm 24h trên server, gom nhóm tránh nghẽn tải song song
  */
 export const getWardsByProvince = async (provinceId) => {
-  const pId = Number(provinceId);
-  if (!pId) throw new Error('Mã Tỉnh/Thành phố không hợp lệ.');
+  const pId = parsePositiveIntId(provinceId, 'Mã Tỉnh/Thành phố không hợp lệ.');
 
   const cached = cachedWardsByProvince.get(pId);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -201,7 +235,9 @@ export const getWardsByProvince = async (provinceId) => {
   }
 
   flattenedWards.sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
-  cachedWardsByProvince.set(pId, { data: flattenedWards, timestamp: Date.now() });
+  if (flattenedWards.length > 0) {
+    setBoundedCache(cachedWardsByProvince, pId, flattenedWards);
+  }
   return flattenedWards;
 };
 
@@ -209,6 +245,7 @@ export const getWardsByProvince = async (provinceId) => {
  * Tính cước phí vận chuyển thực tế qua GHN API
  */
 export const calculateShippingFee = async ({
+  shopId,
   fromDistrictId,
   fromWardCode,
   toDistrictId,
@@ -232,11 +269,12 @@ export const calculateShippingFee = async ({
     length: Number(length) || 30,
     width: Number(width) || 20,
     height: Number(height) || 10,
-    insurance_value: Math.min(5000000, Number(insuranceValue) || 0),
+    insurance_value: Math.max(0, Math.min(5000000, Number(insuranceValue) || 0)),
   };
 
   const res = await ghnRequest('/shiip/public-api/v2/shipping-order/fee', {
     method: 'POST',
+    ...(shopId ? { shopId: Number(shopId) } : {}),
     data: payload,
   });
 
@@ -256,10 +294,67 @@ export const calculateShippingFee = async ({
   throw new Error(res?.message || 'Không thể tính phí vận chuyển từ GHN');
 };
 
+const GHN_CREATE_ERRORS = [
+  {
+    match: (msg) => msg.includes('too many request') || msg.includes('is processing'),
+    message: 'GHN đang xử lý yêu cầu cho đơn hàng này, vui lòng đợi 3-5 giây rồi thử lại.',
+    fallbackStatus: 429,
+  },
+  {
+    match: (msg, code) => code === 'TO_ADDRESS_CONFLICT' || msg.includes('to address conflict'),
+    message: 'Địa chỉ nhận hàng bị xung đột trên GHN (To address conflict): vui lòng kiểm tra lại "Số nhà, tên đường chi tiết" khớp với Phường/Xã đã chọn, hoặc thử gửi lại sau vài giây.',
+    fallbackStatus: 400,
+  },
+  {
+    match: (msg, code) => code === 'FROM_ADDRESS_CONFLICT' || msg.includes('from address conflict'),
+    message: 'Địa chỉ lấy hàng bị xung đột trên GHN (From address conflict): vui lòng kiểm tra lại địa chỉ chi tiết và Phường/Xã lấy hàng, hoặc thử lại sau vài giây.',
+    fallbackStatus: 400,
+  },
+];
+
+export const mapGhnCreateError = (err) => {
+  if (!err || err.code === 'GHN_TIMEOUT') return err;
+  const msg = String(err.message || '').toLowerCase().replace(/_/g, ' ');
+  const code = String(err.data?.code_message || '').toUpperCase();
+  const matched = GHN_CREATE_ERRORS.find((entry) => entry.match(msg, code));
+  if (!matched) return err;
+  const rawStatus = Number(err.statusCode || err.status);
+  return Object.assign(new Error(matched.message), {
+    status: rawStatus >= 400 ? rawStatus : matched.fallbackStatus,
+    data: err.data,
+  });
+};
+
 /**
  * Tạo vận đơn thực tế trên hệ thống GHN API
  * Dữ liệu người gửi và người nhận lấy 100% từ MongoDB Atlas (Shop & Order)
  */
+const normGeoToken = (str) =>
+  String(str || '')
+    .replace(/đ/gi, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const appendNewAddressSuffix = (rawAddress, wardName, provinceName) => {
+  let addr = String(rawAddress || '').trim();
+  if (/^\d+$/.test(addr) && String(wardName || '').toLowerCase().startsWith('xã')) {
+    addr = `Thôn 1, ${addr}`;
+  }
+  const cleanAddr = normGeoToken(addr);
+  const parts = [addr];
+  const cleanWard = normGeoToken(wardName).replace(/^(phuong|xa|thi tran)\s+/i, '');
+  if (wardName && (!cleanWard || !cleanAddr.includes(cleanWard))) {
+    parts.push(wardName);
+  }
+  const cleanProv = normGeoToken(provinceName).replace(/^(thanh pho|tinh|tp\.)\s+/i, '');
+  if (provinceName && (!cleanProv || !cleanAddr.includes(cleanProv))) {
+    parts.push(provinceName);
+  }
+  return parts.filter(Boolean).join(', ');
+};
+
 export const createGHNOrder = async (orderPayload) => {
   const {
     shopId,
@@ -313,64 +408,49 @@ export const createGHNOrder = async (orderPayload) => {
   if (!toAddress) throw new Error('Thiếu địa chỉ giao hàng.');
   const useNewToAddress = Boolean(isNewToAddress || (!toDistrictId && toProvinceName && toWardName));
   if (useNewToAddress) {
-    if (!toProvinceName) throw new Error('Thiếu Tỉnh/Thành phố mới của người nhận.');
-    if (!toWardName) throw new Error('Thiếu Phường/Xã mới của người nhận.');
+    if (!toProvinceName) throw fail('Thiếu Tỉnh/Thành phố mới của người nhận.', 400);
+    const trimmedWardName = String(toWardName || '').trim();
+    if (!trimmedWardName || (toWardCode && trimmedWardName === String(toWardCode).trim() && /^\d+$/.test(trimmedWardName))) {
+      throw fail('Thiếu tên Phường/Xã mới hợp lệ của người nhận.', 400);
+    }
   } else {
     if (!toDistrictId) throw new Error('Thiếu Quận/Huyện người nhận.');
     if (!toWardCode) throw new Error('Thiếu Phường/Xã người nhận.');
   }
 
+  const totalItemQty = items.length
+    ? items.reduce((sum, it) => sum + Math.max(1, Number(it.quantity) || 1), 0)
+    : 1;
+  const perUnitWeight = Math.max(1, Math.round((Number(weight) || 500) / Math.max(1, totalItemQty)));
+
   const ghnItems = items.length
     ? items.map((it) => ({
         name: it.name || 'Trang phục thời trang Vestora',
         code: it.sku || 'SKU-VESTORA',
-        quantity: it.quantity || 1,
-        price: it.price || 0,
-        weight: Math.round((weight || 500) / (items.length || 1)),
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        price: Math.max(0, Math.round(Number(it.price) || 0)),
+        weight: perUnitWeight,
       }))
     : [
         {
           name: 'Trang phục thời trang cao cấp Vestora',
           code: clientOrderCode || 'ORDER-VESTORA',
           quantity: 1,
-          price: codAmount || 0,
-          weight: weight || 500,
+          price: Math.max(0, Math.round(Number(codAmount) || 0)),
+          weight: Math.max(1, Number(weight) || 500),
         },
       ];
 
-  let deliveryToAddress = String(toAddress || '').trim();
-  if (useNewToAddress) {
-    // Nếu là địa bàn Xã và địa chỉ chỉ là số trần (vd '34'), GHN router thiếu ngữ cảnh thôn/xóm sẽ conflict.
-    // Chỉ thêm tiền tố 'Thôn 1, ' cho cấp Xã. Tuyệt đối không thêm cho cấp Phường / Thị trấn.
-    if (/^\d+$/.test(deliveryToAddress) && String(toWardName || '').toLowerCase().startsWith('xã')) {
-      deliveryToAddress = `Thôn 1, ${deliveryToAddress}`;
-    }
-    const lower = deliveryToAddress.toLowerCase();
-    const parts = [deliveryToAddress];
-    if (toWardName && !lower.includes(String(toWardName).toLowerCase())) {
-      parts.push(toWardName);
-    }
-    if (toProvinceName && !lower.includes(String(toProvinceName).toLowerCase())) {
-      parts.push(toProvinceName);
-    }
-    deliveryToAddress = parts.filter(Boolean).join(', ');
-  }
+  const deliveryToAddress = useNewToAddress
+    ? appendNewAddressSuffix(toAddress, toWardName, toProvinceName)
+    : String(toAddress || '').trim();
+  const pickupFromAddress = useNewFromAddress
+    ? appendNewAddressSuffix(fromAddress, fromWardName, fromProvinceName)
+    : String(fromAddress || '').trim();
 
-  let pickupFromAddress = String(fromAddress || '').trim();
-  if (useNewFromAddress) {
-    if (/^\d+$/.test(pickupFromAddress) && String(fromWardName || '').toLowerCase().startsWith('xã')) {
-      pickupFromAddress = `Thôn 1, ${pickupFromAddress}`;
-    }
-    const lower = pickupFromAddress.toLowerCase();
-    const parts = [pickupFromAddress];
-    if (fromWardName && !lower.includes(String(fromWardName).toLowerCase())) {
-      parts.push(fromWardName);
-    }
-    if (fromProvinceName && !lower.includes(String(fromProvinceName).toLowerCase())) {
-      parts.push(fromProvinceName);
-    }
-    pickupFromAddress = parts.filter(Boolean).join(', ');
-  }
+  const returnUseReceiver = Number(paymentTypeId) === 2;
+  const effReturnDistrict = returnDistrictId || (returnUseReceiver ? toDistrictId : fromDistrictId);
+  const effReturnWard = returnWardCode || (returnUseReceiver ? toWardCode : fromWardCode);
 
   const payload = {
     payment_type_id: Number(paymentTypeId) || 1, // 1: Người gửi trả cước, 2: Người nhận (Shop) trả cước
@@ -406,16 +486,18 @@ export const createGHNOrder = async (orderPayload) => {
           to_district_id: Number(toDistrictId),
         }),
     // Địa chỉ trả hàng khi giao không thành công (chiều đi hoàn về shop, chiều thu hồi hoàn về shop nhận)
-    return_phone: returnPhone || (Number(paymentTypeId) === 2 && toPhone ? toPhone : fromPhone),
-    return_address: returnAddress || (Number(paymentTypeId) === 2 && toAddress ? toAddress : fromAddress),
-    return_district_id: Number(returnDistrictId || (Number(paymentTypeId) === 2 && toDistrictId ? toDistrictId : fromDistrictId)),
-    return_ward_code: String(returnWardCode || (Number(paymentTypeId) === 2 && toWardCode ? toWardCode : fromWardCode)),
+    return_phone: returnPhone || (returnUseReceiver && toPhone ? toPhone : fromPhone),
+    return_address: returnAddress || (returnUseReceiver && deliveryToAddress ? deliveryToAddress : pickupFromAddress),
+    ...(Number.isFinite(Number(effReturnDistrict)) && Number(effReturnDistrict) > 0
+      ? { return_district_id: Number(effReturnDistrict) }
+      : {}),
+    ...(effReturnWard ? { return_ward_code: String(effReturnWard) } : {}),
     cod_amount: Math.max(0, Number(codAmount) || 0),
     weight: Number(weight) || 500,
     length: Number(length) || 30,
     width: Number(width) || 20,
     height: Number(height) || 10,
-    insurance_value: Math.min(5000000, Number(insuranceValue) || 0),
+    insurance_value: Math.max(0, Math.min(5000000, Number(insuranceValue) || 0)),
     service_type_id: 2,
     items: ghnItems,
   };
@@ -429,20 +511,13 @@ export const createGHNOrder = async (orderPayload) => {
       timeoutMs: 25000,
     });
   } catch (err) {
-    const rawMsg = String(err?.message || '');
-    if (
-      err?.code !== 'GHN_TIMEOUT' &&
-      (rawMsg.toLowerCase().includes('too many request') || rawMsg.toLowerCase().includes('is processing'))
-    ) {
-      const rateLimitErr = new Error('GHN đang xử lý yêu cầu cho đơn hàng này, vui lòng đợi 3-5 giây rồi thử lại.');
-      rateLimitErr.status = err?.status >= 400 ? err.status : 429;
-      rateLimitErr.data = err?.data;
-      throw rateLimitErr;
-    }
-    throw err;
+    throw mapGhnCreateError(err);
   }
 
   if (res?.code === 200 && res.data) {
+    if (!res.data.order_code) {
+      throw new Error('GHN không trả về mã vận đơn (order_code).');
+    }
     const expectedDate = new Date();
     expectedDate.setDate(expectedDate.getDate() + 2);
 

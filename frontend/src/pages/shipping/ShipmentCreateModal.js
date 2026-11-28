@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Truck,
   Package,
@@ -35,11 +35,14 @@ export default function ShipmentCreateModal({
     provinces,
     wards,
     loadingWards,
+    divisionsError,
     provinceId: toProvinceId,
     districtId: toDistrictId,
     wardCode: toWardCode,
     handleProvinceChange,
     handleWardChange,
+    resetDivisions,
+    reloadDivisions,
   } = useAdministrativeDivisions(show);
 
   // Form State
@@ -60,6 +63,13 @@ export default function ShipmentCreateModal({
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
+  const [outOfScopeWarning, setOutOfScopeWarning] = useState('');
+  const autoMatchedRef = useRef(false);
+  const submittingRef = useRef(false);
+
+  const clearError = () => {
+    if (errorMsg) setErrorMsg('');
+  };
 
   // Countdown timer cho nút gửi đơn (khóa nút chống gửi dồn / tránh rate-limit GHN)
   useEffect(() => {
@@ -70,43 +80,44 @@ export default function ShipmentCreateModal({
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // 1. Điền thông tin khách hàng từ order / initialShipment và tự động khớp Tỉnh / Xã (Hỗ trợ GHN v3)
+  // 1. Khởi tạo/reset dữ liệu form khi mở modal hoặc đổi đơn (không phụ thuộc provinces để tránh ghi đè input người dùng)
   useEffect(() => {
-    if (!show || !order) return;
+    if (!show || !order) {
+      autoMatchedRef.current = false;
+      submittingRef.current = false;
+      setOutOfScopeWarning('');
+      resetDivisions();
+      return;
+    }
+
+    resetDivisions();
+    setOutOfScopeWarning('');
+    submittingRef.current = false;
 
     const {
       receiverName,
       receiverPhone,
       detailedAddress,
-      provHint,
-      wardHint,
-      wardCodeHint,
-      provinceIdHint,
-      fullAddr,
     } = extractOrderAddressInfo(order);
 
     const prevReceiver = initialShipment?.receiverInfo || {};
-    const finalName = prevReceiver.name || receiverName;
-    const finalPhone = prevReceiver.phone || receiverPhone;
-    const finalAddress = prevReceiver.address || detailedAddress;
-    const finalProvId = prevReceiver.provinceId || provinceIdHint;
-    const finalWardCode = prevReceiver.wardCode || wardCodeHint;
+    setToName(prevReceiver.name || receiverName);
+    setToPhone(prevReceiver.phone || receiverPhone);
+    setToAddress(prevReceiver.address || detailedAddress);
 
-    setToName(finalName);
-    setToPhone(finalPhone);
-    setToAddress(finalAddress);
+    setWeight(initialShipment?.weight ? Number(initialShipment.weight) : 500);
+    setLength(initialShipment?.length ? Number(initialShipment.length) : 30);
+    setWidth(initialShipment?.width ? Number(initialShipment.width) : 20);
+    setHeight(initialShipment?.height ? Number(initialShipment.height) : 10);
+    setNote(initialShipment?.note || 'Cho khách xem hàng không cho thử');
 
-    if (initialShipment?.weight) setWeight(Number(initialShipment.weight));
-    if (initialShipment?.length) setLength(Number(initialShipment.length));
-    if (initialShipment?.width) setWidth(Number(initialShipment.width));
-    if (initialShipment?.height) setHeight(Number(initialShipment.height));
-    if (initialShipment?.note) setNote(initialShipment.note);
-
-    // Tính COD mặc định theo số dư chưa thanh toán hoặc lấy từ vận đơn retry
+    // Tính COD mặc định theo số dư chưa thanh toán (đơn đã thanh toán đủ luôn ép về 0 kể cả khi retry)
     let defaultCod = 0;
-    if (initialShipment?.codAmount !== undefined) {
+    if (order.paymentStatus === 'paid') {
+      defaultCod = 0;
+    } else if (initialShipment?.codAmount !== undefined) {
       defaultCod = initialShipment.codAmount;
-    } else if (order.paymentStatus !== 'paid') {
+    } else {
       if (orderType === 'sale') {
         defaultCod = Math.max(0, (order.totalAmount || 0) - (order.paidAmount || 0));
       } else {
@@ -118,32 +129,70 @@ export default function ShipmentCreateModal({
     setFeeResult(null);
     setErrorMsg('');
     setCooldown(0);
+    autoMatchedRef.current = false;
+  }, [show, order, initialShipment, orderType, resetDivisions]);
 
-    // Tự động phân tích và chọn Tỉnh/Thành, Phường/Xã
-    if (provinces.length > 0) {
-      let targetProvId = finalProvId ? String(finalProvId) : '';
-      const exists = targetProvId && provinces.some((p) => String(p._id || p.ProvinceID) === targetProvId);
-      if (!exists) {
-        const matchedProv = autoMatchProvince(targetProvId || provHint, fullAddr, provinces);
-        if (matchedProv) {
-          targetProvId = String(matchedProv._id || matchedProv.ProvinceID);
+  // 2. Tự động khớp Tỉnh/Thành (Hà Nội) và Phường/Xã 1 lần khi danh mục provinces sẵn sàng
+  useEffect(() => {
+    if (!show || !order || provinces.length === 0 || autoMatchedRef.current) return;
+    autoMatchedRef.current = true;
+
+    const {
+      provHint,
+      wardHint,
+      wardCodeHint,
+      provinceIdHint,
+      fullAddr,
+    } = extractOrderAddressInfo(order);
+
+    const prevReceiver = initialShipment?.receiverInfo || {};
+    const finalProvId = prevReceiver.provinceId || provinceIdHint;
+    const finalWardCode = prevReceiver.wardCode || wardCodeHint;
+    const finalWardHint = prevReceiver.wardName || wardHint;
+
+    let targetProvId = finalProvId ? String(finalProvId) : '';
+    const exists = targetProvId && provinces.some((p) => String(p._id ?? p.ProvinceID) === targetProvId);
+    if (!exists) {
+      const matchedProv = autoMatchProvince(targetProvId || provHint, fullAddr, provinces);
+      if (matchedProv) {
+        targetProvId = String(matchedProv._id ?? matchedProv.ProvinceID);
+      } else {
+        targetProvId = '';
+        if (provHint || finalProvId || fullAddr) {
+          setOutOfScopeWarning(
+            'Địa chỉ đơn hàng nằm ngoài khu vực Hà Nội hoặc chưa xác định được Tỉnh/Thành. Hệ thống hiện chỉ hỗ trợ tạo vận đơn GHN tại Hà Nội.'
+          );
         }
       }
+    }
 
-      if (targetProvId) {
-        handleProvinceChange(targetProvId, wardHint, finalWardCode, fullAddr);
-      }
+    if (targetProvId) {
+      setOutOfScopeWarning('');
+      handleProvinceChange(targetProvId, finalWardHint, finalWardCode, fullAddr);
     }
   }, [show, order, initialShipment, orderType, provinces, handleProvinceChange]);
 
   const onProvinceSelect = (val) => {
     setFeeResult(null);
+    setOutOfScopeWarning('');
+    clearError();
     handleProvinceChange(val);
   };
 
   const onWardSelect = (val) => {
     setFeeResult(null);
+    clearError();
     handleWardChange(val);
+  };
+
+  const validateMeasureFields = () => {
+    if (!Number.isFinite(Number(weight)) || Number(weight) <= 0) {
+      return 'Khối lượng kiện hàng phải lớn hơn 0 (gram).';
+    }
+    if ([length, width, height].some((d) => !Number.isFinite(Number(d)) || Number(d) <= 0)) {
+      return 'Kích thước kiện hàng (Dài, Rộng, Cao) phải lớn hơn 0 cm.';
+    }
+    return '';
   };
 
   // 5. Tính trước phí ship (Hỗ trợ GHN v3)
@@ -152,13 +201,18 @@ export default function ShipmentCreateModal({
       setErrorMsg('Vui lòng chọn Tỉnh/Thành và Phường/Xã để tính phí giao hàng.');
       return;
     }
+    const measureErr = validateMeasureFields();
+    if (measureErr) {
+      setErrorMsg(measureErr);
+      return;
+    }
     setErrorMsg('');
     setCalculatingFee(true);
     try {
-      const selectedProv = provinces.find((p) => String(p._id || p.ProvinceID) === String(toProvinceId));
+      const selectedProv = provinces.find((p) => String(p._id ?? p.ProvinceID) === String(toProvinceId));
       const selectedWard = wards.find((w) => String(w.WardCode || w._id) === String(toWardCode));
-      const provName = selectedProv?.name || selectedProv?.ProvinceName || order?.shippingAddress?.city || '';
-      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || order?.shippingAddress?.ward || '';
+      const provName = selectedProv?.name || selectedProv?.ProvinceName || '';
+      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || '';
       const isNewAddress = Number(toProvinceId) >= 1000000 || Boolean(order?.shippingAddress?.isNewAddress);
 
       const res = await calculateShippingFeeApi({
@@ -170,10 +224,10 @@ export default function ShipmentCreateModal({
         toProvinceName: provName,
         toWardName: wardName,
         isNewToAddress: isNewAddress,
-        weight: Number(weight) || 500,
-        length: Number(length) || 30,
-        width: Number(width) || 20,
-        height: Number(height) || 10,
+        weight: Number(weight),
+        length: Number(length),
+        width: Number(width),
+        height: Number(height),
       });
 
       if (res?.success && res.data) {
@@ -188,18 +242,27 @@ export default function ShipmentCreateModal({
     }
   };
 
-  const formatErrorText = (msg) => {
-    const raw = String(msg || '');
-    if (raw.toLowerCase().includes('too many request') || raw.toLowerCase().includes('is processing')) {
-      return 'GHN đang xử lý tạo đơn cho mã này, vui lòng đợi vài giây rồi thử lại.';
+  const formatSubmitError = (err) => {
+    const raw = String(err?.message || err || '');
+    if (err?.code === 'GHN_TIMEOUT' || err?.status === 504) {
+      return {
+        msg: 'Cổng GHN phản hồi quá chậm (timeout), vui lòng đợi vài giây rồi kiểm tra lại trước khi gửi lại.',
+        needCooldown: true,
+      };
     }
-    return raw;
+    if (err?.status === 429 || raw.toLowerCase().includes('too many request') || raw.toLowerCase().includes('is processing')) {
+      return {
+        msg: 'GHN đang xử lý tạo đơn cho mã này, vui lòng đợi vài giây rồi thử lại.',
+        needCooldown: true,
+      };
+    }
+    return { msg: raw || 'Tạo vận đơn thất bại.', needCooldown: false };
   };
 
   // 6. Gửi tạo đơn sang GHN
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (submitting || cooldown > 0) return;
+    if (submittingRef.current || submitting || cooldown > 0) return;
     if (!toProvinceId) {
       setErrorMsg('Vui lòng chọn Tỉnh/Thành phố giao hàng.');
       return;
@@ -213,14 +276,14 @@ export default function ShipmentCreateModal({
       return;
     }
 
-    // Kiểm tra và chuẩn hóa số điện thoại di động Việt Nam 10 số (hỗ trợ cả đầu số +84, 84)
+    // Kiểm tra và chuẩn hóa số điện thoại Việt Nam (di động 10 số & cố định 02x, hỗ trợ +84/84)
     let cleanPhone = toPhone.trim().replace(/[\s.-]/g, '');
     if (cleanPhone.startsWith('+84')) cleanPhone = '0' + cleanPhone.slice(3);
-    else if (cleanPhone.startsWith('84') && cleanPhone.length === 11) cleanPhone = '0' + cleanPhone.slice(2);
+    else if (cleanPhone.startsWith('84') && cleanPhone.length >= 11) cleanPhone = '0' + cleanPhone.slice(2);
 
-    const vnPhoneRegex = /^(0)(3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}$/;
+    const vnPhoneRegex = /^(0(3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}|02[0-9]{8,9})$/;
     if (!vnPhoneRegex.test(cleanPhone)) {
-      setErrorMsg('Số điện thoại không hợp lệ. Vui lòng nhập số di động 10 số hiện hành của Việt Nam (VD: 0912345678, 0388889999). Đầu số cũ 012x đã bị ngừng sử dụng và không được GHN chấp nhận.');
+      setErrorMsg('Số điện thoại không hợp lệ. Vui lòng nhập số di động 10 số hoặc số cố định 02x hợp lệ tại Việt Nam.');
       return;
     }
 
@@ -228,14 +291,20 @@ export default function ShipmentCreateModal({
       setErrorMsg('Vui lòng nhập địa chỉ cụ thể.');
       return;
     }
+    const measureErr = validateMeasureFields();
+    if (measureErr) {
+      setErrorMsg(measureErr);
+      return;
+    }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setErrorMsg('');
     try {
-      const selectedProv = provinces.find((p) => String(p._id || p.ProvinceID) === String(toProvinceId));
+      const selectedProv = provinces.find((p) => String(p._id ?? p.ProvinceID) === String(toProvinceId));
       const selectedWard = wards.find((w) => String(w.WardCode || w._id) === String(toWardCode));
-      const provName = selectedProv?.name || selectedProv?.ProvinceName || order?.shippingAddress?.city || '';
-      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || order?.shippingAddress?.ward || '';
+      const provName = selectedProv?.name || selectedProv?.ProvinceName || '';
+      const wardName = selectedWard?.WardName || selectedWard?.name || selectedWard?.label || '';
       const isNewAddress = Number(toProvinceId) >= 1000000 || Boolean(order?.shippingAddress?.isNewAddress);
 
       const payload = {
@@ -250,12 +319,12 @@ export default function ShipmentCreateModal({
         toProvinceName: provName,
         toWardName: wardName,
         isNewToAddress: isNewAddress,
-        weight: Number(weight) || 500,
-        length: Number(length) || 30,
-        width: Number(width) || 20,
-        height: Number(height) || 10,
+        weight: Number(weight),
+        length: Number(length),
+        width: Number(width),
+        height: Number(height),
         note: note.trim(),
-        customCodAmount: Number(customCod) || 0,
+        customCodAmount: customCod === '' ? undefined : Number(customCod),
       };
 
       const res = await createOutboundShipmentApi(payload);
@@ -263,13 +332,14 @@ export default function ShipmentCreateModal({
         if (onSuccess) onSuccess(res.data);
         onClose();
       } else {
-        setErrorMsg(formatErrorText(res?.message || 'Tạo vận đơn thất bại.'));
-        setCooldown(5);
+        setErrorMsg(res?.message || 'Tạo vận đơn thất bại.');
       }
     } catch (err) {
-      setErrorMsg(formatErrorText(err.message || 'Lỗi khi kết nối hệ thống GHN.'));
-      setCooldown(5);
+      const { msg, needCooldown } = formatSubmitError(err);
+      setErrorMsg(msg);
+      if (needCooldown) setCooldown(5);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -286,6 +356,9 @@ export default function ShipmentCreateModal({
   return (
     <div
       className="modal fade show d-block shipping-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shipment-create-modal-title"
       tabIndex="-1"
     >
       <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -297,7 +370,7 @@ export default function ShipmentCreateModal({
                 <Truck size={18} />
               </div>
               <div>
-                <h6 className="modal-title fw-bold text-dark mb-0">
+                <h6 id="shipment-create-modal-title" className="modal-title fw-bold text-dark mb-0">
                   Tạo Vận Đơn Giao Hàng (GHN)
                 </h6>
                 <small className="text-muted">
@@ -308,6 +381,7 @@ export default function ShipmentCreateModal({
             <button
               type="button"
               className="btn-close"
+              aria-label="Đóng"
               onClick={onClose}
               disabled={submitting}
             />
@@ -315,21 +389,44 @@ export default function ShipmentCreateModal({
 
           {/* Body */}
           <div className="modal-body p-4">
+            {divisionsError && (
+              <div role="alert" className="alert alert-warning py-2 px-3 small d-flex align-items-center justify-content-between gap-2 mb-3">
+                <div className="d-flex align-items-center gap-2">
+                  <AlertCircle size={16} className="text-warning flex-shrink-0" />
+                  <span>{divisionsError}</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-warning py-0 px-2 flex-shrink-0"
+                  onClick={reloadDivisions}
+                >
+                  Thử tải lại
+                </button>
+              </div>
+            )}
+
+            {outOfScopeWarning && (
+              <div role="alert" className="alert alert-warning py-2 px-3 small d-flex align-items-center gap-2 mb-3">
+                <AlertCircle size={16} className="text-warning flex-shrink-0" />
+                <span>{outOfScopeWarning}</span>
+              </div>
+            )}
+
             {errorMsg && (
-              <div className="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3">
+              <div role="alert" className="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3">
                 <AlertCircle size={16} className="text-danger flex-shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} id="shipment-create-form">
+            <form onSubmit={handleSubmit} id="shipment-create-form" aria-label="Tạo vận đơn GHN">
               {/* Cửa hàng gửi đồ (Điểm lấy hàng của Shipper) */}
               <div className="mb-3 p-3 bg-light rounded-3 border">
                 <div className="d-flex align-items-center justify-content-between mb-2">
                   <div className="small fw-bold text-uppercase text-primary d-flex align-items-center gap-1">
                     <Store size={15} /> 1. Cửa hàng gửi đồ (Shipper tới lấy hàng)
                   </div>
-                  {storeLat && storeLng ? (
+                  {storeLat != null && storeLng != null ? (
                     <a
                       href={`https://www.google.com/maps?q=${storeLat},${storeLng}`}
                       target="_blank"
@@ -350,7 +447,7 @@ export default function ShipmentCreateModal({
                   <div className="col-12 col-md-6">
                     <span className="small text-muted d-block">Địa chỉ cửa hàng:</span>
                     <span className="text-dark small d-block">{storeAddress}</span>
-                    {storeLat && storeLng && (
+                    {storeLat != null && storeLng != null && (
                       <span className="small text-muted shipping-fee-sub">
                         📍 Tọa độ GPS: {Number(storeLat).toFixed(4)}, {Number(storeLng).toFixed(4)}
                       </span>
@@ -366,33 +463,35 @@ export default function ShipmentCreateModal({
                 </div>
                 <div className="row g-2">
                   <div className="col-12 col-md-6">
-                    <label className="form-label small text-muted mb-1">Họ tên người nhận *</label>
+                    <label htmlFor="shipToName" className="form-label small text-muted mb-1">Họ tên người nhận *</label>
                     <input
+                      id="shipToName"
                       type="text"
                       className="form-control form-control-sm"
                       value={toName}
-                      onChange={(e) => setToName(e.target.value)}
+                      onChange={(e) => { setToName(e.target.value); clearError(); }}
                       required
                     />
                   </div>
                   <div className="col-12 col-md-6">
-                    <label className="form-label small text-muted mb-1">Số điện thoại nhận hàng *</label>
+                    <label htmlFor="shipToPhone" className="form-label small text-muted mb-1">Số điện thoại nhận hàng *</label>
                     <input
+                      id="shipToPhone"
                       type="text"
                       className="form-control form-control-sm"
                       value={toPhone}
-                      onChange={(e) => setToPhone(e.target.value)}
+                      onChange={(e) => { setToPhone(e.target.value); clearError(); }}
                       required
                     />
                   </div>
 
                   {/* Địa giới hành chính: Cấp Tỉnh/Thành và Phường/Xã (Mô hình 2 cấp GHN v3) */}
                   <div className="col-12 col-md-6">
-                    <label className="form-label small text-muted mb-1">Tỉnh / Thành phố *</label>
+                    <label htmlFor="shipToProvince" className="form-label small text-muted mb-1">Tỉnh / Thành phố *</label>
                     <SearchableSelect
                       id="shipToProvince"
                       options={provinces.map((p) => ({
-                        value: String(p._id || p.ProvinceID),
+                        value: String(p._id ?? p.ProvinceID),
                         label: p.name || p.ProvinceName,
                         name: p.name || p.ProvinceName,
                       }))}
@@ -403,7 +502,7 @@ export default function ShipmentCreateModal({
                     />
                   </div>
                   <div className="col-12 col-md-6">
-                    <label className="form-label small text-muted mb-1">Phường / Xã *</label>
+                    <label htmlFor="shipToWard" className="form-label small text-muted mb-1">Phường / Xã *</label>
                     <SearchableSelect
                       id="shipToWard"
                       options={wards.map((w) => ({
@@ -420,12 +519,13 @@ export default function ShipmentCreateModal({
                   </div>
 
                   <div className="col-12">
-                    <label className="form-label small text-muted mb-1">Số nhà, tên đường chi tiết *</label>
+                    <label htmlFor="shipToAddress" className="form-label small text-muted mb-1">Số nhà, tên đường chi tiết *</label>
                     <input
+                      id="shipToAddress"
                       type="text"
                       className="form-control form-control-sm"
                       value={toAddress}
-                      onChange={(e) => setToAddress(e.target.value)}
+                      onChange={(e) => { setToAddress(e.target.value); clearError(); }}
                       placeholder="VD: Số 24, Ngõ 105 Đường Cầu Giấy"
                       required
                     />
@@ -440,8 +540,9 @@ export default function ShipmentCreateModal({
                 </div>
                 <div className="row g-2">
                   <div className="col-6 col-md-3">
-                    <label className="form-label small text-muted mb-1">Khối lượng (gram) *</label>
+                    <label htmlFor="shipWeight" className="form-label small text-muted mb-1">Khối lượng (gram) *</label>
                     <input
+                      id="shipWeight"
                       type="number"
                       min="100"
                       step="50"
@@ -450,47 +551,55 @@ export default function ShipmentCreateModal({
                       onChange={(e) => {
                         setWeight(e.target.value);
                         setFeeResult(null);
+                        clearError();
                       }}
                       required
                     />
                   </div>
                   <div className="col-6 col-md-3">
-                    <label className="form-label small text-muted mb-1">Dài x Rộng x Cao (cm)</label>
+                    <label htmlFor="shipLength" className="form-label small text-muted mb-1">Dài x Rộng x Cao (cm)</label>
                     <div className="input-group input-group-sm">
                       <input
+                        id="shipLength"
                         type="number"
+                        aria-label="Chiều dài (cm)"
                         className="form-control text-center p-1"
                         value={length}
-                        onChange={(e) => setLength(e.target.value)}
+                        onChange={(e) => { setLength(e.target.value); setFeeResult(null); clearError(); }}
                       />
                       <span className="input-group-text px-1">x</span>
                       <input
+                        id="shipWidth"
                         type="number"
+                        aria-label="Chiều rộng (cm)"
                         className="form-control text-center p-1"
                         value={width}
-                        onChange={(e) => setWidth(e.target.value)}
+                        onChange={(e) => { setWidth(e.target.value); setFeeResult(null); clearError(); }}
                       />
                       <span className="input-group-text px-1">x</span>
                       <input
+                        id="shipHeight"
                         type="number"
+                        aria-label="Chiều cao (cm)"
                         className="form-control text-center p-1"
                         value={height}
-                        onChange={(e) => setHeight(e.target.value)}
+                        onChange={(e) => { setHeight(e.target.value); setFeeResult(null); clearError(); }}
                       />
                     </div>
                   </div>
 
                   <div className="col-12 col-md-6">
-                    <label className="form-label small text-muted mb-1">
+                    <label htmlFor="shipCustomCod" className="form-label small text-muted mb-1">
                       Tiền thu hộ COD (VND)
                     </label>
                     <div className="input-group input-group-sm">
                       <input
+                        id="shipCustomCod"
                         type="number"
                         min="0"
                         className="form-control"
                         value={customCod}
-                        onChange={(e) => setCustomCod(e.target.value)}
+                        onChange={(e) => { setCustomCod(e.target.value); clearError(); }}
                         placeholder="0"
                       />
                       <span className="input-group-text">VND</span>
@@ -501,8 +610,9 @@ export default function ShipmentCreateModal({
                   </div>
 
                   <div className="col-12">
-                    <label className="form-label small text-muted mb-1">Ghi chú cho shipper</label>
+                    <label htmlFor="shipNote" className="form-label small text-muted mb-1">Ghi chú cho shipper</label>
                     <input
+                      id="shipNote"
                       type="text"
                       className="form-control form-control-sm"
                       value={note}

@@ -13,6 +13,17 @@ import { appError as fail } from '../warehouse/shared/errors.js';
 
 export { fail };
 
+export const normalizeAndValidateVnPhone = (rawPhone, partyLabel = 'người nhận') => {
+  let phone = String(rawPhone || '').trim().replace(/[\s.-]/g, '');
+  if (!phone) throw fail(`Số điện thoại ${partyLabel} không được để trống.`, 400);
+  if (phone.startsWith('+84')) phone = `0${phone.slice(3)}`;
+  else if (phone.startsWith('84') && phone.length >= 11) phone = `0${phone.slice(2)}`;
+  if (!/^(0(3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}|02[0-9]{8,9})$/.test(phone)) {
+    throw fail(`Số điện thoại ${partyLabel} không hợp lệ.`, 400);
+  }
+  return phone;
+};
+
 /**
  * Chuẩn hóa đối tượng người gửi / người nhận (Tỉnh/Thành, Quận/Huyện, Phường/Xã)
  */
@@ -48,6 +59,9 @@ export const formatPartyInfo = ({
  * Lấy đơn hàng và kiểm tra quyền quản lý theo chi nhánh
  */
 export const fetchOrderAndValidateScope = async (user, orderType, orderId) => {
+  if (!['sale', 'rental'].includes(orderType)) {
+    throw fail('Loại đơn hàng không hợp lệ (chỉ hỗ trợ sale hoặc rental).', 400);
+  }
   if (!mongoose.isValidObjectId(orderId)) {
     throw fail('Mã đơn hàng không hợp lệ.', 400);
   }
@@ -120,44 +134,43 @@ export const resolveBranchShippingInfo = async (order) => {
   const originalHasAddress = Boolean(shop?.address);
   let persistShopId = originalShopId && originalHasAddress ? originalShopId : null;
 
-  // Nếu vẫn chưa có phone hoặc address, fallback tìm Shop đầu tiên đang active
-  if (!shop?.phone || !shop?.address) {
-    const fallbackShop = await Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } })
-      .sort({ createdAt: 1, _id: 1 })
-      .lean();
+  // Chỉ tìm shop mặc định khi gọi ước tính phí ẩn danh (order === null); không mượn chéo địa chỉ shop khác cho đơn cụ thể
+  if (!order && !originalHasAddress) {
+    const fallbackQuery = Shop.findOne({ status: 'ACTIVE', isDeleted: { $ne: true } });
+    const fallbackShop = await (typeof fallbackQuery?.sort === 'function'
+      ? fallbackQuery.sort({ createdAt: 1, _id: 1 })
+      : fallbackQuery
+    ).lean();
     if (fallbackShop) {
-      if (originalHasAddress) {
-        shop = { ...shop, phone: shop?.phone || fallbackShop.phone };
-      } else {
-        if (!originalShopId && fallbackShop._id && fallbackShop.address) {
-          persistShopId = fallbackShop._id;
-        }
-        shop = {
-          ...fallbackShop,
-          ...shop,
-          phone: shop?.phone || fallbackShop.phone,
-          address: shop?.address || fallbackShop.address,
-          provinceId: shop?.provinceId || fallbackShop.provinceId,
-          districtId: shop?.districtId || fallbackShop.districtId,
-          wardCode: shop?.wardCode || fallbackShop.wardCode,
-          ghnShopId: shop?.ghnShopId || fallbackShop.ghnShopId,
-        };
+      if (fallbackShop._id && fallbackShop.address) {
+        persistShopId = fallbackShop._id;
       }
+      shop = {
+        ...fallbackShop,
+        ...shop,
+        phone: shop?.phone || fallbackShop.phone,
+        address: shop?.address || fallbackShop.address,
+        provinceId: shop?.provinceId || fallbackShop.provinceId,
+        districtId: shop?.districtId || fallbackShop.districtId,
+        wardCode: shop?.wardCode || fallbackShop.wardCode,
+        ghnShopId: shop?.ghnShopId || fallbackShop.ghnShopId,
+      };
     }
   }
 
   const name = shop.name || loc.name || 'Cửa hàng';
-  const phone = shop.phone || loc.phone || '';
+  const rawPhone = shop.phone || loc.phone || '';
   const address = shop.address || loc.address || '';
   const latitude = shop.latitude ?? loc.latitude ?? null;
   const longitude = shop.longitude ?? loc.longitude ?? null;
 
-  if (!phone) {
+  if (!rawPhone) {
     throw fail(`Chi nhánh "${name}" chưa được cập nhật số điện thoại liên hệ trên MongoDB Atlas.`, 400);
   }
   if (!address) {
     throw fail(`Chi nhánh "${name}" chưa được cập nhật địa chỉ trên MongoDB Atlas.`, 400);
   }
+  const phone = normalizeAndValidateVnPhone(rawPhone, `chi nhánh "${name}"`);
 
   let provinceId = shop.provinceId || loc.provinceId;
   let districtId = shop.districtId || loc.districtId;
@@ -216,7 +229,7 @@ export const resolveBranchShippingInfo = async (order) => {
 /**
  * Lấy danh sách sản phẩm của đơn hàng để đóng gói gửi GHN
  */
-export const fetchOrderItemsForGHN = async (orderType, orderId, totalWeight = 500) => {
+export const fetchOrderItemsForGHN = async (orderType, orderId) => {
   const DetailModel = orderType === 'rental' ? RentalOrderDetail : SalesOrderDetail;
   const detailKey = orderType === 'rental' ? 'rentalOrderId' : 'salesOrderId';
 
@@ -239,22 +252,49 @@ export const fetchOrderItemsForGHN = async (orderType, orderId, totalWeight = 50
     ];
   }
 
-  return orderItems.map((item) => ({
-    name: item.variantId?.variantName || item.variantId?.productId?.name || 'Sản phẩm Vestora',
-    sku: item.variantId?.sku || item.variantId?.productId?.productCode || 'SKU-VESTORA',
-    quantity: item.quantity || 1,
-    price: item.lineTotal || 0,
-  }));
+  return orderItems.map((item) => {
+    const qty = Math.max(1, Number(item.quantity) || 1);
+    const unitPrice = item.unitPrice ?? item.unitRentalFee ?? Math.round((Number(item.lineTotal) || 0) / qty);
+    return {
+      name: item.variantId?.variantName || item.variantId?.productId?.name || 'Sản phẩm Vestora',
+      sku: item.variantId?.sku || item.variantId?.productId?.productCode || 'SKU-VESTORA',
+      quantity: qty,
+      price: Math.max(0, Math.round(Number(unitPrice) || 0)),
+    };
+  });
 };
 
 /**
  * Tính số tiền thu hộ COD của đơn hàng
  */
 export const calculateCodAmount = (order, orderType, customCod) => {
-  if (customCod !== undefined && customCod !== null && customCod !== '') {
-    return Math.max(0, Number(customCod) || 0);
+  if (!['sale', 'rental'].includes(orderType)) {
+    throw fail('Loại đơn hàng không hợp lệ (chỉ hỗ trợ sale hoặc rental).', 400);
   }
-  if (order.paymentStatus === 'paid') return 0;
+  const hasCustomCod = customCod !== undefined && customCod !== null && customCod !== '';
+  let parsedCustomCod = null;
+  if (hasCustomCod) {
+    if (
+      typeof customCod === 'boolean' ||
+      typeof customCod === 'object' ||
+      (typeof customCod === 'string' && customCod.trim() === '')
+    ) {
+      throw fail('Số tiền thu hộ COD không hợp lệ.', 400);
+    }
+    parsedCustomCod = Number(customCod);
+    if (!Number.isInteger(parsedCustomCod) || parsedCustomCod < 0) {
+      throw fail('Số tiền thu hộ COD không hợp lệ.', 400);
+    }
+  }
+
+  if (order.paymentStatus === 'paid') {
+    if (hasCustomCod && parsedCustomCod > 0) {
+      throw fail('Đơn hàng đã thanh toán đủ, không thể đặt tiền thu hộ COD lớn hơn 0.', 400);
+    }
+    return 0;
+  }
+
+  if (hasCustomCod) return parsedCustomCod;
 
   if (orderType === 'sale') {
     return Math.max(0, (order.totalAmount || 0) - (order.paidAmount || 0));
@@ -300,7 +340,7 @@ export const saveShipmentRecord = async ({
   const deliveryMethod = order.deliveryMethod || 'carrier';
 
   const shipmentDateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
+  const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
   const shipmentCode = `SHP-${shipmentDateStr}-${randomHex}`;
 
   const doc = {

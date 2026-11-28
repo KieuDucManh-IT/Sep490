@@ -58,18 +58,31 @@ export const findNearestStore = (customerCoords = {}, storeList = []) => {
  */
 const cleanString = (str) =>
   String(str || '')
+    .replace(/đ/gi, 'd')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/^(tp\.|t\.|h\.|q\.|p\.|tx\.|tt\.|xa|phuong|quan|huyen|thanh pho)\s+/i, '')
-    .replace(/[\s\-_]/g, '');
+    .replace(/^(tp\.?|t\.?|h\.?|q\.?|p\.?|tx\.?|tt\.?|xa|phuong|quan|huyen|thanh pho)\s+/i, '')
+    .replace(/[\s\-_,.]/g, '');
+
+const normalizeRawAscii = (str) =>
+  String(str || '')
+    .replace(/đ/gi, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 
 /**
  * Tự động chuyển đổi Tọa độ GPS (Vĩ độ, Kinh độ) của Cửa hàng sang mã Tỉnh/Huyện/Xã GHN
  * Hỗ trợ chuyển đổi mã v3 (1000000 Hà Nội) sang v2 phục vụ truy vấn quận huyện
  */
 export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) => {
-  let matchedProvinceId = fallbackInfo.provinceId ? Number(fallbackInfo.provinceId) : null;
+  const rawProvId = fallbackInfo.provinceId ? Number(fallbackInfo.provinceId) : null;
+  let matchedProvinceId = rawProvId && rawProvId >= 1000000
+    ? (rawProvId === 1000000 ? 201 : null)
+    : rawProvId;
   let matchedDistrictId = fallbackInfo.districtId ? Number(fallbackInfo.districtId) : null;
   let matchedWardCode = fallbackInfo.wardCode ? String(fallbackInfo.wardCode) : '';
   let matchedDistrictName = fallbackInfo.districtName || '';
@@ -99,28 +112,43 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
       }
     }
 
-    // Kết hợp địa chỉ text để tăng độ chính xác so khớp
-    const combinedAddress = `${fallbackInfo.address || ''} ${geoCity} ${geoDistrict} ${geoWard}`.toLowerCase();
+    // Kết hợp địa chỉ text (đã chuẩn hóa không dấu + đ -> d) để so khớp chính xác
+    const combinedRaw = `${fallbackInfo.address || ''} ${geoCity} ${geoDistrict} ${geoWard}`;
+    const cleanCombined = cleanString(combinedRaw);
 
     // 1. So khớp Tỉnh / Thành phố
     const provinces = await ghnService.getProvinces();
     if (!matchedProvinceId && Array.isArray(provinces)) {
       const cleanCity = cleanString(geoCity);
-      const foundProv = provinces.find((p) => {
-        const pClean = cleanString(p.ProvinceName);
-        return (
-          pClean === cleanCity ||
-          cleanCity.includes(pClean) ||
-          pClean.includes(cleanCity) ||
-          (p.NameExtension && p.NameExtension.some((ext) => cleanString(ext) === cleanCity))
-        );
-      });
+      let foundProv = cleanCity
+        ? provinces.find((p) => {
+            const pClean = cleanString(p.ProvinceName);
+            const extMatch =
+              Array.isArray(p.NameExtension) &&
+              p.NameExtension.some((ext) => {
+                const extClean = cleanString(ext);
+                return extClean && extClean === cleanCity;
+              });
+            return (
+              pClean === cleanCity ||
+              (pClean.length > 2 && cleanCity.length > 2 && (cleanCity.includes(pClean) || pClean.includes(cleanCity))) ||
+              extMatch
+            );
+          })
+        : null;
+
+      if (!foundProv && cleanCombined) {
+        foundProv = provinces.find((p) => {
+          const pClean = cleanString(p.ProvinceName);
+          return pClean.length > 2 && cleanCombined.includes(pClean);
+        });
+      }
 
       if (foundProv) {
         matchedProvinceId = foundProv.ProvinceID;
-      } else if (combinedAddress.includes('hồ chí minh') || combinedAddress.includes('hcm') || combinedAddress.includes('sài gòn')) {
+      } else if (cleanCombined.includes('hochiminh') || cleanCombined.includes('tphcm') || cleanCombined.includes('saigon')) {
         matchedProvinceId = 202; // TP.HCM
-      } else {
+      } else if (cleanCombined.includes('hanoi')) {
         matchedProvinceId = 201; // Hà Nội
       }
     }
@@ -133,12 +161,22 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
       try {
         const districts = await ghnService.getDistricts(v2ProvinceId);
         if (Array.isArray(districts) && districts.length > 0) {
+          const cleanGeoDist = cleanString(geoDistrict);
+          const combinedSpaced = ` ${normalizeRawAscii(combinedRaw)} `;
           const foundDist = districts.find((d) => {
             const dClean = cleanString(d.DistrictName);
-            const extMatch = d.NameExtension && d.NameExtension.some((ext) => combinedAddress.includes(cleanString(ext)));
+            const dFullAscii = normalizeRawAscii(d.DistrictName);
+            const fullPhraseMatch = dFullAscii.length > 2 && combinedSpaced.includes(` ${dFullAscii} `);
+            const extMatch =
+              Array.isArray(d.NameExtension) &&
+              d.NameExtension.some((ext) => {
+                const extClean = cleanString(ext);
+                return extClean.length > 2 && cleanCombined.includes(extClean);
+              });
             return (
-              (geoDistrict && (dClean === cleanString(geoDistrict) || cleanString(geoDistrict).includes(dClean))) ||
-              combinedAddress.includes(dClean) ||
+              (cleanGeoDist && dClean && (dClean === cleanGeoDist || (dClean.length > 2 && cleanGeoDist.includes(dClean)))) ||
+              (dClean.length > 2 && cleanCombined.includes(dClean)) ||
+              fullPhraseMatch ||
               extMatch
             );
           });
@@ -163,7 +201,7 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
             const wCode = String(w.WardCode || '').toLowerCase();
             return (
               (targetCode && wCode === targetCode) ||
-              (targetWard && (wName === targetWard || targetWard.includes(wName) || wName.includes(targetWard)))
+              (targetWard && wName && (wName === targetWard || (targetWard.length > 2 && wName.length > 2 && (targetWard.includes(wName) || wName.includes(targetWard)))))
             );
           });
           if (foundWard) {
@@ -178,10 +216,7 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
     // Fallback cho Hà Nội nếu chưa xác định được District
     if (
       !matchedDistrictId &&
-      (v2ProvinceId === 201 ||
-        matchedProvinceId === 1000000 ||
-        combinedAddress.includes('hà nội') ||
-        combinedAddress.includes('ha noi'))
+      (v2ProvinceId === 201 || matchedProvinceId === 1000000)
     ) {
       matchedDistrictId = 1488; // Ba Đình, Hà Nội
       matchedDistrictName = 'Quận Ba Đình';
@@ -192,12 +227,18 @@ export const resolveGpsToGhn = async (latitude, longitude, fallbackInfo = {}) =>
       try {
         const wards = await ghnService.getWards(matchedDistrictId);
         if (Array.isArray(wards) && wards.length > 0) {
+          const cleanGeoWard = cleanString(geoWard);
           const foundWard = wards.find((w) => {
             const wClean = cleanString(w.WardName);
-            const extMatch = w.NameExtension && w.NameExtension.some((ext) => combinedAddress.includes(cleanString(ext)));
+            const extMatch =
+              Array.isArray(w.NameExtension) &&
+              w.NameExtension.some((ext) => {
+                const extClean = cleanString(ext);
+                return extClean.length > 2 && cleanCombined.includes(extClean);
+              });
             return (
-              (geoWard && (wClean === cleanString(geoWard) || cleanString(geoWard).includes(wClean))) ||
-              combinedAddress.includes(wClean) ||
+              (cleanGeoWard && wClean && (wClean === cleanGeoWard || (wClean.length > 2 && cleanGeoWard.includes(wClean)))) ||
+              (wClean.length > 2 && cleanCombined.includes(wClean)) ||
               extMatch
             );
           });

@@ -54,15 +54,16 @@ export default function SaleOrderDetailModal({
   const [deliveryEvidence, setDeliveryEvidence] = useState(null);
 
   const refetchOrder = () => {
-    if (orderId) {
-      getSaleOrderDetailApi(orderId)
-        .then((res) => {
-          if (res.success && res.data) {
-            setDetailData(res.data);
-          }
-        })
-        .catch(() => {});
-    }
+    if (!orderId) return Promise.resolve();
+    return getSaleOrderDetailApi(orderId)
+      .then((res) => {
+        if (res.success && res.data) {
+          setDetailData(res.data);
+        }
+      })
+      .catch((err) => {
+        console.error('Lỗi làm mới chi tiết đơn bán:', err?.message || err);
+      });
   };
 
   const handleCancelShipment = async (shipmentId, reason) => {
@@ -236,12 +237,14 @@ export default function SaleOrderDetailModal({
   }
 
   return (
+    <>
     <Modal
       show={isOpen}
       onHide={onClose}
       dialogClassName="vestora-modal-dialog"
       centered
       backdrop="static"
+      enforceFocus={!isCreateShipmentOpen && !isReturnShipmentOpen}
       animation
       size="lg"
     >
@@ -662,7 +665,8 @@ export default function SaleOrderDetailModal({
             {(() => {
               const isPickup =
                 order?.deliveryMethod === 'pickup' ||
-                (order?.note && order.note.includes('Nhận tại'));
+                order?.shippingAddress?.deliveryMethod === 'pickup' ||
+                Boolean(order?.note && order.note.includes('Nhận tại Showroom'));
 
               const hasActiveOutbound = shipments.some(
                 (s) =>
@@ -871,7 +875,9 @@ export default function SaleOrderDetailModal({
         )}
       </div>
 
-      {/* Shipment Create Modal */}
+    </Modal>
+
+      {/* Shipment Create Modal (nằm ngoài Modal cha để không bị kẹt focus/overflow) */}
       <ShipmentCreateModal
         show={isCreateShipmentOpen}
         onClose={() => {
@@ -897,6 +903,6 @@ export default function SaleOrderDetailModal({
         initialShipment={retryShipment}
         onSuccess={() => refetchOrder()}
       />
-    </Modal>
+    </>
   );
 }

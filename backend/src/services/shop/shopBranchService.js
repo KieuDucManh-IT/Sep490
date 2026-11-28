@@ -441,6 +441,10 @@ export const updateBranchAddress = async (shopId, validatedData, currentUser) =>
   shop.ward = validatedData.ward;
   shop.latitude = validatedData.latitude;
   shop.longitude = validatedData.longitude;
+  // Xóa cache mã địa giới GHN cũ để hệ thống tự phân giải lại theo địa chỉ mới
+  shop.provinceId = null;
+  shop.districtId = null;
+  shop.wardCode = null;
 
   if (validatedData.phone) {
     shop.phone = validatedData.phone;
@@ -483,6 +487,13 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
     await checkDuplicateBranchName(validated.name, shop._id);
     shop.name = validated.name;
   }
+  const addressChanged =
+    (validated.address !== undefined && validated.address !== shop.address) ||
+    (validated.city !== undefined && validated.city !== shop.city) ||
+    (validated.ward !== undefined && validated.ward !== shop.ward) ||
+    (validated.latitude !== undefined && validated.latitude !== shop.latitude) ||
+    (validated.longitude !== undefined && validated.longitude !== shop.longitude);
+
   if (validated.description !== undefined) shop.description = validated.description;
   if (validated.phone !== undefined) shop.phone = validated.phone;
   if (validated.address !== undefined) shop.address = validated.address;
@@ -490,6 +501,11 @@ export const updateBranchInfo = async (shopId, validated, currentUser) => {
   if (validated.ward !== undefined) shop.ward = validated.ward;
   if (validated.latitude !== undefined) shop.latitude = validated.latitude;
   if (validated.longitude !== undefined) shop.longitude = validated.longitude;
+  if (addressChanged) {
+    shop.provinceId = null;
+    shop.districtId = null;
+    shop.wardCode = null;
+  }
   if (validated.imageUrl !== undefined) shop.imageUrl = validated.imageUrl;
   if (validated.bannerUrl !== undefined) shop.bannerUrl = validated.bannerUrl;
   if (validated.openingHours !== undefined) shop.openingHours = validated.openingHours;

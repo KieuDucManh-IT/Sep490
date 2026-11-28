@@ -84,5 +84,27 @@ const orderShipmentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 orderShipmentSchema.index({ orderId: 1, orderType: 1 });
+orderShipmentSchema.index(
+  { orderId: 1, orderType: 1, shipmentType: 1 },
+  {
+    name: 'uniq_active_outbound_shipment',
+    unique: true,
+    partialFilterExpression: {
+      shipmentType: 'outbound',
+      shipmentStatus: { $in: ['preparing', 'shipped', 'delivered'] },
+    },
+  }
+);
+orderShipmentSchema.index(
+  { orderId: 1, shipmentType: 1, orderType: 1 },
+  {
+    name: 'uniq_active_return_shipment',
+    unique: true,
+    partialFilterExpression: {
+      shipmentType: 'return',
+      shipmentStatus: { $in: ['preparing', 'shipped'] },
+    },
+  }
+);
 
 export const OrderShipment = mongoose.models.OrderShipment || mongoose.model('OrderShipment', orderShipmentSchema);

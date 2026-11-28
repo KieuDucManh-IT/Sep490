@@ -84,9 +84,22 @@ export const ghnRequest = async (endpoint, { method = 'GET', data, params, heade
   }
 
   if (!res.ok || (responseData && responseData.code && responseData.code !== 200)) {
-    const error = new Error(responseData?.message || `GHN API error: ${res.status}`);
     const ghnCode = Number(responseData?.code);
-    error.status = res.ok ? (ghnCode >= 400 && ghnCode <= 599 ? ghnCode : 400) : res.status;
+    const httpStatus = res.ok ? (ghnCode >= 400 && ghnCode <= 599 ? ghnCode : 400) : res.status;
+
+    if (httpStatus === 401 || httpStatus === 403 || httpStatus >= 500) {
+      console.error('[GHN Upstream Error]', httpStatus, responseData?.code_message || responseData?.message || '');
+      const upstreamError = new Error('Cổng vận chuyển GHN đang gặp sự cố xác thực hoặc kết nối, vui lòng thử lại sau.');
+      upstreamError.status = 502;
+      upstreamError.statusCode = 502;
+      upstreamError.code = 'GHN_UPSTREAM_ERROR';
+      upstreamError.data = responseData;
+      throw upstreamError;
+    }
+
+    const error = new Error(responseData?.message || `GHN API error: ${res.status}`);
+    error.status = httpStatus;
+    error.statusCode = httpStatus;
     error.data = responseData;
     throw error;
   }

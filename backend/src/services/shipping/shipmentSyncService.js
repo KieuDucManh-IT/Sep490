@@ -156,20 +156,6 @@ export const syncSingleShipmentFromGHN = async (trackingCodeOrShipment, force = 
         shipment.shippedAt = actionTime;
       } else if (mapped.internalStatus === 'cancelled') {
         shipment.cancelledAt = shipment.cancelledAt || actionTime;
-        // Đồng bộ hủy vận đơn outbound từ GHN sang đơn hàng của khách.
-        if (shipment.shipmentType === 'outbound') {
-          if (shipment.orderType === 'rental') {
-            await RentalOrder.findOneAndUpdate(
-              { _id: shipment.orderId, rentalStatus: { $in: ['confirmed', 'draft'] } },
-              { $set: { rentalStatus: 'cancelled' } }
-            );
-          } else if (shipment.orderType === 'sale') {
-            await SalesOrder.findOneAndUpdate(
-              { _id: shipment.orderId, orderStatus: { $in: ['confirmed', 'draft', 'processing', 'shipped'] } },
-              { $set: { orderStatus: 'cancelled', cancelledAt: actionTime } }
-            );
-          }
-        }
       }
     }
 

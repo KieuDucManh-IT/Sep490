@@ -89,6 +89,7 @@ async function nativeFetchRequest(method, endpoint, body = null, config = {}) {
         `Yêu cầu thất bại với mã lỗi ${response.status} (${response.statusText})`;
       const error = new Error(errorMsg);
       error.status = response.status;
+      error.code = data?.code || null;
       error.response = {
         status: response.status,
         statusText: response.statusText,

@@ -9,12 +9,26 @@ import * as ghnService from '../../services/shipping/ghnService.js';
 import { uploadToCloudinary } from '../../config/cloudinary.js';
 
 const handleError = (error, res, next) => {
-  const status = error.statusCode || error.status || 400;
-  return res.status(status).json({
+  const rawStatus = Number(error?.statusCode || error?.status);
+  const isOperational =
+    Number.isInteger(rawStatus) &&
+    ((rawStatus >= 400 && rawStatus < 500) || rawStatus === 502 || rawStatus === 504);
+
+  if (!isOperational || error?.code === 11000 || error?.name === 'ValidationError') {
+    if (typeof next === 'function') {
+      return next(error);
+    }
+    return res.status(500).json({
+      success: false,
+      message: 'Có lỗi phía server. Vui lòng thử lại',
+      code: null,
+    });
+  }
+
+  return res.status(rawStatus).json({
     success: false,
     message: error.message || 'Lỗi xử lý vận đơn',
-    code: error.code || null,
-    errorData: error.data || null,
+    code: typeof error.code === 'string' ? error.code : null,
   });
 };
 

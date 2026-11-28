@@ -48,8 +48,29 @@ export const cleanText = (str) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/^(tp\.|t\.|thanh pho|tinh|thi tran|tt\.|phuong|p\.|xa|x\.|quan|q\.|huyen|h\.)\s+/i, '')
+    .replace(/^(?:(?:tp|t|tt|tx|p|x|q|h)\.(?:\s*)|(?:thanh pho|tinh|thi tran|thi xa|phuong|xa|quan|huyen)\s+)/i, '')
     .replace(/[\s\-_,.]/g, '');
+
+/**
+ * Chuẩn hóa danh mục Tỉnh/Thành GHN và lọc theo phạm vi Hà Nội (fallback toàn bộ nếu không khớp)
+ */
+export const filterHanoiProvinces = (list = []) => {
+  const normalized = (Array.isArray(list) ? list : [])
+    .filter(Boolean)
+    .map((p) => {
+      const name = p.name || p.ProvinceName || '';
+      const id = p._id ?? p.ProvinceID;
+      return {
+        ...p,
+        _id: id,
+        ProvinceID: p.ProvinceID ?? id,
+        name,
+        ProvinceName: p.ProvinceName || name,
+      };
+    });
+  const hanoiOnly = normalized.filter((p) => cleanText(p.name).includes('hanoi'));
+  return hanoiOnly.length > 0 ? hanoiOnly : normalized;
+};
 
 /**
  * Tự động khớp Tỉnh / Thành phố từ dữ liệu khách hàng với danh mục GHN (Hỗ trợ GHN v3 và v2)
@@ -57,75 +78,91 @@ export const cleanText = (str) =>
 export const autoMatchProvince = (hint, fullAddr, provList) => {
   if (!Array.isArray(provList) || !provList.length) return null;
   const cHint = cleanText(hint);
-  const cFull = cleanText(fullAddr);
 
   if (cHint) {
     // 1. So khớp trực tiếp theo ID (cả v3 _id và v2 ProvinceID)
-    const byId = provList.find((p) => String(p._id || p.ProvinceID) === String(hint));
+    const byId = provList.find((p) => String(p._id ?? p.ProvinceID) === String(hint));
     if (byId) return byId;
 
-    // Ánh xạ mã cũ v2 sang v3 (201 -> Hà Nội, 202 -> TP.HCM)
+    // Ánh xạ mã cũ v2 hoặc tên viết tắt phổ biến
     if (String(hint) === '201') {
-      const hn = provList.find((p) => cleanText(p.name || p.ProvinceName).includes('hanoi') || String(p._id || p.ProvinceID) === '1000000');
+      const hn = provList.find((p) => cleanText(p.name || p.ProvinceName).includes('hanoi') || String(p._id ?? p.ProvinceID) === '1000000');
       if (hn) return hn;
     }
-    if (String(hint) === '202') {
+    if (String(hint) === '202' || cHint === 'hcm' || cHint === 'tphcm') {
       const hcm = provList.find((p) => cleanText(p.name || p.ProvinceName).includes('hochiminh'));
       if (hcm) return hcm;
     }
 
-    // 2. So khớp theo tên tỉnh
+    // 2. So khớp theo tên tỉnh (không dùng substring với gợi ý ngắn <= 2 ký tự)
     const direct = provList.find((p) => {
       const pClean = cleanText(p.ProvinceName || p.name);
       const exts = Array.isArray(p.NameExtension) ? p.NameExtension : Array.isArray(p.extension_names) ? p.extension_names : [];
       return (
         pClean === cHint ||
-        cHint.includes(pClean) ||
-        pClean.includes(cHint) ||
+        (cHint.length > 2 && pClean.length > 2 && (cHint.includes(pClean) || pClean.includes(cHint))) ||
         exts.some((ext) => cleanText(ext) === cHint)
       );
     });
     if (direct) return direct;
   }
 
-  if (cFull) {
-    const byAddr = provList.find((p) => {
-      const pClean = cleanText(p.ProvinceName || p.name);
-      return pClean.length > 2 && cFull.includes(pClean);
-    });
-    if (byAddr) return byAddr;
+  if (fullAddr) {
+    // Ưu tiên kiểm tra phân đoạn cuối (Tỉnh/Thành phố thực sự) trước khi quét tên đường
+    const rawParts = String(fullAddr).split(',').map((s) => s.trim()).filter(Boolean);
+    const tailCandidates = rawParts.length > 1 ? rawParts.slice(-2).reverse() : rawParts;
+    for (const seg of tailCandidates) {
+      const cSeg = cleanText(seg);
+      if (cSeg.length <= 2) continue;
+      const bySeg = provList.find((p) => {
+        const pClean = cleanText(p.ProvinceName || p.name);
+        return pClean.length > 2 && (cSeg === pClean || cSeg.includes(pClean));
+      });
+      if (bySeg) return bySeg;
+    }
+
+    const cFull = cleanText(fullAddr);
+    if (cFull) {
+      const byAddr = provList.find((p) => {
+        const pClean = cleanText(p.ProvinceName || p.name);
+        return pClean.length > 2 && cFull.includes(pClean);
+      });
+      if (byAddr) return byAddr;
+    }
   }
 
   return null;
 };
 
 /**
- * Tự động khớp Phường / Xã với danh mục GHN (hỗ trợ GSO GovernmentCode, GHN WardCode / _id, NameExtension / extension_names)
+ * Tự động khớp Phường / Xã với danh mục GHN (ưu tiên GHN WardCode/_id trước GSO GovernmentCode, chống khớp nhầm số đường)
  */
 export const autoMatchWard = (wardNameHint, wardCodeHint = '', fullAddr = '', wardList = []) => {
   if (!Array.isArray(wardList) || !wardList.length) return null;
 
   const cHint = cleanText(wardNameHint);
-  const cFull = cleanText(fullAddr);
-  const numCode = parseInt(wardCodeHint || wardNameHint, 10);
+  const rawCodeCandidate = String(wardCodeHint || wardNameHint || '').trim();
 
-  // 1. Khớp chính xác qua GovernmentCode (Mã Tổng cục Thống kê GSO từ open-api)
-  if (!isNaN(numCode) && numCode > 0) {
-    const byGov = wardList.find((w) => {
-      if (!w.GovernmentCode) return false;
-      return parseInt(w.GovernmentCode, 10) === numCode;
-    });
-    if (byGov) return byGov;
-  }
-
-  // 2. Khớp trực tiếp qua WardCode / _id của GHN (cả v2 và v3)
-  if (wardCodeHint || wardNameHint) {
-    const targetCode = String(wardCodeHint || wardNameHint).trim().toLowerCase();
+  // 1. Khớp trực tiếp qua WardCode / _id của GHN (cả v2 và v3) trước khi thử GSO
+  if (rawCodeCandidate) {
+    const targetCode = rawCodeCandidate.toLowerCase();
     const byCode = wardList.find((w) => {
       const wCode = String(w.WardCode || w._id || '').trim().toLowerCase();
       return wCode && wCode === targetCode;
     });
     if (byCode) return byCode;
+  }
+
+  // 2. Khớp qua GovernmentCode GSO chỉ khi đầu vào thuần chữ số (tránh "12 Hàng Bạc" bị parseInt -> 12)
+  if (/^\d+$/.test(rawCodeCandidate)) {
+    const numCode = Number(rawCodeCandidate);
+    if (numCode > 0) {
+      const byGov = wardList.find((w) => {
+        if (!w.GovernmentCode) return false;
+        return parseInt(w.GovernmentCode, 10) === numCode;
+      });
+      if (byGov) return byGov;
+    }
   }
 
   // 3. Khớp chính xác tên đã chuẩn hóa
@@ -134,31 +171,51 @@ export const autoMatchWard = (wardNameHint, wardCodeHint = '', fullAddr = '', wa
     if (exact) return exact;
   }
 
-  // 4. Khớp qua NameExtension / extension_names của GHN
+  // 4. Khớp qua NameExtension / extension_names của GHN (exact hoặc chuỗi dài > 2)
   if (cHint) {
     const byExt = wardList.find((w) => {
       const exts = Array.isArray(w.NameExtension) ? w.NameExtension : Array.isArray(w.extension_names) ? w.extension_names : [];
-      return exts.some((ext) => cleanText(ext) === cHint || cleanText(ext).includes(cHint));
+      return exts.some((ext) => {
+        const extClean = cleanText(ext);
+        if (!extClean) return false;
+        return extClean === cHint || (cHint.length > 2 && extClean.length > 2 && extClean.includes(cHint));
+      });
     });
     if (byExt) return byExt;
   }
 
-  // 5. Khớp substring tên xã
+  // 5. Khớp substring tên xã (chặt chẽ > 2 ký tự ở cả hai vế)
   if (cHint && cHint.length > 2) {
     const sub = wardList.find((w) => {
       const wClean = cleanText(w.WardName || w.name);
-      return wClean.includes(cHint) || cHint.includes(wClean);
+      return wClean.length > 2 && (wClean.includes(cHint) || cHint.includes(wClean));
     });
     if (sub) return sub;
   }
 
-  // 6. Khớp từ chuỗi địa chỉ đầy đủ
-  if (cFull) {
-    const byAddr = wardList.find((w) => {
-      const wClean = cleanText(w.WardName || w.name);
-      return wClean.length > 3 && cFull.includes(wClean);
-    });
-    if (byAddr) return byAddr;
+  // 6. Khớp từ chuỗi địa chỉ đầy đủ (ưu tiên phân đoạn ghi phường/xã, bỏ qua số nhà/tên đường đầu tiên)
+  if (fullAddr) {
+    const segments = String(fullAddr).split(',').map((s) => s.trim()).filter(Boolean);
+    const wardSegs = segments.filter((seg) => /^(?:(?:phường|xã|thị trấn|phuong|xa|thi tran)\b|(?:p|x|tt)\.)/i.test(seg));
+    const searchOrder = wardSegs.length > 0
+      ? wardSegs
+      : segments.length > 1
+        ? segments.slice(1)
+        : segments;
+
+    for (const seg of searchOrder) {
+      const cSeg = cleanText(seg);
+      if (!cSeg) continue;
+      const exactSeg = wardList.find((w) => cleanText(w.WardName || w.name) === cSeg);
+      if (exactSeg) return exactSeg;
+      if (cSeg.length > 3) {
+        const matchSeg = wardList.find((w) => {
+          const wClean = cleanText(w.WardName || w.name);
+          return wClean.length > 3 && cSeg.includes(wClean);
+        });
+        if (matchSeg) return matchSeg;
+      }
+    }
   }
 
   return null;
@@ -171,7 +228,7 @@ export const extractOrderAddressInfo = (order) => {
   if (!order) return {};
 
   const customer = order.customerId || order.customerInfo || order.customer || {};
-  const info = Array.isArray(customer.Information) ? customer.Information[0] : (customer.Information || {});
+  const info = (Array.isArray(customer.Information) ? customer.Information[0] : customer.Information) || {};
   const shipAddr = order.shippingAddress || {};
 
   const receiverName =

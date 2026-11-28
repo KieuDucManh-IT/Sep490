@@ -28,6 +28,7 @@ export default function SearchableSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef(null);
   const searchInputRef = useRef(null);
 
@@ -81,19 +82,16 @@ export default function SearchableSelect({
 
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => {
+      setActiveIndex(filteredOptions.length > 0 ? 0 : -1);
+      const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
-    } else {
-      setSearchTerm('');
+      return () => clearTimeout(timer);
     }
-  }, [isOpen]);
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Escape') {
-      setIsOpen(false);
-    }
-  };
+    setSearchTerm('');
+    setActiveIndex(-1);
+    return undefined;
+  }, [isOpen, filteredOptions.length]);
 
   const handleSelect = useCallback(
     (opt) => {
@@ -105,6 +103,32 @@ export default function SearchableSelect({
     },
     [onChange]
   );
+
+  const handleKeyDown = (e) => {
+    if (disabled) return;
+    if (e.key === 'Escape') {
+      setIsOpen(false);
+      return;
+    }
+    if (!isOpen && ['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+      e.preventDefault();
+      setIsOpen(true);
+      return;
+    }
+    if (!isOpen) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((prev) => (filteredOptions.length ? (prev + 1) % filteredOptions.length : -1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((prev) =>
+        filteredOptions.length ? (prev <= 0 ? filteredOptions.length - 1 : prev - 1) : -1
+      );
+    } else if (e.key === 'Enter' && activeIndex >= 0 && filteredOptions[activeIndex]) {
+      e.preventDefault();
+      handleSelect(filteredOptions[activeIndex]);
+    }
+  };
 
   const handleClear = useCallback(() => {
     if (onChange) {
@@ -119,10 +143,11 @@ export default function SearchableSelect({
       ref={containerRef}
       className={`vestora-searchable-select ${disabled ? 'disabled' : ''} ${isInvalid ? 'is-invalid' : ''} ${isOpen ? 'open' : ''}`}
       style={{ position: 'relative', width: '100%', ...style }}
-      id={id}
+      id={id ? `${id}-wrapper` : undefined}
       onKeyDown={handleKeyDown}
     >
       <div
+        id={id}
         className={`vestora-select-control ${isOpen ? 'active' : ''}`}
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         role="combobox"
@@ -345,13 +370,16 @@ export default function SearchableSelect({
                 Không tìm thấy kết quả phù hợp cho &quot;{searchTerm}&quot;
               </div>
             ) : (
-              filteredOptions.map((opt) => {
+              filteredOptions.map((opt, idx) => {
                 const isSelected = selectedOption && String(selectedOption.value) === String(opt.value);
+                const isHighlighted = idx === activeIndex;
 
                 if (renderItem) {
                   return (
                     <div
                       key={opt.value}
+                      role="option"
+                      aria-selected={Boolean(isSelected)}
                       onClick={() => handleSelect(opt)}
                       style={{ cursor: 'pointer' }}
                     >
@@ -363,6 +391,8 @@ export default function SearchableSelect({
                 return (
                   <div
                     key={opt.value}
+                    role="option"
+                    aria-selected={Boolean(isSelected)}
                     onClick={() => handleSelect(opt)}
                     style={{
                       padding: '8px 12px',
@@ -372,7 +402,11 @@ export default function SearchableSelect({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      background: isSelected ? 'rgba(217, 119, 6, 0.08)' : 'transparent',
+                      background: isSelected
+                        ? 'rgba(217, 119, 6, 0.08)'
+                        : isHighlighted
+                          ? '#F9FAFB'
+                          : 'transparent',
                       color: isSelected ? '#B45309' : '#1F2937',
                       fontWeight: isSelected ? 600 : 400,
                       transition: 'background 0.15s ease',

@@ -202,11 +202,8 @@ export const resolveOrderDisplayStatus = (order, type = 'rental', isBranch = fal
     }
   }
 
-  // 2. Nếu đơn bị hủy ở cấp đơn hàng HOẶC toàn bộ vận đơn xuất hàng đã bị hủy và không có vận đơn active -> Hiển thị "Đã hủy"
-  const outboundShipments = allShipments.filter((s) => s && s.shipmentType !== 'return');
-  const allOutboundCancelled = outboundShipments.length > 0 && outboundShipments.every((s) => s.shipmentStatus === 'cancelled');
-
-  if (currentStatus === 'cancelled' || allOutboundCancelled) {
+  // 2. Chỉ hiển thị "Đã hủy" khi chính đơn hàng bị hủy ở cấp đơn hàng
+  if (currentStatus === 'cancelled') {
     return {
       text: 'Đã hủy',
       chipClass: 'cancelled',

@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getGHNNewProvincesApi,
   getGHNNewWardsApi,
 } from '../../../services/shippingApi';
-import { autoMatchWard } from '../shippingUtils';
+import { autoMatchWard, filterHanoiProvinces } from '../shippingUtils';
 
 /**
  * Custom hook quản lý danh mục địa giới hành chính GHN phiên bản V3 (Mô hình địa chỉ 2 cấp Tỉnh/Thành -> Phường/Xã)
@@ -13,36 +13,38 @@ export function useAdministrativeDivisions(enabled = true) {
   const [provinces, setProvinces] = useState([]);
   const [wards, setWards] = useState([]);
   const [loadingWards, setLoadingWards] = useState(false);
+  const [divisionsError, setDivisionsError] = useState('');
   const [provinceId, setProvinceId] = useState('');
   const [districtId, setDistrictId] = useState('');
   const [wardCode, setWardCode] = useState('');
+  const [reloadTick, setReloadTick] = useState(0);
+  const requestSeqRef = useRef(0);
+  const lastWardLoadArgsRef = useRef(null);
 
   // 1. Tải danh mục Tỉnh/Thành hoàn toàn bằng API GHN V3
   useEffect(() => {
     if (!enabled) return;
     let isMounted = true;
+    setDivisionsError('');
 
     getGHNNewProvincesApi()
       .then((res) => {
         if (!isMounted) return;
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-        const normalized = list.map((p) => ({
-          ...p,
-          _id: p._id,
-          ProvinceID: p._id,
-          name: p.name,
-          ProvinceName: p.name,
-        }));
-        setProvinces(normalized);
+        setProvinces(filterHanoiProvinces(list));
       })
-      .catch((err) => console.error('Lỗi tải danh mục Tỉnh/Thành GHN v3:', err));
+      .catch((err) => {
+        if (!isMounted) return;
+        console.error('Lỗi tải danh mục Tỉnh/Thành GHN v3:', err);
+        setDivisionsError(err?.message || 'Không thể tải danh mục Tỉnh/Thành từ GHN.');
+      });
 
     return () => {
       isMounted = false;
     };
-  }, [enabled]);
+  }, [enabled, reloadTick]);
 
-  // 2. Chọn Tỉnh/Thành -> Tải trực tiếp danh sách Phường/Xã GHN V3 theo provinceId
+  // 2. Chọn Tỉnh/Thành -> Tải trực tiếp danh sách Phường/Xã GHN V3 theo provinceId (chặn race condition)
   const handleProvinceChange = useCallback(
     async (
       provIdVal,
@@ -50,17 +52,32 @@ export function useAdministrativeDivisions(enabled = true) {
       wardCodeHintToMatch = '',
       fullAddrToMatch = ''
     ) => {
+      const reqId = ++requestSeqRef.current;
       const pId = typeof provIdVal === 'object' && provIdVal?.target ? provIdVal.target.value : provIdVal;
       setProvinceId(pId ? String(pId) : '');
       setDistrictId('');
       setWardCode('');
       setWards([]);
+      setDivisionsError('');
 
-      if (!pId) return;
+      if (!pId) {
+        lastWardLoadArgsRef.current = null;
+        setLoadingWards(false);
+        return;
+      }
+
+      lastWardLoadArgsRef.current = {
+        pId,
+        wardHintToMatch,
+        wardCodeHintToMatch,
+        fullAddrToMatch,
+      };
 
       setLoadingWards(true);
       try {
         const res = await getGHNNewWardsApi(pId);
+        if (reqId !== requestSeqRef.current) return;
+
         const rawList = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
         const normalizedWards = rawList.map((w) => ({
           ...w,
@@ -89,9 +106,13 @@ export function useAdministrativeDivisions(enabled = true) {
           }
         }
       } catch (err) {
+        if (reqId !== requestSeqRef.current) return;
         console.error('Lỗi tải danh mục Phường/Xã GHN v3:', err);
+        setDivisionsError(err?.message || 'Không thể tải danh mục Phường/Xã từ GHN.');
       } finally {
-        setLoadingWards(false);
+        if (reqId === requestSeqRef.current) {
+          setLoadingWards(false);
+        }
       }
     },
     []
@@ -107,18 +128,39 @@ export function useAdministrativeDivisions(enabled = true) {
     []
   );
 
-  // 4. Reset trạng thái
+  // 4. Reset trạng thái và vô hiệu hóa các request phường đang chờ
   const resetDivisions = useCallback(() => {
+    requestSeqRef.current += 1;
+    lastWardLoadArgsRef.current = null;
     setProvinceId('');
     setDistrictId('');
     setWardCode('');
     setWards([]);
+    setLoadingWards(false);
+    setDivisionsError('');
   }, []);
+
+  const reloadDivisions = useCallback(() => {
+    if (provinces.length === 0) {
+      setReloadTick((prev) => prev + 1);
+      return;
+    }
+    const lastArgs = lastWardLoadArgsRef.current;
+    if (lastArgs?.pId) {
+      handleProvinceChange(
+        lastArgs.pId,
+        lastArgs.wardHintToMatch,
+        lastArgs.wardCodeHintToMatch,
+        lastArgs.fullAddrToMatch
+      );
+    }
+  }, [provinces.length, handleProvinceChange]);
 
   return {
     provinces,
     wards,
     loadingWards,
+    divisionsError,
     provinceId,
     setProvinceId,
     districtId,
@@ -128,5 +170,6 @@ export function useAdministrativeDivisions(enabled = true) {
     handleProvinceChange,
     handleWardChange,
     resetDivisions,
+    reloadDivisions,
   };
 }

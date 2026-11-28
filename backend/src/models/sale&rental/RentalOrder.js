@@ -48,6 +48,7 @@ const rentalOrderSchema = new mongoose.Schema({
   note: { type: String, trim: true },
   cancelReason: { type: String, trim: true, default: null },
   cancelledAt: { type: Date, default: null },
+  ghnCreateAttempts: { type: Number, default: 0, min: 0 },
   packingVideo: {
     type: evidenceVideoSchema,
     default: null,

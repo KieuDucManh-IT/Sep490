@@ -55,15 +55,16 @@ export default function RentalOrderDetailModal({
   const [returnFlowOpen, setReturnFlowOpen] = useState(false);
 
   const refetchOrder = () => {
-    if (orderId) {
-      getRentalOrderDetailApi(orderId)
-        .then((res) => {
-          if (res.success && res.data) {
-            setDetailData(res.data);
-          }
-        })
-        .catch(() => { });
-    }
+    if (!orderId) return Promise.resolve();
+    return getRentalOrderDetailApi(orderId)
+      .then((res) => {
+        if (res.success && res.data) {
+          setDetailData(res.data);
+        }
+      })
+      .catch((err) => {
+        console.error('Lỗi làm mới chi tiết đơn thuê:', err?.message || err);
+      });
   };
 
   const handleCancelShipment = async (shipmentId, reason) => {
@@ -177,12 +178,14 @@ export default function RentalOrderDetailModal({
   }
 
   return (
+    <>
     <Modal
       show={isOpen}
       onHide={onClose}
       dialogClassName="vestora-modal-dialog"
       centered
       backdrop="static"
+      enforceFocus={!isCreateShipmentOpen && !isReturnShipmentOpen}
       animation
       size="lg"
     >
@@ -474,7 +477,10 @@ export default function RentalOrderDetailModal({
 
             {/* Section 4: Vận Chuyển & Giao Nhận */}
             {(() => {
-              const isPickup = order?.deliveryMethod === 'pickup' || (order?.note && order.note.includes('Nhận tại'));
+              const isPickup =
+                order?.deliveryMethod === 'pickup' ||
+                order?.shippingAddress?.deliveryMethod === 'pickup' ||
+                Boolean(order?.note && order.note.includes('Nhận tại Showroom'));
               const hasActiveOutbound = shipments.some(
                 (s) => s.shipmentType === 'outbound' && ['preparing', 'shipped', 'delivered'].includes(s.shipmentStatus)
               );
@@ -485,7 +491,7 @@ export default function RentalOrderDetailModal({
                     (s.shipmentStatus === 'delivered' && !s.settled))
               );
               const isFinished = ['returned', 'cancelled'].includes(order.rentalStatus || order.status);
-              const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && !isFinished && ['draft', 'confirmed'].includes(order.rentalStatus || order.status);
+              const canCreateOutbound = !isReadOnly && !isPickup && !hasActiveOutbound && !isFinished && (order.rentalStatus || order.status) === 'confirmed';
               const canCreateReturn = !isReadOnly && !hasActiveReturn && !isFinished && ['renting', 'partially_returned', 'overdue'].includes(order.rentalStatus || order.status);
 
               return (
@@ -564,7 +570,12 @@ export default function RentalOrderDetailModal({
                   {shipments.length > 0 ? (
                     <div className="mt-3">
                       {shipments.map((s, idx) => {
-                        const canRetryThis = s.shipmentType === 'return' ? !hasActiveReturn : !hasActiveOutbound;
+                        const rentalStatus = order.rentalStatus || order.status;
+                        const canRetryThis = !isFinished && (
+                          s.shipmentType === 'return'
+                            ? (!hasActiveReturn && ['renting', 'partially_returned', 'overdue'].includes(rentalStatus))
+                            : (!hasActiveOutbound && rentalStatus === 'confirmed')
+                        );
                         return (
                           <ShipmentTrackingTimeline
                             key={s._id}
@@ -674,7 +685,9 @@ export default function RentalOrderDetailModal({
         )}
       </div>
 
-      {/* Shipment Create Modal */}
+    </Modal>
+
+      {/* Shipment Create Modal (nằm ngoài Modal cha để không bị kẹt focus/overflow) */}
       <ShipmentCreateModal
         show={isCreateShipmentOpen}
         onClose={() => {
@@ -700,7 +713,7 @@ export default function RentalOrderDetailModal({
         initialShipment={retryShipment}
         onSuccess={() => refetchOrder()}
       />
-    </Modal>
+    </>
   );
 }
 

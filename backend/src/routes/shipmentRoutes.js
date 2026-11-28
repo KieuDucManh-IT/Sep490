@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { authMiddleware, requireRoles } from '../middlewares/errorMiddleware.js';
 import {
@@ -32,7 +33,19 @@ const proofUpload = multer({
 router.post('/webhook/ghn/:secretKey', ghnWebhookHandler);
 router.post('/webhook/ghn', ghnWebhookHandler);
 
+const masterDataLimiter = rateLimit({
+  windowMs: 60000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Quá nhiều yêu cầu tra cứu địa giới hành chính. Vui lòng thử lại sau ít phút.',
+  },
+});
+
 // 2. Tra cứu địa giới hành chính GHN (công khai / phục vụ khách hàng checkout tra cứu địa chỉ)
+router.use('/master-data', masterDataLimiter);
 router.get('/master-data/provinces', getProvincesHandler);
 router.get('/master-data/provinces-new', getNewProvincesHandler);
 router.get('/master-data/districts/:provinceId', getDistrictsHandler);

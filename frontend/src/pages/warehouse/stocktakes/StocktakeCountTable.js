@@ -64,7 +64,7 @@ function groupSummary(group, results) {
   return parts.join(' · ');
 }
 
-/** Kết quả áp dụng sau duyệt (đúng / cần xử lý / mất / tìm thấy / chuyển kệ / bị bỏ qua + lý do). */
+/** Kết quả duyệt (đúng / cần xử lý / mất / tìm thấy / chuyển kệ / bị bỏ qua + lý do); dòng lệch đi vào phiếu điều chỉnh. */
 function OutcomeCell({ line }) {
   if (!line.appliedOutcome) return <td>{line.isCounted ? line.countedBy?.FullName || 'Đã kiểm' : 'Chưa kiểm'}</td>;
   return (
@@ -100,7 +100,7 @@ export default function StocktakeCountTable({ lines, editable, results, shelves,
               <th>Trạng thái lúc bắt đầu</th>
               <th>Kết quả</th>
               <th>Kệ thực tế</th>
-              <th>{lines.some((line) => line.appliedOutcome) ? 'Kết quả áp dụng' : 'Ghi nhận'}</th>
+              <th>{lines.some((line) => line.appliedOutcome) ? 'Kết quả duyệt' : 'Ghi nhận'}</th>
             </tr>
           </thead>
           <tbody>

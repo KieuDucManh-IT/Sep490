@@ -3,7 +3,7 @@ import { Button, Modal } from 'react-bootstrap';
 import WarehouseWorkflowProgress from '../../../components/WarehouseWorkflowProgress';
 import { StatusBadge } from '../../../components/warehouse';
 import {
-  ADJUSTMENT_STATUS_LABELS, ITEM_STATUS_LABELS, formatVariantName, labelOf,
+  ADJUSTMENT_ACTION_LABELS, ADJUSTMENT_STATUS_LABELS, ITEM_STATUS_LABELS, formatVariantName, labelOf,
 } from '../../../constants/warehouseLabels';
 import { codeAndName, idOf } from '../shared/slipHelpers';
 
@@ -17,6 +17,16 @@ export function formatChange(value) {
 /** Trạng thái món ghi theo dòng điều chỉnh (TASK-016: bỏ tình trạng; phiếu cũ chỉ còn để xem). */
 const statusLabel = (line) => (line.itemStatus ? labelOf(ITEM_STATUS_LABELS, line.itemStatus, line.itemStatus) : '—');
 
+/** Loại dòng; dòng cũ không có `action`: −1 = mất, +1 = món mới. */
+const actionOf = (line) => line.action || (Number(line.quantityChange) < 0 ? 'lost' : 'create');
+
+/** Vị trí: dòng chuyển kệ / cần xử lý đổi kệ hiện "kệ cũ → kệ mới". */
+function placeOf(line) {
+  const from = line.storageId?.code || 'Chưa gán';
+  const to = line.toStorageId?.code;
+  return to && idOf(line.toStorageId) !== idOf(line.storageId) ? `${from} → ${to}` : from;
+}
+
 function AdjustmentLinesTable({ lines }) {
   return (
     <div className="wm-table-wrap">
@@ -24,6 +34,7 @@ function AdjustmentLinesTable({ lines }) {
         <thead>
           <tr>
             <th>Mặt hàng / mã hàng</th>
+            <th>Loại</th>
             <th>Vị trí</th>
             <th>Tồn trước</th>
             <th>Thay đổi</th>
@@ -41,7 +52,8 @@ function AdjustmentLinesTable({ lines }) {
                   {line.serialNumber ? ` · ${line.serialNumber}` : ''}
                 </small>
               </td>
-              <td>{line.storageId?.code || 'Chưa gán'}</td>
+              <td>{labelOf(ADJUSTMENT_ACTION_LABELS, actionOf(line), actionOf(line))}{line.reason && <small className="wm-stock-subline">{line.reason}</small>}</td>
+              <td>{placeOf(line)}</td>
               <td>{line.quantityBefore}</td>
               <td>{formatChange(line.quantityChange)}</td>
               <td>{line.quantityAfter}</td>

@@ -132,13 +132,12 @@ export default function WarehouseStocktakePage() {
 
   const approve = () => runAction(async () => {
     const result = await stocktakeService.approve(selected._id);
-    return result.stocktake || result;
+    return { ...(result.stocktake || result), createdAdjustment: result.adjustment };
   }, (stocktake) => {
-    const summary = stocktake?.summary;
-    if (!summary) return 'Đã duyệt và áp dụng kết quả kiểm kê.';
-    const skipped = summary.skipped ? ` · ${summary.skipped} dòng bị bỏ qua (xem lý do trong bảng)` : '';
-    return `Đã duyệt và áp dụng: đúng ${summary.unchanged}, cần xử lý ${summary.needsService}, mất ${summary.lost}, `
-      + `tìm thấy ${summary.found}, chuyển kệ ${summary.relocated}${skipped}.`;
+    const skipped = stocktake?.summary?.skipped ? ` ${stocktake.summary.skipped} dòng bị bỏ qua (xem lý do trong bảng).` : '';
+    const code = stocktake?.createdAdjustment?.adjustmentCode;
+    if (code) return `Đã duyệt kiểm kê, tạo phiếu điều chỉnh ${code} chờ duyệt.${skipped}`;
+    return `Đã duyệt kiểm kê, không có chênh lệch.${skipped}`;
   });
 
   const confirmCancel = async (reason) => {
@@ -181,7 +180,7 @@ export default function WarehouseStocktakePage() {
       <PageHeader
         eyebrow="KHO TỔNG / KIỂM SOÁT TỒN KHO"
         title="Kiểm kê kho"
-        description="Kiểm từng món theo kệ; duyệt kết quả là áp dụng ngay vào tồn kho (không tạo phiếu điều chỉnh)."
+        description="Kiểm từng món theo kệ; duyệt kết quả sinh phiếu điều chỉnh cho các dòng lệch để duyệt rồi áp dụng vào tồn."
         actions={isManager && <Button variant="dark" onClick={toggleCreate}>+ Tạo phiếu kiểm kê</Button>}
       />
       <div className="wm-stock-tabs">

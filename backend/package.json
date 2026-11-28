@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "nodemon server.js",
-    "test": "node --test \"../tests/backend/**/*.test.js\""
+    "test": "node --test \"../tests/backend/**/*.test.js\"",
+    "test:unit-db": "node --import ../tests/backend/unit-db/setup.js --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=../tests/backend/unit-db/results/junit.xml \"../tests/backend/unit-db/**/*.test.js\"",
+    "test:unit-db:cases": "node ../tests/backend/unit-db/exportCases.js"
   },
   "keywords": [],
   "author": "",

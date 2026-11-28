@@ -168,10 +168,16 @@ export const advanceRentalReturn = (id, newStatus) =>
     { newStatus }
   );
 
-export const completeRentalReturn = id =>
+export const completeRentalReturn = (
+  id,
+  payload = {}
+) =>
   apiClient.post(
     `/rental-returns/orders/${id}/complete`,
-    { confirmed: true }
+    {
+      ...payload,
+      confirmed: true,
+    }
   );
 
 export const uploadRentalEvidence = (id, kind, file) => {
@@ -183,3 +189,9 @@ export const uploadRentalEvidence = (id, kind, file) => {
     form
   );
 };
+
+export const linkRentalInventory = (id, assignments) =>
+  apiClient.post(
+    `/rental-returns/orders/${id}/physical-items`,
+    { assignments }
+  );

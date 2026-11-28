@@ -16,6 +16,7 @@ export const createReturn = async (req, res, next) => {
 
     const result = await service.createReturnReceiptAndSettle({
       rentalOrderId,
+      user: req.user,
       receivedBy: req.user?._id,
       items,
       note,

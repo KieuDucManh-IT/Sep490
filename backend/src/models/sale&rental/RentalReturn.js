@@ -10,6 +10,47 @@ const rentalReturnSchema = new mongoose.Schema({
   lateFee: { type: Number, min: 0, default: 0 },
   damageFee: { type: Number, min: 0, default: 0 },
   depositRefunded: { type: Number, min: 0, default: 0 },
+  damageMode: {
+    type: String,
+    enum: ['fixed', 'percentage'],
+    default: 'fixed',
+  },
+
+  damageValue: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
+
+  depositSettled: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
+
+  collectedLateFee: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
+
+  collectedDamageFee: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
+
+  totalDeducted: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
+
+  uncollectedAmount: {
+    type: Number,
+    min: 0,
+    default: 0,
+  },
   note: { type: String, trim: true },
 }, { timestamps: true });
 

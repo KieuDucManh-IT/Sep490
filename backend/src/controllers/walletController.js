@@ -8,6 +8,10 @@ import {
   WALLET_TYPES,
   WALLET_STATUSES,
 } from "../models/finance/WalletTransaction.js";
+import {
+  RentalReturn,
+} from '../models/sale&rental/RentalReturn.js';
+import { RentalReturnDetail } from '../models/sale&rental/RentalReturnDetail.js';
 
 import { sendEmail } from "../utils/sendEmail.js";
 
@@ -20,6 +24,7 @@ import {
   validateAmount,
   validateWalletPassword,
   maskEmail,
+  decryptValue,
 } from "../utils/walletSecurity.js";
 
 import {
@@ -292,6 +297,130 @@ export async function setupPassword(req, res) {
   res.json({ message: "Thiết lập mật khẩu Ví thành công" });
 }
 
+async function rentalSettlementBreakdown(transaction) {
+  const prefix =
+    `rental-return:${transaction.referenceId}:`;
+
+  if (
+    transaction.status !== 'success' ||
+    transaction.referenceType !== 'RentalOrder' ||
+    !['deposit_refund', 'adjustment'].includes(
+      transaction.transactionType
+    ) ||
+    !transaction.businessKey?.startsWith(prefix)
+  ) {
+    return null;
+  }
+
+  try {
+    const receiptId =
+      transaction.businessKey.slice(prefix.length);
+
+    if (!mongoose.isValidObjectId(receiptId)) {
+      return { unavailable: true };
+    }
+
+    const receipt = await RentalReturn.findOne({
+      _id: receiptId,
+      rentalOrderId: transaction.referenceId,
+      returnStatus: 'completed',
+    }).lean();
+
+    if (!receipt) {
+      return { unavailable: true };
+    }
+
+    const snapshot = decryptValue(
+      transaction.settleSnapshotEncrypted,
+      `${transaction._id}:rental_deposit_settlement`
+    );
+
+    // Số tiền thực tế được mở khóa và khấu trừ.
+    const depositSettled =
+      snapshot.before.lockedBalance -
+      snapshot.after.lockedBalance;
+
+    const deducted =
+      snapshot.before.balance -
+      snapshot.after.balance;
+
+    const refunded = depositSettled - deducted;
+
+    const amounts = [
+      depositSettled,
+      deducted,
+      refunded,
+      receipt.lateFee,
+      receipt.damageFee,
+    ];
+
+    if (
+      amounts.some(
+        value =>
+          !Number.isSafeInteger(value) ||
+          value < 0
+      ) ||
+      depositSettled <= 0 ||
+      Number(receipt.depositRefunded) !== refunded
+    ) {
+      return { unavailable: true };
+    }
+
+    const expectedAmount =
+      refunded > 0 ? refunded : deducted;
+
+    const expectedDirection =
+      refunded > 0 ? 'credit' : 'debit';
+
+    if (
+      transaction.amount !== expectedAmount ||
+      transaction.direction !== expectedDirection
+    ) {
+      return { unavailable: true };
+    }
+
+    // Thu phí quá hạn trước, sau đó mới thu bồi thường.
+    const lateFee = Math.min(
+      receipt.lateFee,
+      deducted
+    );
+
+    const damageFee = deducted - lateFee;
+
+    if (damageFee > receipt.damageFee) {
+      return { unavailable: true };
+    }
+
+    const inspectionDetails = await RentalReturnDetail.find({
+      rentalReturnId: receipt._id,
+    })
+      .populate('itemId', 'itemCode')
+      .lean();
+
+    return {
+      returnCode: receipt.returnCode,
+      depositSettled,
+      lateFee,
+      damageFee,
+      refunded,
+      note: receipt.note || '',
+      items: inspectionDetails
+        .filter(row => Object.hasOwn(row, 'assessedDamageFee'))
+        .map(row => ({
+          itemCode:
+            row.itemId?.itemCode ||
+            String(row.itemId?._id || ''),
+          inspectionResult: row.inspectionResult,
+          assessedDamageFee: row.assessedDamageFee,
+          collectedDamageFee: row.damageFee,
+          note: row.note || '',
+        })),
+    };
+  } catch {
+    return { unavailable: true };
+  }
+}
+
 export async function getTransactions(req, res) {
   await readyWallet(req.user._id);
 
@@ -309,7 +438,22 @@ export async function getTransactions(req, res) {
       fail(400, "Loại giao dịch không hợp lệ");
     }
 
-    filter.transactionType = req.query.type;
+    if (req.query.type === "deposit_refund") {
+      filter.$or = [
+        {
+          transactionType: "deposit_refund",
+        },
+        {
+          transactionType: "adjustment",
+          referenceType: "RentalOrder",
+          businessKey: {
+            $regex: "^rental-return:",
+          },
+        },
+      ];
+    } else {
+      filter.transactionType = req.query.type;
+    }
   }
 
   if (req.query.status && req.query.status !== "all") {
@@ -322,6 +466,7 @@ export async function getTransactions(req, res) {
 
   const [items, total] = await Promise.all([
     WalletTransaction.find(filter)
+      .select('+settleSnapshotEncrypted')
       .sort({ createdAt: -1, _id: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
@@ -329,7 +474,13 @@ export async function getTransactions(req, res) {
   ]);
 
   res.json({
-    items: items.map(transactionDTO),
+    items: await Promise.all(
+      items.map(async item => ({
+        ...transactionDTO(item),
+        rentalSettlement:
+          await rentalSettlementBreakdown(item),
+      }))
+    ),
     page,
     pages: Math.max(1, Math.ceil(total / limit)),
     total,
